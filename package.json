@@ -1,0 +1,56 @@
+{
+  "name": "codex-pocket-control",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Private multi-computer mobile companion for Codex Desktop.",
+  "type": "module",
+  "bin": {
+    "codex-lan-companion": "./server.js",
+    "codex-lan-companion-install-service": "./scripts/install-service.js",
+    "codex-lan-companion-uninstall-service": "./scripts/uninstall-service.js"
+  },
+  "files": [
+    "server.js",
+    "scripts",
+    "public",
+    "docs/assets",
+    "README.md",
+    "CHANGELOG.md",
+    "SECURITY.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "check": "node --check server.js && node --check public/app.js",
+    "test": "node --test",
+    "start": "node server.js",
+    "start:readonly": "node server.js --readonly",
+    "device:qr": "node scripts/print-device-qr.js",
+    "windows:install": "powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts/install-windows.ps1",
+    "windows:uninstall": "powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts/uninstall-windows.ps1",
+    "android:test": "cd android && gradlew.bat testDebugUnitTest",
+    "android:build": "cd android && gradlew.bat assembleDebug",
+    "service:install": "node scripts/install-service.js",
+    "service:uninstall": "node scripts/uninstall-service.js"
+  },
+  "keywords": [
+    "codex",
+    "codex-desktop",
+    "lan",
+    "remote",
+    "companion",
+    "mobile",
+    "browser",
+    "local-first"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/736368217/codex-pocket.git"
+  },
+  "license": "MIT",
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {
+    "qrcode-terminal": "^0.12.0"
+  }
+}

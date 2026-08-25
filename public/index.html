@@ -1,0 +1,207 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Codex LAN Viewer</title>
+    <link rel="icon" type="image/svg+xml" href="/assets/companion-mark.svg" />
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <div id="authGate" class="auth-gate" hidden>
+      <form id="authForm" class="auth-card">
+        <img class="auth-mark" src="/assets/companion-mark.svg" alt="" />
+        <h2>Codex LAN Companion</h2>
+        <p>输入启动终端里显示的访问码。</p>
+        <div class="auth-input-wrap">
+          <input id="authInput" class="auth-input" type="password" placeholder="访问码" autocomplete="current-password" />
+          <button id="authReveal" class="auth-reveal" type="button" title="显示访问码" aria-label="显示访问码" aria-pressed="false">
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M2.75 12s3.25-6 9.25-6 9.25 6 9.25 6-3.25 6-9.25 6-9.25-6-9.25-6z"></path>
+              <circle cx="12" cy="12" r="2.75"></circle>
+            </svg>
+          </button>
+        </div>
+        <label class="remember-toggle">
+          <input id="rememberDevice" type="checkbox" />
+          <span>记住这台设备</span>
+        </label>
+        <button id="authButton" class="auth-button" type="submit">进入</button>
+        <div id="authError" class="auth-error" aria-live="polite"></div>
+      </form>
+    </div>
+    <main class="shell" id="shell">
+      <button id="sidebarToggle" class="drawer-tab" title="显示对话列表" aria-label="显示对话列表">☰</button>
+      <button id="drawerOverlay" class="drawer-overlay" type="button" title="关闭对话列表" aria-label="关闭对话列表"></button>
+      <aside class="sidebar">
+        <div class="sidebar-top">
+          <div>
+            <h1>Codex LAN Companion</h1>
+            <p id="threadCount">加载中</p>
+          </div>
+        </div>
+        <div class="thread-search-row">
+          <input id="searchInput" class="search" type="search" placeholder="搜索对话" autocomplete="off" />
+          <button id="newThreadButton" class="new-thread-button" type="button">
+            <span aria-hidden="true">+</span>
+            <span id="newThreadLabel">新对话</span>
+          </button>
+        </div>
+        <div id="threadList" class="thread-list" aria-label="对话列表"></div>
+      </aside>
+
+      <section class="conversation">
+        <header class="conversation-header">
+          <div class="conversation-title">
+            <h2 id="threadTitle">选择一个对话</h2>
+            <p id="threadMeta">每 3 秒自动同步</p>
+          </div>
+          <div class="conversation-actions">
+            <label class="toggle">
+              <input id="toolToggle" type="checkbox" checked />
+              <span id="toolToggleLabel" aria-hidden="true">🔧</span>
+            </label>
+            <button id="refreshButton" class="icon-button refresh-button" type="button" title="刷新" aria-label="刷新">
+              <svg viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M20 11a8.1 8.1 0 0 0-15.5-2M4 5v4h4"></path>
+                <path d="M4 13a8.1 8.1 0 0 0 15.5 2M20 19v-4h-4"></path>
+              </svg>
+            </button>
+          </div>
+        </header>
+        <div id="messageList" class="message-list">
+          <div class="empty-state">从左侧选择一个 Codex 对话。</div>
+        </div>
+        <button id="scrollToBottomButton" class="scroll-to-bottom-button" type="button" title="滚到最后" aria-label="滚到最后" hidden>
+          <svg viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M12 5v14"></path>
+            <path d="m6 13 6 6 6-6"></path>
+          </svg>
+        </button>
+        <form id="composerForm" class="composer">
+          <div id="pluginMentionTray" class="plugin-mention-tray" hidden></div>
+          <div id="skillMentionTray" class="plugin-mention-tray skill-mention-tray" hidden></div>
+          <div id="queueStatusBar" class="queue-status-bar" hidden>
+            <div id="insertStatusItem" class="insert-status-item" hidden>
+              <span id="insertStatusText"></span>
+              <div class="queue-status-actions">
+                <button type="button" data-insert-action="edit">停止后编辑</button>
+                <button type="button" data-insert-action="cancel">停止</button>
+              </div>
+            </div>
+            <div id="queueStatusHeader" class="queue-status-header">
+              <span id="queueStatusText"></span>
+              <button id="clearQueueButton" class="queue-clear-button" type="button" title="取消全部排队消息" aria-label="取消全部排队消息">
+                <svg viewBox="0 0 24 24" aria-hidden="true">
+                  <path d="M6 6l12 12"></path>
+                  <path d="M18 6L6 18"></path>
+                </svg>
+              </button>
+            </div>
+            <div id="queueStatusList" class="queue-status-list"></div>
+          </div>
+          <textarea
+            id="composerInput"
+            class="composer-input"
+            rows="2"
+            placeholder="发送到当前 Codex 窗口"
+            autocomplete="off"
+          ></textarea>
+          <div id="pluginMentionMenu" class="plugin-mention-menu" role="listbox" hidden></div>
+          <div id="skillMentionMenu" class="plugin-mention-menu skill-mention-menu" role="listbox" hidden></div>
+          <input
+            id="imageInput"
+            type="file"
+            accept="image/*"
+            multiple
+            hidden
+          />
+          <input
+            id="imageFileInput"
+            type="file"
+            multiple
+            hidden
+          />
+          <div id="attachmentTray" class="attachment-tray" hidden></div>
+          <div class="composer-actions">
+            <div class="composer-left">
+              <div class="model-widget">
+                <button
+                  id="modelSummary"
+                  class="model-summary"
+                  type="button"
+                  title="选择模型和思考强度"
+                  aria-label="选择模型和思考强度"
+                  aria-expanded="false"
+                >
+                  <span id="modelName" class="model-name">GPT-5.6 Sol</span>
+                  <span id="modelEffort" class="model-effort">中</span>
+                </button>
+                <div id="modelPanel" class="model-panel" hidden>
+                  <label class="model-field" for="modelSelect">
+                    <span id="modelSelectLabel">模型</span>
+                    <select id="modelSelect"></select>
+                  </label>
+                  <label class="model-field" for="effortSelect">
+                    <span id="effortSelectLabel">思考强度</span>
+                    <select id="effortSelect"></select>
+                  </label>
+                </div>
+                <button
+                  id="pluginPickerButton"
+                  class="plugin-picker-button"
+                  type="button"
+                  title="引用插件"
+                  aria-label="引用插件"
+                  aria-expanded="false"
+                >
+                  <span class="plugin-picker-dots" aria-hidden="true">
+                    <span></span>
+                    <span></span>
+                    <span></span>
+                    <span></span>
+                  </span>
+                  <span class="plugin-picker-label">插件</span>
+                </button>
+                <button
+                  id="skillPickerButton"
+                  class="plugin-picker-button skill-picker-button"
+                  type="button"
+                  title="引用技能"
+                  aria-label="引用技能"
+                  aria-expanded="false"
+                >
+                  <span class="skill-picker-icon" aria-hidden="true">/</span>
+                  <span class="plugin-picker-label">技能</span>
+                </button>
+              </div>
+              <div id="followUpMode" class="follow-up-mode" role="group" aria-label="运行中发送方式" hidden>
+                <button class="follow-up-mode-button" type="button" data-follow-up-mode="queue">排队</button>
+                <button class="follow-up-mode-button" type="button" data-follow-up-mode="steer">插入</button>
+              </div>
+            </div>
+            <div class="composer-buttons">
+              <button id="attachButton" class="icon-button attach-button" type="button" title="添加图片" aria-label="添加图片">+</button>
+              <div id="imagePickerMenu" class="image-picker-menu" role="menu" hidden>
+                <button id="pickPhotoButton" type="button" role="menuitem">相册</button>
+                <button id="pickFileButton" type="button" role="menuitem">文件浏览</button>
+              </div>
+              <button id="sendButton" class="send-button" type="submit" title="发送" aria-label="发送">
+                <svg class="send-icon" viewBox="0 0 24 24" aria-hidden="true">
+                  <path d="M12 19V5"></path>
+                  <path d="m6 11 6-6 6 6"></path>
+                </svg>
+                <span class="send-stop-icon" aria-hidden="true"></span>
+              </button>
+              <button id="stopButton" class="icon-button stop-button" type="button" title="停止当前任务" aria-label="停止当前任务" hidden>
+                <span aria-hidden="true"></span>
+              </button>
+            </div>
+          </div>
+          <span id="sendStatus" class="send-status" aria-live="polite"></span>
+        </form>
+      </section>
+    </main>
+    <script src="/app.js" type="module"></script>
+  </body>
+</html>
