@@ -129,7 +129,10 @@ public class MainActivity extends ComponentActivity {
                     return;
                 }
                 int existing = findDeviceByUrl(imported.url);
-                if (existing >= 0) devices.set(existing, imported);
+                if (existing >= 0) {
+                    Device previous = devices.get(existing);
+                    devices.set(existing, imported.withNote(imported.note.isEmpty() ? previous.note : imported.note));
+                }
                 else devices.add(imported);
                 saveDevices();
                 showMachinePicker();
@@ -235,7 +238,8 @@ public class MainActivity extends ComponentActivity {
         LinearLayout row = new LinearLayout(this);
         row.setGravity(Gravity.CENTER_VERTICAL);
         row.setPadding(dp(16), dp(10), dp(8), dp(10));
-        row.setMinimumHeight(dp(76));
+        int rowHeight = device.note.isEmpty() ? 76 : 94;
+        row.setMinimumHeight(dp(rowHeight));
         row.setClickable(true);
         row.setFocusable(true);
         row.setBackgroundColor(Color.TRANSPARENT);
@@ -252,6 +256,11 @@ public class MainActivity extends ComponentActivity {
         name.setTypeface(Typeface.DEFAULT, Typeface.BOLD);
         name.setMaxLines(1);
         copy.addView(name);
+        if (!device.note.isEmpty()) {
+            TextView note = label(device.note, 13, INK);
+            note.setMaxLines(1);
+            copy.addView(note);
+        }
         TextView address = label(displayAddress(device.url), 12, MUTED);
         address.setMaxLines(1);
         copy.addView(address);
@@ -263,7 +272,7 @@ public class MainActivity extends ComponentActivity {
         Button menu = iconButton("⋮", "管理这台电脑", v -> showDeviceMenu(v, index));
         menu.setTextColor(MUTED);
         row.addView(menu, new LinearLayout.LayoutParams(dp(44), dp(48)));
-        list.addView(row, new LinearLayout.LayoutParams(-1, dp(76)));
+        list.addView(row, new LinearLayout.LayoutParams(-1, dp(rowHeight)));
 
         if (!last) {
             View divider = new View(this);
@@ -310,10 +319,19 @@ public class MainActivity extends ComponentActivity {
         connectionDot = label("●", 10, Color.rgb(244, 190, 74));
         connectionDot.setGravity(Gravity.CENTER);
         topBar.addView(connectionDot, new LinearLayout.LayoutParams(dp(22), dp(48)));
+        LinearLayout connectedCopy = new LinearLayout(this);
+        connectedCopy.setOrientation(LinearLayout.VERTICAL);
+        connectedCopy.setGravity(Gravity.CENTER_VERTICAL);
         TextView connectedTitle = label(device.name, 16, Color.WHITE);
         connectedTitle.setTypeface(Typeface.DEFAULT, Typeface.BOLD);
         connectedTitle.setMaxLines(1);
-        topBar.addView(connectedTitle, new LinearLayout.LayoutParams(0, dp(48), 1));
+        connectedCopy.addView(connectedTitle);
+        if (!device.note.isEmpty()) {
+            TextView connectedNote = label(device.note, 11, Color.rgb(196, 205, 214));
+            connectedNote.setMaxLines(1);
+            connectedCopy.addView(connectedNote);
+        }
+        topBar.addView(connectedCopy, new LinearLayout.LayoutParams(0, dp(48), 1));
         Button refresh = iconButton("↻", "刷新当前页面", v -> {
             if (webView != null && activeDevice != null) webView.loadUrl(targetUrl(activeDevice));
         });
@@ -475,7 +493,7 @@ public class MainActivity extends ComponentActivity {
                 Uri uri = Uri.parse(raw);
                 String url = uri.getQueryParameter("url");
                 if (url == null || url.isBlank()) return null;
-                return new Device(valueOr(uri.getQueryParameter("name"), "新电脑"), trimTrailingSlash(url), valueOr(uri.getQueryParameter("token"), ""));
+                return new Device(valueOr(uri.getQueryParameter("name"), "新电脑"), trimTrailingSlash(url), valueOr(uri.getQueryParameter("token"), ""), valueOr(uri.getQueryParameter("note"), ""));
             }
             if (raw.startsWith("http://") || raw.startsWith("https://")) {
                 Uri uri = Uri.parse(raw);
@@ -485,12 +503,12 @@ public class MainActivity extends ComponentActivity {
                         .encodedAuthority(uri.getEncodedAuthority())
                         .encodedPath(uri.getEncodedPath())
                         .build();
-                return new Device(valueOr(uri.getHost(), "新电脑"), trimTrailingSlash(base.toString()), valueOr(token, ""));
+                return new Device(valueOr(uri.getHost(), "新电脑"), trimTrailingSlash(base.toString()), valueOr(token, ""), "");
             }
             JSONObject item = new JSONObject(raw);
             String url = item.optString("url");
             if (url.isBlank()) return null;
-            return new Device(item.optString("name", "新电脑"), trimTrailingSlash(url), item.optString("token"));
+            return new Device(item.optString("name", "新电脑"), trimTrailingSlash(url), item.optString("token"), item.optString("note"));
         } catch (Exception ignored) {
             return null;
         }
@@ -529,14 +547,16 @@ public class MainActivity extends ComponentActivity {
 
     private void showDeviceDialog(int editingIndex) {
         boolean editing = editingIndex >= 0 && editingIndex < devices.size();
-        Device existing = editing ? devices.get(editingIndex) : new Device("", "", "");
+        Device existing = editing ? devices.get(editingIndex) : new Device("", "", "", "");
         LinearLayout form = new LinearLayout(this);
         form.setOrientation(LinearLayout.VERTICAL);
         form.setPadding(dp(22), dp(6), dp(22), 0);
         EditText name = field("电脑名称", existing.name, false);
+        EditText note = field("备注（例如：家里书房、公司台式机）", existing.note, false);
         EditText url = field("访问地址，例如 https://example.com:18787", existing.url, false);
         EditText token = field("访问码", existing.token, true);
         form.addView(name);
+        form.addView(note);
         form.addView(url);
         form.addView(token);
 
@@ -548,6 +568,7 @@ public class MainActivity extends ComponentActivity {
                 .create();
         dialog.setOnShowListener(d -> dialog.getButton(DialogInterface.BUTTON_POSITIVE).setOnClickListener(v -> {
             String n = name.getText().toString().trim();
+            String remark = note.getText().toString().trim();
             String u = trimTrailingSlash(url.getText().toString().trim());
             String t = token.getText().toString().trim();
             Uri parsed = Uri.parse(u);
@@ -555,7 +576,7 @@ public class MainActivity extends ComponentActivity {
                 Toast.makeText(this, "请填写名称和有效的 http(s) 地址", Toast.LENGTH_SHORT).show();
                 return;
             }
-            Device next = new Device(n, u, t);
+            Device next = new Device(n, u, t, remark);
             if (editing) devices.set(editingIndex, next);
             else devices.add(next);
             saveDevices();
@@ -722,7 +743,7 @@ public class MainActivity extends ComponentActivity {
             JSONArray array = new JSONArray(raw);
             for (int i = 0; i < array.length(); i++) {
                 JSONObject item = array.getJSONObject(i);
-                result.add(new Device(item.optString("name"), item.optString("url"), item.optString("token")));
+                result.add(new Device(item.optString("name"), item.optString("url"), item.optString("token"), item.optString("note")));
             }
         } catch (Exception ignored) {
         }
@@ -737,6 +758,7 @@ public class MainActivity extends ComponentActivity {
                 item.put("name", device.name);
                 item.put("url", device.url);
                 item.put("token", device.token);
+                item.put("note", device.note);
                 array.put(item);
             }
             Store.write(this, array.toString());
@@ -802,11 +824,17 @@ public class MainActivity extends ComponentActivity {
         final String name;
         final String url;
         final String token;
+        final String note;
 
-        Device(String name, String url, String token) {
+        Device(String name, String url, String token, String note) {
             this.name = name;
             this.url = url;
             this.token = token;
+            this.note = note == null ? "" : note;
+        }
+
+        Device withNote(String nextNote) {
+            return new Device(name, url, token, nextNote);
         }
     }
 

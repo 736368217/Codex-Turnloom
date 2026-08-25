@@ -141,7 +141,7 @@ public class ReminderService extends Service {
                 ? new Notification.Builder(this, CHANNEL_ID)
                 : new Notification.Builder(this);
         builder.setSmallIcon(android.R.drawable.ic_dialog_info)
-                .setContentTitle("Codex 已完成")
+                .setContentTitle("Codex 已完成 · " + device.label())
                 .setContentText(reminder.title.isEmpty() ? "对话已结束，可以继续下一步" : reminder.title)
                 .setContentIntent(pendingIntent)
                 .setAutoCancel(true)
@@ -181,7 +181,7 @@ public class ReminderService extends Service {
             JSONArray array = new JSONArray(raw);
             for (int i = 0; i < array.length(); i++) {
                 JSONObject item = array.getJSONObject(i);
-                devices.add(new Device(item.optString("url"), item.optString("token")));
+                devices.add(new Device(item.optString("name"), item.optString("note"), item.optString("url"), item.optString("token")));
             }
         } catch (Exception ignored) {
         }
@@ -262,12 +262,22 @@ public class ReminderService extends Service {
     }
 
     private static class Device {
+        final String name;
+        final String note;
         final String url;
         final String token;
 
-        Device(String url, String token) {
+        Device(String name, String note, String url, String token) {
+            this.name = name;
+            this.note = note;
             this.url = url;
             this.token = token;
+        }
+
+        String label() {
+            if (note != null && !note.isBlank()) return note;
+            if (name != null && !name.isBlank()) return name;
+            return "电脑";
         }
     }
 

@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.10.0
+
+- Replace the conversation-list reminder bell with a long-press, right-click, or keyboard context menu.
+- Show reminder state as lightweight text without consuming a separate action column.
+- Add phone-local notes for saved computers and preserve notes when rescanning an existing device.
+- Show computer notes in the machine picker, active-machine header, and completion notifications.
+
 ## 0.1.0
 
 Initial public release.

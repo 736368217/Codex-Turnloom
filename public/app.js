@@ -25,6 +25,7 @@ const state = {
   composerBusy: false,
   uncertainSend: null,
   reminders: {},
+  contextThreadId: null,
   model: "",
   effort: "",
   modelPanelOpen: false,
@@ -72,6 +73,9 @@ const els = {
   shell: document.querySelector("#shell"),
   threadCount: document.querySelector("#threadCount"),
   threadList: document.querySelector("#threadList"),
+  threadContextMenu: document.querySelector("#threadContextMenu"),
+  threadContextTitle: document.querySelector("#threadContextTitle"),
+  threadReminderAction: document.querySelector("#threadReminderAction"),
   threadTitle: document.querySelector("#threadTitle"),
   threadMeta: document.querySelector("#threadMeta"),
   messageList: document.querySelector("#messageList"),
@@ -237,6 +241,7 @@ const I18N = {
     statusUnknown: "状态未知",
     reminderOn: "关闭完成提醒",
     reminderOff: "开启完成提醒",
+    reminderEnabledLabel: "提醒已开",
     window: "窗口",
     weekWindow: "{count} 周窗口",
     dayWindow: "{count} 天窗口",
@@ -367,6 +372,7 @@ const I18N = {
     statusUnknown: "Unknown",
     reminderOn: "Disable completion reminder",
     reminderOff: "Enable completion reminder",
+    reminderEnabledLabel: "Reminder on",
     window: "Window",
     weekWindow: "{count} week window",
     dayWindow: "{count} day window",
@@ -1084,6 +1090,29 @@ function setThreadReminder(thread, enabled) {
   }
 }
 
+function closeThreadContextMenu() {
+  state.contextThreadId = null;
+  els.threadContextMenu.hidden = true;
+}
+
+function openThreadContextMenu(threadId, clientX, clientY) {
+  const thread = state.threads.find((entry) => entry.id === threadId);
+  if (!thread) return;
+  state.contextThreadId = threadId;
+  els.threadContextTitle.textContent = thread.title || t("untitled");
+  els.threadReminderAction.textContent = reminderEnabled(threadId) ? t("reminderOn") : t("reminderOff");
+  els.threadContextMenu.hidden = false;
+
+  const menuWidth = els.threadContextMenu.offsetWidth;
+  const menuHeight = els.threadContextMenu.offsetHeight;
+  const margin = 10;
+  const left = Math.min(Math.max(margin, clientX), window.innerWidth - menuWidth - margin);
+  const top = Math.min(Math.max(margin, clientY), window.innerHeight - menuHeight - margin);
+  els.threadContextMenu.style.left = `${left}px`;
+  els.threadContextMenu.style.top = `${top}px`;
+  els.threadReminderAction.focus({ preventScroll: true });
+}
+
 function threadStatusLabel(status) {
   if (status?.thinking) return t("statusRunning");
   if (status?.interactionRequired) return t("statusWaiting");
@@ -1101,14 +1130,14 @@ function renderThreads() {
       const status = thread.status || {};
       const reminder = reminderEnabled(thread.id);
       return `
-        <button class="thread-item${active}${thread.id === DRAFT_THREAD_ID ? " draft" : ""}" data-id="${thread.id}">
+        <button class="thread-item${active}${thread.id === DRAFT_THREAD_ID ? " draft" : ""}" data-id="${thread.id}" ${thread.id === DRAFT_THREAD_ID ? "" : 'aria-haspopup="menu"'}>
           <span class="thread-copy">
             <span class="thread-title">${title}</span>
             <span class="thread-status thread-status-${escapeHtml(status.state || "unknown")}" title="${escapeHtml(threadStatusLabel(status))}">
               <span class="thread-status-dot" aria-hidden="true"></span>${escapeHtml(threadStatusLabel(status))}
+              ${reminder ? `<span class="thread-reminder-state">${escapeHtml(t("reminderEnabledLabel"))}</span>` : ""}
             </span>
           </span>
-          ${thread.id === DRAFT_THREAD_ID ? "" : `<span class="thread-reminder${reminder ? " enabled" : ""}" data-reminder-toggle="true" role="button" tabindex="0" title="${escapeHtml(reminder ? t("reminderOn") : t("reminderOff"))}" aria-label="${escapeHtml(reminder ? t("reminderOn") : t("reminderOff"))}">${reminder ? "🔔" : "🔕"}</span>`}
         </button>
       `;
     })
@@ -2113,15 +2142,11 @@ function shouldRefocusComposer() {
 els.threadList.addEventListener("click", (event) => {
   const button = event.target.closest(".thread-item");
   if (!button) return;
-  const reminderToggle = event.target.closest("[data-reminder-toggle]");
-  if (reminderToggle) {
+  if (Date.now() < suppressThreadClickUntil) {
     event.preventDefault();
-    event.stopPropagation();
-    const thread = state.threads.find((entry) => entry.id === button.dataset.id);
-    setThreadReminder(thread, !reminderEnabled(button.dataset.id));
-    renderThreads();
     return;
   }
+  closeThreadContextMenu();
   state.selectedId = button.dataset.id;
   state.messageLimit = MESSAGE_PAGE_SIZE;
   state.messageHistoryLoading = false;
@@ -2136,6 +2161,63 @@ els.threadList.addEventListener("click", (event) => {
   renderThreads();
   loadMessages(true, state.selectedId);
   closeSidebarOnCompact();
+});
+
+let longPressTimer = null;
+let longPressStart = null;
+let suppressThreadClickUntil = 0;
+
+function cancelThreadLongPress() {
+  clearTimeout(longPressTimer);
+  longPressTimer = null;
+  longPressStart = null;
+}
+
+els.threadList.addEventListener("pointerdown", (event) => {
+  const button = event.target.closest(".thread-item");
+  if (!button || button.dataset.id === DRAFT_THREAD_ID || event.button > 0) return;
+  cancelThreadLongPress();
+  longPressStart = { x: event.clientX, y: event.clientY, pointerId: event.pointerId };
+  longPressTimer = setTimeout(() => {
+    suppressThreadClickUntil = Date.now() + 700;
+    openThreadContextMenu(button.dataset.id, event.clientX, event.clientY);
+    navigator.vibrate?.(12);
+    cancelThreadLongPress();
+  }, 520);
+});
+
+els.threadList.addEventListener("pointermove", (event) => {
+  if (!longPressStart || event.pointerId !== longPressStart.pointerId) return;
+  if (Math.hypot(event.clientX - longPressStart.x, event.clientY - longPressStart.y) > 10) cancelThreadLongPress();
+});
+
+for (const eventName of ["pointerup", "pointercancel", "scroll"]) {
+  els.threadList.addEventListener(eventName, cancelThreadLongPress, { passive: true });
+}
+
+els.threadList.addEventListener("contextmenu", (event) => {
+  const button = event.target.closest(".thread-item");
+  if (!button || button.dataset.id === DRAFT_THREAD_ID) return;
+  event.preventDefault();
+  suppressThreadClickUntil = Date.now() + 700;
+  openThreadContextMenu(button.dataset.id, event.clientX, event.clientY);
+});
+
+els.threadList.addEventListener("keydown", (event) => {
+  if (event.key !== "ContextMenu" && !(event.shiftKey && event.key === "F10")) return;
+  const button = event.target.closest(".thread-item");
+  if (!button || button.dataset.id === DRAFT_THREAD_ID) return;
+  event.preventDefault();
+  const rect = button.getBoundingClientRect();
+  openThreadContextMenu(button.dataset.id, rect.left + 20, rect.top + rect.height / 2);
+});
+
+els.threadReminderAction.addEventListener("click", () => {
+  const thread = state.threads.find((entry) => entry.id === state.contextThreadId);
+  if (!thread) return closeThreadContextMenu();
+  setThreadReminder(thread, !reminderEnabled(thread.id));
+  closeThreadContextMenu();
+  renderThreads();
 });
 
 els.newThreadButton.addEventListener("click", () => {
@@ -2311,6 +2393,7 @@ els.skillPickerButton.addEventListener("click", () => {
 });
 
 document.addEventListener("click", (event) => {
+  if (!els.threadContextMenu.hidden && !els.threadContextMenu.contains(event.target)) closeThreadContextMenu();
   if (state.modelPanelOpen && !els.modelPanel.contains(event.target) && !els.modelSummary.contains(event.target)) {
     closeModelPanel();
   }
