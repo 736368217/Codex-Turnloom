@@ -18,7 +18,6 @@ $ErrorActionPreference = "Stop"
 $scriptRoot = Split-Path -Parent $MyInvocation.MyCommand.Path
 $repoRoot = Split-Path -Parent $scriptRoot
 $supervisor = Join-Path $scriptRoot "windows-supervisor.ps1"
-$recoveryMonitor = Join-Path $scriptRoot "windows-recovery.ps1"
 $configDir = Join-Path $env:LOCALAPPDATA "CodexPocket"
 $configPath = Join-Path $configDir "config.json"
 $logDir = Join-Path $configDir "logs"
@@ -76,9 +75,6 @@ if (-not $CodexHome -or -not (Test-Path -LiteralPath $CodexHome -PathType Contai
 if (-not (Test-Path -LiteralPath (Join-Path $repoRoot "server.js") -PathType Leaf)) {
   throw "server.js not found under repository root: $repoRoot"
 }
-if (-not (Test-Path -LiteralPath $recoveryMonitor -PathType Leaf)) {
-  throw "Recovery monitor script not found: $recoveryMonitor"
-}
 if ($TunnelHost) {
   if ($RemotePort -le 0) { throw "-RemotePort is required when -TunnelHost is set." }
   if (-not (Test-Path -LiteralPath $SshKeyPath -PathType Leaf)) { throw "SSH key not found: $SshKeyPath" }
@@ -130,30 +126,27 @@ $settings = New-ScheduledTaskSettingsSet `
   -MultipleInstances IgnoreNew `
   -StartWhenAvailable
 $userId = $env:USERDOMAIN + "\" + $env:USERNAME
-$trigger = New-ScheduledTaskTrigger -AtLogOn -User $userId
+$logonTrigger = New-ScheduledTaskTrigger -AtLogOn -User $userId
+$recoveryTrigger = New-ScheduledTaskTrigger `
+  -Once `
+  -At (Get-Date).AddMinutes(1) `
+  -RepetitionInterval (New-TimeSpan -Minutes 1) `
+  -RepetitionDuration (New-TimeSpan -Days 3650)
+$triggers = @($logonTrigger, $recoveryTrigger)
 $principal = New-ScheduledTaskPrincipal -UserId $userId -LogonType Interactive -RunLevel Limited
 
-$tasks = @([pscustomobject]@{ Name = "Codex Pocket Server Watchdog"; Mode = "server" })
-if ($TunnelHost) {
-  $tasks += [pscustomobject]@{ Name = "Codex Pocket Tunnel Watchdog"; Mode = "tunnel" }
-}
+$taskName = "Codex Pocket Supervisor"
+$argument = "-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File `"$supervisor`" -ConfigPath `"$configPath`""
+$action = New-ScheduledTaskAction -Execute $powershell -Argument $argument
+Register-ScheduledTask -TaskName $taskName -Action $action -Trigger $triggers -Settings $settings -Principal $principal -Force | Out-Null
+Stop-ScheduledTask -TaskName $taskName -ErrorAction SilentlyContinue
+Start-ScheduledTask -TaskName $taskName
+Write-Output ("Installed and started: " + $taskName)
 
-foreach ($task in $tasks) {
-  $argument = "-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File `"$supervisor`" -Mode $($task.Mode) -ConfigPath `"$configPath`""
-  $action = New-ScheduledTaskAction -Execute $powershell -Argument $argument
-  Register-ScheduledTask -TaskName $task.Name -Action $action -Trigger $trigger -Settings $settings -Principal $principal -Force | Out-Null
-  Stop-ScheduledTask -TaskName $task.Name -ErrorAction SilentlyContinue
-  Start-ScheduledTask -TaskName $task.Name
-  Write-Output ("Installed and started: " + $task.Name)
+foreach ($legacyTaskName in @("Codex Pocket Server Watchdog", "Codex Pocket Tunnel Watchdog", "Codex Pocket Recovery Monitor")) {
+  Stop-ScheduledTask -TaskName $legacyTaskName -ErrorAction SilentlyContinue
+  Unregister-ScheduledTask -TaskName $legacyTaskName -Confirm:$false -ErrorAction SilentlyContinue
 }
-
-$recoveryTaskName = "Codex Pocket Recovery Monitor"
-$recoveryArgument = "-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File `"$recoveryMonitor`" -ConfigPath `"$configPath`""
-$recoveryAction = New-ScheduledTaskAction -Execute $powershell -Argument $recoveryArgument
-Register-ScheduledTask -TaskName $recoveryTaskName -Action $recoveryAction -Trigger $trigger -Settings $settings -Principal $principal -Force | Out-Null
-Stop-ScheduledTask -TaskName $recoveryTaskName -ErrorAction SilentlyContinue
-Start-ScheduledTask -TaskName $recoveryTaskName
-Write-Output ("Installed and started: " + $recoveryTaskName)
 
 Write-Output "Configuration: $configPath"
 Write-Output "Logs:          $logDir"

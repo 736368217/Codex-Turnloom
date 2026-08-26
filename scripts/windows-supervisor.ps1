@@ -1,10 +1,6 @@
 #requires -Version 5.1
 
 param(
-  [Parameter(Mandatory = $true)]
-  [ValidateSet("server", "tunnel")]
-  [string]$Mode,
-
   [string]$ConfigPath = (Join-Path $env:LOCALAPPDATA "CodexPocket\config.json")
 )
 
@@ -23,10 +19,10 @@ if (-not $logDir) {
   $logDir = Join-Path $env:LOCALAPPDATA "CodexPocket\logs"
 }
 New-Item -ItemType Directory -Path $logDir -Force | Out-Null
-$supervisorLog = Join-Path $logDir ("supervisor-{0}.log" -f $Mode)
+$supervisorLog = Join-Path $logDir "supervisor.log"
 
 function Write-SupervisorLog([string]$Message) {
-  $line = "{0} [{1}] {2}" -f (Get-Date -Format "yyyy-MM-dd HH:mm:ss"), $Mode, $Message
+  $line = "{0} [supervisor] {1}" -f (Get-Date -Format "yyyy-MM-dd HH:mm:ss"), $Message
   Add-Content -LiteralPath $supervisorLog -Value $line -Encoding UTF8
 }
 
@@ -65,8 +61,12 @@ function Start-Server {
   $stdout = Join-Path $logDir "server-out.log"
   $stderr = Join-Path $logDir "server-error.log"
   Write-SupervisorLog ("Starting server on port {0}." -f $config.port)
-  & ([string]$config.nodePath) @arguments 1>> $stdout 2>> $stderr
-  Write-SupervisorLog ("Server exited with code {0}." -f $LASTEXITCODE)
+  Start-Process `
+    -FilePath ([string]$config.nodePath) `
+    -ArgumentList $arguments `
+    -WindowStyle Hidden `
+    -RedirectStandardOutput $stdout `
+    -RedirectStandardError $stderr | Out-Null
 }
 
 function Start-Tunnel {
@@ -90,20 +90,20 @@ function Start-Tunnel {
   $stdout = Join-Path $logDir "tunnel-out.log"
   $stderr = Join-Path $logDir "tunnel-error.log"
   Write-SupervisorLog ("Starting tunnel to {0}; remote port {1}." -f $config.tunnel.host, $config.tunnel.remotePort)
-  & $sshPath @arguments 1>> $stdout 2>> $stderr
-  Write-SupervisorLog ("Tunnel exited with code {0}." -f $LASTEXITCODE)
+  Start-Process `
+    -FilePath $sshPath `
+    -ArgumentList $arguments `
+    -WindowStyle Hidden `
+    -RedirectStandardOutput $stdout `
+    -RedirectStandardError $stderr | Out-Null
 }
 
 Write-SupervisorLog ("Supervisor started. Config: {0}" -f $ConfigPath)
 while ($true) {
   try {
     $config = Read-Config
-    $ready = if ($Mode -eq "server") { Test-ServerReady } else { Test-TunnelReady }
-    if ($ready) {
-      Start-Sleep -Seconds 5
-      continue
-    }
-    if ($Mode -eq "server") { Start-Server } else { Start-Tunnel }
+    if (-not (Test-ServerReady)) { Start-Server }
+    if ($config.tunnel.enabled -and -not (Test-TunnelReady)) { Start-Tunnel }
   } catch {
     Write-SupervisorLog ("Failure: " + $_.Exception.Message)
   }

@@ -22,11 +22,8 @@ Phone app / browser
 
 - Deployment configuration: `%LOCALAPPDATA%\CodexPocket\config.json` (secret, never commit or copy into docs).
 - Logs: `%LOCALAPPDATA%\CodexPocket\logs`.
-- Scheduled tasks:
-  - `Codex Pocket Server Watchdog`
-  - `Codex Pocket Tunnel Watchdog`
-  - `Codex Pocket Recovery Monitor`
-- The recovery monitor checks both service and tunnel every 30 seconds. If either watchdog is stopped and its child is absent, it restarts the watchdog.
+- Scheduled task: `Codex Pocket Supervisor`.
+- The single hidden supervisor checks both the local service and reverse tunnel every 5 seconds and restarts either child when needed. A one-minute repeating task trigger restores the supervisor itself after an external stop; `IgnoreNew` prevents duplicate instances while it is healthy.
 
 ## Incident history
 
@@ -35,7 +32,7 @@ Phone app / browser
 - Symptom: public mobile endpoint returned `502 Bad Gateway`.
 - Root cause: the local service was no longer listening on port `8787`; the reverse SSH tunnel and Alibaba Cloud listener remained healthy.
 - Recovery: restarted `Codex Pocket Server Watchdog`; local health and authenticated public health both returned `200`.
-- Prevention: added `Codex Pocket Recovery Monitor` as an independent scheduled task.
+- Prevention: consolidated supervision into one scheduled task that manages both child processes and has Task Scheduler failure-restart settings.
 
 ## Change rules
 
