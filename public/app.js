@@ -1646,6 +1646,27 @@ function composerSendMessage(message) {
   return [selectedSkillPrompt(), selectedPluginMarkdown(), message.trim()].filter(Boolean).join("\n\n").trim();
 }
 
+// Clear every composer surface after Desktop has accepted a send. Keep this
+// idempotent because Android WebView can restore a form value during an async
+// refresh or while the composer transitions between busy and ready states.
+function clearComposerAfterAcceptedSend() {
+  els.composerInput.value = "";
+  els.composerInput.defaultValue = "";
+  try {
+    els.composerInput.setSelectionRange(0, 0);
+  } catch {
+    // Selection APIs are unavailable while some mobile inputs are detached.
+  }
+  els.composerInput.dispatchEvent(new Event("input", { bubbles: true }));
+  clearSelectedPlugins();
+  clearSelectedSkills();
+  state.imageAttachments = [];
+  els.imageInput.value = "";
+  els.imageFileInput.value = "";
+  renderImageAttachments();
+  autoResizeComposerInput();
+}
+
 function messageContentText(value) {
   if (typeof value === "string") return value;
   if (Array.isArray(value)) return value.map(messageContentText).filter(Boolean).join("\n");
@@ -2640,6 +2661,7 @@ els.composerForm.addEventListener("submit", async (event) => {
   if (!sendMessage && !images.length) return;
   const sendMode = thinking && !isDraftThread ? state.followUpMode : "start";
   const previousThreadStatus = state.threadStatus;
+  let sendAccepted = false;
   const pendingMessageId = thinking || isDraftThread ? null : addPendingUserMessage(state.selectedId, sendMessage, images);
   const clientRequestId = globalThis.crypto?.randomUUID?.() || `send-${Date.now()}-${Math.random().toString(16).slice(2)}`;
   state.composerBusy = true;
@@ -2662,12 +2684,8 @@ els.composerForm.addEventListener("submit", async (event) => {
       images: images.map(({ name, mimeType, data }) => ({ name, mimeType, data }))
     });
     if (!result?.uncertain) {
-      els.composerInput.value = "";
-      autoResizeComposerInput();
-      clearSelectedPlugins();
-      clearSelectedSkills();
-      state.imageAttachments = [];
-      renderImageAttachments();
+      sendAccepted = true;
+      clearComposerAfterAcceptedSend();
     }
     if (isDraftThread && result.threadId) {
       if (state.modelPreferences[DRAFT_THREAD_ID]) {
@@ -2690,11 +2708,9 @@ els.composerForm.addEventListener("submit", async (event) => {
       els.sendStatus.textContent = result.accepted ? t("sendUncertainAccepted") : t("sendUncertain");
       await refresh(true);
       if (hasDisplayedUserMessage(sendMessage) || state.threadStatus?.thinking) {
+        sendAccepted = true;
         state.uncertainSend = null;
-        els.composerInput.value = "";
-        autoResizeComposerInput();
-        state.imageAttachments = [];
-        renderImageAttachments();
+        clearComposerAfterAcceptedSend();
       }
     } else if (sendMode === "queue") {
       const queuedMessages = [...(state.threadStatus?.queuedMessages || []), result.queueItem].filter(Boolean);
@@ -2738,6 +2754,7 @@ els.composerForm.addEventListener("submit", async (event) => {
     }
     els.sendStatus.textContent = t("sendFailed", { message: error.message });
   } finally {
+    if (sendAccepted) clearComposerAfterAcceptedSend();
     state.composerBusy = false;
     renderComposerMode();
     if (!thinking && shouldRefocusComposer()) els.composerInput.focus();

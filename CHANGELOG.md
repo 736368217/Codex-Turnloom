@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.10.1
+
+- Clear the composer text, selections, attachments, and browser form state after an accepted send.
+- Make the cleanup idempotent across asynchronous refreshes so sent text is not restored in the Android WebView.
+
 ## 1.10.0
 
 - Replace the conversation-list reminder bell with a long-press, right-click, or keyboard context menu.
