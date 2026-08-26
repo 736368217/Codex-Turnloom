@@ -1,4 +1,5 @@
 import { MESSAGE_PAGE_SIZE, nextMessageLimit, reconcilePendingMessages, retainedScrollTop } from "./history.js";
+import { renderMarkdown } from "./markdown.js";
 
 const state = {
   threads: [],
@@ -805,38 +806,22 @@ function pluginMentionMarkdown(plugin) {
   return `[@${plugin.displayName || plugin.name}](${plugin.uri})`;
 }
 
-function renderInlinePluginRefs(html) {
-  return html.replace(/\[@([^\]\n]+)\]\((plugin:\/\/[^)\s]+)\)/g, (_match, label, uri) => {
-    const plugin = state.plugins.find((item) => item.uri === uri);
-    const displayName = plugin?.displayName || label || pluginDisplayNameFromUri(uri);
-    return `<span class="message-plugin-ref">${pluginIconHtml(plugin || { displayName }, "message-plugin-icon")}${escapeHtml(displayName)}</span>`;
-  });
-}
-
-function renderMarkdownLite(text) {
-  const escaped = escapeHtml(text || "");
-  const withPluginRefs = renderInlinePluginRefs(escaped);
-  const withLocalImages = renderGeneratedImageMarkdown(withPluginRefs);
-  const withCodeBlocks = withLocalImages.replace(/```([\s\S]*?)```/g, (_match, code) => `<pre><code>${code.trim()}</code></pre>`);
-  return withCodeBlocks
-    .split(/\n{2,}/)
-    .map((part) => {
-      if (part.startsWith("<pre>")) return part;
-      return `<p>${part.replaceAll("\n", "<br>")}</p>`;
-    })
-    .join("");
-}
-
-function renderGeneratedImageMarkdown(text) {
-  return String(text || "").replace(
-    /!\[([^\]]*)\]\(([^)\s]+\.(?:png|jpe?g|webp|gif|bmp|webp|svg))\)/gi,
-    (_match, alt, imagePath) => {
+function renderMessageMarkdown(text) {
+  return renderMarkdown(text, {
+    parseMarkdown: (source, options) => globalThis.marked?.parse(source, options),
+    sanitizeHtml: (html) => globalThis.DOMPurify?.sanitize(html, { USE_PROFILES: { html: true } }),
+    renderPluginReference: (label, uri) => {
+      const plugin = state.plugins.find((item) => item.uri === uri);
+      const displayName = plugin?.displayName || label || pluginDisplayNameFromUri(uri);
+      return `<span class="message-plugin-ref">${pluginIconHtml(plugin || { displayName }, "message-plugin-icon")}${escapeHtml(displayName)}</span>`;
+    },
+    renderLocalImage: (alt, imagePath) => {
       const tokenParam = state.authToken ? `&token=${encodeURIComponent(state.authToken)}` : "";
       const threadParam = state.selectedId ? `&threadId=${encodeURIComponent(state.selectedId)}` : "";
       const src = `/api/local-image?path=${encodeURIComponent(imagePath)}${threadParam}${tokenParam}`;
-      return `<img class="message-image generated-image" src="${src}" alt="${alt}" loading="lazy" />`;
+      return `<img class="message-image generated-image" src="${src}" alt="${escapeHtml(alt)}" loading="lazy" />`;
     }
-  );
+  });
 }
 
 function imageNameFromPath(value) {
@@ -1377,7 +1362,7 @@ function renderMessages(data) {
           <div class="bubble">
             ${metaTop ? `<div class="message-meta message-meta-top">${escapeHtml(metaTop)}</div>` : ""}
             ${title}
-            ${message.content && !noticeCollapsed ? renderMarkdownLite(message.content) : ""}
+            ${message.content && !noticeCollapsed ? renderMessageMarkdown(message.content) : ""}
             ${!noticeCollapsed ? renderMessageImages(message) : ""}
             ${!noticeCollapsed ? renderMessageFiles(message) : ""}
             ${renderApprovalActions(message)}

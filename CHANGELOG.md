@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+- Render full GFM Markdown in conversation messages, including headings, emphasis, links, lists, code blocks, and tables.
+- Sanitize message HTML and unsafe URLs before rendering while retaining supported plugin references and local generated images.
+- Keep wide Markdown tables horizontally scrollable inside the mobile message bubble.
+
 ## 1.10.2
 
 - Replace the persistent "正在监测" reminder notification with a silent, minimum-priority monitor notification.

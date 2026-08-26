@@ -20,7 +20,7 @@
     "LICENSE"
   ],
   "scripts": {
-    "check": "node --check server.js && node --check public/app.js",
+    "check": "node --check server.js && node --check public/app.js && node --check public/markdown.js",
     "test": "node --test",
     "start": "node server.js",
     "start:readonly": "node server.js --readonly",
@@ -51,6 +51,11 @@
     "node": ">=18"
   },
   "dependencies": {
+    "dompurify": "^3.4.14",
+    "marked": "^18.0.11",
     "qrcode-terminal": "^0.12.0"
+  },
+  "devDependencies": {
+    "jsdom": "^30.0.1"
   }
 }
