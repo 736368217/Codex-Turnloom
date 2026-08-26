@@ -30,6 +30,7 @@ import {
   rolloutPathForCurrentHome,
   rolloutResultFromState,
   runIdempotentSend,
+  refreshCodexDesktopAfterSend,
   runSerializedThreadStart,
   sameFilePath,
   startTurnWithOwnerRecovery,
@@ -130,6 +131,30 @@ test("duplicate mobile send requests share one in-flight operation", async () =>
   assert.equal(calls, 1);
   assert.deepEqual(first, second);
   await assert.rejects(runIdempotentSend("request-1", "different-message", execute, store), /already used/);
+});
+
+test("a successful mobile send refreshes Desktop without stealing another open conversation", async () => {
+  const calls = [];
+  const client = {
+    async refreshRecentConversations(hostId) {
+      calls.push(["refresh", hostId]);
+    },
+    followingConversationState(threadId) {
+      return threadId === "thread-following" ? true : false;
+    },
+    async setActiveConversation(threadId, active, hostId) {
+      calls.push(["active", threadId, active, hostId]);
+    }
+  };
+
+  await refreshCodexDesktopAfterSend("thread-following", client);
+  await refreshCodexDesktopAfterSend("thread-other", client);
+
+  assert.deepEqual(calls, [
+    ["refresh", "local"],
+    ["active", "thread-following", true, "local"],
+    ["refresh", "local"]
+  ]);
 });
 
 test("new turns for one thread are serialized before the second state check", async () => {

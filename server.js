@@ -191,6 +191,12 @@ function clearThreadsCache() {
   accountInfoInFlight = null;
 }
 
+function invalidateThreadCaches() {
+  threadsCache = null;
+  threadsInFlight = null;
+  messageCache.clear();
+}
+
 if (IS_MAIN) {
   process.on("uncaughtException", (error) => {
     logFatalError("Uncaught exception", error);
@@ -840,6 +846,7 @@ class DesktopCodexIpcClient {
     this.clientId = null;
     this.events = [];
     this.desktopConversationRows = new Map();
+    this.followingByConversation = new Map();
   }
 
   async ensureReady() {
@@ -969,6 +976,7 @@ class DesktopCodexIpcClient {
     if (!message || typeof message !== "object") return;
     maybeUpdateCodexHomeFromMessage(message);
     this.rememberDesktopConversation(message);
+    this.rememberConversationFollowing(message);
     this.events.push({
       timestamp: new Date().toISOString(),
       message
@@ -979,6 +987,25 @@ class DesktopCodexIpcClient {
   clearHomeScopedState() {
     this.events = [];
     this.desktopConversationRows.clear();
+    this.followingByConversation.clear();
+  }
+
+  rememberConversationFollowing(message) {
+    const type = String(message?.type || message?.method || "").toLowerCase();
+    if (!type.includes("following")) return;
+    const id = this.conversationIdFromMessage(message);
+    if (!id) return;
+    const payload = message?.payload || message?.params || message;
+    const following = payload?.following ?? payload?.isFollowing ?? payload?.value;
+    if (typeof following === "boolean") this.followingByConversation.set(String(id), following);
+  }
+
+  isFollowingConversation(threadId) {
+    return this.followingByConversation.get(String(threadId || "")) === true;
+  }
+
+  followingConversationState(threadId) {
+    return this.followingByConversation.get(String(threadId || ""));
   }
 
   conversationIdFromMessage(message) {
@@ -3587,7 +3614,7 @@ async function sendToCodex(text, threadId, images = [], { newThread = false, mod
       const fallback = await sendToCodex(trimmed, targetThreadId, normalizedImages, { mode: "start", ...turnSettings });
       return { ...fallback, mode: "start-after-steer", fallbackFrom: "steer" };
     }
-    return {
+    const response = {
       ok: true,
       mode: "steer",
       threadId: targetThreadId,
@@ -3595,6 +3622,10 @@ async function sendToCodex(text, threadId, images = [], { newThread = false, mod
       turnId: result?.result?.result?.turnId || result?.result?.turnId || current.status.turnId || null,
       sentAt: new Date().toISOString()
     };
+    void refreshCodexDesktopAfterSend(targetThreadId).catch((error) => {
+      logError(`[send-refresh] ${targetThreadId}: ${error?.message || error}`);
+    });
+    return response;
   }
   return runSerializedThreadStart(targetThreadId, async () => {
     const current = await getMessages(targetThreadId, { limit: 1, fullHistory: true });
@@ -3657,7 +3688,7 @@ async function sendToCodex(text, threadId, images = [], { newThread = false, mod
         throw error;
       }
     }
-    return {
+    const response = {
       ok: true,
       mode: "desktop-ipc",
       threadId: targetThreadId,
@@ -3665,7 +3696,68 @@ async function sendToCodex(text, threadId, images = [], { newThread = false, mod
       turnId: result?.result?.turn?.id || result?.result?.turnId || null,
       sentAt: new Date().toISOString()
     };
+    void refreshCodexDesktopAfterSend(targetThreadId).catch((error) => {
+      logError(`[send-refresh] ${targetThreadId}: ${error?.message || error}`);
+    });
+    return response;
   });
+}
+
+async function refreshCodexDesktopAfterSend(threadId, client = getCodexIpcClient()) {
+  const id = String(threadId || "").trim();
+  if (!id) return { refreshed: false, failures: [] };
+
+  // The rollout is already written by Desktop at this point. Drop local
+  // snapshots first so the next API read cannot serve the pre-send state.
+  invalidateThreadCaches();
+
+  const failures = [];
+  let refreshed = false;
+  let openedThread = false;
+  const following = client.followingConversationState?.(id) === true;
+  for (let attempt = 0; attempt < 2 && !refreshed; attempt += 1) {
+    try {
+      await client.refreshRecentConversations("local");
+      refreshed = true;
+    } catch (error) {
+      failures.push(`refresh: ${error?.message || error}`);
+      if (attempt === 0) {
+        // If the desktop currently follows this conversation, reopening its
+        // deep link re-establishes the owner and prompts the detail view to
+        // reload the rollout before the bounded retry.
+        if (following) {
+          try {
+            await openCodexUrl(`codex://threads/${encodeURIComponent(id)}`);
+            openedThread = true;
+          } catch (openError) {
+            failures.push(`open: ${openError?.message || openError}`);
+          }
+        }
+        await sleep(350);
+      }
+    }
+  }
+
+  // Only re-select the conversation when Desktop has told us it is currently
+  // following that stream. This refreshes an open detail view without pulling
+  // the user away from a different conversation on the computer.
+  if (following) {
+    try {
+      await client.setActiveConversation(id, true, "local");
+    } catch (error) {
+      failures.push(`set active: ${error?.message || error}`);
+    }
+  }
+
+  if (failures.length) {
+    recordNotice(id, {
+      severity: "warning",
+      title: "Desktop refresh delayed",
+      content: `The message was sent, but Codex Desktop did not fully refresh yet.\n\n${failures.join("\n")}`,
+      source: "send-refresh"
+    });
+  }
+  return { refreshed, failures, openedThread };
 }
 
 function conversationIdFromStartConversation(response) {
@@ -4623,6 +4715,7 @@ export {
   runSerializedThreadStart,
   sameFilePath,
   runIdempotentSend,
+  refreshCodexDesktopAfterSend,
   startTurnWithOwnerRecovery,
   stripHiddenMessageLocalAssets
 };
