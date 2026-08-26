@@ -40,3 +40,4 @@ Phone app / browser
 2. Preserve `config.json`, existing SSH keys, and all Codex data. Never put secrets into this repository or this record.
 3. Validate in order: local health, local thread list, tunnel process, public unauthenticated `401`, then public authenticated `200`.
 4. Append a dated entry here after any server-side or connectivity change, including what changed, why, rollback, and verification result.
+5. After every verified project change, commit it and push it to the private GitHub `origin`. Do not report completion while changes remain only on one computer; report any push blocker explicitly.

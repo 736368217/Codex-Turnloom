@@ -13,3 +13,11 @@ When the user asks to deploy this repository on a Windows computer:
 8. The Android app imports `codexpocket://add?name=...&url=...&token=...`, HTTP(S) login URLs, or JSON device records. Use `npm run device:qr` to print the supported QR payload.
 
 The machine-local config is `%LOCALAPPDATA%\CodexPocket\config.json`. It contains secrets and must remain untracked.
+
+## Repository synchronization
+
+- This project is maintained in the private GitHub repository configured as `origin`.
+- After making and verifying any project change, commit the scoped changes and push the current branch to `origin` before reporting completion.
+- If a push fails, diagnose it using the configured local credentials and the Clash proxy at `http://127.0.0.1:7897` when needed. Never silently leave verified changes only on this computer.
+- If synchronization still cannot be completed, clearly report the unpushed commit and the blocking reason.
+- Never commit or push machine-local configuration, access codes, credentials, private keys, tokens, Codex data, or logs containing secrets.
