@@ -39,6 +39,7 @@ public class ReminderService extends Service {
     private static final String REMINDERS_KEY = "thread_reminders";
     private static final String KEY_ALIAS = "codex-pocket-device-store";
     private static final String CHANNEL_ID = "codex-pocket-completions";
+    private static final String SERVICE_CHANNEL_ID = "codex-pocket-monitor";
     private static final int SERVICE_NOTIFICATION_ID = 7101;
     private static final long POLL_MS = 5000L;
 
@@ -153,11 +154,19 @@ public class ReminderService extends Service {
 
     private Notification serviceNotification() {
         Notification.Builder builder = Build.VERSION.SDK_INT >= 26
-                ? new Notification.Builder(this, CHANNEL_ID)
+                ? new Notification.Builder(this, SERVICE_CHANNEL_ID)
                 : new Notification.Builder(this);
         return builder.setSmallIcon(android.R.drawable.ic_dialog_info)
                 .setContentTitle("Codex Pocket")
-                .setContentText("正在监测已开启提醒的对话")
+                // Android requires a foreground-service notification for reliable
+                // background polling. Keep it silent and visually minimal; only
+                // completion events should actively notify the user.
+                .setContentText("")
+                .setShowWhen(false)
+                .setSound(null, null)
+                .setVibrate(new long[]{0L})
+                .setDefaults(0)
+                .setOnlyAlertOnce(true)
                 .setOngoing(true)
                 .setCategory(Notification.CATEGORY_SERVICE)
                 .build();
@@ -165,13 +174,26 @@ public class ReminderService extends Service {
 
     private void createChannel() {
         if (Build.VERSION.SDK_INT < 26) return;
-        NotificationChannel channel = new NotificationChannel(
+        NotificationChannel completionChannel = new NotificationChannel(
                 CHANNEL_ID,
                 "Codex 对话完成提醒",
                 NotificationManager.IMPORTANCE_DEFAULT
         );
-        channel.setDescription("Codex 对话完成后显示通知");
-        ((NotificationManager) getSystemService(NOTIFICATION_SERVICE)).createNotificationChannel(channel);
+        completionChannel.setDescription("Codex 对话完成后显示通知");
+
+        NotificationChannel serviceChannel = new NotificationChannel(
+                SERVICE_CHANNEL_ID,
+                "Codex 后台监测",
+                NotificationManager.IMPORTANCE_MIN
+        );
+        serviceChannel.setDescription("仅用于保持完成提醒在后台可靠运行，不会主动弹出消息");
+        serviceChannel.setShowBadge(false);
+        serviceChannel.setSound(null, null);
+        serviceChannel.enableVibration(false);
+
+        NotificationManager manager = (NotificationManager) getSystemService(NOTIFICATION_SERVICE);
+        manager.createNotificationChannel(completionChannel);
+        manager.createNotificationChannel(serviceChannel);
     }
 
     private List<Device> loadDevices() {

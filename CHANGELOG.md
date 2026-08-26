@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.10.2
+
+- Replace the persistent "正在监测" reminder notification with a silent, minimum-priority monitor notification.
+- Keep completion notifications separate and active so the phone only alerts when a monitored Codex task finishes.
+
 ## 1.10.1
 
 - Clear the composer text, selections, attachments, and browser form state after an accepted send.
