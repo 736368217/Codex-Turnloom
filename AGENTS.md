@@ -2,6 +2,7 @@
 
 When the user asks to deploy this repository on a Windows computer:
 
+0. Before changing a deployment, tunnel, proxy, or scheduled task, read `docs/OPERATIONS.md` and preserve its incident history.
 1. Preserve the repository and existing Codex data. Never copy `.codex`, credentials, access codes, SSH keys, or generated local configuration into Git.
 2. Use `scripts/install-windows.ps1` for the persistent server and watchdog tasks. Do not recreate one-off VBS launchers.
 3. Detect the active Codex data directory, but pass `-CodexHome` explicitly when more than one valid directory exists.

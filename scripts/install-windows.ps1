@@ -18,6 +18,7 @@ $ErrorActionPreference = "Stop"
 $scriptRoot = Split-Path -Parent $MyInvocation.MyCommand.Path
 $repoRoot = Split-Path -Parent $scriptRoot
 $supervisor = Join-Path $scriptRoot "windows-supervisor.ps1"
+$recoveryMonitor = Join-Path $scriptRoot "windows-recovery.ps1"
 $configDir = Join-Path $env:LOCALAPPDATA "CodexPocket"
 $configPath = Join-Path $configDir "config.json"
 $logDir = Join-Path $configDir "logs"
@@ -25,7 +26,8 @@ $powershell = Join-Path $env:WINDIR "System32\WindowsPowerShell\v1.0\powershell.
 $node = Get-Command node.exe -ErrorAction Stop | Select-Object -First 1
 $npm = Get-Command npm.cmd -ErrorAction Stop | Select-Object -First 1
 
-if (Test-Path -LiteralPath $configPath -PathType Leaf) {
+$configAlreadyExists = Test-Path -LiteralPath $configPath -PathType Leaf
+if ($configAlreadyExists) {
   $existing = Get-Content -LiteralPath $configPath -Raw | ConvertFrom-Json
   if (-not $PSBoundParameters.ContainsKey("MachineName")) { $MachineName = [string]$existing.machineName }
   if (-not $PSBoundParameters.ContainsKey("Port")) { $Port = [int]$existing.port }
@@ -74,6 +76,9 @@ if (-not $CodexHome -or -not (Test-Path -LiteralPath $CodexHome -PathType Contai
 if (-not (Test-Path -LiteralPath (Join-Path $repoRoot "server.js") -PathType Leaf)) {
   throw "server.js not found under repository root: $repoRoot"
 }
+if (-not (Test-Path -LiteralPath $recoveryMonitor -PathType Leaf)) {
+  throw "Recovery monitor script not found: $recoveryMonitor"
+}
 if ($TunnelHost) {
   if ($RemotePort -le 0) { throw "-RemotePort is required when -TunnelHost is set." }
   if (-not (Test-Path -LiteralPath $SshKeyPath -PathType Leaf)) { throw "SSH key not found: $SshKeyPath" }
@@ -110,12 +115,13 @@ $config = [ordered]@{
   }
 }
 $config | ConvertTo-Json -Depth 5 | Set-Content -LiteralPath $configPath -Encoding UTF8
-$identity = [Security.Principal.WindowsIdentity]::GetCurrent().User
-$acl = New-Object Security.AccessControl.FileSecurity
-$acl.SetOwner($identity)
-$acl.SetAccessRuleProtection($true, $false)
-$acl.AddAccessRule((New-Object Security.AccessControl.FileSystemAccessRule($identity, "FullControl", "Allow")))
-Set-Acl -LiteralPath $configPath -AclObject $acl
+if (-not $configAlreadyExists) {
+  $identity = [Security.Principal.WindowsIdentity]::GetCurrent().User
+  $acl = Get-Acl -LiteralPath $configPath
+  $acl.SetAccessRuleProtection($true, $false)
+  $acl.SetAccessRule((New-Object Security.AccessControl.FileSystemAccessRule($identity, "FullControl", "Allow")))
+  Set-Acl -LiteralPath $configPath -AclObject $acl
+}
 
 $settings = New-ScheduledTaskSettingsSet `
   -RestartCount 999 `
@@ -140,6 +146,14 @@ foreach ($task in $tasks) {
   Start-ScheduledTask -TaskName $task.Name
   Write-Output ("Installed and started: " + $task.Name)
 }
+
+$recoveryTaskName = "Codex Pocket Recovery Monitor"
+$recoveryArgument = "-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File `"$recoveryMonitor`" -ConfigPath `"$configPath`""
+$recoveryAction = New-ScheduledTaskAction -Execute $powershell -Argument $recoveryArgument
+Register-ScheduledTask -TaskName $recoveryTaskName -Action $recoveryAction -Trigger $trigger -Settings $settings -Principal $principal -Force | Out-Null
+Stop-ScheduledTask -TaskName $recoveryTaskName -ErrorAction SilentlyContinue
+Start-ScheduledTask -TaskName $recoveryTaskName
+Write-Output ("Installed and started: " + $recoveryTaskName)
 
 Write-Output "Configuration: $configPath"
 Write-Output "Logs:          $logDir"
