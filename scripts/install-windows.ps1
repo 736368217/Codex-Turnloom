@@ -18,10 +18,12 @@ $ErrorActionPreference = "Stop"
 $scriptRoot = Split-Path -Parent $MyInvocation.MyCommand.Path
 $repoRoot = Split-Path -Parent $scriptRoot
 $supervisor = Join-Path $scriptRoot "windows-supervisor.ps1"
+$launcher = Join-Path $scriptRoot "windows-supervisor-launcher.vbs"
 $configDir = Join-Path $env:LOCALAPPDATA "CodexPocket"
 $configPath = Join-Path $configDir "config.json"
 $logDir = Join-Path $configDir "logs"
 $powershell = Join-Path $env:WINDIR "System32\WindowsPowerShell\v1.0\powershell.exe"
+$wscript = Join-Path $env:WINDIR "System32\wscript.exe"
 $node = Get-Command node.exe -ErrorAction Stop | Select-Object -First 1
 $npm = Get-Command npm.cmd -ErrorAction Stop | Select-Object -First 1
 
@@ -75,6 +77,9 @@ if (-not $CodexHome -or -not (Test-Path -LiteralPath $CodexHome -PathType Contai
 if (-not (Test-Path -LiteralPath (Join-Path $repoRoot "server.js") -PathType Leaf)) {
   throw "server.js not found under repository root: $repoRoot"
 }
+if (-not (Test-Path -LiteralPath $launcher -PathType Leaf)) {
+  throw "Windowless supervisor launcher not found: $launcher"
+}
 if ($TunnelHost) {
   if ($RemotePort -le 0) { throw "-RemotePort is required when -TunnelHost is set." }
   if (-not (Test-Path -LiteralPath $SshKeyPath -PathType Leaf)) { throw "SSH key not found: $SshKeyPath" }
@@ -124,6 +129,7 @@ $settings = New-ScheduledTaskSettingsSet `
   -RestartInterval (New-TimeSpan -Minutes 1) `
   -ExecutionTimeLimit ([TimeSpan]::Zero) `
   -MultipleInstances IgnoreNew `
+  -Hidden `
   -StartWhenAvailable
 $userId = $env:USERDOMAIN + "\" + $env:USERNAME
 $logonTrigger = New-ScheduledTaskTrigger -AtLogOn -User $userId
@@ -136,8 +142,8 @@ $triggers = @($logonTrigger, $recoveryTrigger)
 $principal = New-ScheduledTaskPrincipal -UserId $userId -LogonType Interactive -RunLevel Limited
 
 $taskName = "Codex Pocket Supervisor"
-$argument = "-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File `"$supervisor`" -ConfigPath `"$configPath`""
-$action = New-ScheduledTaskAction -Execute $powershell -Argument $argument
+$argument = "//B //Nologo `"$launcher`" `"$powershell`" `"$supervisor`" `"$configPath`""
+$action = New-ScheduledTaskAction -Execute $wscript -Argument $argument
 Register-ScheduledTask -TaskName $taskName -Action $action -Trigger $triggers -Settings $settings -Principal $principal -Force | Out-Null
 Stop-ScheduledTask -TaskName $taskName -ErrorAction SilentlyContinue
 Start-ScheduledTask -TaskName $taskName

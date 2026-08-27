@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Launch the Windows supervisor through a windowless host so watchdog recovery never flashes a PowerShell console.
 - Render full GFM Markdown in conversation messages, including headings, emphasis, links, lists, code blocks, and tables.
 - Sanitize message HTML and unsafe URLs before rendering while retaining supported plugin references and local generated images.
 - Keep wide Markdown tables horizontally scrollable inside the mobile message bubble.

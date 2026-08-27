@@ -42,6 +42,15 @@ Phone app / browser
 - Prevention: updated `/usr/local/sbin/deploy-openclaw-ip-cert.sh` on Alibaba Cloud to validate and reload host Nginx, then keep the existing OpenResty reload. A backup was kept as `deploy-openclaw-ip-cert.sh.bak-20260827`.
 - Rollback: restore that backup and reload host Nginx with `/usr/sbin/nginx -s reload -c /etc/nginx/clawpanel-nginx.conf`.
 
+### 2026-08-27: supervisor PowerShell window appeared in the foreground
+
+- Symptom: the persistent Windows keepalive task periodically flashed a PowerShell console that provided no useful controls or status.
+- Root cause: Task Scheduler launched the console-subsystem `powershell.exe` directly. `-WindowStyle Hidden` is applied after process creation and therefore cannot reliably prevent the initial console window from appearing.
+- Recovery: changed `Codex Pocket Supervisor` to launch through the repository-managed `windows-supervisor-launcher.vbs` using the GUI-subsystem `wscript.exe`, and marked the scheduled task itself hidden.
+- Prevention: the installer now enforces the windowless launcher and includes a regression test that rejects direct scheduled-task launches through `powershell.exe`.
+- Verification: terminated the active supervisor and observed automatic recovery for 90 seconds; no visible background windows were detected, the task returned to `Running`, and local and public health checks both returned `200`.
+- Rollback: reinstall the previous commit's scheduled-task action. This restores direct PowerShell launch behavior and may restore the console flash.
+
 ## Change rules
 
 1. Read this file and inspect current health before modifying proxy, tunnel, port, or task settings.
