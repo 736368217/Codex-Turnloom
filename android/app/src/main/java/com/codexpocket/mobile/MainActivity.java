@@ -2,6 +2,7 @@ package com.codexpocket.mobile;
 
 import android.app.AlertDialog;
 import android.app.DownloadManager;
+import android.app.NotificationManager;
 import android.content.Context;
 import android.content.DialogInterface;
 import android.content.Intent;
@@ -157,7 +158,8 @@ public class MainActivity extends ComponentActivity {
         root.setBackgroundColor(PAPER);
         setContentView(root);
         showMachinePicker();
-        startReminderServiceIfNeeded();
+        clearLegacyReminderNotification();
+        ReminderScheduler.sync(this);
     }
 
     @Override
@@ -788,35 +790,31 @@ public class MainActivity extends ComponentActivity {
                 next.put(item);
             }
             getSharedPreferences(PREFS, MODE_PRIVATE).edit().putString(REMINDERS_KEY, next.toString()).apply();
-            if (enabled) {
-                if (Build.VERSION.SDK_INT >= 33 && checkSelfPermission("android.permission.POST_NOTIFICATIONS") != android.content.pm.PackageManager.PERMISSION_GRANTED) {
-                    requestPermissions(new String[]{"android.permission.POST_NOTIFICATIONS"}, NOTIFICATION_PERMISSION_REQUEST);
-                }
-                Intent service = new Intent(this, ReminderService.class);
-                if (Build.VERSION.SDK_INT >= 26) startForegroundService(service);
-                else startService(service);
-            } else if (next.length() == 0) {
-                stopService(new Intent(this, ReminderService.class));
+            if (enabled && Build.VERSION.SDK_INT >= 33
+                    && checkSelfPermission("android.permission.POST_NOTIFICATIONS") != android.content.pm.PackageManager.PERMISSION_GRANTED) {
+                requestPermissions(new String[]{"android.permission.POST_NOTIFICATIONS"}, NOTIFICATION_PERMISSION_REQUEST);
             }
+            ReminderScheduler.sync(this);
         } catch (Exception ignored) {
         }
     }
 
-    private void startReminderServiceIfNeeded() {
-        try {
-            JSONArray reminders = new JSONArray(getSharedPreferences(PREFS, MODE_PRIVATE).getString(REMINDERS_KEY, "[]"));
-            if (reminders.length() == 0) return;
-            Intent service = new Intent(this, ReminderService.class);
-            if (Build.VERSION.SDK_INT >= 26) startForegroundService(service);
-            else startService(service);
-        } catch (Exception ignored) {
-        }
+    private void clearLegacyReminderNotification() {
+        NotificationManager manager = (NotificationManager) getSystemService(NOTIFICATION_SERVICE);
+        if (manager == null) return;
+        manager.cancel(7101);
+        if (Build.VERSION.SDK_INT >= 26) manager.deleteNotificationChannel("codex-pocket-monitor");
     }
 
     private class NativeBridge {
         @JavascriptInterface
         public void setThreadReminder(String threadId, String title, boolean enabled) {
             runOnUiThread(() -> MainActivity.this.setThreadReminder(threadId, title, enabled));
+        }
+
+        @JavascriptInterface
+        public void kickReminderCheck() {
+            ReminderScheduler.kick(MainActivity.this);
         }
     }
 

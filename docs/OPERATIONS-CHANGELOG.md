@@ -2,6 +2,15 @@
 
 This is a concise, secret-free record for humans and future agents. Detailed topology and guardrails are in `OPERATIONS.md`.
 
+## 2026-08-27
+
+- Removed Android foreground reminder polling. WorkManager now performs immediate checks after mobile actions, follows active tasks, and uses a 15-minute periodic fallback without a permanent notification.
+- Mobile thread responses now exclude subagent rows by Codex `thread_source`/`source` metadata, while a directly selected historical subagent remains accessible.
+- Added project grouping from native Codex projects with a normalized working-directory fallback, plus Desktop-compatible pinned-section reads and pin/unpin writes.
+- Evaluated the official Codex app-server mutation API, but standalone startup stalled on remote plugin synchronization in this API-key-only environment. The pin endpoint therefore uses a scoped SQLite transaction and queues a Desktop refresh.
+- Fixed Windows reinstall behavior so the exact old managed Node child is stopped before the hidden supervisor starts the updated server.
+- Verified the public list, MuMu Android 1.11.0 UI, WorkManager jobs, and absence of active Codex Pocket foreground notifications.
+
 ## 2026-08-26
 
 - Investigated mobile access failure: Alibaba Cloud proxy and reverse tunnel were healthy, but the local Codex Pocket process was not listening on port `8787`, producing public `502` responses.

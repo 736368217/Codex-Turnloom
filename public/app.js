@@ -1,5 +1,6 @@
 import { MESSAGE_PAGE_SIZE, nextMessageLimit, reconcilePendingMessages, retainedScrollTop } from "./history.js";
 import { renderMarkdown } from "./markdown.js";
+import { filterVisibleThreads, groupedVisibleThreads } from "./threads.js";
 
 const state = {
   threads: [],
@@ -76,6 +77,7 @@ const els = {
   threadList: document.querySelector("#threadList"),
   threadContextMenu: document.querySelector("#threadContextMenu"),
   threadContextTitle: document.querySelector("#threadContextTitle"),
+  threadPinAction: document.querySelector("#threadPinAction"),
   threadReminderAction: document.querySelector("#threadReminderAction"),
   threadTitle: document.querySelector("#threadTitle"),
   threadMeta: document.querySelector("#threadMeta"),
@@ -243,6 +245,11 @@ const I18N = {
     reminderOn: "关闭完成提醒",
     reminderOff: "开启完成提醒",
     reminderEnabledLabel: "提醒已开",
+    pinThread: "置顶",
+    unpinThread: "取消置顶",
+    pinnedGroup: "置顶",
+    otherGroup: "其他任务",
+    pinFailed: "置顶操作失败：{message}",
     window: "窗口",
     weekWindow: "{count} 周窗口",
     dayWindow: "{count} 天窗口",
@@ -374,6 +381,11 @@ const I18N = {
     reminderOn: "Disable completion reminder",
     reminderOff: "Enable completion reminder",
     reminderEnabledLabel: "Reminder on",
+    pinThread: "Pin",
+    unpinThread: "Unpin",
+    pinnedGroup: "Pinned",
+    otherGroup: "Other tasks",
+    pinFailed: "Could not update pin: {message}",
     window: "Window",
     weekWindow: "{count} week window",
     dayWindow: "{count} day window",
@@ -1051,12 +1063,9 @@ async function addImageFiles(files) {
 }
 
 function visibleThreads() {
-  const query = state.filter.trim().toLowerCase();
-  const threads = state.draftThread ? [state.draftThread, ...state.threads] : state.threads;
-  if (!query) return threads;
-  return threads.filter((thread) => {
-    return `${thread.title || ""} ${thread.preview || ""} ${thread.cwd || ""}`.toLowerCase().includes(query);
-  });
+  const threads = filterVisibleThreads(state.threads, state.filter);
+  if (!state.draftThread) return threads;
+  return filterVisibleThreads([state.draftThread], state.filter).length ? [state.draftThread, ...threads] : threads;
 }
 
 function reminderEnabled(threadId) {
@@ -1075,6 +1084,22 @@ function setThreadReminder(thread, enabled) {
   }
 }
 
+async function setThreadPin(thread, pinned) {
+  if (!thread?.id || thread.id === DRAFT_THREAD_ID) return;
+  try {
+    await fetchJson(`/api/threads/${encodeURIComponent(thread.id)}/pin`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ pinned })
+    });
+    thread.pinned = pinned;
+    renderThreads();
+    await loadThreads(false);
+  } catch (error) {
+    els.sendStatus.textContent = t("pinFailed", { message: error.message });
+  }
+}
+
 function closeThreadContextMenu() {
   state.contextThreadId = null;
   els.threadContextMenu.hidden = true;
@@ -1085,6 +1110,7 @@ function openThreadContextMenu(threadId, clientX, clientY) {
   if (!thread) return;
   state.contextThreadId = threadId;
   els.threadContextTitle.textContent = thread.title || t("untitled");
+  els.threadPinAction.textContent = thread.pinned ? t("unpinThread") : t("pinThread");
   els.threadReminderAction.textContent = reminderEnabled(threadId) ? t("reminderOn") : t("reminderOff");
   els.threadContextMenu.hidden = false;
 
@@ -1095,7 +1121,7 @@ function openThreadContextMenu(threadId, clientX, clientY) {
   const top = Math.min(Math.max(margin, clientY), window.innerHeight - menuHeight - margin);
   els.threadContextMenu.style.left = `${left}px`;
   els.threadContextMenu.style.top = `${top}px`;
-  els.threadReminderAction.focus({ preventScroll: true });
+  els.threadPinAction.focus({ preventScroll: true });
 }
 
 function threadStatusLabel(status) {
@@ -1106,10 +1132,8 @@ function threadStatusLabel(status) {
 }
 
 function renderThreads() {
-  const threads = visibleThreads();
   els.threadCount.textContent = t("conversationsCount", { count: state.threads.length });
-  els.threadList.innerHTML = threads
-    .map((thread) => {
+  const renderThread = (thread) => {
       const active = thread.id === state.selectedId ? " active" : "";
       const title = escapeHtml(thread.title || t("untitled"));
       const status = thread.status || {};
@@ -1125,8 +1149,21 @@ function renderThreads() {
           </span>
         </button>
       `;
-    })
-    .join("");
+  };
+  const draft = state.draftThread && filterVisibleThreads([state.draftThread], state.filter).length
+    ? renderThread(state.draftThread)
+    : "";
+  const groups = groupedVisibleThreads(state.threads, {
+    query: state.filter,
+    pinnedLabel: t("pinnedGroup"),
+    otherLabel: t("otherGroup")
+  });
+  els.threadList.innerHTML = `${draft}${groups.map((group) => `
+    <section class="thread-group" data-group-key="${escapeHtml(group.key)}">
+      <h2 class="thread-group-title">${escapeHtml(group.label)}</h2>
+      ${group.threads.map(renderThread).join("")}
+    </section>
+  `).join("")}`;
 }
 
 function renderSidebarState() {
@@ -1388,8 +1425,12 @@ function renderMessages(data) {
   updateScrollToBottomButton();
 }
 
-async function fetchJson(url) {
-  const response = await fetch(url, { cache: "no-store", headers: authHeaders() });
+async function fetchJson(url, options = {}) {
+  const response = await fetch(url, {
+    cache: "no-store",
+    ...options,
+    headers: { ...authHeaders(), ...(options.headers || {}) }
+  });
   const data = await response.json();
   if (!response.ok) {
     const error = new Error(data.error || response.statusText);
@@ -2226,6 +2267,13 @@ els.threadReminderAction.addEventListener("click", () => {
   renderThreads();
 });
 
+els.threadPinAction.addEventListener("click", () => {
+  const thread = state.threads.find((entry) => entry.id === state.contextThreadId);
+  if (!thread) return closeThreadContextMenu();
+  closeThreadContextMenu();
+  void setThreadPin(thread, !thread.pinned);
+});
+
 els.newThreadButton.addEventListener("click", () => {
   if (!state.config?.allowWrite || els.newThreadButton.disabled) return;
   els.sendStatus.textContent = "";
@@ -2671,6 +2719,11 @@ els.composerForm.addEventListener("submit", async (event) => {
     if (!result?.uncertain) {
       sendAccepted = true;
       clearComposerAfterAcceptedSend();
+      try {
+        globalThis.CodexPocket?.kickReminderCheck?.();
+      } catch {
+        // The desktop browser has no native bridge.
+      }
     }
     if (isDraftThread && result.threadId) {
       if (state.modelPreferences[DRAFT_THREAD_ID]) {

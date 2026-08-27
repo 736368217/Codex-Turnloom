@@ -51,6 +51,15 @@ Phone app / browser
 - Verification: terminated the active supervisor and observed automatic recovery for 90 seconds; no visible background windows were detected, the task returned to `Running`, and local and public health checks both returned `200`.
 - Rollback: reinstall the previous commit's scheduled-task action. This restores direct PowerShell launch behavior and may restore the console flash.
 
+### 2026-08-27: mobile list used stale server code after an update
+
+- Symptom: the updated APK still displayed 59 conversations, including subagent tasks, even though the new server returned only 30 main tasks in an isolated test.
+- Root cause: reinstalling the scheduled task stopped the supervisor but left its detached Node child alive, so port `8787` continued serving the previous `server.js` in both local and public requests.
+- Recovery: stopped only the Node process whose command line matched this repository's `server.js` and configured port; the hidden supervisor restarted it from the updated files.
+- Prevention: `scripts/install-windows.ps1` now stops that exact managed server process before registering and starting the replacement task. It does not stop unrelated Node processes.
+- Verification: authenticated local and public `/api/threads` both returned 30 main tasks with zero sampled subagent rows; MuMu showed the pinned and project-grouped list.
+- Rollback: revert the installer process-stop helper, then reinstall the scheduled task. This may allow stale server children to survive future updates.
+
 ## Change rules
 
 1. Read this file and inspect current health before modifying proxy, tunnel, port, or task settings.

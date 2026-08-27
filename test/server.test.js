@@ -18,6 +18,7 @@ import {
   ipcVersionForMethod,
   ipcVersionForRequest,
   interruptTurnWithOwnerRecovery,
+  isSubagentThread,
   isNoActiveTurnError,
   limitMessagesForClient,
   localPathCandidates,
@@ -34,12 +35,58 @@ import {
   runSerializedThreadStart,
   sameFilePath,
   startTurnWithOwnerRecovery,
-  stripHiddenMessageLocalAssets
+  stripHiddenMessageLocalAssets,
+  threadListMetadata,
+  visibleThreadRows
 } from "../server.js";
 
 function rolloutLine(timestamp, ordinal, type, payload) {
   return JSON.stringify({ timestamp, ordinal, type, payload });
 }
+
+test("thread list hides subagents but preserves a selected legacy subagent", () => {
+  const rows = [
+    { id: "main", source: "vscode", threadSource: "user" },
+    {
+      id: "sub-hidden",
+      source: JSON.stringify({ subagent: { thread_spawn: { parent_thread_id: "main", depth: 1 } } }),
+      threadSource: "subagent"
+    },
+    { id: "sub-selected", source: "vscode", threadSource: "subagent" }
+  ];
+
+  assert.equal(isSubagentThread(rows[0]), false);
+  assert.equal(isSubagentThread(rows[1]), true);
+  assert.deepEqual(visibleThreadRows(rows, ["sub-selected"]).map((row) => row.id), ["main", "sub-selected"]);
+});
+
+test("thread list maps Desktop pin and native or cwd project metadata", () => {
+  const pinned = threadListMetadata({
+    isPinned: 0,
+    threadSectionId: "pinned-section",
+    sectionName: "Pinned",
+    projectId: "project-1",
+    projectName: "Codex Pocket",
+    cwd: String.raw`\\?\C:\workspace\ignored`
+  });
+  const cwdProject = threadListMetadata({
+    cwd: String.raw`\\?\C:\Users\WIN10\Documents\ChatGPT\塔罗`
+  });
+
+  assert.equal(pinned.pinned, true);
+  assert.deepEqual(pinned.project, {
+    key: "project:project-1",
+    id: "project-1",
+    name: "Codex Pocket",
+    native: true
+  });
+  assert.deepEqual(cwdProject.project, {
+    key: "cwd:c:\\users\\win10\\documents\\chatgpt\\塔罗",
+    id: null,
+    name: "塔罗",
+    native: false
+  });
+});
 
 test("older-message pagination grows in bounded pages and preserves the viewport", () => {
   assert.equal(nextMessageLimit(80, { truncated: true, omittedMessages: 120 }), 160);

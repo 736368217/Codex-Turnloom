@@ -375,6 +375,19 @@ h2 {
   display: none;
 }
 
+.thread-group + .thread-group {
+  margin-top: 12px;
+}
+
+.thread-group-title {
+  margin: 0;
+  padding: 4px 11px 7px;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1.2;
+}
+
 .thread-item {
   display: flex;
   align-items: center;

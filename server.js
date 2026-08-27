@@ -1755,6 +1755,53 @@ function displayThreadTitle(row, sessionIndexTitles) {
   return indexedTitle || row.title || "Untitled";
 }
 
+function isSubagentThread(row) {
+  if (String(row?.threadSource || row?.thread_source || "").toLowerCase() === "subagent") return true;
+  const source = row?.source;
+  if (!source || typeof source !== "string" || !source.trim().startsWith("{")) return false;
+  try {
+    return Boolean(JSON.parse(source)?.subagent);
+  } catch {
+    return false;
+  }
+}
+
+function visibleThreadRows(rows, preserveIds = []) {
+  const preserved = new Set(preserveIds.map((id) => String(id || "").trim()).filter(Boolean));
+  return rows.filter((row) => !isSubagentThread(row) || preserved.has(String(row?.id || "")));
+}
+
+function normalizedProjectPath(cwd) {
+  let value = String(cwd || "").trim();
+  if (!value) return "";
+  value = value.replace(/^\\\\\?\\UNC\\/i, "\\\\").replace(/^\\\\\?\\/, "");
+  return path.win32.normalize(value);
+}
+
+function threadListMetadata(row) {
+  const projectId = String(row?.projectId || row?.project_id || "").trim();
+  const projectName = String(row?.projectName || row?.project_name || "").trim();
+  const sectionName = String(row?.sectionName || row?.section_name || "").trim();
+  const pinned = Number(row?.isPinned ?? row?.is_pinned) === 1 || sectionName.toLowerCase() === "pinned";
+  if (projectId && projectName) {
+    return {
+      pinned,
+      project: { key: `project:${projectId}`, id: projectId, name: projectName, native: true }
+    };
+  }
+  const cwd = normalizedProjectPath(row?.cwd);
+  if (!cwd) return { pinned, project: null };
+  return {
+    pinned,
+    project: {
+      key: `cwd:${cwd.toLowerCase()}`,
+      id: null,
+      name: path.win32.basename(cwd) || cwd,
+      native: false
+    }
+  };
+}
+
 async function threadListStatus(row) {
   const rolloutPath = resolveRolloutPath(row?.rolloutPath);
   if (!rolloutPath || !existsSync(rolloutPath)) {
@@ -1853,15 +1900,25 @@ async function loadThreadsUncached({ preserveIds = [], preserveKey = "" } = {}) 
     if (existsSync(stateDb)) {
       const sessionIndexTitles = await readSessionIndexTitleMap();
       const rows = await runSqlJson(`
-        SELECT id, title, rollout_path AS rolloutPath, created_at_ms AS createdAtMs,
-               updated_at_ms AS updatedAtMs, archived, preview, cwd, model
+        SELECT threads.id, threads.title, threads.rollout_path AS rolloutPath,
+               threads.created_at_ms AS createdAtMs, threads.updated_at_ms AS updatedAtMs,
+               threads.archived, threads.preview, threads.cwd, threads.model, threads.source,
+               threads.thread_source AS threadSource, threads.agent_path AS agentPath,
+               threads.is_pinned AS isPinned, threads.thread_section_id AS threadSectionId,
+               thread_sections.name AS sectionName, threads.section_position AS sectionPosition,
+               threads.project_id AS projectId, projects.name AS projectName
         FROM threads
-        ORDER BY updated_at_ms DESC, updated_at DESC
+        LEFT JOIN thread_sections ON thread_sections.id = threads.thread_section_id
+        LEFT JOIN projects ON projects.id = threads.project_id
+        ORDER BY threads.updated_at_ms DESC, threads.updated_at DESC
         LIMIT 500;
       `);
       const filtered = await filterRowsForCurrentAccount(rows, (row) => row.id, preserveIds);
       const archivedIds = new Set(rows.filter(isArchivedThread).map((row) => String(row.id || "")));
-      const stateRows = filtered.rows.filter((row) => !isArchivedThread(row)).map((row) => ({
+      const visibleRows = visibleThreadRows(filtered.rows, preserveIds);
+      const hiddenIds = new Set(rows.filter((row) => isSubagentThread(row) && !visibleRows.includes(row)).map((row) => String(row.id || "")));
+      const excludedIds = new Set([...archivedIds, ...hiddenIds]);
+      const stateRows = visibleRows.filter((row) => !isArchivedThread(row)).map((row) => ({
         id: row.id,
         title: displayThreadTitle(row, sessionIndexTitles),
         rolloutPath: rolloutPathForCurrentHome(row, currentRolloutPaths),
@@ -1870,16 +1927,24 @@ async function loadThreadsUncached({ preserveIds = [], preserveKey = "" } = {}) 
         archived: Boolean(row.archived),
         preview: row.preview || "",
         cwd: row.cwd || "",
-        model: row.model || ""
+        model: row.model || "",
+        ...threadListMetadata(row)
       }));
       const seen = new Set(stateRows.map((row) => String(row.id || "")));
       const indexFiltered = await filterRowsForCurrentAccount(await readSessionIndexRows(), (row) => row.id, preserveIds);
-      const indexRows = indexFiltered.rows.filter((row) => !seen.has(String(row.id || "")) && !archivedIds.has(String(row.id || "")));
-      value = appendRecentIpcRows([...stateRows, ...indexRows], archivedIds);
+      const indexRows = indexFiltered.rows
+        .filter((row) => !seen.has(String(row.id || "")) && !excludedIds.has(String(row.id || "")))
+        .map((row) => ({ ...row, ...threadListMetadata(row) }));
+      value = appendRecentIpcRows([...stateRows, ...indexRows], excludedIds).map((row) => (
+        Object.hasOwn(row, "pinned") ? row : { ...row, ...threadListMetadata(row) }
+      ));
     } else {
       const rows = await readSessionIndexRows();
       const filtered = await filterRowsForCurrentAccount(rows, (row) => row.id, preserveIds);
-      value = appendRecentIpcRows(filtered.rows);
+      value = appendRecentIpcRows(visibleThreadRows(filtered.rows, preserveIds)).map((row) => ({
+        ...row,
+        ...threadListMetadata(row)
+      }));
     }
     const statusRows = await Promise.all(value.slice(0, 120).map(async (row) => ({
       id: row.id,
@@ -2836,6 +2901,7 @@ function createRolloutParseState(stat, nowMs) {
     activeTurn: null,
     openTurns: new Map(),
     lastEntryAtMs: Number.isFinite(stat.mtimeMs) ? stat.mtimeMs : nowMs,
+    latestCompletedAtMs: 0,
     assistantMessagesByTurn: new Map()
   };
 }
@@ -2884,6 +2950,7 @@ function parseRolloutLine(line, state) {
         const turnId = entry.payload.turn_id || state.activeTurn?.turnId || null;
         const durationMs = Number(entry.payload.duration_ms);
         const completedAtMs = Number(entry.payload.completed_at) ? Number(entry.payload.completed_at) * 1000 : Date.parse(entry.timestamp);
+        if (Number.isFinite(completedAtMs)) state.latestCompletedAtMs = Math.max(state.latestCompletedAtMs || 0, completedAtMs);
         if (turnId && state.assistantMessagesByTurn.has(turnId)) {
           const message = state.assistantMessagesByTurn.get(turnId);
           if (Number.isFinite(durationMs)) message.durationMs = durationMs;
@@ -2989,6 +3056,7 @@ function rolloutResultFromState({ filePath, stat, nowMs, state, partial = false 
       startedAtMs: visibleActiveTurn?.startedAtMs || null,
       interactionRequired: pendingInteractions.length > 0,
       possibleDesktopAttention: Boolean(visibleActiveTurn && pendingInteractions.length === 0 && activeTurnWaitMs > 45_000),
+      latestCompletedAtMs: state.latestCompletedAtMs || 0,
       staleTurn: activeTurnStale,
       staleTurnId: activeTurnStale ? state.activeTurn?.turnId || null : null,
       staleTurnLastUpdatedAtMs: activeTurnStale ? activeTurnLastUpdatedAtMs : null
@@ -3701,6 +3769,64 @@ async function sendToCodex(text, threadId, images = [], { newThread = false, mod
     });
     return response;
   });
+}
+
+async function setThreadPinned(threadId, pinned) {
+  if (!ALLOW_WRITE) {
+    const err = new Error("Read-only mode is enabled. Restart without --readonly to manage conversations.");
+    err.status = 403;
+    throw err;
+  }
+  const id = String(threadId || "").trim();
+  const rows = await runSqlJson(`
+    SELECT threads.id, threads.is_pinned AS isPinned, threads.thread_section_id AS threadSectionId,
+           thread_sections.name AS sectionName
+    FROM threads
+    LEFT JOIN thread_sections ON thread_sections.id = threads.thread_section_id
+    WHERE threads.id = '${sqlString(id)}'
+    LIMIT 1;
+  `);
+  if (!rows[0]) {
+    const err = new Error("Thread not found");
+    err.status = 404;
+    throw err;
+  }
+
+  const currentPinned = threadListMetadata(rows[0]).pinned;
+  if (currentPinned !== Boolean(pinned)) {
+    if (pinned) {
+      const sections = await runSqlJson(`SELECT id FROM thread_sections WHERE lower(name) = 'pinned' ORDER BY id LIMIT 1;`);
+      const sectionId = String(sections[0]?.id || randomUUID());
+      await runSqlJson(`
+        BEGIN IMMEDIATE;
+        INSERT OR IGNORE INTO thread_sections (id, name, appearance)
+        VALUES ('${sqlString(sectionId)}', 'Pinned', NULL);
+        UPDATE threads
+        SET is_pinned = 1,
+            thread_section_id = '${sqlString(sectionId)}',
+            section_position = (
+              SELECT COALESCE(MAX(section_position), 0) + 1000000
+              FROM threads
+              WHERE thread_section_id = '${sqlString(sectionId)}' AND id <> '${sqlString(id)}'
+            ),
+            section_entered_at_ms = ${Date.now()}
+        WHERE id = '${sqlString(id)}';
+        COMMIT;
+      `);
+    } else {
+      await runSqlJson(`
+        UPDATE threads
+        SET is_pinned = 0, thread_section_id = NULL, section_position = NULL, section_entered_at_ms = NULL
+        WHERE id = '${sqlString(id)}';
+      `);
+    }
+  }
+
+  invalidateThreadCaches();
+  void getCodexIpcClient().refreshRecentConversations("local").catch((error) => {
+    logError(`[pin-refresh] ${id}: ${error?.message || error}`);
+  });
+  return { ok: true, threadId: id, pinned: Boolean(pinned), desktopRefreshQueued: true };
 }
 
 async function refreshCodexDesktopAfterSend(threadId, client = getCodexIpcClient()) {
@@ -4547,6 +4673,13 @@ const server = http.createServer(async (req, res) => {
       });
       return;
     }
+    const pinMatch = url.pathname.match(/^\/api\/threads\/([0-9a-fA-F-]{20,})\/pin$/);
+    if (req.method === "POST" && pinMatch) {
+      if (!requireAuthorized(req, res, url)) return;
+      const body = await readJsonBody(req);
+      sendJson(res, 200, await setThreadPinned(pinMatch[1], Boolean(body.pinned)));
+      return;
+    }
     const match = url.pathname.match(/^\/api\/threads\/([0-9a-fA-F-]{20,})\/messages$/);
     if (req.method === "GET" && match) {
       if (!requireAuthorized(req, res, url)) return;
@@ -4717,5 +4850,8 @@ export {
   runIdempotentSend,
   refreshCodexDesktopAfterSend,
   startTurnWithOwnerRecovery,
-  stripHiddenMessageLocalAssets
+  stripHiddenMessageLocalAssets,
+  isSubagentThread,
+  threadListMetadata,
+  visibleThreadRows
 };

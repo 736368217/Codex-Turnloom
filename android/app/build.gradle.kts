@@ -10,8 +10,8 @@ android {
         applicationId = "com.codexpocket.mobile"
         minSdk = 23
         targetSdk = 35
-        versionCode = 13
-        versionName = "1.10.2"
+        versionCode = 14
+        versionName = "1.11.0"
     }
 
     buildTypes {
@@ -31,6 +31,7 @@ android {
 
     dependencies {
         implementation("androidx.activity:activity:1.8.2")
+        implementation("androidx.work:work-runtime:2.11.2")
         implementation("com.journeyapps:zxing-android-embedded:4.3.0")
         implementation("com.google.zxing:core:3.5.2")
         testImplementation("junit:junit:4.13.2")
