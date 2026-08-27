@@ -34,6 +34,14 @@ Phone app / browser
 - Recovery: restarted `Codex Pocket Server Watchdog`; local health and authenticated public health both returned `200`.
 - Prevention: consolidated supervision into one scheduled task that manages both child processes and has Task Scheduler failure-restart settings.
 
+### 2026-08-27: phone app could not connect over HTTPS
+
+- Symptom: the desktop service and reverse tunnel were healthy, but Android WebView rejected the public mobile endpoint.
+- Root cause: the host Nginx listener on `18787` was still serving the previous short-lived IP certificate, which expired at `2026-08-27 03:05:36` China Standard Time. The certificate files had already been renewed, but the renewal hook only reloaded the OpenResty container and not the host Nginx process.
+- Recovery: validated `/etc/nginx/clawpanel-nginx.conf`, reloaded host Nginx, and confirmed the public certificate now expires at `2026-08-30 16:32:30` China Standard Time. MuMu Android verification completed without WebView TLS errors.
+- Prevention: updated `/usr/local/sbin/deploy-openclaw-ip-cert.sh` on Alibaba Cloud to validate and reload host Nginx, then keep the existing OpenResty reload. A backup was kept as `deploy-openclaw-ip-cert.sh.bak-20260827`.
+- Rollback: restore that backup and reload host Nginx with `/usr/sbin/nginx -s reload -c /etc/nginx/clawpanel-nginx.conf`.
+
 ## Change rules
 
 1. Read this file and inspect current health before modifying proxy, tunnel, port, or task settings.
