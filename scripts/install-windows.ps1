@@ -28,8 +28,12 @@ $node = Get-Command node.exe -ErrorAction Stop | Select-Object -First 1
 $npm = Get-Command npm.cmd -ErrorAction Stop | Select-Object -First 1
 
 $configAlreadyExists = Test-Path -LiteralPath $configPath -PathType Leaf
+$previousRepoRoot = $null
+$previousPort = 0
 if ($configAlreadyExists) {
   $existing = Get-Content -LiteralPath $configPath -Raw | ConvertFrom-Json
+  $previousRepoRoot = [string]$existing.repoRoot
+  $previousPort = [int]$existing.port
   if (-not $PSBoundParameters.ContainsKey("MachineName")) { $MachineName = [string]$existing.machineName }
   if (-not $PSBoundParameters.ContainsKey("Port")) { $Port = [int]$existing.port }
   if (-not $PSBoundParameters.ContainsKey("AccessCode")) { $AccessCode = [string]$existing.accessCode }
@@ -76,6 +80,21 @@ if (-not $CodexHome -or -not (Test-Path -LiteralPath $CodexHome -PathType Contai
 }
 if (-not (Test-Path -LiteralPath (Join-Path $repoRoot "server.js") -PathType Leaf)) {
   throw "server.js not found under repository root: $repoRoot"
+}
+
+function Stop-ManagedServerProcess([string]$ManagedRepoRoot, [int]$ManagedPort) {
+  if (-not $ManagedRepoRoot -or $ManagedPort -le 0) { return }
+  $managedServer = Join-Path $ManagedRepoRoot "server.js"
+  $serverPattern = [regex]::Escape($managedServer)
+  $portPattern = "--port\s+{0}(?:\s|$)" -f $ManagedPort
+  $processes = Get-CimInstance Win32_Process -Filter "Name = 'node.exe'" -ErrorAction SilentlyContinue
+  foreach ($process in $processes) {
+    $commandLine = [string]$process.CommandLine
+    if ($commandLine -match $serverPattern -and $commandLine -match $portPattern) {
+      Stop-Process -Id ([int]$process.ProcessId) -Force -ErrorAction SilentlyContinue
+      Write-Output ("Stopped previous Codex Pocket server process: " + $process.ProcessId)
+    }
+  }
 }
 if (-not (Test-Path -LiteralPath $launcher -PathType Leaf)) {
   throw "Windowless supervisor launcher not found: $launcher"
@@ -144,8 +163,12 @@ $principal = New-ScheduledTaskPrincipal -UserId $userId -LogonType Interactive -
 $taskName = "Codex Pocket Supervisor"
 $argument = "//B //Nologo `"$launcher`" `"$powershell`" `"$supervisor`" `"$configPath`""
 $action = New-ScheduledTaskAction -Execute $wscript -Argument $argument
-Register-ScheduledTask -TaskName $taskName -Action $action -Trigger $triggers -Settings $settings -Principal $principal -Force | Out-Null
 Stop-ScheduledTask -TaskName $taskName -ErrorAction SilentlyContinue
+Stop-ManagedServerProcess -ManagedRepoRoot $previousRepoRoot -ManagedPort $previousPort
+if ($repoRoot -ne $previousRepoRoot -or $Port -ne $previousPort) {
+  Stop-ManagedServerProcess -ManagedRepoRoot $repoRoot -ManagedPort $Port
+}
+Register-ScheduledTask -TaskName $taskName -Action $action -Trigger $triggers -Settings $settings -Principal $principal -Force | Out-Null
 Start-ScheduledTask -TaskName $taskName
 Write-Output ("Installed and started: " + $taskName)
 

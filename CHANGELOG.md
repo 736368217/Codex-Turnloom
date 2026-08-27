@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- Replace the Android foreground reminder service with WorkManager so idle monitoring no longer leaves a permanent notification.
+- Detect newly completed turns by completion timestamp, including tasks that start and finish between background checks.
+- Hide Codex subagent threads from the normal mobile list while preserving a directly selected legacy subagent URL.
+- Group mobile conversations into Desktop-compatible pinned and project sections, with pin/unpin in the long-press menu.
+- Stop the exact previously managed Node server during Windows reinstall so verified updates cannot leave stale code serving the phone.
 - Launch the Windows supervisor through a windowless host so watchdog recovery never flashes a PowerShell console.
 - Render full GFM Markdown in conversation messages, including headings, emphasis, links, lists, code blocks, and tables.
 - Sanitize message HTML and unsafe URLs before rendering while retaining supported plugin references and local generated images.

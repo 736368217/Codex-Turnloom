@@ -16,4 +16,9 @@ test("Windows supervisor uses a windowless scheduled-task launcher", async () =>
   assert.match(installer, /New-ScheduledTaskSettingsSet[\s\S]*?-Hidden/);
   assert.doesNotMatch(installer, /New-ScheduledTaskAction\s+-Execute\s+\$powershell/);
   assert.match(launcher, /shell\.Run\(command, 0, True\)/i);
+  assert.match(installer, /function Stop-ManagedServerProcess/);
+  assert.match(
+    installer,
+    /Stop-ScheduledTask\s+-TaskName\s+\$taskName[\s\S]*?Stop-ManagedServerProcess[\s\S]*?Register-ScheduledTask\s+-TaskName\s+\$taskName/
+  );
 });
