@@ -92,6 +92,7 @@ public class MainActivity extends ComponentActivity {
     private ProgressBar pageProgress;
     private TextView connectionDot;
     private Device activeDevice;
+    private volatile String currentMainFrameUrl = "";
     private String pendingNotificationDeviceUrl;
     private String pendingNotificationThreadId;
     private ValueCallback<Uri[]> fileChooserCallback;
@@ -417,6 +418,7 @@ public class MainActivity extends ComponentActivity {
         view.setWebViewClient(new WebViewClient() {
             @Override
             public void onPageStarted(WebView webView, String url, android.graphics.Bitmap favicon) {
+                currentMainFrameUrl = url == null ? "" : url;
                 setConnectionState(Color.rgb(244, 190, 74));
             }
 
@@ -473,6 +475,7 @@ public class MainActivity extends ComponentActivity {
 
     private void destroyWebView() {
         if (webView == null) return;
+        currentMainFrameUrl = "";
         webView.stopLoading();
         webView.setWebChromeClient(null);
         webView.setWebViewClient(null);
@@ -723,9 +726,9 @@ public class MainActivity extends ComponentActivity {
 
     @Override
     public void onBackPressed() {
-        if (activeDevice != null) {
-            if (webView != null && webView.canGoBack()) webView.goBack();
-            else showMachinePicker();
+        BackNavigation.Action action = BackNavigation.action(activeDevice != null);
+        if (action == BackNavigation.Action.SHOW_COMPUTER_PICKER) {
+            showMachinePicker();
             return;
         }
         super.onBackPressed();
@@ -815,6 +818,12 @@ public class MainActivity extends ComponentActivity {
         @JavascriptInterface
         public void kickReminderCheck() {
             ReminderScheduler.kick(MainActivity.this);
+        }
+
+        @JavascriptInterface
+        public String getAccessToken() {
+            Device device = activeDevice;
+            return device != null && DeviceOrigin.matches(device.url, currentMainFrameUrl) ? device.token : "";
         }
     }
 

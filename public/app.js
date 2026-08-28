@@ -1,6 +1,7 @@
 import { MESSAGE_PAGE_SIZE, nextMessageLimit, reconcilePendingMessages, retainedScrollTop } from "./history.js";
 import { renderMarkdown } from "./markdown.js";
 import { filterVisibleThreads, groupedVisibleThreads } from "./threads.js";
+import { resolveAuthToken } from "./auth.js";
 
 const state = {
   threads: [],
@@ -617,14 +618,24 @@ function adoptSelectedThreadModel() {
 
 function initAuthToken() {
   const url = new URL(window.location.href);
-  const token = url.searchParams.get("login") || url.searchParams.get("token");
-  if (token) {
+  const urlToken = url.searchParams.get("login") || url.searchParams.get("token") || "";
+  if (urlToken) {
     url.searchParams.delete("login");
     url.searchParams.delete("token");
     window.history.replaceState({}, document.title, `${url.pathname}${url.search}${url.hash}`);
   }
   safeStorageRemove(sessionStorage, "codexLanToken");
-  state.authToken = token || safeStorageGet(localStorage, "codexLanToken");
+  let nativeToken = "";
+  try {
+    nativeToken = globalThis.CodexPocket?.getAccessToken?.() || "";
+  } catch {
+    // The desktop browser has no native bridge.
+  }
+  state.authToken = resolveAuthToken({
+    urlToken,
+    rememberedToken: safeStorageGet(localStorage, "codexLanToken"),
+    nativeToken
+  });
   els.rememberDevice.checked = Boolean(safeStorageGet(localStorage, "codexLanToken"));
 }
 

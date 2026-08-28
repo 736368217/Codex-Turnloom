@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Make Android system Back return from an active computer to the computer picker instead of navigating into stale WebView authentication history.
+- Restore the saved Android device access code through the native bridge when a refreshed or restored page has no login parameter.
 - Replace the Android foreground reminder service with WorkManager so idle monitoring no longer leaves a permanent notification.
 - Detect newly completed turns by completion timestamp, including tasks that start and finish between background checks.
 - Hide Codex subagent threads from the normal mobile list while preserving a directly selected legacy subagent URL.

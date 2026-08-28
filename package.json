@@ -20,7 +20,7 @@
     "LICENSE"
   ],
   "scripts": {
-    "check": "node --check server.js && node --check public/app.js && node --check public/markdown.js && node --check public/threads.js",
+    "check": "node --check server.js && node --check public/app.js && node --check public/auth.js && node --check public/markdown.js && node --check public/threads.js",
     "test": "node --test",
     "start": "node server.js",
     "start:readonly": "node server.js --readonly",
