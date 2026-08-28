@@ -249,7 +249,6 @@ const I18N = {
     pinThread: "置顶",
     unpinThread: "取消置顶",
     pinnedGroup: "置顶",
-    otherGroup: "其他任务",
     pinFailed: "置顶操作失败：{message}",
     window: "窗口",
     weekWindow: "{count} 周窗口",
@@ -385,7 +384,6 @@ const I18N = {
     pinThread: "Pin",
     unpinThread: "Unpin",
     pinnedGroup: "Pinned",
-    otherGroup: "Other tasks",
     pinFailed: "Could not update pin: {message}",
     window: "Window",
     weekWindow: "{count} week window",
@@ -1166,12 +1164,11 @@ function renderThreads() {
     : "";
   const groups = groupedVisibleThreads(state.threads, {
     query: state.filter,
-    pinnedLabel: t("pinnedGroup"),
-    otherLabel: t("otherGroup")
+    pinnedLabel: t("pinnedGroup")
   });
   els.threadList.innerHTML = `${draft}${groups.map((group) => `
-    <section class="thread-group" data-group-key="${escapeHtml(group.key)}">
-      <h2 class="thread-group-title">${escapeHtml(group.label)}</h2>
+    <section class="thread-group${group.ungrouped ? " thread-group-ungrouped" : ""}" data-group-key="${escapeHtml(group.key)}">
+      ${group.ungrouped ? "" : `<h2 class="thread-group-title">${escapeHtml(group.label)}</h2>`}
       ${group.threads.map(renderThread).join("")}
     </section>
   `).join("")}`;

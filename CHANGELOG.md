@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Match Codex Desktop grouping by showing only explicit projects; ordinary conversations remain in one unlabeled list instead of being grouped by working directory.
 - Make Android system Back return from an active computer to the computer picker instead of navigating into stale WebView authentication history.
 - Restore the saved Android device access code through the native bridge when a refreshed or restored page has no login parameter.
 - Replace the Android foreground reminder service with WorkManager so idle monitoring no longer leaves a permanent notification.

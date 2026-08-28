@@ -7,7 +7,7 @@ export function filterVisibleThreads(threads, query = "") {
   });
 }
 
-export function groupedVisibleThreads(threads, { query = "", pinnedLabel = "置顶", otherLabel = "其他任务" } = {}) {
+export function groupedVisibleThreads(threads, { query = "", pinnedLabel = "置顶" } = {}) {
   const visible = filterVisibleThreads(threads, query);
   const pinned = visible.filter((thread) => thread.pinned);
   const groups = [];
@@ -20,7 +20,8 @@ export function groupedVisibleThreads(threads, { query = "", pinnedLabel = "置�
     if (!projectGroups.has(key)) {
       projectGroups.set(key, {
         key,
-        label: thread.project?.name || otherLabel,
+        label: thread.project?.name || "",
+        ungrouped: key === "other",
         threads: []
       });
     }

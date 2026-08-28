@@ -23,6 +23,18 @@ test("thread search filters the grouped main-task collection", () => {
     { query: "needle" }
   );
 
-  assert.deepEqual(groups.map((group) => group.label), ["其他任务"]);
+  assert.equal(groups[0].ungrouped, true);
   assert.deepEqual(groups[0].threads.map((thread) => thread.id), ["two"]);
+});
+
+test("ordinary conversations share the ungrouped section even when they have different working folders", () => {
+  const groups = groupedVisibleThreads([
+    { id: "one", title: "Alpha", cwd: "C:\\work\\one", project: null },
+    { id: "two", title: "Beta", cwd: "C:\\work\\two", project: null },
+    { id: "three", title: "Gamma", project: { key: "project:three", name: "Project Three" } }
+  ]);
+
+  assert.deepEqual(groups.map((group) => group.label), ["", "Project Three"]);
+  assert.equal(groups[0].ungrouped, true);
+  assert.deepEqual(groups[0].threads.map((thread) => thread.id), ["one", "two"]);
 });

@@ -1771,13 +1771,6 @@ function visibleThreadRows(rows, preserveIds = []) {
   return rows.filter((row) => !isSubagentThread(row) || preserved.has(String(row?.id || "")));
 }
 
-function normalizedProjectPath(cwd) {
-  let value = String(cwd || "").trim();
-  if (!value) return "";
-  value = value.replace(/^\\\\\?\\UNC\\/i, "\\\\").replace(/^\\\\\?\\/, "");
-  return path.win32.normalize(value);
-}
-
 function threadListMetadata(row) {
   const projectId = String(row?.projectId || row?.project_id || "").trim();
   const projectName = String(row?.projectName || row?.project_name || "").trim();
@@ -1789,17 +1782,7 @@ function threadListMetadata(row) {
       project: { key: `project:${projectId}`, id: projectId, name: projectName, native: true }
     };
   }
-  const cwd = normalizedProjectPath(row?.cwd);
-  if (!cwd) return { pinned, project: null };
-  return {
-    pinned,
-    project: {
-      key: `cwd:${cwd.toLowerCase()}`,
-      id: null,
-      name: path.win32.basename(cwd) || cwd,
-      native: false
-    }
-  };
+  return { pinned, project: null };
 }
 
 async function threadListStatus(row) {
