@@ -998,7 +998,6 @@ h2 {
 .thinking-dots::after {
   display: inline-block;
   width: 1.5em;
-  min-width: 1.5em;
   height: 1em;
   content: "...";
   animation: thinking-dots 1.1s steps(4, end) infinite;
