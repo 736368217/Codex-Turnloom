@@ -92,6 +92,17 @@ test("thread list maps Desktop pin and explicit project roots", () => {
     }]]
   ]);
   assert.deepEqual(threadListMetadata({ cwd: String.raw`\\?\C:\Users\WIN10\Documents\ChatGPT\塔罗` }, projectRoots).project, projectRoots.get("c:\\users\\win10\\documents\\chatgpt\\塔罗")[0]);
+
+  const duplicateRootProjects = new Map([
+    ["c:\\users\\win10\\documents\\chatgpt\\腾讯云", [
+      { key: "project:flynas", id: "project-flynas", name: "飞牛nas", native: true, root: String.raw`C:\Users\WIN10\Documents\ChatGPT\腾讯云` },
+      { key: "project:aliyun", id: "project-aliyun", name: "阿里云\\腾讯云", native: true, root: String.raw`C:\Users\WIN10\Documents\ChatGPT\腾讯云` }
+    ]]
+  ]);
+  assert.equal(
+    threadListMetadata({ cwd: String.raw`\\?\C:\Users\WIN10\Documents\ChatGPT\腾讯云` }, duplicateRootProjects).project?.id,
+    "project-flynas"
+  );
 });
 
 test("older-message pagination grows in bounded pages and preserves the viewport", () => {
@@ -200,14 +211,39 @@ test("a successful mobile send refreshes Desktop without stealing another open c
     }
   };
 
-  await refreshCodexDesktopAfterSend("thread-following", client);
-  await refreshCodexDesktopAfterSend("thread-other", client);
+  await refreshCodexDesktopAfterSend("thread-following", client, { waitForPersistence: async () => true });
+  await refreshCodexDesktopAfterSend("thread-other", client, { waitForPersistence: async () => true });
 
   assert.deepEqual(calls, [
     ["refresh", "local"],
     ["active", "thread-following", true, "local"],
     ["refresh", "local"]
   ]);
+});
+
+test("Desktop refresh waits for the new turn to persist before opening the conversation", async () => {
+  const calls = [];
+  const client = {
+    async refreshRecentConversations() {
+      calls.push("refresh");
+      throw new Error("no-client-found");
+    },
+    followingConversationState() {
+      return true;
+    },
+    async setActiveConversation() {
+      calls.push("active");
+    }
+  };
+  const result = await refreshCodexDesktopAfterSend("thread-1", client, {
+    turnId: "turn-1",
+    waitForPersistence: async (threadId, turnId) => {
+      calls.push(["persist", threadId, turnId]);
+      return true;
+    }
+  });
+  assert.equal(result.persisted, true);
+  assert.deepEqual(calls, [["persist", "thread-1", "turn-1"], "refresh", "refresh", "active"]);
 });
 
 test("new turns for one thread are serialized before the second state check", async () => {

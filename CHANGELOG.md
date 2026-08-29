@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Resolve duplicate Codex project roots by Desktop registration order instead of project-name suffixes, preventing Hermes conversations from being misclassified under 阿里云\\腾讯云.
+- Wait for a mobile-sent turn to persist before attempting the Desktop refresh/open fallback, preventing the Desktop conversation view from lagging until restart.
 - Keep the thinking indicator on one fixed line and restore Desktop project grouping from the explicit `project_roots` registry, leaving ordinary conversations ungrouped.
 - Match Codex Desktop grouping by showing only explicit projects; ordinary conversations remain in one unlabeled list instead of being grouped by working directory.
 - Make Android system Back return from an active computer to the computer picker instead of navigating into stale WebView authentication history.

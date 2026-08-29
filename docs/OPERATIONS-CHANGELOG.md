@@ -2,6 +2,11 @@
 
 This is a concise, secret-free record for humans and future agents. Detailed topology and guardrails are in `OPERATIONS.md`.
 
+## 2026-08-29
+
+- Fixed duplicate Codex project-root classification by honoring Desktop project/root order; the shared `腾讯云` root now resolves consistently to the first registered project (`飞牛nas`) instead of matching the `阿里云\\腾讯云` name suffix.
+- Fixed mobile-send Desktop staleness by waiting for the new turn to appear in the rollout before issuing the bounded refresh/open fallback. No credentials or conversation data were changed.
+
 ## 2026-08-27
 
 - Removed Android foreground reminder polling. WorkManager now performs immediate checks after mobile actions, follows active tasks, and uses a 15-minute periodic fallback without a permanent notification.

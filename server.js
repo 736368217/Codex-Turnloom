@@ -1798,9 +1798,10 @@ function projectForRoot(cwd, projectRootsByPath) {
   const root = normalizedProjectPath(cwd);
   const candidates = projectRootsByPath.get(root.toLowerCase()) || [];
   if (!candidates.length) return null;
-  if (candidates.length === 1) return candidates[0];
-  const basename = path.win32.basename(root).toLowerCase();
-  return candidates.find((candidate) => path.win32.basename(candidate.name).toLowerCase() === basename) || null;
+  // A migrated Desktop profile can retain one workspace root in multiple
+  // projects. Keep the database's project/root order as the deterministic
+  // source of truth instead of guessing from a project-name suffix.
+  return candidates[0];
 }
 
 function threadListMetadata(row, projectRootsByPath = null) {
@@ -3721,7 +3722,7 @@ async function sendToCodex(text, threadId, images = [], { newThread = false, mod
       turnId: result?.result?.result?.turnId || result?.result?.turnId || current.status.turnId || null,
       sentAt: new Date().toISOString()
     };
-    void refreshCodexDesktopAfterSend(targetThreadId).catch((error) => {
+    void refreshCodexDesktopAfterSend(targetThreadId, getCodexIpcClient(), { turnId: response.turnId }).catch((error) => {
       logError(`[send-refresh] ${targetThreadId}: ${error?.message || error}`);
     });
     return response;
@@ -3795,7 +3796,7 @@ async function sendToCodex(text, threadId, images = [], { newThread = false, mod
       turnId: result?.result?.turn?.id || result?.result?.turnId || null,
       sentAt: new Date().toISOString()
     };
-    void refreshCodexDesktopAfterSend(targetThreadId).catch((error) => {
+    void refreshCodexDesktopAfterSend(targetThreadId, getCodexIpcClient(), { turnId: response.turnId }).catch((error) => {
       logError(`[send-refresh] ${targetThreadId}: ${error?.message || error}`);
     });
     return response;
@@ -3860,13 +3861,38 @@ async function setThreadPinned(threadId, pinned) {
   return { ok: true, threadId: id, pinned: Boolean(pinned), desktopRefreshQueued: true };
 }
 
-async function refreshCodexDesktopAfterSend(threadId, client = getCodexIpcClient()) {
+async function waitForDesktopTurnPersistence(threadId, turnId, timeoutMs = 5000) {
+  const id = String(threadId || "").trim();
+  const expectedTurnId = String(turnId || "").trim();
+  if (!id || !expectedTurnId) {
+    await sleep(650);
+    return false;
+  }
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    try {
+      const current = await getMessages(id, { limit: 1, fullHistory: true });
+      if (String(current.status?.turnId || "") === expectedTurnId) return true;
+    } catch {
+      // The rollout may still be appended; retry until the bounded deadline.
+    }
+    await sleep(180);
+  }
+  return false;
+}
+
+async function refreshCodexDesktopAfterSend(
+  threadId,
+  client = getCodexIpcClient(),
+  { turnId = null, waitForPersistence = waitForDesktopTurnPersistence } = {}
+) {
   const id = String(threadId || "").trim();
   if (!id) return { refreshed: false, failures: [] };
 
   // The rollout is already written by Desktop at this point. Drop local
   // snapshots first so the next API read cannot serve the pre-send state.
   invalidateThreadCaches();
+  const persisted = await waitForPersistence(id, turnId);
 
   const failures = [];
   let refreshed = false;
@@ -3890,7 +3916,7 @@ async function refreshCodexDesktopAfterSend(threadId, client = getCodexIpcClient
             failures.push(`open: ${openError?.message || openError}`);
           }
         }
-        await sleep(350);
+        await sleep(persisted ? 250 : 650);
       }
     }
   }
@@ -3914,7 +3940,7 @@ async function refreshCodexDesktopAfterSend(threadId, client = getCodexIpcClient
       source: "send-refresh"
     });
   }
-  return { refreshed, failures, openedThread };
+  return { refreshed, failures, openedThread, persisted };
 }
 
 function conversationIdFromStartConversation(response) {
