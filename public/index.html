@@ -63,8 +63,7 @@
             <p id="threadMeta">每 3 秒自动同步</p>
             <section id="goalPanel" class="goal-panel" hidden>
               <div class="goal-view" id="goalView">
-                <div class="goal-heading"><span id="goalLabel">目标</span><span id="goalStatus" class="goal-status"></span><button id="goalEditButton" class="goal-icon-action" type="button" title="编辑目标" aria-label="编辑目标">✎</button></div>
-                <p id="goalObjective" class="goal-objective"></p>
+                <div class="goal-heading"><span id="goalLabel">目标</span><p id="goalObjective" class="goal-objective"></p><span id="goalStatus" class="goal-status"></span></div>
               </div>
               <form id="goalForm" class="goal-form" hidden>
                 <label><span>目标</span><textarea id="goalObjectiveInput" rows="2" maxlength="4000"></textarea></label>
@@ -74,6 +73,11 @@
                 <div class="goal-form-actions"><button id="goalCancelButton" class="goal-action" type="button">取消</button><button class="goal-action primary" type="submit">保存</button><button id="goalClearButton" class="goal-action danger" type="button">清除</button></div>
               </form>
             </section>
+            <div id="goalContextMenu" class="goal-context-menu" role="menu" hidden>
+              <button id="goalPauseAction" type="button" role="menuitem">暂停目标</button>
+              <button id="goalEditAction" type="button" role="menuitem">编辑目标</button>
+              <button id="goalDeleteAction" type="button" role="menuitem">删除目标</button>
+            </div>
           </div>
           <div class="conversation-actions">
             <label class="toggle">

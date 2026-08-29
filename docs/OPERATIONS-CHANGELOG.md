@@ -4,6 +4,12 @@ This is a concise, secret-free record for humans and future agents. Detailed top
 
 ## 2026-08-29
 
+- Fixed the mobile goal panel's native `hidden` behavior being overridden by author CSS; empty goal forms no longer push conversation content down.
+- Goal writes now send only Desktop-supported `objective` and `status` fields; the old companion token-budget path was removed.
+- Rebuilt and installed the debug APK on all three local MuMu ADB devices, then verified the machine picker, drawer/back flow, compact conversation header, and ungrouped ordinary conversation list.
+
+## 2026-08-29
+
 - Added Desktop IPC-backed mobile goal read/edit/clear operations and a mobile Compact Context action; the UI exposes only the actual objective/status and no companion-only goal shadow state.
 - Added safe ContextCompaction timeline notices and removed the 12-item skill picker cap; skill ordering now prioritizes built-ins and core skills.
 - Fixed duplicate Codex project-root classification by honoring Desktop project/root order; the shared `腾讯云` root now resolves consistently to the first registered project (`飞牛nas`) instead of matching the `阿里云\\腾讯云` name suffix.

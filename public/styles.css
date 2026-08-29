@@ -376,6 +376,7 @@ h2 {
 }
 
 .goal-panel {
+  position: relative;
   display: block;
   width: min(100%, 720px);
   max-width: min(760px, 100%);
@@ -383,6 +384,12 @@ h2 {
   border-left: 2px solid #77a99d;
   background: transparent;
   padding: 1px 0 1px 8px;
+}
+
+.goal-panel[hidden],
+.goal-view[hidden],
+.goal-form[hidden] {
+  display: none;
 }
 
 .goal-heading,
@@ -395,42 +402,30 @@ h2 {
 
 .goal-heading {
   justify-content: flex-start;
+  min-width: 0;
+  white-space: nowrap;
   color: #385b53;
   font-size: 12px;
   font-weight: 750;
 }
 
-.goal-icon-action {
-  width: 24px;
-  height: 24px;
-  margin-left: auto;
-  border: 0;
-  border-radius: 5px;
-  background: transparent;
-  color: #64877f;
-  cursor: pointer;
-  font-size: 16px;
-  line-height: 1;
-}
-
-.goal-icon-action:hover { background: #edf4f1; }
-
 .goal-status {
+  flex: 0 0 auto;
+  margin-left: 7px;
   color: #1f6f62;
   font-size: 11px;
 }
 
 .goal-objective {
-  display: -webkit-box;
-  max-width: calc(100% - 30px);
-  margin: 2px 0 0;
+  min-width: 0;
+  flex: 1 1 auto;
+  margin: 0 0 0 7px;
   overflow: hidden;
   color: var(--text);
   font-size: 13px;
   line-height: 1.4;
-  -webkit-box-orient: vertical;
-  -webkit-line-clamp: 2;
-  white-space: pre-wrap;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .goal-action {
@@ -454,11 +449,48 @@ h2 {
 .goal-form-row > label { flex: 1 1 0; }
 .goal-form-actions { justify-content: flex-end; }
 
+.goal-context-menu {
+  position: absolute;
+  top: 100%;
+  right: 0;
+  z-index: 35;
+  display: grid;
+  min-width: 132px;
+  margin-top: 4px;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  background: var(--panel);
+  box-shadow: var(--shadow);
+  padding: 4px;
+}
+
+.goal-context-menu[hidden] { display: none; }
+.goal-context-menu button {
+  border: 0;
+  border-radius: 5px;
+  background: transparent;
+  color: var(--text);
+  cursor: pointer;
+  font: inherit;
+  font-size: 12px;
+  padding: 8px 9px;
+  text-align: left;
+}
+.goal-context-menu button:hover { background: var(--accent-soft); }
+
 .message.notice.context_compaction .bubble {
   border-color: #b9cfe6;
   background: #f0f6fc;
   color: #23415f;
   box-shadow: inset 3px 0 0 #5c8fbe;
+}
+
+.message.notice.plan .bubble {
+  border-color: #c5d6d1;
+  background: #f5f9f7;
+  color: #31534b;
+  box-shadow: inset 3px 0 0 #77a99d;
 }
 
 .thread-group + .thread-group {

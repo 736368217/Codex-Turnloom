@@ -621,6 +621,26 @@ async function getSkills() {
       action: "compact",
       uri: "builtin://compact-context"
     },
+    {
+      name: "plan",
+      displayName: "计划",
+      description: "让 Codex 先整理执行计划",
+      source: "内置操作",
+      priority: -9,
+      kind: "builtin",
+      action: "plan",
+      uri: "builtin://plan"
+    },
+    {
+      name: "goal",
+      displayName: "目标",
+      description: "查看或编辑当前 Codex 目标",
+      source: "内置操作",
+      priority: -8,
+      kind: "builtin",
+      action: "goal",
+      uri: "builtin://goal"
+    },
     ...[...byUri.values()].sort((a, b) => {
       const aName = String(a.name || "").toLowerCase();
       const bName = String(b.name || "").toLowerCase();
@@ -1349,13 +1369,12 @@ class DesktopCodexIpcClient {
     return response?.result?.goal ?? response?.goal ?? null;
   }
 
-  async setThreadGoal(threadId, { objective, status = null, tokenBudget = null } = {}) {
+  async setThreadGoal(threadId, { objective, status = null } = {}) {
     await this.ensureReady();
     const response = await this.request("thread/goal/set", {
       threadId,
       objective: objective == null ? null : String(objective),
-      status: status || null,
-      tokenBudget: tokenBudget == null ? null : Number(tokenBudget)
+      status: status || null
     }, { timeoutMs: 8000 });
     return response?.result?.goal ?? response?.goal ?? null;
   }
@@ -1878,8 +1897,6 @@ function threadListMetadata(row, projectRootsByPath = null) {
       project: { key: `project:${projectId}`, id: projectId, name: projectName, native: true }
     };
   }
-  const project = projectForRoot(row?.cwd, projectRootsByPath);
-  if (project) return { pinned, project };
   return { pinned, project: null };
 }
 
@@ -2825,6 +2842,28 @@ function contextCompactionMessage(timestamp, payload, meta = {}) {
   };
 }
 
+function planMessage(timestamp, payload, meta = {}) {
+  const type = String(payload?.type || "").toLowerCase();
+  const plan = Array.isArray(payload?.plan) ? payload.plan : Array.isArray(payload?.item?.plan) ? payload.item.plan : null;
+  if (!plan && type !== "plan" && type !== "plan_update" && type !== "turn_plan_updated") return null;
+  const steps = (plan || []).map((entry) => {
+    const step = String(entry?.step || entry?.text || entry || "").trim();
+    if (!step) return "";
+    const status = String(entry?.status || "pending");
+    return `${status === "completed" ? "[x]" : status === "inProgress" ? "[>]" : "[ ]"} ${step}`;
+  }).filter(Boolean);
+  const content = steps.join("\n") || String(payload?.text || payload?.explanation || "").trim();
+  if (!content) return null;
+  return {
+    role: "notice",
+    kind: "plan",
+    timestamp,
+    ...meta,
+    title: "计划",
+    content
+  };
+}
+
 function recordNotice(threadId, { severity = "info", title = "", content = "", source = "server" } = {}) {
   if (!threadId || !content) return null;
   const notice = {
@@ -3091,6 +3130,11 @@ function parseRolloutLine(line, state) {
         state.noticeMessages.push({ ...compaction, lineNumber: state.lineNumber });
         return;
       }
+      const plan = planMessage(entry.timestamp, entry.payload, messageMeta);
+      if (hasDisplayableMessageContent(plan)) {
+        state.noticeMessages.push({ ...plan, lineNumber: state.lineNumber });
+        return;
+      }
       const interaction = messageFromInteractionEvent(entry.timestamp, entry.payload, messageMeta);
       if (hasDisplayableMessageContent(interaction)) {
         state.interactionMessages.push({ ...interaction, lineNumber: state.lineNumber });
@@ -3118,6 +3162,11 @@ function parseRolloutLine(line, state) {
       const compaction = contextCompactionMessage(entry.timestamp, entry.payload, messageMeta);
       if (hasDisplayableMessageContent(compaction)) {
         state.noticeMessages.push({ ...compaction, lineNumber: state.lineNumber });
+        return;
+      }
+      const plan = planMessage(entry.timestamp, entry.payload, messageMeta);
+      if (hasDisplayableMessageContent(plan)) {
+        state.noticeMessages.push({ ...plan, lineNumber: state.lineNumber });
         return;
       }
       const interaction = messageFromInteractionEvent(entry.timestamp, entry.payload, messageMeta);
@@ -3327,18 +3376,12 @@ async function setThreadGoal(threadId, body = {}) {
     error.status = 400;
     throw error;
   }
-  const tokenBudget = body.tokenBudget == null || body.tokenBudget === "" ? null : Number(body.tokenBudget);
-  if (tokenBudget !== null && (!Number.isSafeInteger(tokenBudget) || tokenBudget < 0)) {
-    const error = new Error("Invalid goal token budget");
-    error.status = 400;
-    throw error;
-  }
   if (!(await findThread(threadId))) {
     const error = new Error("Thread not found");
     error.status = 404;
     throw error;
   }
-  return sanitizeThreadGoal(await getCodexIpcClient().setThreadGoal(String(threadId), { objective: objective || null, status, tokenBudget }));
+  return sanitizeThreadGoal(await getCodexIpcClient().setThreadGoal(String(threadId), { objective: objective || null, status }));
 }
 
 async function clearThreadGoal(threadId) {
@@ -5084,6 +5127,7 @@ export {
   rolloutPathForCurrentHome,
   rolloutResultFromState,
   contextCompactionMessage,
+  planMessage,
   getThreadGoalSafe,
   setThreadGoal,
   clearThreadGoal,

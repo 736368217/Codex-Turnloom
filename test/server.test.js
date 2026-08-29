@@ -12,6 +12,7 @@ import {
   contentDispositionForDownload,
   createRolloutParseState,
   contextCompactionMessage,
+  planMessage,
   desktopInterruptTurnRequest,
   desktopStartTurnRequest,
   desktopSteerRestoreMessage,
@@ -75,7 +76,17 @@ test("context compaction rollout items become safe timeline notices", () => {
   assert.equal(contextCompactionMessage("2026-08-22T02:14:50.951Z", { type: "message" }), null);
 });
 
-test("thread list maps Desktop pin and explicit project roots", () => {
+test("Desktop plan events become a compact plan notice", () => {
+  const message = planMessage("2026-08-30T00:00:00.000Z", {
+    type: "turn_plan_updated",
+    plan: [{ status: "completed", step: "检查状态" }, { status: "inProgress", step: "修复问题" }]
+  });
+  assert.equal(message.kind, "plan");
+  assert.match(message.content, /\[x\] 检查状态/);
+  assert.match(message.content, /\[>\] 修复问题/);
+});
+
+test("thread list maps Desktop pin and only explicit project assignments", () => {
   const pinned = threadListMetadata({
     isPinned: 0,
     threadSectionId: "pinned-section",
@@ -97,27 +108,9 @@ test("thread list maps Desktop pin and explicit project roots", () => {
   });
   assert.equal(ungrouped.project, null);
 
-  const projectRoots = new Map([
-    ["c:\\users\\win10\\documents\\chatgpt\\塔罗", [{
-      key: "project:tarot",
-      id: "project-tarot",
-      name: "塔罗",
-      native: true,
-      root: String.raw`C:\Users\WIN10\Documents\ChatGPT\塔罗`
-    }]]
-  ]);
-  assert.deepEqual(threadListMetadata({ cwd: String.raw`\\?\C:\Users\WIN10\Documents\ChatGPT\塔罗` }, projectRoots).project, projectRoots.get("c:\\users\\win10\\documents\\chatgpt\\塔罗")[0]);
-
-  const duplicateRootProjects = new Map([
-    ["c:\\users\\win10\\documents\\chatgpt\\腾讯云", [
-      { key: "project:flynas", id: "project-flynas", name: "飞牛nas", native: true, root: String.raw`C:\Users\WIN10\Documents\ChatGPT\腾讯云` },
-      { key: "project:aliyun", id: "project-aliyun", name: "阿里云\\腾讯云", native: true, root: String.raw`C:\Users\WIN10\Documents\ChatGPT\腾讯云` }
-    ]]
-  ]);
-  assert.equal(
-    threadListMetadata({ cwd: String.raw`\\?\C:\Users\WIN10\Documents\ChatGPT\腾讯云` }, duplicateRootProjects).project?.id,
-    "project-flynas"
-  );
+  const projectRoots = new Map([["c:\\users\\win10\\documents\\chatgpt\\塔罗", [{ key: "project:tarot", id: "project-tarot", name: "塔罗", native: true }]]]);
+  assert.equal(threadListMetadata({ cwd: String.raw`\\?\C:\Users\WIN10\Documents\ChatGPT\塔罗` }, projectRoots).project, null);
+  assert.equal(threadListMetadata({ cwd: String.raw`\\?\C:\Users\WIN10\Documents\ChatGPT\腾讯云` }, projectRoots).project, null);
 });
 
 test("older-message pagination grows in bounded pages and preserves the viewport", () => {

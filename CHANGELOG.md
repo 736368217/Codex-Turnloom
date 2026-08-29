@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Keep the Desktop goal surface to one compact objective/status line; long-press opens pause, edit, and delete actions, and empty goal controls no longer occupy reading space.
+- Remove the companion-only token budget from Desktop goal IPC writes so mobile goal behavior matches Codex Desktop's objective/status model.
+- Keep ordinary conversations ungrouped unless Desktop explicitly assigns a project; working directories are never used as an inferred project category.
 - Show the complete skill picker in stable Desktop-like priority order, including a built-in Compact Context action.
 - Surface Codex Desktop goals in the mobile conversation header with compact objective, status, edit, and clear controls; hide the panel when no goal exists.
 - Render ContextCompaction rollout events as safe, visible timeline notices instead of silently dropping them.

@@ -27,6 +27,7 @@ const state = {
   threadStatus: null,
   goal: null,
   goalEditing: false,
+  goalPressTimer: null,
   composerBusy: false,
   uncertainSend: null,
   reminders: {},
@@ -91,10 +92,13 @@ const els = {
   goalObjectiveInput: document.querySelector("#goalObjectiveInput"),
   goalStatus: document.querySelector("#goalStatus"),
   goalStatusInput: document.querySelector("#goalStatusInput"),
-  goalBudgetInput: document.querySelector("#goalBudgetInput"),
   goalEditButton: document.querySelector("#goalEditButton"),
   goalCancelButton: document.querySelector("#goalCancelButton"),
   goalClearButton: document.querySelector("#goalClearButton"),
+  goalContextMenu: document.querySelector("#goalContextMenu"),
+  goalPauseAction: document.querySelector("#goalPauseAction"),
+  goalEditAction: document.querySelector("#goalEditAction"),
+  goalDeleteAction: document.querySelector("#goalDeleteAction"),
   messageList: document.querySelector("#messageList"),
   scrollToBottomButton: document.querySelector("#scrollToBottomButton"),
   refreshButton: document.querySelector("#refreshButton"),
@@ -284,7 +288,7 @@ const I18N = {
     goalEdit: "编辑目标",
     goalSave: "保存",
     goalCancel: "取消",
-    goalClear: "清除",
+    goalClear: "删除",
     goalEmpty: "尚未设置目标",
     goalStatusActive: "进行中",
     goalStatusPaused: "已暂停",
@@ -295,8 +299,9 @@ const I18N = {
     compactContext: "压缩上下文",
     compactContextDescription: "调用 Codex Desktop 的上下文压缩操作",
     compactStarted: "已请求压缩上下文。",
+    planPrompt: "请先制定执行计划，再开始操作。",
     goalSaveFailed: "目标保存失败：{message}",
-    goalClearFailed: "目标清除失败：{message}",
+    goalClearFailed: "目标删除失败：{message}",
     untitled: "Untitled",
     separator: " · "
   },
@@ -436,7 +441,7 @@ const I18N = {
     goalEdit: "Edit goal",
     goalSave: "Save",
     goalCancel: "Cancel",
-    goalClear: "Clear",
+    goalClear: "Delete",
     goalEmpty: "No goal set",
     goalStatusActive: "Active",
     goalStatusPaused: "Paused",
@@ -447,8 +452,9 @@ const I18N = {
     compactContext: "Compact context",
     compactContextDescription: "Run Codex Desktop context compaction",
     compactStarted: "Context compaction requested.",
+    planPrompt: "Create an execution plan before starting.",
     goalSaveFailed: "Could not save goal: {message}",
-    goalClearFailed: "Could not clear goal: {message}",
+    goalClearFailed: "Could not delete goal: {message}",
     untitled: "Untitled",
     separator: " · "
   }
@@ -1425,6 +1431,7 @@ function goalStatusLabel(status) {
 function renderGoal(goal) {
   const hidden = !state.selectedId || state.selectedId === DRAFT_THREAD_ID || (!goal?.objective && !state.goalEditing);
   els.goalPanel.hidden = hidden;
+  els.goalContextMenu.hidden = true;
   if (hidden) return;
   els.goalView.hidden = Boolean(state.goalEditing);
   els.goalForm.hidden = !state.goalEditing;
@@ -1445,6 +1452,27 @@ async function requestContextCompaction() {
     refreshSoon(500);
   } catch (error) {
     els.sendStatus.textContent = error.message;
+  }
+}
+
+function openGoalContextMenu() {
+  if (!state.goal?.objective || !els.goalContextMenu) return;
+  els.goalContextMenu.hidden = false;
+}
+
+async function updateGoalStatus(status) {
+  if (!state.selectedId || !state.goal?.objective) return;
+  try {
+    const data = await fetchJson(`/api/threads/${encodeURIComponent(state.selectedId)}/goal`, {
+      method: "PUT",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ objective: state.goal.objective, status })
+    });
+    state.goal = data.goal || null;
+    els.goalContextMenu.hidden = true;
+    renderGoal(state.goal);
+  } catch (error) {
+    els.sendStatus.textContent = t("goalSaveFailed", { message: error.message });
   }
 }
 
@@ -1980,6 +2008,21 @@ function insertSkillMention(skill) {
     if (state.selectedId && state.selectedId !== DRAFT_THREAD_ID) void requestContextCompaction();
     return;
   }
+  if (skill.kind === "builtin" && skill.action === "goal") {
+    closeSkillMentionMenu();
+    state.goalEditing = true;
+    renderGoal(state.goal);
+    return;
+  }
+  if (skill.kind === "builtin" && skill.action === "plan") {
+    closeSkillMentionMenu();
+    const input = els.composerInput;
+    input.value = `${input.value}${input.value ? "\n\n" : ""}${t("planPrompt")}`;
+    input.dispatchEvent(new Event("input", { bubbles: true }));
+    input.focus();
+    autoResizeComposerInput();
+    return;
+  }
   const input = els.composerInput;
   if (state.skillTriggerStart >= 0) {
     const cursor = input.selectionStart ?? input.value.length;
@@ -2413,13 +2456,41 @@ els.goalEditButton?.addEventListener("click", () => {
   renderGoal(state.goal);
 });
 
+els.goalContextMenu?.addEventListener("click", (event) => {
+  const action = event.target.closest("button")?.id;
+  if (action === "goalPauseAction") void updateGoalStatus("paused");
+  if (action === "goalEditAction") {
+    els.goalContextMenu.hidden = true;
+    state.goalEditing = true;
+    renderGoal(state.goal);
+  }
+  if (action === "goalDeleteAction") {
+    els.goalContextMenu.hidden = true;
+    els.goalClearButton?.click();
+  }
+});
+
+els.goalPanel?.addEventListener("pointerdown", (event) => {
+  if (event.target.closest("button, textarea, select")) return;
+  clearTimeout(state.goalPressTimer);
+  state.goalPressTimer = window.setTimeout(() => openGoalContextMenu(), 520);
+});
+els.goalPanel?.addEventListener("pointerup", () => clearTimeout(state.goalPressTimer));
+els.goalPanel?.addEventListener("pointercancel", () => clearTimeout(state.goalPressTimer));
+els.goalPanel?.addEventListener("pointerleave", () => clearTimeout(state.goalPressTimer));
+els.goalPanel?.addEventListener("contextmenu", (event) => {
+  if (!state.goal?.objective) return;
+  event.preventDefault();
+  openGoalContextMenu();
+});
+
 els.goalCancelButton?.addEventListener("click", () => {
   state.goalEditing = false;
   renderGoal(state.goal);
 });
 
 els.goalClearButton?.addEventListener("click", async () => {
-  if (!state.selectedId || !confirm("清除当前目标？")) return;
+  if (!state.selectedId || !confirm("删除当前目标？")) return;
   try {
     await fetchJson(`/api/threads/${encodeURIComponent(state.selectedId)}/goal`, { method: "DELETE" });
     state.goal = null;
@@ -2593,6 +2664,7 @@ els.skillPickerButton.addEventListener("click", () => {
 
 document.addEventListener("click", (event) => {
   if (!els.threadContextMenu.hidden && !els.threadContextMenu.contains(event.target)) closeThreadContextMenu();
+  if (els.goalContextMenu && !els.goalContextMenu.hidden && !els.goalContextMenu.contains(event.target) && !els.goalPanel.contains(event.target)) els.goalContextMenu.hidden = true;
   if (state.modelPanelOpen && !els.modelPanel.contains(event.target) && !els.modelSummary.contains(event.target)) {
     closeModelPanel();
   }
