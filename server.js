@@ -3295,11 +3295,22 @@ async function getMessages(id, { limit = DEFAULT_MESSAGE_LIMIT, fullHistory = fa
 
 async function getThreadGoalSafe(threadId) {
   try {
-    return await getCodexIpcClient().getThreadGoal(String(threadId));
+    return sanitizeThreadGoal(await getCodexIpcClient().getThreadGoal(String(threadId)));
   } catch (error) {
     logError(`[goal:read] ${threadId}: ${error?.message || error}`);
     return null;
   }
+}
+
+function sanitizeThreadGoal(goal) {
+  if (!goal || typeof goal !== "object" || !String(goal.objective || "").trim()) return null;
+  return {
+    threadId: String(goal.threadId || ""),
+    objective: String(goal.objective).trim(),
+    status: String(goal.status || "active"),
+    createdAt: Number.isFinite(Number(goal.createdAt)) ? Number(goal.createdAt) : null,
+    updatedAt: Number.isFinite(Number(goal.updatedAt)) ? Number(goal.updatedAt) : null
+  };
 }
 
 async function setThreadGoal(threadId, body = {}) {
@@ -3327,7 +3338,7 @@ async function setThreadGoal(threadId, body = {}) {
     error.status = 404;
     throw error;
   }
-  return getCodexIpcClient().setThreadGoal(String(threadId), { objective: objective || null, status, tokenBudget });
+  return sanitizeThreadGoal(await getCodexIpcClient().setThreadGoal(String(threadId), { objective: objective || null, status, tokenBudget }));
 }
 
 async function clearThreadGoal(threadId) {

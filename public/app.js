@@ -92,7 +92,6 @@ const els = {
   goalStatus: document.querySelector("#goalStatus"),
   goalStatusInput: document.querySelector("#goalStatusInput"),
   goalBudgetInput: document.querySelector("#goalBudgetInput"),
-  goalStats: document.querySelector("#goalStats"),
   goalEditButton: document.querySelector("#goalEditButton"),
   goalCancelButton: document.querySelector("#goalCancelButton"),
   goalClearButton: document.querySelector("#goalClearButton"),
@@ -287,8 +286,6 @@ const I18N = {
     goalCancel: "取消",
     goalClear: "清除",
     goalEmpty: "尚未设置目标",
-    goalTokens: "Token {used}/{budget}",
-    goalTime: "已用 {seconds} 秒",
     goalStatusActive: "进行中",
     goalStatusPaused: "已暂停",
     goalStatusBlocked: "已阻塞",
@@ -441,8 +438,6 @@ const I18N = {
     goalCancel: "Cancel",
     goalClear: "Clear",
     goalEmpty: "No goal set",
-    goalTokens: "Tokens {used}/{budget}",
-    goalTime: "Used {seconds}s",
     goalStatusActive: "Active",
     goalStatusPaused: "Paused",
     goalStatusBlocked: "Blocked",
@@ -1428,22 +1423,17 @@ function goalStatusLabel(status) {
 }
 
 function renderGoal(goal) {
-  const hidden = !state.selectedId || state.selectedId === DRAFT_THREAD_ID;
+  const hidden = !state.selectedId || state.selectedId === DRAFT_THREAD_ID || (!goal?.objective && !state.goalEditing);
   els.goalPanel.hidden = hidden;
   if (hidden) return;
   els.goalView.hidden = Boolean(state.goalEditing);
   els.goalForm.hidden = !state.goalEditing;
-  els.goalObjective.textContent = goal?.objective || t("goalEmpty");
-  els.goalObjective.classList.toggle("empty", !goal?.objective);
+  els.goalObjective.textContent = goal?.objective || "";
+  els.goalObjective.classList.remove("empty");
   els.goalStatus.textContent = goalStatusLabel(goal?.status);
-  const stats = [];
-  if (Number.isFinite(Number(goal?.tokensUsed))) stats.push(t("goalTokens", { used: Number(goal.tokensUsed), budget: goal.tokenBudget == null ? "∞" : Number(goal.tokenBudget) }));
-  if (Number.isFinite(Number(goal?.timeUsedSeconds))) stats.push(t("goalTime", { seconds: Number(goal.timeUsedSeconds) }));
-  els.goalStats.textContent = stats.join(t("separator"));
   if (state.goalEditing) {
     els.goalObjectiveInput.value = goal?.objective || "";
     els.goalStatusInput.value = goal?.status || "active";
-    els.goalBudgetInput.value = goal?.tokenBudget == null ? "" : String(goal.tokenBudget);
   }
 }
 
@@ -2445,14 +2435,12 @@ els.goalForm?.addEventListener("submit", async (event) => {
   event.preventDefault();
   if (!state.selectedId) return;
   try {
-    const budget = els.goalBudgetInput.value.trim();
     const data = await fetchJson(`/api/threads/${encodeURIComponent(state.selectedId)}/goal`, {
       method: "PUT",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({
         objective: els.goalObjectiveInput.value,
-        status: els.goalStatusInput.value,
-        tokenBudget: budget ? Number(budget) : null
+        status: els.goalStatusInput.value
       })
     });
     state.goal = data.goal || null;

@@ -3,7 +3,7 @@
 ## Unreleased
 
 - Show the complete skill picker in stable Desktop-like priority order, including a built-in Compact Context action.
-- Surface Codex Desktop goals in the mobile conversation header with edit, status, budget, and clear controls.
+- Surface Codex Desktop goals in the mobile conversation header with compact objective, status, edit, and clear controls; hide the panel when no goal exists.
 - Render ContextCompaction rollout events as safe, visible timeline notices instead of silently dropping them.
 - Resolve duplicate Codex project roots by Desktop registration order instead of project-name suffixes, preventing Hermes conversations from being misclassified under 阿里云\\腾讯云.
 - Wait for a mobile-sent turn to persist before attempting the Desktop refresh/open fallback, preventing the Desktop conversation view from lagging until restart.

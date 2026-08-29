@@ -63,16 +63,13 @@
             <p id="threadMeta">每 3 秒自动同步</p>
             <section id="goalPanel" class="goal-panel" hidden>
               <div class="goal-view" id="goalView">
-                <div class="goal-heading"><span id="goalLabel">目标</span><span id="goalStatus" class="goal-status"></span></div>
+                <div class="goal-heading"><span id="goalLabel">目标</span><span id="goalStatus" class="goal-status"></span><button id="goalEditButton" class="goal-icon-action" type="button" title="编辑目标" aria-label="编辑目标">✎</button></div>
                 <p id="goalObjective" class="goal-objective"></p>
-                <div id="goalStats" class="goal-stats"></div>
-                <button id="goalEditButton" class="goal-action" type="button">编辑目标</button>
               </div>
               <form id="goalForm" class="goal-form" hidden>
                 <label><span>目标</span><textarea id="goalObjectiveInput" rows="2" maxlength="4000"></textarea></label>
                 <div class="goal-form-row">
                   <label><span>状态</span><select id="goalStatusInput"><option value="active">进行中</option><option value="paused">已暂停</option><option value="blocked">已阻塞</option><option value="usageLimited">用量受限</option><option value="budgetLimited">预算受限</option><option value="complete">已完成</option></select></label>
-                  <label><span>Token 预算</span><input id="goalBudgetInput" type="number" min="0" step="1" /></label>
                 </div>
                 <div class="goal-form-actions"><button id="goalCancelButton" class="goal-action" type="button">取消</button><button class="goal-action primary" type="submit">保存</button><button id="goalClearButton" class="goal-action danger" type="button">清除</button></div>
               </form>
