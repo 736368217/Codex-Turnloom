@@ -60,7 +60,7 @@ test("thread list hides subagents but preserves a selected legacy subagent", () 
   assert.deepEqual(visibleThreadRows(rows, ["sub-selected"]).map((row) => row.id), ["main", "sub-selected"]);
 });
 
-test("thread list maps Desktop pin and only explicit native project metadata", () => {
+test("thread list maps Desktop pin and explicit project roots", () => {
   const pinned = threadListMetadata({
     isPinned: 0,
     threadSectionId: "pinned-section",
@@ -81,6 +81,17 @@ test("thread list maps Desktop pin and only explicit native project metadata", (
     native: true
   });
   assert.equal(ungrouped.project, null);
+
+  const projectRoots = new Map([
+    ["c:\\users\\win10\\documents\\chatgpt\\塔罗", [{
+      key: "project:tarot",
+      id: "project-tarot",
+      name: "塔罗",
+      native: true,
+      root: String.raw`C:\Users\WIN10\Documents\ChatGPT\塔罗`
+    }]]
+  ]);
+  assert.deepEqual(threadListMetadata({ cwd: String.raw`\\?\C:\Users\WIN10\Documents\ChatGPT\塔罗` }, projectRoots).project, projectRoots.get("c:\\users\\win10\\documents\\chatgpt\\塔罗")[0]);
 });
 
 test("older-message pagination grows in bounded pages and preserves the viewport", () => {

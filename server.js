@@ -1771,7 +1771,39 @@ function visibleThreadRows(rows, preserveIds = []) {
   return rows.filter((row) => !isSubagentThread(row) || preserved.has(String(row?.id || "")));
 }
 
-function threadListMetadata(row) {
+function normalizedProjectPath(cwd) {
+  let value = String(cwd || "").trim();
+  if (!value) return "";
+  value = value.replace(/^\\\\\?\\UNC\\/i, "\\\\").replace(/^\\\\\?\\/, "");
+  return path.win32.normalize(value);
+}
+
+function projectRootMetadata(rows = []) {
+  const byPath = new Map();
+  for (const row of rows) {
+    const root = normalizedProjectPath(row?.projectRoot);
+    const projectId = String(row?.projectId || "").trim();
+    const projectName = String(row?.projectName || "").trim();
+    if (!root || !projectId || !projectName) continue;
+    const key = root.toLowerCase();
+    const candidates = byPath.get(key) || [];
+    candidates.push({ key: `project:${projectId}`, id: projectId, name: projectName, native: true, root });
+    byPath.set(key, candidates);
+  }
+  return byPath;
+}
+
+function projectForRoot(cwd, projectRootsByPath) {
+  if (!projectRootsByPath) return null;
+  const root = normalizedProjectPath(cwd);
+  const candidates = projectRootsByPath.get(root.toLowerCase()) || [];
+  if (!candidates.length) return null;
+  if (candidates.length === 1) return candidates[0];
+  const basename = path.win32.basename(root).toLowerCase();
+  return candidates.find((candidate) => path.win32.basename(candidate.name).toLowerCase() === basename) || null;
+}
+
+function threadListMetadata(row, projectRootsByPath = null) {
   const projectId = String(row?.projectId || row?.project_id || "").trim();
   const projectName = String(row?.projectName || row?.project_name || "").trim();
   const sectionName = String(row?.sectionName || row?.section_name || "").trim();
@@ -1782,7 +1814,22 @@ function threadListMetadata(row) {
       project: { key: `project:${projectId}`, id: projectId, name: projectName, native: true }
     };
   }
+  const project = projectForRoot(row?.cwd, projectRootsByPath);
+  if (project) return { pinned, project };
   return { pinned, project: null };
+}
+
+async function readProjectRoots() {
+  try {
+    return projectRootMetadata(await runSqlJson(`
+      SELECT projects.id AS projectId, projects.name AS projectName, project_roots.path AS projectRoot
+      FROM project_roots
+      INNER JOIN projects ON projects.id = project_roots.project_id
+      ORDER BY projects.position ASC, project_roots.position ASC;
+    `));
+  } catch {
+    return new Map();
+  }
 }
 
 async function threadListStatus(row) {
@@ -1863,6 +1910,7 @@ async function getThreads({ preserveIds = [] } = {}) {
 async function loadThreadsUncached({ preserveIds = [], preserveKey = "" } = {}) {
   const { stateDb, sessionIndex } = codexPaths((await refreshCodexHomeContext()).home);
   const currentRolloutPaths = await readSessionRolloutPathMap();
+  const projectRootsByPath = await readProjectRoots();
   const appendRecentIpcRows = (rows, excludedIds = new Set()) => {
     const seen = new Set(rows.map((row) => String(row.id || "")));
     const recentRows = codexIpcClient?.getDesktopConversationRows?.() || codexIpcClient?.getRecentConversationRows?.() || [];
@@ -1911,22 +1959,22 @@ async function loadThreadsUncached({ preserveIds = [], preserveKey = "" } = {}) 
         preview: row.preview || "",
         cwd: row.cwd || "",
         model: row.model || "",
-        ...threadListMetadata(row)
+         ...threadListMetadata(row, projectRootsByPath)
       }));
       const seen = new Set(stateRows.map((row) => String(row.id || "")));
       const indexFiltered = await filterRowsForCurrentAccount(await readSessionIndexRows(), (row) => row.id, preserveIds);
       const indexRows = indexFiltered.rows
         .filter((row) => !seen.has(String(row.id || "")) && !excludedIds.has(String(row.id || "")))
-        .map((row) => ({ ...row, ...threadListMetadata(row) }));
+         .map((row) => ({ ...row, ...threadListMetadata(row, projectRootsByPath) }));
       value = appendRecentIpcRows([...stateRows, ...indexRows], excludedIds).map((row) => (
-        Object.hasOwn(row, "pinned") ? row : { ...row, ...threadListMetadata(row) }
+        Object.hasOwn(row, "pinned") ? row : { ...row, ...threadListMetadata(row, projectRootsByPath) }
       ));
     } else {
       const rows = await readSessionIndexRows();
       const filtered = await filterRowsForCurrentAccount(rows, (row) => row.id, preserveIds);
       value = appendRecentIpcRows(visibleThreadRows(filtered.rows, preserveIds)).map((row) => ({
         ...row,
-        ...threadListMetadata(row)
+        ...threadListMetadata(row, projectRootsByPath)
       }));
     }
     const statusRows = await Promise.all(value.slice(0, 120).map(async (row) => ({
