@@ -2101,14 +2101,18 @@ function renderQueueStatus(status = state.threadStatus) {
   els.queueStatusHeader.hidden = count <= 0;
   els.queueStatusList.hidden = count <= 0;
   els.insertStatusItem.hidden = !inserted;
-  if (inserted) els.insertStatusText.textContent = t("insertedItem", { preview: inserted.preview });
+  const compactPreview = (value, maxLength = 120) => {
+    const text = String(value || "").replace(/[\r\n\t]+/g, " ").replace(/\s{2,}/g, " ").trim();
+    return text.length > maxLength ? `${text.slice(0, maxLength - 1)}…` : text;
+  };
+  if (inserted) els.insertStatusText.textContent = t("insertedItem", { preview: compactPreview(inserted.preview) });
   else els.insertStatusText.textContent = "";
   if (count <= 0) {
     els.queueStatusText.textContent = "";
     els.queueStatusList.innerHTML = "";
     return;
   }
-  const preview = queuedMessages.at(-1)?.preview?.trim() || "";
+  const preview = compactPreview(queuedMessages.at(-1)?.preview);
   els.queueStatusText.textContent = preview ? t("queuedWithPreview", { count, preview }) : t("queuedCount", { count });
   els.queueStatusList.innerHTML = queuedMessages
     .map(
@@ -2116,7 +2120,7 @@ function renderQueueStatus(status = state.threadStatus) {
         <div class="queue-status-item" data-queue-item-id="${escapeHtml(item.id || "")}">
           <div class="queue-status-copy">
             <span class="queue-status-label">${escapeHtml(t("queuedItem"))} ${index + 1}</span>
-            <span class="queue-status-preview">${escapeHtml(item.preview || item.text || "")}</span>
+            <span class="queue-status-preview">${escapeHtml(compactPreview(item.preview || item.text))}</span>
           </div>
           <div class="queue-status-actions">
             <button type="button" data-queue-action="edit">${escapeHtml(t("editQueued"))}</button>

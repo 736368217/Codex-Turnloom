@@ -1369,6 +1369,8 @@ h2 {
 
 .queue-status-bar {
   display: flex;
+  width: 100%;
+  max-width: 100%;
   flex-direction: column;
   gap: 6px;
   border: 1px solid #c9d8d3;
@@ -1401,6 +1403,7 @@ h2 {
 
 .queue-status-header > span,
 .insert-status-item > span {
+  flex: 1 1 auto;
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -1418,13 +1421,16 @@ h2 {
 }
 
 .queue-status-item {
+  min-width: 0;
   border-top: 1px solid #dce7e3;
   padding: 5px 3px 0;
 }
 
 .queue-status-copy {
   display: grid;
+  flex: 1 1 auto;
   min-width: 0;
+  overflow: hidden;
   gap: 1px;
 }
 
@@ -1447,6 +1453,7 @@ h2 {
 }
 
 .queue-status-actions button {
+  flex: 0 0 auto;
   min-height: 26px;
   border: 1px solid #c8d7d2;
   border-radius: 5px;
@@ -1455,6 +1462,19 @@ h2 {
   cursor: pointer;
   font: inherit;
   padding: 3px 8px;
+}
+
+@media (max-width: 520px) {
+  .queue-status-item {
+    align-items: flex-start;
+    flex-wrap: wrap;
+    gap: 5px;
+  }
+
+  .queue-status-item .queue-status-actions {
+    width: 100%;
+    justify-content: flex-end;
+  }
 }
 
 .queue-clear-button {

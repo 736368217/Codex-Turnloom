@@ -4,6 +4,9 @@ This is a concise, secret-free record for humans and future agents. Detailed top
 
 ## 2026-08-29
 
+- Capped and normalized queued-message previews so long mobile sends cannot push queue actions outside the viewport; narrow layouts keep actions on a dedicated row.
+- Android WebView now hands HTTP/HTTPS conversation links to the system browser, preserving the active Codex Pocket page.
+
 - Fixed the mobile goal panel's native `hidden` behavior being overridden by author CSS; empty goal forms no longer push conversation content down.
 - Goal writes now send only Desktop-supported `objective` and `status` fields; the old companion token-budget path was removed.
 - Rebuilt and installed the debug APK on all three local MuMu ADB devices, then verified the machine picker, drawer/back flow, compact conversation header, and ungrouped ordinary conversation list.

@@ -437,7 +437,14 @@ public class MainActivity extends ComponentActivity {
             public boolean shouldOverrideUrlLoading(WebView webView, WebResourceRequest request) {
                 Uri uri = request.getUrl();
                 String scheme = uri.getScheme();
-                if ("http".equalsIgnoreCase(scheme) || "https".equalsIgnoreCase(scheme)) return false;
+                if ("http".equalsIgnoreCase(scheme) || "https".equalsIgnoreCase(scheme)) {
+                    try {
+                        startActivity(new Intent(Intent.ACTION_VIEW, uri));
+                    } catch (Exception ignored) {
+                        Toast.makeText(MainActivity.this, "无法打开这个链接", Toast.LENGTH_SHORT).show();
+                    }
+                    return true;
+                }
                 try {
                     startActivity(new Intent(Intent.ACTION_VIEW, uri));
                 } catch (Exception ignored) {
