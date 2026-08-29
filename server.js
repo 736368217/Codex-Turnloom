@@ -275,11 +275,25 @@ const IPC_VERSION_BY_METHOD = {
   "thread-owner-discovery": 1,
   "thread-follower-start-turn": 2,
   "thread-follower-steer-turn": 1,
+  "thread-follower-compact-thread": 1,
   "thread-follower-interrupt-turn": 3,
   "thread-follower-command-approval-decision": 1,
   "thread-follower-file-approval-decision": 1,
   "thread-follower-permissions-request-approval-response": 1
 };
+
+const CORE_SKILL_ORDER = [
+  "implement",
+  "to-spec",
+  "code-review",
+  "diagnosing-bugs",
+  "research",
+  "tdd",
+  "triage",
+  "wayfinder",
+  "codebase-design",
+  "domain-modeling"
+];
 
 const jsonHeaders = {
   "content-type": "application/json; charset=utf-8",
@@ -589,13 +603,34 @@ async function getSkills() {
         displayName: metadata.name,
         description: metadata.description,
         source: source.label,
+        priority: source.key === "system" ? 0 : source.key === "local" ? 100 : 200,
         uri
       });
     } catch {
       // Ignore stale or partially installed skill entries.
     }
   }
-  const skills = [...byUri.values()].sort((a, b) => a.displayName.localeCompare(b.displayName, undefined, { sensitivity: "base" }));
+  const skills = [
+    {
+      name: "compact-context",
+      displayName: "压缩上下文",
+      description: "调用 Codex Desktop 的上下文压缩操作",
+      source: "内置操作",
+      priority: -10,
+      kind: "builtin",
+      action: "compact",
+      uri: "builtin://compact-context"
+    },
+    ...[...byUri.values()].sort((a, b) => {
+      const aName = String(a.name || "").toLowerCase();
+      const bName = String(b.name || "").toLowerCase();
+      const aCore = CORE_SKILL_ORDER.indexOf(aName);
+      const bCore = CORE_SKILL_ORDER.indexOf(bName);
+      const aRank = aCore >= 0 ? aCore + 1 : a.priority === 0 ? 50 : a.priority ?? 200;
+      const bRank = bCore >= 0 ? bCore + 1 : b.priority === 0 ? 50 : b.priority ?? 200;
+      return aRank - bRank || a.displayName.localeCompare(b.displayName, undefined, { sensitivity: "base" });
+    })
+  ];
   return {
     skills,
     codexHome: homeState.home,
@@ -1306,6 +1341,34 @@ class DesktopCodexIpcClient {
     await this.ensureReady();
     const { method, params } = desktopInterruptTurnRequest(threadId, expectedTurnId);
     return this.request(method, params);
+  }
+
+  async getThreadGoal(threadId) {
+    await this.ensureReady();
+    const response = await this.request("thread/goal/get", { threadId }, { timeoutMs: 5000 });
+    return response?.result?.goal ?? response?.goal ?? null;
+  }
+
+  async setThreadGoal(threadId, { objective, status = null, tokenBudget = null } = {}) {
+    await this.ensureReady();
+    const response = await this.request("thread/goal/set", {
+      threadId,
+      objective: objective == null ? null : String(objective),
+      status: status || null,
+      tokenBudget: tokenBudget == null ? null : Number(tokenBudget)
+    }, { timeoutMs: 8000 });
+    return response?.result?.goal ?? response?.goal ?? null;
+  }
+
+  async clearThreadGoal(threadId) {
+    await this.ensureReady();
+    const response = await this.request("thread/goal/clear", { threadId }, { timeoutMs: 8000 });
+    return response?.result ?? response;
+  }
+
+  async compactThread(threadId) {
+    await this.ensureReady();
+    return this.request("thread-follower-compact-thread", { conversationId: threadId }, { timeoutMs: 15000 });
   }
 
   async refreshRecentConversations(hostId = "local") {
@@ -2747,6 +2810,21 @@ function messageFromNoticeEvent(timestamp, payload, meta = {}) {
   };
 }
 
+function contextCompactionMessage(timestamp, payload, meta = {}) {
+  const item = payload?.item || payload?.payload?.item;
+  const isItem = payload?.type === "item_completed" && item?.type === "ContextCompaction";
+  const isNotification = payload?.type === "thread/compacted" || payload?.type === "context_compacted";
+  if (!isItem && !isNotification) return null;
+  return {
+    role: "notice",
+    kind: "context_compaction",
+    timestamp,
+    ...meta,
+    title: "上下文已压缩",
+    content: "Codex 已压缩此前的上下文，后续任务将继续使用新的上下文摘要。"
+  };
+}
+
 function recordNotice(threadId, { severity = "info", title = "", content = "", source = "server" } = {}) {
   if (!threadId || !content) return null;
   const notice = {
@@ -3008,6 +3086,11 @@ function parseRolloutLine(line, state) {
         turnId: state.activeTurn?.turnId || null,
         turnStartedAtMs: state.activeTurn?.startedAtMs || null
       };
+      const compaction = contextCompactionMessage(entry.timestamp, entry.payload, messageMeta);
+      if (hasDisplayableMessageContent(compaction)) {
+        state.noticeMessages.push({ ...compaction, lineNumber: state.lineNumber });
+        return;
+      }
       const interaction = messageFromInteractionEvent(entry.timestamp, entry.payload, messageMeta);
       if (hasDisplayableMessageContent(interaction)) {
         state.interactionMessages.push({ ...interaction, lineNumber: state.lineNumber });
@@ -3032,6 +3115,11 @@ function parseRolloutLine(line, state) {
         turnId: state.activeTurn?.turnId || null,
         turnStartedAtMs: state.activeTurn?.startedAtMs || null
       };
+      const compaction = contextCompactionMessage(entry.timestamp, entry.payload, messageMeta);
+      if (hasDisplayableMessageContent(compaction)) {
+        state.noticeMessages.push({ ...compaction, lineNumber: state.lineNumber });
+        return;
+      }
       const interaction = messageFromInteractionEvent(entry.timestamp, entry.payload, messageMeta);
       if (hasDisplayableMessageContent(interaction)) {
         state.interactionMessages.push({ ...interaction, lineNumber: state.lineNumber });
@@ -3160,6 +3248,7 @@ async function getMessages(id, { limit = DEFAULT_MESSAGE_LIMIT, fullHistory = fa
   }
   const ipcInteractions = codexIpcClient?.getRecentInteractionMessages(id) || [];
   const ipcNotices = codexIpcClient?.getRecentNoticeMessages(id) || [];
+  const goal = await getThreadGoalSafe(id);
   const serverNotices = getRecentNoticeMessages(id);
   const liveMessages = [...ipcInteractions, ...ipcNotices, ...serverNotices];
   const rolloutPath = resolveRolloutPath(thread.rolloutPath);
@@ -3168,6 +3257,7 @@ async function getMessages(id, { limit = DEFAULT_MESSAGE_LIMIT, fullHistory = fa
     const limited = limitMessagesForClient(messages, { thinking: false, interactionRequired: ipcInteractions.some((message) => message.requiresDesktopAction) }, limit);
     return finalizeMessagesResponse(id, {
       thread,
+      goal,
       meta: {},
       file: null,
       size: 0,
@@ -3186,7 +3276,7 @@ async function getMessages(id, { limit = DEFAULT_MESSAGE_LIMIT, fullHistory = fa
   if (!liveMessages.length) {
     const messages = await decorateMessageFiles(parsed.messages, id, thread);
     const limited = limitMessagesForClient(messages, parsed.status, limit);
-    return finalizeMessagesResponse(id, { thread, ...parsed, messages, ...includePartialHistoryAvailability(limited, parsed.partial) });
+    return finalizeMessagesResponse(id, { thread, goal, ...parsed, messages, ...includePartialHistoryAvailability(limited, parsed.partial) });
   }
   const status = {
     ...parsed.status,
@@ -3196,10 +3286,68 @@ async function getMessages(id, { limit = DEFAULT_MESSAGE_LIMIT, fullHistory = fa
   const limited = limitMessagesForClient(messages, status, limit);
   return finalizeMessagesResponse(id, {
     thread,
+    goal,
     ...parsed,
     status,
     ...includePartialHistoryAvailability(limited, parsed.partial)
   });
+}
+
+async function getThreadGoalSafe(threadId) {
+  try {
+    return await getCodexIpcClient().getThreadGoal(String(threadId));
+  } catch (error) {
+    logError(`[goal:read] ${threadId}: ${error?.message || error}`);
+    return null;
+  }
+}
+
+async function setThreadGoal(threadId, body = {}) {
+  const objective = body.objective == null ? null : String(body.objective).trim();
+  if (objective !== null && objective.length > 4000) {
+    const error = new Error("Goal objective is too long");
+    error.status = 413;
+    throw error;
+  }
+  const status = body.status == null || body.status === "" ? null : String(body.status);
+  const allowedStatuses = new Set(["active", "paused", "blocked", "usageLimited", "budgetLimited", "complete"]);
+  if (status && !allowedStatuses.has(status)) {
+    const error = new Error("Invalid goal status");
+    error.status = 400;
+    throw error;
+  }
+  const tokenBudget = body.tokenBudget == null || body.tokenBudget === "" ? null : Number(body.tokenBudget);
+  if (tokenBudget !== null && (!Number.isSafeInteger(tokenBudget) || tokenBudget < 0)) {
+    const error = new Error("Invalid goal token budget");
+    error.status = 400;
+    throw error;
+  }
+  if (!(await findThread(threadId))) {
+    const error = new Error("Thread not found");
+    error.status = 404;
+    throw error;
+  }
+  return getCodexIpcClient().setThreadGoal(String(threadId), { objective: objective || null, status, tokenBudget });
+}
+
+async function clearThreadGoal(threadId) {
+  if (!(await findThread(threadId))) {
+    const error = new Error("Thread not found");
+    error.status = 404;
+    throw error;
+  }
+  await getCodexIpcClient().clearThreadGoal(String(threadId));
+  return { goal: null, cleared: true };
+}
+
+async function compactThread(threadId) {
+  if (!(await findThread(threadId))) {
+    const error = new Error("Thread not found");
+    error.status = 404;
+    throw error;
+  }
+  await getCodexIpcClient().compactThread(String(threadId));
+  return { ok: true, threadId: String(threadId) };
 }
 
 function desktopTurnInput(text, images = []) {
@@ -4737,6 +4885,28 @@ const server = http.createServer(async (req, res) => {
       sendJson(res, 200, await setThreadPinned(pinMatch[1], Boolean(body.pinned)));
       return;
     }
+    const goalMatch = url.pathname.match(/^\/api\/threads\/([0-9a-fA-F-]{20,})\/goal$/);
+    if (goalMatch && req.method === "GET") {
+      if (!requireAuthorized(req, res, url)) return;
+      sendJson(res, 200, { goal: await getThreadGoalSafe(goalMatch[1]) });
+      return;
+    }
+    if (goalMatch && req.method === "PUT") {
+      if (!requireAuthorized(req, res, url)) return;
+      sendJson(res, 200, { goal: await setThreadGoal(goalMatch[1], await readJsonBody(req)) });
+      return;
+    }
+    if (goalMatch && req.method === "DELETE") {
+      if (!requireAuthorized(req, res, url)) return;
+      sendJson(res, 200, await clearThreadGoal(goalMatch[1]));
+      return;
+    }
+    const compactMatch = url.pathname.match(/^\/api\/threads\/([0-9a-fA-F-]{20,})\/compact$/);
+    if (req.method === "POST" && compactMatch) {
+      if (!requireAuthorized(req, res, url)) return;
+      sendJson(res, 200, await compactThread(compactMatch[1]));
+      return;
+    }
     const match = url.pathname.match(/^\/api\/threads\/([0-9a-fA-F-]{20,})\/messages$/);
     if (req.method === "GET" && match) {
       if (!requireAuthorized(req, res, url)) return;
@@ -4902,6 +5072,11 @@ export {
   requestedByteRange,
   rolloutPathForCurrentHome,
   rolloutResultFromState,
+  contextCompactionMessage,
+  getThreadGoalSafe,
+  setThreadGoal,
+  clearThreadGoal,
+  compactThread,
   runSerializedThreadStart,
   sameFilePath,
   runIdempotentSend,

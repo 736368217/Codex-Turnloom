@@ -11,6 +11,7 @@ import {
   canExposeLocalFilesForMessage,
   contentDispositionForDownload,
   createRolloutParseState,
+  contextCompactionMessage,
   desktopInterruptTurnRequest,
   desktopStartTurnRequest,
   desktopSteerRestoreMessage,
@@ -58,6 +59,20 @@ test("thread list hides subagents but preserves a selected legacy subagent", () 
   assert.equal(isSubagentThread(rows[0]), false);
   assert.equal(isSubagentThread(rows[1]), true);
   assert.deepEqual(visibleThreadRows(rows, ["sub-selected"]).map((row) => row.id), ["main", "sub-selected"]);
+});
+
+test("context compaction rollout items become safe timeline notices", () => {
+  const state = createRolloutParseState({ mtimeMs: Date.now(), size: 1 }, Date.now());
+  parseRolloutLine(rolloutLine("2026-08-22T02:14:50.951Z", 1, "event_msg", {
+    type: "item_completed",
+    thread_id: "thread-1",
+    turn_id: "turn-1",
+    item: { type: "ContextCompaction", id: "compaction-1" }
+  }), state);
+  const result = rolloutResultFromState({ filePath: "", stat: { mtimeMs: Date.now(), size: 1 }, nowMs: Date.now(), state });
+  assert.equal(result.messages[0].kind, "context_compaction");
+  assert.match(result.messages[0].content, /压缩/);
+  assert.equal(contextCompactionMessage("2026-08-22T02:14:50.951Z", { type: "message" }), null);
 });
 
 test("thread list maps Desktop pin and explicit project roots", () => {

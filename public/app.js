@@ -25,6 +25,8 @@ const state = {
   authToken: "",
   authLocked: false,
   threadStatus: null,
+  goal: null,
+  goalEditing: false,
   composerBusy: false,
   uncertainSend: null,
   reminders: {},
@@ -82,6 +84,18 @@ const els = {
   threadReminderAction: document.querySelector("#threadReminderAction"),
   threadTitle: document.querySelector("#threadTitle"),
   threadMeta: document.querySelector("#threadMeta"),
+  goalPanel: document.querySelector("#goalPanel"),
+  goalView: document.querySelector("#goalView"),
+  goalForm: document.querySelector("#goalForm"),
+  goalObjective: document.querySelector("#goalObjective"),
+  goalObjectiveInput: document.querySelector("#goalObjectiveInput"),
+  goalStatus: document.querySelector("#goalStatus"),
+  goalStatusInput: document.querySelector("#goalStatusInput"),
+  goalBudgetInput: document.querySelector("#goalBudgetInput"),
+  goalStats: document.querySelector("#goalStats"),
+  goalEditButton: document.querySelector("#goalEditButton"),
+  goalCancelButton: document.querySelector("#goalCancelButton"),
+  goalClearButton: document.querySelector("#goalClearButton"),
   messageList: document.querySelector("#messageList"),
   scrollToBottomButton: document.querySelector("#scrollToBottomButton"),
   refreshButton: document.querySelector("#refreshButton"),
@@ -267,6 +281,25 @@ const I18N = {
     skillPickerTitle: "引用技能",
     skillPickerLoading: "正在加载技能...",
     skillPickerEmpty: "没有找到匹配技能",
+    goalLabel: "目标",
+    goalEdit: "编辑目标",
+    goalSave: "保存",
+    goalCancel: "取消",
+    goalClear: "清除",
+    goalEmpty: "尚未设置目标",
+    goalTokens: "Token {used}/{budget}",
+    goalTime: "已用 {seconds} 秒",
+    goalStatusActive: "进行中",
+    goalStatusPaused: "已暂停",
+    goalStatusBlocked: "已阻塞",
+    goalStatusUsageLimited: "用量受限",
+    goalStatusBudgetLimited: "预算受限",
+    goalStatusComplete: "已完成",
+    compactContext: "压缩上下文",
+    compactContextDescription: "调用 Codex Desktop 的上下文压缩操作",
+    compactStarted: "已请求压缩上下文。",
+    goalSaveFailed: "目标保存失败：{message}",
+    goalClearFailed: "目标清除失败：{message}",
     untitled: "Untitled",
     separator: " · "
   },
@@ -402,6 +435,25 @@ const I18N = {
     skillPickerTitle: "Mention skill",
     skillPickerLoading: "Loading skills...",
     skillPickerEmpty: "No matching skills",
+    goalLabel: "Goal",
+    goalEdit: "Edit goal",
+    goalSave: "Save",
+    goalCancel: "Cancel",
+    goalClear: "Clear",
+    goalEmpty: "No goal set",
+    goalTokens: "Tokens {used}/{budget}",
+    goalTime: "Used {seconds}s",
+    goalStatusActive: "Active",
+    goalStatusPaused: "Paused",
+    goalStatusBlocked: "Blocked",
+    goalStatusUsageLimited: "Usage limited",
+    goalStatusBudgetLimited: "Budget limited",
+    goalStatusComplete: "Complete",
+    compactContext: "Compact context",
+    compactContextDescription: "Run Codex Desktop context compaction",
+    compactStarted: "Context compaction requested.",
+    goalSaveFailed: "Could not save goal: {message}",
+    goalClearFailed: "Could not clear goal: {message}",
     untitled: "Untitled",
     separator: " · "
   }
@@ -1362,9 +1414,55 @@ function removePendingMessage(id) {
   }
 }
 
+function goalStatusLabel(status) {
+  const key = String(status || "");
+  const labels = {
+    active: "goalStatusActive",
+    paused: "goalStatusPaused",
+    blocked: "goalStatusBlocked",
+    usageLimited: "goalStatusUsageLimited",
+    budgetLimited: "goalStatusBudgetLimited",
+    complete: "goalStatusComplete"
+  };
+  return labels[key] ? t(labels[key]) : key;
+}
+
+function renderGoal(goal) {
+  const hidden = !state.selectedId || state.selectedId === DRAFT_THREAD_ID;
+  els.goalPanel.hidden = hidden;
+  if (hidden) return;
+  els.goalView.hidden = Boolean(state.goalEditing);
+  els.goalForm.hidden = !state.goalEditing;
+  els.goalObjective.textContent = goal?.objective || t("goalEmpty");
+  els.goalObjective.classList.toggle("empty", !goal?.objective);
+  els.goalStatus.textContent = goalStatusLabel(goal?.status);
+  const stats = [];
+  if (Number.isFinite(Number(goal?.tokensUsed))) stats.push(t("goalTokens", { used: Number(goal.tokensUsed), budget: goal.tokenBudget == null ? "∞" : Number(goal.tokenBudget) }));
+  if (Number.isFinite(Number(goal?.timeUsedSeconds))) stats.push(t("goalTime", { seconds: Number(goal.timeUsedSeconds) }));
+  els.goalStats.textContent = stats.join(t("separator"));
+  if (state.goalEditing) {
+    els.goalObjectiveInput.value = goal?.objective || "";
+    els.goalStatusInput.value = goal?.status || "active";
+    els.goalBudgetInput.value = goal?.tokenBudget == null ? "" : String(goal.tokenBudget);
+  }
+}
+
+async function requestContextCompaction() {
+  if (!state.selectedId || state.selectedId === DRAFT_THREAD_ID || !state.config?.allowWrite) return;
+  try {
+    await postJson(`/api/threads/${encodeURIComponent(state.selectedId)}/compact`, {});
+    els.sendStatus.textContent = t("compactStarted");
+    refreshSoon(500);
+  } catch (error) {
+    els.sendStatus.textContent = error.message;
+  }
+}
+
 function renderMessages(data) {
   const selected = state.selectedId === DRAFT_THREAD_ID ? state.draftThread : state.threads.find((thread) => thread.id === state.selectedId);
   els.threadTitle.textContent = selected?.title || data.thread?.title || t("untitled");
+  state.goal = data.goal || null;
+  renderGoal(state.goal);
   const displayMessages = mergePendingMessages(data);
   const statusText = data.status?.interactionRequired
     ? `${t("separator")}${t("interactionRequired")}`
@@ -1578,7 +1676,7 @@ function filteredPlugins() {
 function filteredSkills() {
   const query = state.skillQuery.trim().toLowerCase();
   const skills = state.skills || [];
-  if (!query) return skills.slice(0, 12);
+  if (!query) return skills;
   return skills
     .map((skill) => {
       const displayName = String(skill.displayName || skill.name || "").toLowerCase();
@@ -1593,9 +1691,8 @@ function filteredSkills() {
       return { skill, score };
     })
     .filter((item) => item.score > 0)
-    .sort((a, b) => b.score - a.score || (a.skill.displayName || a.skill.name).localeCompare(b.skill.displayName || b.skill.name, undefined, { sensitivity: "base" }))
+    .sort((a, b) => b.score - a.score || (a.skill.priority ?? 999) - (b.skill.priority ?? 999) || (a.skill.displayName || a.skill.name).localeCompare(b.skill.displayName || b.skill.name, undefined, { sensitivity: "base" }))
     .map((item) => item.skill)
-    .slice(0, 12);
 }
 
 function closePluginMentionMenu() {
@@ -1671,7 +1768,7 @@ function selectedPluginMarkdown() {
 }
 
 function selectedSkillPrompt() {
-  const names = state.selectedSkills.map((skill) => skill.displayName || skill.name).filter(Boolean);
+  const names = state.selectedSkills.filter((skill) => skill.kind !== "builtin").map((skill) => skill.displayName || skill.name).filter(Boolean);
   if (!names.length) return "";
   return `${names.length === 1 ? "Use skill" : "Use skills"}: ${names.join(", ")}.`;
 }
@@ -1786,7 +1883,7 @@ function renderSkillMentionMenu() {
             aria-selected="${index === state.skillActiveIndex ? "true" : "false"}"
             data-skill-index="${index}"
           >
-            <span class="plugin-mention-icon skill-mention-icon fallback">/</span>
+            <span class="plugin-mention-icon skill-mention-icon fallback">${skill.kind === "builtin" ? "↗" : "/"}</span>
             <strong>${escapeHtml(skill.displayName || skill.name)}</strong>
             ${description}
           </button>
@@ -1888,6 +1985,11 @@ function selectActivePluginMention() {
 
 function insertSkillMention(skill) {
   if (!skill?.uri) return;
+  if (skill.kind === "builtin" && skill.action === "compact") {
+    closeSkillMentionMenu();
+    if (state.selectedId && state.selectedId !== DRAFT_THREAD_ID) void requestContextCompaction();
+    return;
+  }
   const input = els.composerInput;
   if (state.skillTriggerStart >= 0) {
     const cursor = input.selectionStart ?? input.value.length;
@@ -2054,6 +2156,8 @@ async function loadThreads() {
   if (state.selectedId !== previousSelectedId) {
     state.messageLimit = MESSAGE_PAGE_SIZE;
     state.messageHistoryLoading = false;
+    state.goalEditing = false;
+    state.goal = null;
   }
   if (state.selectedId !== previousSelectedId || state.modelThreadId == null) adoptSelectedThreadModel();
   renderThreads();
@@ -2313,6 +2417,51 @@ els.newThreadButton.addEventListener("click", () => {
 });
 
 els.refreshButton.addEventListener("click", () => refresh(true));
+
+els.goalEditButton?.addEventListener("click", () => {
+  state.goalEditing = true;
+  renderGoal(state.goal);
+});
+
+els.goalCancelButton?.addEventListener("click", () => {
+  state.goalEditing = false;
+  renderGoal(state.goal);
+});
+
+els.goalClearButton?.addEventListener("click", async () => {
+  if (!state.selectedId || !confirm("清除当前目标？")) return;
+  try {
+    await fetchJson(`/api/threads/${encodeURIComponent(state.selectedId)}/goal`, { method: "DELETE" });
+    state.goal = null;
+    state.goalEditing = false;
+    renderGoal(null);
+    refreshSoon(200);
+  } catch (error) {
+    els.sendStatus.textContent = t("goalClearFailed", { message: error.message });
+  }
+});
+
+els.goalForm?.addEventListener("submit", async (event) => {
+  event.preventDefault();
+  if (!state.selectedId) return;
+  try {
+    const budget = els.goalBudgetInput.value.trim();
+    const data = await fetchJson(`/api/threads/${encodeURIComponent(state.selectedId)}/goal`, {
+      method: "PUT",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        objective: els.goalObjectiveInput.value,
+        status: els.goalStatusInput.value,
+        tokenBudget: budget ? Number(budget) : null
+      })
+    });
+    state.goal = data.goal || null;
+    state.goalEditing = false;
+    renderGoal(state.goal);
+  } catch (error) {
+    els.sendStatus.textContent = t("goalSaveFailed", { message: error.message });
+  }
+});
 
 els.sidebarCloseButton?.addEventListener("click", () => {
   state.sidebarCollapsed = true;

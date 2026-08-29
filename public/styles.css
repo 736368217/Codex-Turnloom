@@ -375,6 +375,82 @@ h2 {
   display: none;
 }
 
+.goal-panel {
+  display: grid;
+  max-width: min(760px, 100%);
+  margin-top: 8px;
+  border: 1px solid #d9e2df;
+  border-radius: 8px;
+  background: #f7faf8;
+  padding: 9px 11px;
+}
+
+.goal-heading,
+.goal-form-row,
+.goal-form-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.goal-heading {
+  justify-content: space-between;
+  color: #385b53;
+  font-size: 12px;
+  font-weight: 750;
+}
+
+.goal-status {
+  color: #1f6f62;
+  font-size: 11px;
+}
+
+.goal-objective {
+  margin: 5px 0 7px;
+  color: var(--text);
+  font-size: 13px;
+  line-height: 1.4;
+  white-space: pre-wrap;
+}
+
+.goal-objective.empty {
+  color: var(--muted);
+}
+
+.goal-stats {
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.goal-action {
+  min-height: 28px;
+  border: 1px solid #cddbd6;
+  border-radius: 6px;
+  background: #fff;
+  color: #31594f;
+  cursor: pointer;
+  font: inherit;
+  font-size: 12px;
+  padding: 5px 9px;
+}
+
+.goal-action.primary { background: #e4f0ec; }
+.goal-action.danger { color: #9a3e38; }
+.goal-form { display: grid; gap: 8px; }
+.goal-form label { display: grid; gap: 4px; color: var(--muted); font-size: 11px; }
+.goal-form textarea,
+.goal-form input,
+.goal-form select { min-width: 0; border: 1px solid #d1ddd8; border-radius: 6px; background: #fff; color: var(--text); font: inherit; padding: 7px; }
+.goal-form-row > label { flex: 1 1 0; }
+.goal-form-actions { justify-content: flex-end; }
+
+.message.notice.context_compaction .bubble {
+  border-color: #b9cfe6;
+  background: #f0f6fc;
+  color: #23415f;
+  box-shadow: inset 3px 0 0 #5c8fbe;
+}
+
 .thread-group + .thread-group {
   margin-top: 12px;
 }
