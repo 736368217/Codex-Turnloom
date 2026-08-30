@@ -242,6 +242,9 @@ const I18N = {
     syncTemporaryFailed: "同步暂时失败",
     emptyThread: "这个对话暂时没有可展示内容。",
     contents: "{count} 条内容",
+    messageSending: "正在发送中",
+    messageFailed: "发送失败",
+    retrySend: "重发",
     thinking: "思考中...",
     processing: "正在处理",
     sent: "已发送",
@@ -395,6 +398,9 @@ const I18N = {
     syncTemporaryFailed: "Sync temporarily failed",
     emptyThread: "This conversation has no displayable content yet.",
     contents: "{count} items",
+    messageSending: "Sending",
+    messageFailed: "Send failed",
+    retrySend: "Retry",
     thinking: "Thinking...",
     processing: "Processing",
     sent: "Sent",
@@ -1343,6 +1349,14 @@ function mergePendingMessages(data) {
   return [...data.messages, ...pending];
 }
 
+function pendingDeliveryHtml(message) {
+  if (message.role !== "user" || !message.deliveryStatus || message.deliveryStatus === "sent") return "";
+  if (message.deliveryStatus === "failed") {
+    return `<div class="message-delivery failed"><span>${escapeHtml(t("messageFailed"))}</span><button type="button" class="message-retry-button" data-pending-action="retry">${escapeHtml(t("retrySend"))}</button></div>`;
+  }
+  return `<div class="message-delivery sending">${escapeHtml(t("messageSending"))}</div>`;
+}
+
 function renderCurrentMessages(scrollToBottom = true) {
   const data =
     state.lastMessagesData || {
@@ -1395,10 +1409,12 @@ function addPendingUserMessage(threadId, content, images = []) {
     threadId,
     role: "user",
     kind: "pending",
+    deliveryStatus: "sending",
     timestamp: new Date().toISOString(),
     content,
     sentContent: content,
-    images: images.map((image) => image.dataUrl)
+    images: images.map((image) => image.dataUrl),
+    attachments: images.map(({ name, mimeType, size, data, dataUrl }) => ({ name, mimeType, size, data, dataUrl }))
   };
   state.pendingMessages.push(pending);
   state.messagesSignature = "";
@@ -1406,13 +1422,31 @@ function addPendingUserMessage(threadId, content, images = []) {
   return pending.id;
 }
 
-function removePendingMessage(id) {
-  const previousLength = state.pendingMessages.length;
-  state.pendingMessages = state.pendingMessages.filter((message) => message.id !== id);
-  if (state.pendingMessages.length !== previousLength) {
-    state.messagesSignature = "";
-    renderCurrentMessages(true);
-  }
+function updatePendingMessage(id, patch) {
+  const pending = state.pendingMessages.find((message) => message.id === id);
+  if (!pending) return;
+  Object.assign(pending, patch);
+  state.messagesSignature = "";
+  renderCurrentMessages(false);
+}
+
+function retryPendingMessage(message) {
+  if (!message || message.deliveryStatus !== "failed" || state.composerBusy) return;
+  state.pendingMessages = state.pendingMessages.filter((entry) => entry.id !== message.id);
+  els.composerInput.value = message.sentContent || message.content || "";
+  state.imageAttachments = (message.attachments || []).map((image, index) => ({
+    id: `retry-${Date.now()}-${index}`,
+    name: image.name || "image.jpg",
+    mimeType: image.mimeType || "image/jpeg",
+    size: Number(image.size) || 0,
+    data: image.data || String(image.dataUrl || "").split(",")[1] || "",
+    dataUrl: image.dataUrl || (image.data ? `data:${image.mimeType || "image/jpeg"};base64,${image.data}` : "")
+  }));
+  state.messagesSignature = "";
+  renderImageAttachments();
+  autoResizeComposerInput();
+  renderCurrentMessages(false);
+  els.composerForm.requestSubmit();
 }
 
 function goalStatusLabel(status) {
@@ -1517,8 +1551,10 @@ function renderMessages(data) {
       const metaTop = messageMetaTop(message, previousUserMessage);
       const metaBottom = formatMessageDate(message.completedAtMs || message.timestamp);
       if (message.role === "user") previousUserMessage = message;
+      const pendingClass = message.deliveryStatus && message.deliveryStatus !== "sent" ? " pending" : "";
+      const pendingId = message.deliveryStatus ? ` data-pending-id="${escapeHtml(message.id || "")}"` : "";
       const messageArticle = `
-        <article class="message ${escapeHtml(message.role)}${message.kind === "pending" ? " pending" : ""}${hidden}">
+        <article class="message ${escapeHtml(message.role)}${pendingClass}${hidden}"${pendingId}>
           <div class="role">${roleBadge(message)}</div>
           <div class="bubble">
             ${metaTop ? `<div class="message-meta message-meta-top">${escapeHtml(metaTop)}</div>` : ""}
@@ -1527,6 +1563,7 @@ function renderMessages(data) {
             ${!noticeCollapsed ? renderMessageImages(message) : ""}
             ${!noticeCollapsed ? renderMessageFiles(message) : ""}
             ${renderApprovalActions(message)}
+            ${pendingDeliveryHtml(message)}
             ${metaBottom ? `<div class="message-meta message-meta-bottom">${escapeHtml(metaBottom)}</div>` : ""}
           </div>
         </article>
@@ -2555,6 +2592,15 @@ els.scrollToBottomButton.addEventListener("click", () => {
 });
 
 els.messageList.addEventListener("click", async (event) => {
+  const retryButton = event.target.closest("[data-pending-action='retry']");
+  if (retryButton) {
+    event.preventDefault();
+    event.stopPropagation();
+    const article = retryButton.closest("[data-pending-id]");
+    const pending = state.pendingMessages.find((entry) => entry.id === article?.dataset.pendingId);
+    retryPendingMessage(pending);
+    return;
+  }
   const noticeButton = event.target.closest(".notice-collapse-button");
   if (noticeButton) {
     event.preventDefault();
@@ -2917,6 +2963,7 @@ els.composerForm.addEventListener("submit", async (event) => {
   const previousThreadStatus = state.threadStatus;
   let sendAccepted = false;
   const pendingMessageId = thinking || isDraftThread ? null : addPendingUserMessage(state.selectedId, sendMessage, images);
+  clearComposerAfterAcceptedSend();
   const clientRequestId = globalThis.crypto?.randomUUID?.() || `send-${Date.now()}-${Math.random().toString(16).slice(2)}`;
   state.composerBusy = true;
   if (!thinking && !isDraftThread) {
@@ -2939,7 +2986,7 @@ els.composerForm.addEventListener("submit", async (event) => {
     });
     if (!result?.uncertain) {
       sendAccepted = true;
-      clearComposerAfterAcceptedSend();
+      if (pendingMessageId) updatePendingMessage(pendingMessageId, { deliveryStatus: "sent", kind: "message" });
       try {
         globalThis.CodexPocket?.kickReminderCheck?.();
       } catch {
@@ -2999,7 +3046,7 @@ els.composerForm.addEventListener("submit", async (event) => {
     renderComposerMode();
     refreshSoon(sendMode === "queue" ? 400 : 1200);
   } catch (error) {
-    if (pendingMessageId) removePendingMessage(pendingMessageId);
+    if (pendingMessageId) updatePendingMessage(pendingMessageId, { deliveryStatus: "failed", kind: "pending", error: error.message || "" });
     if (!thinking) {
       state.threadStatus = previousThreadStatus;
       state.messagesSignature = "";

@@ -2,6 +2,11 @@
 
 This is a concise, secret-free record for humans and future agents. Detailed topology and guardrails are in `OPERATIONS.md`.
 
+## 2026-08-30
+
+- Mobile sends now clear the composer immediately and keep one optimistic user bubble with sending/success/failure state; failed sends can be retried without duplicating the message.
+- Routine Desktop refresh `no-client-found` results are logged silently rather than rendered as a repeated warning card.
+
 ## 2026-08-29
 
 - Capped and normalized queued-message previews so long mobile sends cannot push queue actions outside the viewport; narrow layouts keep actions on a dedicated row.

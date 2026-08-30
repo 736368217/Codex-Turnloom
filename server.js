@@ -4134,15 +4134,23 @@ async function refreshCodexDesktopAfterSend(
     }
   }
 
-  if (failures.length) {
+  const onlyNoClientFound = failures.length > 0 && failures.every((failure) => /no-client-found/i.test(String(failure)));
+  if (shouldRecordDesktopRefreshNotice(failures)) {
     recordNotice(id, {
       severity: "warning",
       title: "Desktop refresh delayed",
       content: `The message was sent, but Codex Desktop did not fully refresh yet.\n\n${failures.join("\n")}`,
       source: "send-refresh"
     });
+  } else if (onlyNoClientFound) {
+    logInfo(`[send-refresh] Desktop refresh deferred for ${id}: no active Desktop client.`);
   }
   return { refreshed, failures, openedThread, persisted };
+}
+
+function shouldRecordDesktopRefreshNotice(failures = []) {
+  const items = Array.isArray(failures) ? failures.filter(Boolean).map(String) : [];
+  return items.length > 0 && !items.every((failure) => /no-client-found/i.test(failure));
 }
 
 function conversationIdFromStartConversation(response) {
@@ -5136,6 +5144,7 @@ export {
   sameFilePath,
   runIdempotentSend,
   refreshCodexDesktopAfterSend,
+  shouldRecordDesktopRefreshNotice,
   startTurnWithOwnerRecovery,
   stripHiddenMessageLocalAssets,
   isSubagentThread,

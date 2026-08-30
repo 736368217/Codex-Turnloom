@@ -34,6 +34,7 @@ import {
   rolloutResultFromState,
   runIdempotentSend,
   refreshCodexDesktopAfterSend,
+  shouldRecordDesktopRefreshNotice,
   runSerializedThreadStart,
   sameFilePath,
   startTurnWithOwnerRecovery,
@@ -252,6 +253,11 @@ test("Desktop refresh waits for the new turn to persist before opening the conve
   });
   assert.equal(result.persisted, true);
   assert.deepEqual(calls, [["persist", "thread-1", "turn-1"], "refresh", "refresh", "active"]);
+});
+
+test("routine no-client-found refresh failures stay out of the conversation timeline", () => {
+  assert.equal(shouldRecordDesktopRefreshNotice(["refresh: no-client-found", "refresh: no-client-found"]), false);
+  assert.equal(shouldRecordDesktopRefreshNotice(["refresh: no-client-found", "set active: permission denied"]), true);
 });
 
 test("new turns for one thread are serialized before the second state check", async () => {

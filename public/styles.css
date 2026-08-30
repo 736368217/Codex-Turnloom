@@ -1055,6 +1055,35 @@ h2 {
   box-shadow: inset 0 0 0 1px rgba(31, 111, 98, 0.12);
 }
 
+.message-delivery {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 8px;
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.25;
+}
+
+.message-delivery.failed {
+  color: #a13f3a;
+}
+
+.message-retry-button {
+  min-height: 24px;
+  border: 1px solid #d6aaa6;
+  border-radius: 5px;
+  background: #fff8f7;
+  color: #963b36;
+  cursor: pointer;
+  font: inherit;
+  padding: 2px 8px;
+}
+
+.message-retry-button:active {
+  background: #f8e8e6;
+}
+
 .message.tool .bubble {
   background: var(--tool);
   color: #5b5348;
