@@ -387,8 +387,7 @@ h2 {
 }
 
 .goal-panel[hidden],
-.goal-view[hidden],
-.goal-form[hidden] {
+.goal-view[hidden] {
   display: none;
 }
 
@@ -448,6 +447,78 @@ h2 {
 .goal-form select { min-width: 0; border: 1px solid #d1ddd8; border-radius: 6px; background: #fff; color: var(--text); font: inherit; padding: 7px; }
 .goal-form-row > label { flex: 1 1 0; }
 .goal-form-actions { justify-content: flex-end; }
+
+.goal-edit-dialog {
+  position: fixed;
+  inset: 0;
+  z-index: 80;
+  display: grid;
+  place-items: center;
+  padding: max(18px, env(safe-area-inset-top)) max(16px, env(safe-area-inset-right)) max(18px, env(safe-area-inset-bottom)) max(16px, env(safe-area-inset-left));
+}
+
+.goal-edit-dialog[hidden] { display: none; }
+
+.goal-dialog-backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(24, 31, 29, 0.34);
+  backdrop-filter: blur(2px);
+}
+
+.goal-dialog-card {
+  position: relative;
+  display: grid;
+  width: min(92vw, 440px);
+  max-height: min(86dvh, 620px);
+  overflow: hidden;
+  border: 1px solid #d7e0dc;
+  border-radius: 10px;
+  background: var(--panel);
+  box-shadow: 0 20px 60px rgba(26, 38, 34, 0.24);
+}
+
+.goal-dialog-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  border-bottom: 1px solid var(--border);
+  padding: 14px 16px 12px;
+}
+
+.goal-dialog-header h3 {
+  margin: 0;
+  color: var(--text);
+  font-size: 15px;
+  font-weight: 700;
+}
+
+.goal-dialog-close {
+  display: grid;
+  width: 30px;
+  height: 30px;
+  place-items: center;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  font-size: 22px;
+  line-height: 1;
+}
+
+.goal-dialog-close:hover { background: #eef3f1; color: var(--text); }
+
+.goal-dialog-card .goal-form {
+  min-height: 0;
+  overflow-y: auto;
+  padding: 14px 16px max(16px, env(safe-area-inset-bottom));
+}
+
+.goal-dialog-card .goal-form textarea { min-height: 104px; resize: vertical; }
+
+body.goal-dialog-open { overflow: hidden; }
 
 .goal-context-menu {
   position: absolute;

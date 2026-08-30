@@ -87,6 +87,8 @@ const els = {
   threadMeta: document.querySelector("#threadMeta"),
   goalPanel: document.querySelector("#goalPanel"),
   goalView: document.querySelector("#goalView"),
+  goalEditDialog: document.querySelector("#goalEditDialog"),
+  goalDialogClose: document.querySelector("#goalDialogClose"),
   goalForm: document.querySelector("#goalForm"),
   goalObjective: document.querySelector("#goalObjective"),
   goalObjectiveInput: document.querySelector("#goalObjectiveInput"),
@@ -1463,19 +1465,36 @@ function goalStatusLabel(status) {
 }
 
 function renderGoal(goal) {
-  const hidden = !state.selectedId || state.selectedId === DRAFT_THREAD_ID || (!goal?.objective && !state.goalEditing);
+  const hidden = !state.selectedId || state.selectedId === DRAFT_THREAD_ID || !goal?.objective;
   els.goalPanel.hidden = hidden;
   els.goalContextMenu.hidden = true;
-  if (hidden) return;
-  els.goalView.hidden = Boolean(state.goalEditing);
-  els.goalForm.hidden = !state.goalEditing;
+  els.goalView.hidden = hidden;
+  if (hidden) {
+    closeGoalEditDialog();
+    return;
+  }
   els.goalObjective.textContent = goal?.objective || "";
   els.goalObjective.classList.remove("empty");
   els.goalStatus.textContent = goalStatusLabel(goal?.status);
-  if (state.goalEditing) {
-    els.goalObjectiveInput.value = goal?.objective || "";
-    els.goalStatusInput.value = goal?.status || "active";
-  }
+}
+
+function openGoalEditDialog() {
+  if (!state.goal?.objective || !els.goalEditDialog) return;
+  state.goalEditing = true;
+  els.goalObjectiveInput.value = state.goal.objective || "";
+  els.goalStatusInput.value = state.goal.status || "active";
+  els.goalEditDialog.hidden = false;
+  document.body.classList.add("goal-dialog-open");
+  requestAnimationFrame(() => {
+    els.goalObjectiveInput.focus();
+    els.goalObjectiveInput.setSelectionRange(els.goalObjectiveInput.value.length, els.goalObjectiveInput.value.length);
+  });
+}
+
+function closeGoalEditDialog() {
+  state.goalEditing = false;
+  if (els.goalEditDialog) els.goalEditDialog.hidden = true;
+  document.body.classList.remove("goal-dialog-open");
 }
 
 async function requestContextCompaction() {
@@ -2047,8 +2066,7 @@ function insertSkillMention(skill) {
   }
   if (skill.kind === "builtin" && skill.action === "goal") {
     closeSkillMentionMenu();
-    state.goalEditing = true;
-    renderGoal(state.goal);
+    openGoalEditDialog();
     return;
   }
   if (skill.kind === "builtin" && skill.action === "plan") {
@@ -2230,7 +2248,7 @@ async function loadThreads() {
   if (state.selectedId !== previousSelectedId) {
     state.messageLimit = MESSAGE_PAGE_SIZE;
     state.messageHistoryLoading = false;
-    state.goalEditing = false;
+    closeGoalEditDialog();
     state.goal = null;
   }
   if (state.selectedId !== previousSelectedId || state.modelThreadId == null) adoptSelectedThreadModel();
@@ -2493,8 +2511,7 @@ els.newThreadButton.addEventListener("click", () => {
 els.refreshButton.addEventListener("click", () => refresh(true));
 
 els.goalEditButton?.addEventListener("click", () => {
-  state.goalEditing = true;
-  renderGoal(state.goal);
+  openGoalEditDialog();
 });
 
 els.goalContextMenu?.addEventListener("click", (event) => {
@@ -2502,8 +2519,7 @@ els.goalContextMenu?.addEventListener("click", (event) => {
   if (action === "goalPauseAction") void updateGoalStatus("paused");
   if (action === "goalEditAction") {
     els.goalContextMenu.hidden = true;
-    state.goalEditing = true;
-    renderGoal(state.goal);
+    openGoalEditDialog();
   }
   if (action === "goalDeleteAction") {
     els.goalContextMenu.hidden = true;
@@ -2526,8 +2542,12 @@ els.goalPanel?.addEventListener("contextmenu", (event) => {
 });
 
 els.goalCancelButton?.addEventListener("click", () => {
-  state.goalEditing = false;
-  renderGoal(state.goal);
+  closeGoalEditDialog();
+});
+
+els.goalDialogClose?.addEventListener("click", closeGoalEditDialog);
+els.goalEditDialog?.addEventListener("click", (event) => {
+  if (event.target.matches("[data-goal-dialog-close]")) closeGoalEditDialog();
 });
 
 els.goalClearButton?.addEventListener("click", async () => {
@@ -2535,7 +2555,7 @@ els.goalClearButton?.addEventListener("click", async () => {
   try {
     await fetchJson(`/api/threads/${encodeURIComponent(state.selectedId)}/goal`, { method: "DELETE" });
     state.goal = null;
-    state.goalEditing = false;
+    closeGoalEditDialog();
     renderGoal(null);
     refreshSoon(200);
   } catch (error) {
@@ -2556,7 +2576,7 @@ els.goalForm?.addEventListener("submit", async (event) => {
       })
     });
     state.goal = data.goal || null;
-    state.goalEditing = false;
+    closeGoalEditDialog();
     renderGoal(state.goal);
   } catch (error) {
     els.sendStatus.textContent = t("goalSaveFailed", { message: error.message });
@@ -2741,6 +2761,10 @@ document.addEventListener("click", (event) => {
   ) {
     closeImagePickerMenu();
   }
+});
+
+document.addEventListener("keydown", (event) => {
+  if (event.key === "Escape" && els.goalEditDialog && !els.goalEditDialog.hidden) closeGoalEditDialog();
 });
 
 els.authReveal.addEventListener("click", () => {
