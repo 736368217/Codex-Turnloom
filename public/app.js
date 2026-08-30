@@ -2398,6 +2398,7 @@ els.threadList.addEventListener("click", (event) => {
     return;
   }
   closeThreadContextMenu();
+  closeGoalEditDialog();
   state.selectedId = button.dataset.id;
   state.messageLimit = MESSAGE_PAGE_SIZE;
   state.messageHistoryLoading = false;
@@ -2481,6 +2482,7 @@ els.threadPinAction.addEventListener("click", () => {
 els.newThreadButton.addEventListener("click", () => {
   if (!state.config?.allowWrite || els.newThreadButton.disabled) return;
   els.sendStatus.textContent = "";
+  closeGoalEditDialog();
   clearSelectedPlugins();
   state.draftThread = {
     id: DRAFT_THREAD_ID,
