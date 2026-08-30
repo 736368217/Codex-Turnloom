@@ -4,6 +4,11 @@ This is a concise, secret-free record for humans and future agents. Detailed top
 
 ## 2026-08-30
 
+- Fixed mobile goal visibility when Desktop has no active IPC owner: the service now falls back to the local Codex Desktop `goals_1.sqlite` store and normalizes `usage_limited`/`budget_limited` statuses.
+- Thread detail freshness now considers the rollout file modification time, preventing newer conversation records from being masked by a stale state-database timestamp.
+
+## 2026-08-30
+
 - Mobile sends now clear the composer immediately and keep one optimistic user bubble with sending/success/failure state; failed sends can be retried without duplicating the message.
 - Routine Desktop refresh `no-client-found` results are logged silently rather than rendered as a repeated warning card.
 

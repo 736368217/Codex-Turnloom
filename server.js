@@ -387,6 +387,7 @@ function codexPaths(home = codexHomeState.home) {
     home: root,
     stateDb: path.join(root, "state_5.sqlite"),
     logsDb: path.join(root, "logs_2.sqlite"),
+    goalsDb: path.join(root, "goals_1.sqlite"),
     sessionIndex: path.join(root, "session_index.jsonl"),
     sessionsDir: path.join(root, "sessions"),
     archivedSessionsDir: path.join(root, "archived_sessions"),
@@ -2095,9 +2096,19 @@ async function findThread(id) {
     if (indexedThread) return indexedThread;
     return recentIpcThread;
   }
+  const resolvedRolloutPath = rolloutPathForCurrentHome(rows[0], currentRolloutPaths);
+  let rolloutUpdatedAtMs = Number(rows[0].updatedAtMs) || 0;
+  if (resolvedRolloutPath) {
+    try {
+      rolloutUpdatedAtMs = Math.max(rolloutUpdatedAtMs, Number((await fs.stat(resolvedRolloutPath)).mtimeMs) || 0);
+    } catch {
+      // Keep the Desktop database timestamp when the rollout is unavailable.
+    }
+  }
   return {
     ...rows[0],
-    rolloutPath: rolloutPathForCurrentHome(rows[0], currentRolloutPaths),
+    rolloutPath: resolvedRolloutPath,
+    updatedAtMs: rolloutUpdatedAtMs,
     cwd: rows[0].cwd || "",
     title: displayThreadTitle(rows[0], sessionIndexTitles)
   };
@@ -3343,20 +3354,41 @@ async function getMessages(id, { limit = DEFAULT_MESSAGE_LIMIT, fullHistory = fa
 }
 
 async function getThreadGoalSafe(threadId) {
+  const id = String(threadId || "").trim();
   try {
-    return sanitizeThreadGoal(await getCodexIpcClient().getThreadGoal(String(threadId)));
+    const ipcGoal = sanitizeThreadGoal(await getCodexIpcClient().getThreadGoal(id));
+    if (ipcGoal) return ipcGoal;
   } catch (error) {
-    logError(`[goal:read] ${threadId}: ${error?.message || error}`);
+    logInfo(`[goal:read] IPC unavailable for ${id}; reading Desktop goal store.`);
+  }
+  try {
+    const { goalsDb } = codexPaths((await refreshCodexHomeContext()).home);
+    if (!existsSync(goalsDb)) return null;
+    const rows = await runSqlJsonFromDb(goalsDb, `
+      SELECT thread_id AS threadId, objective, status,
+             created_at_ms AS createdAt, updated_at_ms AS updatedAt
+      FROM thread_goals
+      WHERE thread_id = '${sqlString(id)}'
+      LIMIT 1;
+    `);
+    return sanitizeThreadGoal(rows[0] || null);
+  } catch (error) {
+    logError(`[goal:read] ${id}: ${error?.message || error}`);
     return null;
   }
 }
 
 function sanitizeThreadGoal(goal) {
   if (!goal || typeof goal !== "object" || !String(goal.objective || "").trim()) return null;
+  const statusMap = {
+    usage_limited: "usageLimited",
+    budget_limited: "budgetLimited"
+  };
+  const rawStatus = String(goal.status || "active");
   return {
     threadId: String(goal.threadId || ""),
     objective: String(goal.objective).trim(),
-    status: String(goal.status || "active"),
+    status: statusMap[rawStatus] || rawStatus,
     createdAt: Number.isFinite(Number(goal.createdAt)) ? Number(goal.createdAt) : null,
     updatedAt: Number.isFinite(Number(goal.updatedAt)) ? Number(goal.updatedAt) : null
   };
@@ -5137,6 +5169,7 @@ export {
   contextCompactionMessage,
   planMessage,
   getThreadGoalSafe,
+  sanitizeThreadGoal,
   setThreadGoal,
   clearThreadGoal,
   compactThread,

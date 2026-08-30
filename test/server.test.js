@@ -35,6 +35,7 @@ import {
   runIdempotentSend,
   refreshCodexDesktopAfterSend,
   shouldRecordDesktopRefreshNotice,
+  sanitizeThreadGoal,
   runSerializedThreadStart,
   sameFilePath,
   startTurnWithOwnerRecovery,
@@ -258,6 +259,18 @@ test("Desktop refresh waits for the new turn to persist before opening the conve
 test("routine no-client-found refresh failures stay out of the conversation timeline", () => {
   assert.equal(shouldRecordDesktopRefreshNotice(["refresh: no-client-found", "refresh: no-client-found"]), false);
   assert.equal(shouldRecordDesktopRefreshNotice(["refresh: no-client-found", "set active: permission denied"]), true);
+});
+
+test("Desktop goal statuses from the goal store are normalized for mobile", () => {
+  assert.deepEqual(sanitizeThreadGoal({ threadId: "thread-1", objective: "保留目标", status: "paused" }), {
+    threadId: "thread-1",
+    objective: "保留目标",
+    status: "paused",
+    createdAt: null,
+    updatedAt: null
+  });
+  assert.equal(sanitizeThreadGoal({ objective: "受限", status: "usage_limited" }).status, "usageLimited");
+  assert.equal(sanitizeThreadGoal({ objective: "预算", status: "budget_limited" }).status, "budgetLimited");
 });
 
 test("new turns for one thread are serialized before the second state check", async () => {
