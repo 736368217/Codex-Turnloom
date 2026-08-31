@@ -4,6 +4,11 @@ This is a concise, secret-free record for humans and future agents. Detailed top
 
 ## 2026-08-30
 
+- Stop requests now require a confirmed Desktop state transition. Empty `interruptedTurnId` acknowledgements trigger a no-turn-id retry, and the service reports a conflict if the original turn is still running instead of claiming success.
+- Project grouping uses the longest unique Desktop root; roots registered under multiple projects remain ungrouped and are recorded as ambiguous rather than guessed.
+
+## 2026-08-30
+
 - Goal editing now opens in a standalone modal from the long-press menu, so the compact goal row and conversation reading area keep their size while editing on mobile.
 - Fixed mobile goal visibility when Desktop has no active IPC owner: the service now falls back to the local Codex Desktop `goals_1.sqlite` store and normalizes `usage_limited`/`budget_limited` statuses.
 - Thread detail freshness now considers the rollout file modification time, preventing newer conversation records from being masked by a stale state-database timestamp.

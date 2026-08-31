@@ -1681,11 +1681,12 @@ async function loadSkills() {
   }
 }
 
-async function postJson(url, body) {
+async function postJson(url, body, options = {}) {
   const response = await fetch(url, {
     method: "POST",
     headers: authHeaders({ "content-type": "application/json" }),
-    body: JSON.stringify(body)
+    body: JSON.stringify(body),
+    ...options
   });
   const data = await response.json();
   if (!response.ok) {
@@ -3104,17 +3105,24 @@ els.followUpMode.addEventListener("click", (event) => {
 
 els.stopButton.addEventListener("click", async () => {
   if (!state.threadStatus?.thinking || state.composerBusy || !state.selectedId) return;
+  const previousStatus = state.threadStatus;
+  const controller = new AbortController();
+  const timeout = window.setTimeout(() => controller.abort(), 15000);
   state.composerBusy = true;
+  state.threadStatus = { ...(state.threadStatus || {}), thinking: false, turnId: null, stopping: true };
   renderComposerMode();
   els.sendStatus.textContent = "";
   try {
-    await postJson("/api/interrupt", { threadId: state.selectedId });
-    state.threadStatus = { ...(state.threadStatus || {}), thinking: false };
+    await postJson("/api/interrupt", { threadId: state.selectedId }, { signal: controller.signal });
+    state.threadStatus = { ...(state.threadStatus || {}), thinking: false, turnId: null, stopping: false };
     state.messagesSignature = "";
-    refreshSoon();
+    refreshSoon(250);
   } catch (error) {
+    state.threadStatus = previousStatus;
+    if (error?.name === "AbortError") error = new Error("停止请求超时，请确认 Codex Desktop 仍在运行");
     els.sendStatus.textContent = t("interruptFailed", { message: error.message });
   } finally {
+    window.clearTimeout(timeout);
     state.composerBusy = false;
     renderComposerMode();
   }

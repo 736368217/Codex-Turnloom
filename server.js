@@ -1878,13 +1878,34 @@ function projectRootMetadata(rows = []) {
 
 function projectForRoot(cwd, projectRootsByPath) {
   if (!projectRootsByPath) return null;
-  const root = normalizedProjectPath(cwd);
-  const candidates = projectRootsByPath.get(root.toLowerCase()) || [];
-  if (!candidates.length) return null;
+  const normalizedCwd = normalizedProjectPath(cwd);
+  if (!normalizedCwd) return null;
+  const cwdKey = normalizedCwd.toLowerCase();
+  let bestRootLength = -1;
+  let bestCandidates = null;
+  for (const [rootKey, candidates] of projectRootsByPath.entries()) {
+    if (!rootKey || !Array.isArray(candidates) || !candidates.length) continue;
+    const isExact = cwdKey === rootKey;
+    const isChild = cwdKey.startsWith(`${rootKey}\\`);
+    if (!isExact && !isChild) continue;
+    if (rootKey.length > bestRootLength) {
+      bestRootLength = rootKey.length;
+      bestCandidates = candidates;
+    }
+  }
+  const uniqueCandidates = [];
+  const candidateIds = new Set();
+  for (const candidate of bestCandidates || []) {
+    const candidateId = String(candidate?.id || "").trim();
+    if (!candidateId || candidateIds.has(candidateId)) continue;
+    candidateIds.add(candidateId);
+    uniqueCandidates.push(candidate);
+  }
+  if (uniqueCandidates.length !== 1) return null;
   // A migrated Desktop profile can retain one workspace root in multiple
-  // projects. Keep the database's project/root order as the deterministic
-  // source of truth instead of guessing from a project-name suffix.
-  return candidates[0];
+  // projects. Ambiguous roots remain ungrouped because choosing by position or
+  // project name would silently put conversations into the wrong project.
+  return uniqueCandidates[0];
 }
 
 function threadListMetadata(row, projectRootsByPath = null) {
@@ -1892,12 +1913,14 @@ function threadListMetadata(row, projectRootsByPath = null) {
   const projectName = String(row?.projectName || row?.project_name || "").trim();
   const sectionName = String(row?.sectionName || row?.section_name || "").trim();
   const pinned = Number(row?.isPinned ?? row?.is_pinned) === 1 || sectionName.toLowerCase() === "pinned";
-  if (projectId && projectName) {
+  if (projectId) {
     return {
       pinned,
-      project: { key: `project:${projectId}`, id: projectId, name: projectName, native: true }
+      project: projectName ? { key: `project:${projectId}`, id: projectId, name: projectName, native: true } : null
     };
   }
+  const project = projectForRoot(row?.cwd, projectRootsByPath);
+  if (project) return { pinned, project };
   return { pinned, project: null };
 }
 
@@ -4339,6 +4362,27 @@ function isNoActiveTurnError(error) {
   return /without an active turn id|no active codex turn|no active turn/i.test(message);
 }
 
+function isStaleInterruptTurnError(error) {
+  const message = String(error?.message || "").toLowerCase();
+  return /expected.?turn|turn.?id/.test(message) && /(invalid|mismatch|stale|not found|unknown|different|expired)/.test(message);
+}
+
+function interruptResultPayload(response) {
+  const outerResult = response?.result;
+  if (outerResult?.result && typeof outerResult.result === "object") return outerResult.result;
+  if (outerResult && typeof outerResult === "object") return outerResult;
+  return response && typeof response === "object" ? response : null;
+}
+
+function isExplicitInterruptNoop(response) {
+  const result = interruptResultPayload(response);
+  return Boolean(
+    result &&
+    Object.prototype.hasOwnProperty.call(result, "interruptedTurnId") &&
+    !String(result.interruptedTurnId || "").trim()
+  );
+}
+
 async function startTurnWithOwnerRecovery(
   ipcClient,
   threadId,
@@ -4382,6 +4426,65 @@ async function interruptTurnWithOwnerRecovery(
     if (!ownerClientId) throw error;
     return ipcClient.interruptTurn(threadId, await refreshExpectedTurnId());
   }
+}
+
+async function interruptTurnWithFallback(
+  ipcClient,
+  threadId,
+  expectedTurnId = null,
+  options = {}
+) {
+  let response;
+  try {
+    response = await interruptTurnWithOwnerRecovery(ipcClient, threadId, expectedTurnId, options);
+  } catch (error) {
+    if (!expectedTurnId || (!isNoActiveTurnError(error) && !isStaleInterruptTurnError(error))) throw error;
+    // Desktop can advance the active turn between the status read and the
+    // interrupt request. Retry with the protocol's no-turn-id form so a stale
+    // optimistic status cannot leave the phone's task stuck in "running".
+    return interruptTurnWithOwnerRecovery(ipcClient, threadId, null, options);
+  }
+  if (expectedTurnId && isExplicitInterruptNoop(response)) {
+    return interruptTurnWithOwnerRecovery(ipcClient, threadId, null, options);
+  }
+  return response;
+}
+
+async function interruptTurnAndConfirm(
+  ipcClient,
+  threadId,
+  initialStatus,
+  {
+    readStatus = async (selectedThreadId) => (await getMessages(selectedThreadId, { limit: 1 })).status,
+    beforeStatusRead = invalidateThreadCaches,
+    attempts = 24,
+    intervalMs = 180,
+    sleepFn = sleep,
+    ...interruptOptions
+  } = {}
+) {
+  const originalTurnId = String(initialStatus?.turnId || "").trim() || null;
+  if (!initialStatus?.thinking) {
+    return { confirmed: true, alreadyStopped: true, response: null, status: initialStatus || { thinking: false, turnId: null } };
+  }
+
+  const response = await interruptTurnWithFallback(ipcClient, threadId, originalTurnId, interruptOptions);
+  let status = initialStatus;
+  for (let attempt = 0; attempt < attempts; attempt += 1) {
+    beforeStatusRead();
+    const snapshot = await readStatus(threadId);
+    status = snapshot?.status || snapshot || { thinking: false, turnId: null };
+    const currentTurnId = String(status?.turnId || "").trim() || null;
+    if (!status?.thinking || (originalTurnId && currentTurnId && currentTurnId !== originalTurnId)) {
+      return { confirmed: true, alreadyStopped: false, response, status };
+    }
+    if (attempt + 1 < attempts) await sleepFn(intervalMs);
+  }
+
+  const error = new Error("Codex Desktop acknowledged the stop request, but the original turn is still running.");
+  error.status = 409;
+  error.code = "INTERRUPT_NOT_CONFIRMED";
+  throw error;
 }
 
 function isIpcTimeoutError(error) {
@@ -4450,14 +4553,16 @@ async function interruptCodex(threadId) {
     throw err;
   }
 
-  const activeTurnId = async () => {
-    const messages = await getMessages(targetThreadId, { limit: 1 });
-    return messages.status?.thinking ? messages.status.turnId || null : null;
-  };
+  const currentStatus = async () => (await getMessages(targetThreadId, { limit: 1 })).status;
+  const initialStatus = await currentStatus();
 
   try {
-    await interruptTurnWithOwnerRecovery(getCodexIpcClient(), targetThreadId, await activeTurnId(), {
-      refreshExpectedTurnId: activeTurnId
+    await interruptTurnAndConfirm(getCodexIpcClient(), targetThreadId, initialStatus, {
+      readStatus: currentStatus,
+      refreshExpectedTurnId: async () => {
+        const status = await currentStatus();
+        return status?.thinking ? status.turnId || null : null;
+      }
     });
   } catch (error) {
     if (isNoOpenOwnerError(error)) {
@@ -5150,7 +5255,9 @@ export {
   enqueueSend,
   ipcVersionForMethod,
   ipcVersionForRequest,
+  interruptTurnAndConfirm,
   interruptTurnWithOwnerRecovery,
+  interruptTurnWithFallback,
   isNoActiveTurnError,
   isIpcTimeoutError,
   isNoOpenOwnerError,

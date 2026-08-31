@@ -19,6 +19,8 @@ import {
   enqueueSend,
   ipcVersionForMethod,
   ipcVersionForRequest,
+  interruptTurnAndConfirm,
+  interruptTurnWithFallback,
   interruptTurnWithOwnerRecovery,
   isSubagentThread,
   isNoActiveTurnError,
@@ -88,7 +90,7 @@ test("Desktop plan events become a compact plan notice", () => {
   assert.match(message.content, /\[>\] 修复问题/);
 });
 
-test("thread list maps Desktop pin and only explicit project assignments", () => {
+test("thread list honors explicit projects and only infers unique longest roots", () => {
   const pinned = threadListMetadata({
     isPinned: 0,
     threadSectionId: "pinned-section",
@@ -110,9 +112,44 @@ test("thread list maps Desktop pin and only explicit project assignments", () =>
   });
   assert.equal(ungrouped.project, null);
 
-  const projectRoots = new Map([["c:\\users\\win10\\documents\\chatgpt\\塔罗", [{ key: "project:tarot", id: "project-tarot", name: "塔罗", native: true }]]]);
-  assert.equal(threadListMetadata({ cwd: String.raw`\\?\C:\Users\WIN10\Documents\ChatGPT\塔罗` }, projectRoots).project, null);
+  const tarotProject = { key: "project:tarot", id: "project-tarot", name: "塔罗", native: true };
+  const archiveProject = { key: "project:archive", id: "project-archive", name: "归档", native: true };
+  const projectRoots = new Map([
+    ["c:\\users\\win10\\documents\\chatgpt\\塔罗", [tarotProject]],
+    ["c:\\users\\win10\\documents\\chatgpt\\塔罗\\归档", [archiveProject]]
+  ]);
+  assert.deepEqual(
+    threadListMetadata({ cwd: String.raw`\\?\C:\Users\WIN10\Documents\ChatGPT\塔罗\归档\2026` }, projectRoots).project,
+    archiveProject
+  );
   assert.equal(threadListMetadata({ cwd: String.raw`\\?\C:\Users\WIN10\Documents\ChatGPT\腾讯云` }, projectRoots).project, null);
+
+  const explicitlyAssignedElsewhere = threadListMetadata({
+    projectId: "project-explicit",
+    projectName: "明确项目",
+    cwd: String.raw`\\?\C:\Users\WIN10\Documents\ChatGPT\塔罗\归档\2026`
+  }, projectRoots);
+  assert.equal(explicitlyAssignedElsewhere.project.id, "project-explicit");
+
+  const unresolvedExplicitProject = threadListMetadata({
+    projectId: "project-missing-name",
+    cwd: String.raw`\\?\C:\Users\WIN10\Documents\ChatGPT\塔罗\归档\2026`
+  }, projectRoots);
+  assert.equal(unresolvedExplicitProject.project, null);
+
+  const duplicateRootProjects = new Map([
+    ["c:\\users\\win10\\documents\\chatgpt\\腾讯云", [
+      { key: "project:flynas", id: "project-flynas", name: "飞牛nas", native: true },
+      { key: "project:aliyun", id: "project-aliyun", name: "阿里云\\腾讯云", native: true }
+    ]]
+  ]);
+  assert.equal(threadListMetadata({ cwd: String.raw`\\?\C:\Users\WIN10\Documents\ChatGPT\腾讯云` }, duplicateRootProjects).project, null);
+
+  const duplicatedSameProject = new Map([["c:\\users\\win10\\documents\\chatgpt\\重复", [tarotProject, { ...tarotProject }]]]);
+  assert.deepEqual(
+    threadListMetadata({ cwd: String.raw`\\?\C:\Users\WIN10\Documents\ChatGPT\重复\子目录` }, duplicatedSameProject).project,
+    tarotProject
+  );
 });
 
 test("older-message pagination grows in bounded pages and preserves the viewport", () => {
@@ -534,6 +571,81 @@ test("interrupt opens the task, refreshes the active turn, and retries after no-
     ["owner", "thread-123", 4321],
     ["interrupt", "thread-123", "turn-current"]
   ]);
+});
+
+test("interrupt retries without a stale expected turn id", async () => {
+  const calls = [];
+  const ipcClient = {
+    async interruptTurn(threadId, expectedTurnId) {
+      calls.push([threadId, expectedTurnId]);
+      if (calls.length === 1) throw new Error("expected turn id mismatch");
+      return { ok: true };
+    }
+  };
+
+  assert.deepEqual(await interruptTurnWithFallback(ipcClient, "thread-123", "turn-old"), { ok: true });
+  assert.deepEqual(calls, [["thread-123", "turn-old"], ["thread-123", null]]);
+});
+
+test("interrupt retries when Desktop acknowledges without interrupting a turn", async () => {
+  const calls = [];
+  const ipcClient = {
+    async interruptTurn(threadId, expectedTurnId) {
+      calls.push([threadId, expectedTurnId]);
+      if (calls.length === 1) {
+        return { resultType: "success", result: { ok: true, interruptedTurnId: null } };
+      }
+      return { resultType: "success", result: { ok: true, interruptedTurnId: "turn-old" } };
+    }
+  };
+
+  assert.deepEqual(
+    await interruptTurnWithFallback(ipcClient, "thread-123", "turn-old"),
+    { resultType: "success", result: { ok: true, interruptedTurnId: "turn-old" } }
+  );
+  assert.deepEqual(calls, [["thread-123", "turn-old"], ["thread-123", null]]);
+});
+
+test("interrupt does not report success while the original turn remains active", async () => {
+  const ipcClient = {
+    async interruptTurn() {
+      return { resultType: "success", result: { ok: true, interruptedTurnId: null } };
+    }
+  };
+
+  await assert.rejects(
+    interruptTurnAndConfirm(ipcClient, "thread-123", { thinking: true, turnId: "turn-old" }, {
+      readStatus: async () => ({ thinking: true, turnId: "turn-old" }),
+      beforeStatusRead: () => {},
+      attempts: 2,
+      intervalMs: 0,
+      sleepFn: async () => {}
+    }),
+    (error) => error?.status === 409 && /still running/i.test(error.message)
+  );
+});
+
+test("interrupt succeeds after status confirms the original turn stopped", async () => {
+  const statuses = [
+    { thinking: true, turnId: "turn-old" },
+    { thinking: false, turnId: null }
+  ];
+  const ipcClient = {
+    async interruptTurn() {
+      return { resultType: "success", result: { ok: true, interruptedTurnId: "turn-old" } };
+    }
+  };
+
+  const result = await interruptTurnAndConfirm(ipcClient, "thread-123", { thinking: true, turnId: "turn-old" }, {
+    readStatus: async () => statuses.shift(),
+    beforeStatusRead: () => {},
+    attempts: 2,
+    intervalMs: 0,
+    sleepFn: async () => {}
+  });
+
+  assert.equal(result.confirmed, true);
+  assert.equal(result.status.thinking, false);
 });
 
 test("start-turn never retries an ambiguous IPC timeout", async () => {
