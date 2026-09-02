@@ -845,6 +845,50 @@ body.goal-dialog-open { overflow: hidden; }
   box-shadow: 0 1px 0 rgba(0, 0, 0, 0.02);
 }
 
+.message-loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  min-height: 180px;
+  color: var(--muted);
+}
+
+.message-loading-spinner {
+  width: 18px;
+  height: 18px;
+  border: 2px solid #d9e0e7;
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: message-loading-spin 0.8s linear infinite;
+}
+
+@keyframes message-loading-spin {
+  to { transform: rotate(360deg); }
+}
+
+.message-branch-button {
+  display: inline-flex;
+  min-height: 30px;
+  align-items: center;
+  margin-top: 10px;
+  padding: 0 10px;
+  border: 1px solid #d6dde5;
+  border-radius: 6px;
+  background: #f7f9fb;
+  color: var(--muted);
+  cursor: pointer;
+  font: inherit;
+  font-size: 12px;
+}
+
+.message-branch-button:hover,
+.message-branch-button:focus-visible {
+  border-color: var(--accent);
+  color: var(--text);
+  outline: none;
+}
+
 .bubble > :first-child { margin-top: 0; }
 .bubble > :last-child { margin-bottom: 0; }
 

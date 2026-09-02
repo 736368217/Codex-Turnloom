@@ -14,6 +14,7 @@ const state = {
   sidebarCollapsed: false,
   messageRequestSeq: 0,
   activeMessageRequest: null,
+  messageLoading: false,
   messageLimit: MESSAGE_PAGE_SIZE,
   messageHistoryLoading: false,
   account: null,
@@ -32,7 +33,6 @@ const state = {
   uncertainSend: null,
   reminders: {},
   contextThreadId: null,
-  contextMessage: null,
   model: "",
   effort: "",
   modelPanelOpen: false,
@@ -85,9 +85,6 @@ const els = {
   threadPinAction: document.querySelector("#threadPinAction"),
   threadReminderAction: document.querySelector("#threadReminderAction"),
   threadCopyLinkAction: document.querySelector("#threadCopyLinkAction"),
-  messageContextMenu: document.querySelector("#messageContextMenu"),
-  messageContextTitle: document.querySelector("#messageContextTitle"),
-  messageBranchAction: document.querySelector("#messageBranchAction"),
   threadTitle: document.querySelector("#threadTitle"),
   threadMeta: document.querySelector("#threadMeta"),
   goalPanel: document.querySelector("#goalPanel"),
@@ -1418,6 +1415,11 @@ function renderCurrentMessages(scrollToBottom = true) {
   updateScrollToBottomButton();
 }
 
+function renderMessageLoading() {
+  els.messageList.innerHTML = `<div class="message-loading" role="status" aria-live="polite"><span class="message-loading-spinner" aria-hidden="true"></span><span>${escapeHtml(t("loading"))}</span></div>`;
+  updateScrollToBottomButton();
+}
+
 function isMessageListNearBottom() {
   return els.messageList.scrollHeight - els.messageList.scrollTop - els.messageList.clientHeight < 120;
 }
@@ -1617,6 +1619,7 @@ function renderMessages(data) {
       if (message.role === "user") previousUserMessage = message;
       const pendingClass = message.deliveryStatus && message.deliveryStatus !== "sent" ? " pending" : "";
       const pendingId = message.deliveryStatus ? ` data-pending-id="${escapeHtml(message.id || "")}"` : "";
+      const branchAction = renderBranchAction(message);
       const messageArticle = `
         <article class="message ${escapeHtml(message.role)}${pendingClass}${hidden}"${pendingId} data-message-id="${escapeHtml(message.id || "")}" data-turn-id="${escapeHtml(message.turnId || "")}">
           <div class="role">${roleBadge(message)}</div>
@@ -1627,6 +1630,7 @@ function renderMessages(data) {
             ${!noticeCollapsed ? renderMessageImages(message) : ""}
             ${!noticeCollapsed ? renderMessageFiles(message) : ""}
             ${renderApprovalActions(message)}
+            ${branchAction}
             ${pendingDeliveryHtml(message)}
             ${metaBottom ? `<div class="message-meta message-meta-bottom">${escapeHtml(metaBottom)}</div>` : ""}
           </div>
@@ -1648,6 +1652,11 @@ function renderMessages(data) {
     : "";
   els.messageList.innerHTML = `${messageHtml}${thinkingHtml}`;
   updateScrollToBottomButton();
+}
+
+function renderBranchAction(message) {
+  if (!message?.id || message.deliveryStatus || !["user", "assistant"].includes(message.role)) return "";
+  return `<button type="button" class="message-branch-button" data-branch-message-id="${escapeHtml(message.id)}" data-branch-turn-id="${escapeHtml(message.turnId || "")}">${escapeHtml(t("branchFromHere"))}</button>`;
 }
 
 async function fetchJson(url, options = {}) {
@@ -2313,6 +2322,8 @@ async function loadMessages(force = false, threadId = state.selectedId, { preser
   if (!threadId) return;
   const request = { id: ++state.messageRequestSeq, threadId };
   state.activeMessageRequest = request;
+  state.messageLoading = true;
+  if (!state.lastMessagesData || state.lastMessagesData.thread?.id !== threadId) renderMessageLoading();
   if (threadId === DRAFT_THREAD_ID) {
     if (state.selectedId !== threadId || state.activeMessageRequest !== request) return;
     state.lastMessagesData = {
@@ -2324,6 +2335,7 @@ async function loadMessages(force = false, threadId = state.selectedId, { preser
     renderComposerMode();
     renderMessages(state.lastMessagesData);
     state.activeMessageRequest = null;
+    state.messageLoading = false;
     return;
   }
   try {
@@ -2331,6 +2343,7 @@ async function loadMessages(force = false, threadId = state.selectedId, { preser
     const data = await fetchJson(`/api/threads/${threadId}/messages?limit=${state.messageLimit}${historyParam}`);
     if (state.selectedId !== threadId || state.activeMessageRequest !== request) return;
     state.lastMessagesData = data;
+    state.messageLoading = false;
     state.threadStatus = data.status || null;
     renderComposerMode();
     const signature = `${data.thread?.updatedAtMs || ""}:${data.size || ""}:${data.mtimeMs || ""}:${data.limit || ""}:${data.omittedMessages || 0}:${state.showTools}:${data.status?.thinking ? "thinking" : "idle"}:${data.status?.interactionRequired ? "interaction" : "clear"}:${data.status?.turnId || ""}:${pendingSignature()}`;
@@ -2360,6 +2373,7 @@ async function loadMessages(force = false, threadId = state.selectedId, { preser
     }
   } finally {
     if (state.activeMessageRequest === request) state.activeMessageRequest = null;
+    if (state.activeMessageRequest === null) state.messageLoading = false;
   }
 }
 
@@ -2660,6 +2674,13 @@ els.scrollToBottomButton.addEventListener("click", () => {
 });
 
 els.messageList.addEventListener("click", async (event) => {
+  const branchButton = event.target.closest("[data-branch-message-id]");
+  if (branchButton) {
+    event.preventDefault();
+    event.stopPropagation();
+    await createMessageBranch(branchButton.dataset.branchTurnId || "");
+    return;
+  }
   const retryButton = event.target.closest("[data-pending-action='retry']");
   if (retryButton) {
     event.preventDefault();
@@ -3261,66 +3282,14 @@ async function bootstrap() {
   scheduleMessageSync();
 }
 
-function closeMessageContextMenu() {
-  if (els.messageContextMenu) els.messageContextMenu.hidden = true;
-  state.contextMessage = null;
-}
-
-function openMessageContextMenu(article, clientX, clientY) {
-  if (!article || !state.selectedId || !els.messageContextMenu) return;
-  state.contextMessage = {
-    threadId: state.selectedId,
-    turnId: article.dataset.turnId || "",
-    title: article.querySelector(".message-meta-top")?.textContent || t("branchFromHere")
-  };
-  els.messageContextTitle.textContent = state.contextMessage.title;
-  els.messageBranchAction.textContent = t("branchFromHere");
-  els.messageContextMenu.hidden = false;
-  const width = els.messageContextMenu.offsetWidth;
-  const height = els.messageContextMenu.offsetHeight;
-  els.messageContextMenu.style.left = `${Math.min(Math.max(10, clientX), window.innerWidth - width - 10)}px`;
-  els.messageContextMenu.style.top = `${Math.min(Math.max(10, clientY), window.innerHeight - height - 10)}px`;
-}
-
-let messageLongPressTimer = null;
-let messageLongPressStart = null;
-function cancelMessageLongPress() {
-  clearTimeout(messageLongPressTimer);
-  messageLongPressTimer = null;
-  messageLongPressStart = null;
-}
-
-els.messageList.addEventListener("pointerdown", (event) => {
-  const article = event.target.closest("article.message");
-  if (!article || article.classList.contains("thinking-message") || event.button > 0) return;
-  cancelMessageLongPress();
-  messageLongPressStart = { x: event.clientX, y: event.clientY, pointerId: event.pointerId };
-  messageLongPressTimer = setTimeout(() => {
-    openMessageContextMenu(article, event.clientX, event.clientY);
-    navigator.vibrate?.(12);
-    cancelMessageLongPress();
-  }, 520);
-});
-els.messageList.addEventListener("pointermove", (event) => {
-  if (!messageLongPressStart || event.pointerId !== messageLongPressStart.pointerId) return;
-  if (Math.hypot(event.clientX - messageLongPressStart.x, event.clientY - messageLongPressStart.y) > 10) cancelMessageLongPress();
-});
-for (const eventName of ["pointerup", "pointercancel", "scroll"]) els.messageList.addEventListener(eventName, cancelMessageLongPress, { passive: true });
-els.messageList.addEventListener("contextmenu", (event) => {
-  const article = event.target.closest("article.message");
-  if (!article || article.classList.contains("thinking-message")) return;
-  event.preventDefault();
-  openMessageContextMenu(article, event.clientX, event.clientY);
-});
-els.messageBranchAction?.addEventListener("click", async () => {
-  const context = state.contextMessage;
-  closeMessageContextMenu();
-  if (!context?.threadId) return;
+async function createMessageBranch(turnId = "") {
+  const threadId = state.selectedId;
+  if (!threadId) return;
   try {
-    const result = await fetchJson(`/api/threads/${encodeURIComponent(context.threadId)}/branch`, {
+    const result = await fetchJson(`/api/threads/${encodeURIComponent(threadId)}/branch`, {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify(context.turnId ? { lastTurnId: context.turnId } : {})
+      body: JSON.stringify(turnId ? { lastTurnId: turnId } : {})
     });
     els.sendStatus.textContent = t("branchCreated");
     await loadThreads(false);
@@ -3334,6 +3303,6 @@ els.messageBranchAction?.addEventListener("click", async () => {
   } catch (error) {
     els.sendStatus.textContent = t("branchFailed", { message: error.message });
   }
-});
+}
 
 bootstrap();
