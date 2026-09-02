@@ -2,6 +2,11 @@
 
 This is a concise, secret-free record for humans and future agents. Detailed topology and guardrails are in `OPERATIONS.md`.
 
+## 2026-09-02
+
+- Conversation listings now exclude archived and spawned-agent records across all metadata paths, including `thread_spawn_edges`; ungrouped conversations are explicitly separated from project groups. Long-press conversation actions can copy a native Codex Desktop deep link.
+- When the Desktop state database is available, it is the sole sidebar membership source; session-index and IPC records may refresh detail data but cannot create stale or unclassified sidebar entries.
+
 ## 2026-08-30
 
 - Stop requests now require a confirmed Desktop state transition. Empty `interruptedTurnId` acknowledgements trigger a no-turn-id retry, and the service reports a conflict if the original turn is still running instead of claiming success.

@@ -7,7 +7,12 @@ export function filterVisibleThreads(threads, query = "") {
   });
 }
 
-export function groupedVisibleThreads(threads, { query = "", pinnedLabel = "置顶" } = {}) {
+export function threadDeepLink(threadId) {
+  const id = String(threadId || "").trim();
+  return id ? `codex://threads/${encodeURIComponent(id)}` : "";
+}
+
+export function groupedVisibleThreads(threads, { query = "", pinnedLabel = "置顶", ungroupedLabel = "其他对话" } = {}) {
   const visible = filterVisibleThreads(threads, query);
   const pinned = visible.filter((thread) => thread.pinned);
   const groups = [];
@@ -20,7 +25,7 @@ export function groupedVisibleThreads(threads, { query = "", pinnedLabel = "置�
     if (!projectGroups.has(key)) {
       projectGroups.set(key, {
         key,
-        label: thread.project?.name || "",
+        label: thread.project?.name || ungroupedLabel,
         ungrouped: key === "other",
         threads: []
       });

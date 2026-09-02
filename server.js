@@ -1839,7 +1839,10 @@ function displayThreadTitle(row, sessionIndexTitles) {
 }
 
 function isSubagentThread(row) {
-  if (String(row?.threadSource || row?.thread_source || "").toLowerCase() === "subagent") return true;
+  if (row?.hasSpawnParent || row?.spawnParentId || row?.parentThreadId) return true;
+  const threadSource = String(row?.threadSource || row?.thread_source || "").toLowerCase();
+  if (threadSource === "subagent" || threadSource === "agent_created_thread") return true;
+  if (String(row?.agentPath || row?.agent_path || "").trim()) return true;
   const source = row?.source;
   if (!source || typeof source !== "string" || !source.trim().startsWith("{")) return false;
   try {
@@ -1849,9 +1852,8 @@ function isSubagentThread(row) {
   }
 }
 
-function visibleThreadRows(rows, preserveIds = []) {
-  const preserved = new Set(preserveIds.map((id) => String(id || "").trim()).filter(Boolean));
-  return rows.filter((row) => !isSubagentThread(row) || preserved.has(String(row?.id || "")));
+function visibleThreadRows(rows) {
+  return rows.filter((row) => !isSubagentThread(row));
 }
 
 function normalizedProjectPath(cwd) {
@@ -2040,6 +2042,7 @@ async function loadThreadsUncached({ preserveIds = [], preserveKey = "" } = {}) 
                threads.created_at_ms AS createdAtMs, threads.updated_at_ms AS updatedAtMs,
                threads.archived, threads.preview, threads.cwd, threads.model, threads.source,
                threads.thread_source AS threadSource, threads.agent_path AS agentPath,
+               EXISTS (SELECT 1 FROM thread_spawn_edges tse WHERE tse.child_thread_id = threads.id) AS hasSpawnParent,
                threads.is_pinned AS isPinned, threads.thread_section_id AS threadSectionId,
                thread_sections.name AS sectionName, threads.section_position AS sectionPosition,
                threads.project_id AS projectId, projects.name AS projectName
@@ -2050,10 +2053,7 @@ async function loadThreadsUncached({ preserveIds = [], preserveKey = "" } = {}) 
         LIMIT 500;
       `);
       const filtered = await filterRowsForCurrentAccount(rows, (row) => row.id, preserveIds);
-      const archivedIds = new Set(rows.filter(isArchivedThread).map((row) => String(row.id || "")));
       const visibleRows = visibleThreadRows(filtered.rows, preserveIds);
-      const hiddenIds = new Set(rows.filter((row) => isSubagentThread(row) && !visibleRows.includes(row)).map((row) => String(row.id || "")));
-      const excludedIds = new Set([...archivedIds, ...hiddenIds]);
       const stateRows = visibleRows.filter((row) => !isArchivedThread(row)).map((row) => ({
         id: row.id,
         title: displayThreadTitle(row, sessionIndexTitles),
@@ -2066,14 +2066,11 @@ async function loadThreadsUncached({ preserveIds = [], preserveKey = "" } = {}) 
         model: row.model || "",
          ...threadListMetadata(row, projectRootsByPath)
       }));
-      const seen = new Set(stateRows.map((row) => String(row.id || "")));
-      const indexFiltered = await filterRowsForCurrentAccount(await readSessionIndexRows(), (row) => row.id, preserveIds);
-      const indexRows = indexFiltered.rows
-        .filter((row) => !seen.has(String(row.id || "")) && !excludedIds.has(String(row.id || "")))
-         .map((row) => ({ ...row, ...threadListMetadata(row, projectRootsByPath) }));
-      value = appendRecentIpcRows([...stateRows, ...indexRows], excludedIds).map((row) => (
-        Object.hasOwn(row, "pinned") ? row : { ...row, ...threadListMetadata(row, projectRootsByPath) }
-      ));
+      // With a live Desktop state database, it is authoritative for sidebar
+      // membership. Session-index and IPC rows may be stale or lack archived /
+      // spawned-agent metadata, so they are intentionally not appended here.
+      // They remain available to detail reads through findThread().
+      value = stateRows;
     } else {
       const rows = await readSessionIndexRows();
       const filtered = await filterRowsForCurrentAccount(rows, (row) => row.id, preserveIds);

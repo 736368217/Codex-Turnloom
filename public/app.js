@@ -1,6 +1,6 @@
 import { MESSAGE_PAGE_SIZE, nextMessageLimit, reconcilePendingMessages, retainedScrollTop } from "./history.js";
 import { renderMarkdown } from "./markdown.js";
-import { filterVisibleThreads, groupedVisibleThreads } from "./threads.js";
+import { filterVisibleThreads, groupedVisibleThreads, threadDeepLink } from "./threads.js";
 import { resolveAuthToken } from "./auth.js";
 
 const state = {
@@ -83,6 +83,7 @@ const els = {
   threadContextTitle: document.querySelector("#threadContextTitle"),
   threadPinAction: document.querySelector("#threadPinAction"),
   threadReminderAction: document.querySelector("#threadReminderAction"),
+  threadCopyLinkAction: document.querySelector("#threadCopyLinkAction"),
   threadTitle: document.querySelector("#threadTitle"),
   threadMeta: document.querySelector("#threadMeta"),
   goalPanel: document.querySelector("#goalPanel"),
@@ -268,9 +269,13 @@ const I18N = {
     reminderOn: "关闭完成提醒",
     reminderOff: "开启完成提醒",
     reminderEnabledLabel: "提醒已开",
+    copyThreadLink: "复制深度链接",
+    threadLinkCopied: "已复制对话深度链接",
+    threadLinkCopyFailed: "复制深度链接失败：{message}",
     pinThread: "置顶",
     unpinThread: "取消置顶",
     pinnedGroup: "置顶",
+    otherConversations: "其他对话",
     pinFailed: "置顶操作失败：{message}",
     window: "窗口",
     weekWindow: "{count} 周窗口",
@@ -424,9 +429,13 @@ const I18N = {
     reminderOn: "Disable completion reminder",
     reminderOff: "Enable completion reminder",
     reminderEnabledLabel: "Reminder on",
+    copyThreadLink: "Copy deep link",
+    threadLinkCopied: "Conversation deep link copied",
+    threadLinkCopyFailed: "Could not copy deep link: {message}",
     pinThread: "Pin",
     unpinThread: "Unpin",
     pinnedGroup: "Pinned",
+    otherConversations: "Other conversations",
     pinFailed: "Could not update pin: {message}",
     window: "Window",
     weekWindow: "{count} week window",
@@ -1154,6 +1163,25 @@ function setThreadReminder(thread, enabled) {
   }
 }
 
+async function copyText(text) {
+  const value = String(text || "");
+  if (!value) throw new Error("empty text");
+  if (navigator.clipboard?.writeText) {
+    await navigator.clipboard.writeText(value);
+    return;
+  }
+  const textarea = document.createElement("textarea");
+  textarea.value = value;
+  textarea.setAttribute("readonly", "");
+  textarea.style.position = "fixed";
+  textarea.style.opacity = "0";
+  document.body.appendChild(textarea);
+  textarea.select();
+  const copied = document.execCommand("copy");
+  textarea.remove();
+  if (!copied) throw new Error("clipboard unavailable");
+}
+
 async function setThreadPin(thread, pinned) {
   if (!thread?.id || thread.id === DRAFT_THREAD_ID) return;
   try {
@@ -1182,6 +1210,7 @@ function openThreadContextMenu(threadId, clientX, clientY) {
   els.threadContextTitle.textContent = thread.title || t("untitled");
   els.threadPinAction.textContent = thread.pinned ? t("unpinThread") : t("pinThread");
   els.threadReminderAction.textContent = reminderEnabled(threadId) ? t("reminderOn") : t("reminderOff");
+  els.threadCopyLinkAction.textContent = t("copyThreadLink");
   els.threadContextMenu.hidden = false;
 
   const menuWidth = els.threadContextMenu.offsetWidth;
@@ -1225,11 +1254,12 @@ function renderThreads() {
     : "";
   const groups = groupedVisibleThreads(state.threads, {
     query: state.filter,
-    pinnedLabel: t("pinnedGroup")
+    pinnedLabel: t("pinnedGroup"),
+    ungroupedLabel: t("otherConversations")
   });
   els.threadList.innerHTML = `${draft}${groups.map((group) => `
     <section class="thread-group${group.ungrouped ? " thread-group-ungrouped" : ""}" data-group-key="${escapeHtml(group.key)}">
-      ${group.ungrouped ? "" : `<h2 class="thread-group-title">${escapeHtml(group.label)}</h2>`}
+      <h2 class="thread-group-title">${escapeHtml(group.label)}</h2>
       ${group.threads.map(renderThread).join("")}
     </section>
   `).join("")}`;
@@ -3126,6 +3156,18 @@ els.stopButton.addEventListener("click", async () => {
     state.composerBusy = false;
     renderComposerMode();
   }
+});
+
+els.threadCopyLinkAction.addEventListener("click", async () => {
+  const thread = state.threads.find((entry) => entry.id === state.contextThreadId);
+  if (!thread) return closeThreadContextMenu();
+  try {
+    await copyText(threadDeepLink(thread.id));
+    els.sendStatus.textContent = t("threadLinkCopied");
+  } catch (error) {
+    els.sendStatus.textContent = t("threadLinkCopyFailed", { message: error.message });
+  }
+  closeThreadContextMenu();
 });
 
 els.queueStatusList.addEventListener("click", async (event) => {

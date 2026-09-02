@@ -50,7 +50,7 @@ function rolloutLine(timestamp, ordinal, type, payload) {
   return JSON.stringify({ timestamp, ordinal, type, payload });
 }
 
-test("thread list hides subagents but preserves a selected legacy subagent", () => {
+test("thread list hides subagents even when a hidden task was selected", () => {
   const rows = [
     { id: "main", source: "vscode", threadSource: "user" },
     {
@@ -63,7 +63,7 @@ test("thread list hides subagents but preserves a selected legacy subagent", () 
 
   assert.equal(isSubagentThread(rows[0]), false);
   assert.equal(isSubagentThread(rows[1]), true);
-  assert.deepEqual(visibleThreadRows(rows, ["sub-selected"]).map((row) => row.id), ["main", "sub-selected"]);
+  assert.deepEqual(visibleThreadRows(rows, ["sub-selected"]).map((row) => row.id), ["main"]);
 });
 
 test("context compaction rollout items become safe timeline notices", () => {
@@ -150,6 +150,13 @@ test("thread list honors explicit projects and only infers unique longest roots"
     threadListMetadata({ cwd: String.raw`\\?\C:\Users\WIN10\Documents\ChatGPT\重复\子目录` }, duplicatedSameProject).project,
     tarotProject
   );
+});
+
+test("subagent visibility recognizes spawn edges, agent paths, and agent-created threads", () => {
+  assert.equal(isSubagentThread({ hasSpawnParent: 1 }), true);
+  assert.equal(isSubagentThread({ agentPath: "/root/audit" }), true);
+  assert.equal(isSubagentThread({ threadSource: "agent_created_thread" }), true);
+  assert.equal(isSubagentThread({ threadSource: "user", cwd: "C:\\work" }), false);
 });
 
 test("older-message pagination grows in bounded pages and preserves the viewport", () => {

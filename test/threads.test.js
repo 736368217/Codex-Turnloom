@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { groupedVisibleThreads } from "../public/threads.js";
+import { groupedVisibleThreads, threadDeepLink } from "../public/threads.js";
 
 test("thread groups put pinned tasks first and never duplicate them", () => {
   const groups = groupedVisibleThreads([
@@ -34,7 +34,12 @@ test("ordinary conversations share the ungrouped section even when they have dif
     { id: "three", title: "Gamma", project: { key: "project:three", name: "Project Three" } }
   ]);
 
-  assert.deepEqual(groups.map((group) => group.label), ["", "Project Three"]);
+  assert.deepEqual(groups.map((group) => group.label), ["其他对话", "Project Three"]);
   assert.equal(groups[0].ungrouped, true);
   assert.deepEqual(groups[0].threads.map((thread) => thread.id), ["one", "two"]);
+});
+
+test("thread deep links use the Codex Desktop thread scheme", () => {
+  assert.equal(threadDeepLink("01abc-123"), "codex://threads/01abc-123");
+  assert.equal(threadDeepLink(""), "");
 });
