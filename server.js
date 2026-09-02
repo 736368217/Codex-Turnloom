@@ -48,7 +48,7 @@ function parseCliArgs(argv) {
       continue;
     }
     if (flag === "--dev-any-code") {
-      console.error("Unsupported option: --dev-any-code. This internal test flag is not valid for Codex LAN Companion.");
+      console.error("Unsupported option: --dev-any-code. This internal test flag is not valid for codex-Turnloom.");
       options.help = true;
       options.invalid = true;
       continue;
@@ -72,10 +72,10 @@ function parseCliArgs(argv) {
 }
 
 function printHelp() {
-  console.log(`Codex LAN Companion
+  console.log(`codex-Turnloom
 
 Usage:
-  codex-lan-companion [options]
+  codex-turnloom [options]
 
 Options:
   --host <host>          Bind host. Default: 0.0.0.0
@@ -89,9 +89,9 @@ Options:
   -h, --help             Show this help
 
 Examples:
-  codex-lan-companion
-  codex-lan-companion --readonly
-  codex-lan-companion --port 8790 --password home-only
+  codex-turnloom
+  codex-turnloom --readonly
+  codex-turnloom --port 8790 --password home-only
 `);
 }
 
@@ -261,6 +261,9 @@ function defaultCodexCli() {
 
 const CODEX_CLI = process.env.CODEX_CLI || defaultCodexCli();
 const PUBLIC_DIR = path.join(__dirname, "public");
+const APK_PATH = process.env.CODEX_POCKET_APK_PATH
+  ? path.resolve(process.env.CODEX_POCKET_APK_PATH)
+  : path.join(PUBLIC_DIR, "downloads", "CodexPocket.apk");
 const GENERATED_IMAGES_DIR = path.join(os.homedir(), ".codex", "generated_images");
 const CODEX_POCKET_DATA_DIR =
   process.env.LOCALAPPDATA || path.join(os.homedir(), process.platform === "win32" ? "AppData" : ".local", process.platform === "win32" ? "Local" : "share");
@@ -5264,6 +5267,25 @@ async function serveLocalFile(req, res, filePath, threadId = "") {
   }
 }
 
+async function serveApk(res) {
+  try {
+    const stat = await fs.stat(APK_PATH);
+    if (!stat.isFile() || stat.size <= 0) {
+      sendText(res, 404, "APK not found");
+      return;
+    }
+    res.writeHead(200, {
+      "content-type": "application/vnd.android.package-archive",
+      "content-length": stat.size,
+      "content-disposition": contentDispositionForDownload("CodexPocket.apk"),
+      "cache-control": "no-cache, must-revalidate"
+    });
+    createReadStream(APK_PATH).pipe(res);
+  } catch {
+    sendText(res, 404, "APK not found");
+  }
+}
+
 const server = http.createServer(async (req, res) => {
   const url = new URL(req.url || "/", `http://${req.headers.host || "localhost"}`);
   const requestStartedAt = performance.now();
@@ -5291,6 +5313,11 @@ const server = http.createServer(async (req, res) => {
       await serveLocalFile(req, res, url.searchParams.get("path"), url.searchParams.get("threadId"));
       return;
     }
+    if (req.method === "GET" && url.pathname === "/api/apk") {
+      if (!requireAuthorized(req, res, url)) return;
+      await serveApk(res);
+      return;
+    }
     if (req.method === "GET" && url.pathname === "/api/health") {
       if (!requireAuthorized(req, res, url)) return;
       keepIpcWarm();
@@ -5308,7 +5335,9 @@ const server = http.createServer(async (req, res) => {
         models: CODEX_MODELS,
         defaultModel: DEFAULT_CODEX_MODEL,
         defaultEffort: DEFAULT_CODEX_EFFORT,
-        now: new Date().toISOString()
+        now: new Date().toISOString(),
+        apkAvailable: existsSync(APK_PATH),
+        apkUrl: "/api/apk"
       });
       return;
     }
@@ -5496,12 +5525,12 @@ async function shutdown(signal) {
 
 server.on("error", (error) => {
   if (error?.code === "EADDRINUSE") {
-    logError(`[fatal] Cannot start Codex LAN Companion: ${HOST}:${PORT} is already in use.`);
+    logError(`[fatal] Cannot start codex-Turnloom: ${HOST}:${PORT} is already in use.`);
     logError("Stop the existing service first, choose another --port, or run:");
     logError(`  lsof -nP -iTCP:${PORT} -sTCP:LISTEN`);
-    logError("  codex-lan-companion-uninstall-service");
+    logError("  codex-turnloom-uninstall-service");
   } else if (error?.code === "EACCES") {
-    logError(`[fatal] Cannot start Codex LAN Companion: permission denied for ${HOST}:${PORT}.`);
+    logError(`[fatal] Cannot start codex-Turnloom: permission denied for ${HOST}:${PORT}.`);
     logError("Choose a different --host/--port or check local firewall and permission settings.");
   } else {
     logFatalError("HTTP server failed to start", error);
@@ -5538,7 +5567,7 @@ if (IS_MAIN) {
     qrcode.generate(loginUrlFor(primaryUrl), { small: true });
   };
 
-  logInfo("Codex LAN Companion is running");
+  logInfo("codex-Turnloom is running");
   logInfo(`Boot:   ${SYSTEM_BOOT_AT_ISO} (${formatDuration(PROCESS_STARTED_AT_MS - SYSTEM_BOOT_AT_MS)} ago)`);
   logInfo(`Start:  ${PROCESS_STARTED_AT_ISO}`);
   logInfo(`Origin: ${START_SOURCE}${IS_INTERACTIVE_TTY ? " · interactive terminal" : " · background service"}`);

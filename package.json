@@ -1,13 +1,13 @@
 {
-  "name": "codex-pocket-control",
+  "name": "codex-turnloom",
   "version": "1.0.0",
   "private": true,
-  "description": "Private multi-computer mobile companion for Codex Desktop.",
+  "description": "Private, self-hosted mobile control desk for Codex Desktop.",
   "type": "module",
   "bin": {
-    "codex-lan-companion": "./server.js",
-    "codex-lan-companion-install-service": "./scripts/install-service.js",
-    "codex-lan-companion-uninstall-service": "./scripts/uninstall-service.js"
+    "codex-turnloom": "./server.js",
+    "codex-turnloom-install-service": "./scripts/install-service.js",
+    "codex-turnloom-uninstall-service": "./scripts/uninstall-service.js"
   },
   "files": [
     "server.js",
@@ -28,7 +28,7 @@
     "windows:install": "powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts/install-windows.ps1",
     "windows:uninstall": "powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts/uninstall-windows.ps1",
     "android:test": "cd android && gradlew.bat testDebugUnitTest",
-    "android:build": "cd android && gradlew.bat assembleDebug",
+    "android:build": "cd android && gradlew.bat assembleDebug && node ../scripts/stage-apk.js",
     "service:install": "node scripts/install-service.js",
     "service:uninstall": "node scripts/uninstall-service.js"
   },

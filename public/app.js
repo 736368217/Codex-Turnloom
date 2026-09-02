@@ -2,6 +2,7 @@ import { MESSAGE_PAGE_SIZE, nextMessageLimit, reconcilePendingMessages, retained
 import { renderMarkdown } from "./markdown.js";
 import { filterVisibleThreads, groupedVisibleThreads, threadDeepLink } from "./threads.js";
 import { resolveAuthToken } from "./auth.js";
+import { clearConversationCache, conversationCacheKey, readConversationCache, writeConversationCache } from "./conversation-cache.js";
 
 const state = {
   threads: [],
@@ -158,7 +159,7 @@ const els = {
 const I18N = {
   zh: {
     documentTitle: "Codex LAN Viewer",
-    authTitle: "Codex LAN Companion",
+    authTitle: "codex-Turnloom",
     authHelp: "输入启动终端里显示的访问码。",
     accessCode: "访问码",
     showAccessCode: "显示访问码",
@@ -322,7 +323,7 @@ const I18N = {
   },
   en: {
     documentTitle: "Codex LAN Viewer",
-    authTitle: "Codex LAN Companion",
+    authTitle: "codex-Turnloom",
     authHelp: "Enter the access code shown in the terminal.",
     accessCode: "Access code",
     showAccessCode: "Show access code",
@@ -745,6 +746,7 @@ function lockApp(message = "") {
   state.messagesSignature = "";
   state.pendingMessages = [];
   state.lastMessagesData = null;
+  void clearConversationCache();
   els.rememberDevice.checked = false;
   els.authInput.value = "";
   els.threadCount.textContent = t("needAccessCode");
@@ -2338,9 +2340,30 @@ async function loadMessages(force = false, threadId = state.selectedId, { preser
     state.messageLoading = false;
     return;
   }
+  const cacheKey = conversationCacheKey({
+    codexHomeVersion: state.codexHomeVersion ?? state.config?.codexHomeVersion ?? "unknown",
+    threadId,
+    messageLimit: state.messageLimit
+  });
+  const historyParam = state.messageLimit > MESSAGE_PAGE_SIZE ? "&history=full" : "";
+  const networkRequest = fetchJson("/api/threads/" + threadId + "/messages?limit=" + state.messageLimit + historyParam);
+  let cachedShown = false;
   try {
-    const historyParam = state.messageLimit > MESSAGE_PAGE_SIZE ? "&history=full" : "";
-    const data = await fetchJson(`/api/threads/${threadId}/messages?limit=${state.messageLimit}${historyParam}`);
+    const cached = await readConversationCache(cacheKey);
+    if (cached && state.selectedId === threadId && state.activeMessageRequest === request) {
+      state.lastMessagesData = cached;
+      state.threadStatus = cached.status || null;
+      state.messagesSignature = "cache:" + (cached.cachedAt || 0);
+      state.messageLoading = false;
+      renderComposerMode();
+      renderMessages(cached);
+      cachedShown = true;
+    }
+  } catch {
+    // Cache is an optimization; network loading continues normally.
+  }
+  try {
+    const data = await networkRequest;
     if (state.selectedId !== threadId || state.activeMessageRequest !== request) return;
     state.lastMessagesData = data;
     state.messageLoading = false;
@@ -2361,12 +2384,13 @@ async function loadMessages(force = false, threadId = state.selectedId, { preser
       }
       updateScrollToBottomButton();
     }
+    void writeConversationCache(cacheKey, data);
     noteSyncSuccess("message");
   } catch (error) {
     if (state.selectedId !== threadId || state.activeMessageRequest !== request) return;
     if (error.status === 401) throw error;
     noteSyncFailure("message", state.threadStatus?.thinking ? MESSAGE_SYNC_THINKING_MS : MESSAGE_SYNC_IDLE_MS, MESSAGE_SYNC_BACKOFF_MAX_MS);
-    if (state.messagesSignature) {
+    if (state.messagesSignature || cachedShown) {
       renderTransientSyncError(error);
     } else {
       els.messageList.innerHTML = `<div class="empty-state">${escapeHtml(error.message)}</div>`;
