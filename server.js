@@ -1,7 +1,17 @@
 #!/usr/bin/env node
 import { execFile, spawn } from "node:child_process";
 import { randomInt, randomUUID } from "node:crypto";
-import { createReadStream, existsSync, promises as fs, realpathSync } from "node:fs";
+import {
+  createReadStream,
+  existsSync,
+  mkdirSync,
+  promises as fs,
+  readFileSync,
+  realpathSync,
+  renameSync,
+  unlinkSync,
+  writeFileSync
+} from "node:fs";
 import http from "node:http";
 import net from "node:net";
 import os from "node:os";
@@ -252,6 +262,11 @@ function defaultCodexCli() {
 const CODEX_CLI = process.env.CODEX_CLI || defaultCodexCli();
 const PUBLIC_DIR = path.join(__dirname, "public");
 const GENERATED_IMAGES_DIR = path.join(os.homedir(), ".codex", "generated_images");
+const CODEX_POCKET_DATA_DIR =
+  process.env.LOCALAPPDATA || path.join(os.homedir(), process.platform === "win32" ? "AppData" : ".local", process.platform === "win32" ? "Local" : "share");
+const PENDING_SEND_QUEUE_FILE =
+  process.env.CODEX_LAN_PENDING_QUEUE_FILE || path.join(CODEX_POCKET_DATA_DIR, "CodexPocket", "pending-queues.json");
+const PENDING_SEND_QUEUE_SCHEMA_VERSION = 1;
 const MAX_SEND_IMAGES = 4;
 const MAX_SEND_IMAGE_BYTES = 5 * 1024 * 1024;
 const MAX_SEND_BODY_BYTES = 32 * 1024 * 1024;
@@ -269,6 +284,9 @@ const SUPPORTED_SEND_IMAGE_MIME_TYPES = new Set(["image/jpeg", "image/png", "ima
 const ACTIVE_TURN_STALE_MS = 10 * 60 * 1000;
 const ACTIVE_STATUS_CACHE_MS = 5000;
 const QUEUE_IDLE_SETTLE_MS = 3500;
+const QUEUE_CONFIRMATION_POLL_MS = 350;
+const QUEUE_CONFIRMATION_TIMEOUT_MS = 9000;
+const QUEUE_CONFIRMATION_RECHECK_MS = 2500;
 const THREAD_OWNER_OPEN_TIMEOUT_MS = 20_000;
 const SESSION_REPAIR_DIR_NAME = "session-repairs";
 const IPC_VERSION_BY_METHOD = {
@@ -1389,6 +1407,14 @@ class DesktopCodexIpcClient {
   async compactThread(threadId) {
     await this.ensureReady();
     return this.request("thread-follower-compact-thread", { conversationId: threadId }, { timeoutMs: 15000 });
+  }
+
+  async forkThread(threadId, { lastTurnId = null, beforeTurnId = null } = {}) {
+    await this.ensureReady();
+    const params = { threadId: String(threadId || "") };
+    if (lastTurnId) params.lastTurnId = String(lastTurnId);
+    if (beforeTurnId) params.beforeTurnId = String(beforeTurnId);
+    return this.request("thread/fork", params, { timeoutMs: 15000 });
   }
 
   async refreshRecentConversations(hostId = "local") {
@@ -3548,6 +3574,170 @@ function desktopSteerRestoreMessage(text, cwd, clientUserMessageId = randomUUID(
   };
 }
 
+function queuedMessagePreview(text, imageCount = 0) {
+  const content = String(text || "").trim().replace(/\s+/g, " ").slice(0, 160);
+  const count = Math.max(0, Number(imageCount) || 0);
+  const imageLabel = count === 1 ? "【图片】" : count > 1 ? "【图片 " + count + " 张】" : "";
+  return [content, imageLabel].filter(Boolean).join(" ") || "待发送消息";
+}
+
+function normalizedQueuedSendState(value) {
+  const state = String(value || "").trim();
+  return ["queued", "sending", "awaitingConfirmation", "failed"].includes(state) ? state : "queued";
+}
+
+function cloneQueuedSendImages(images) {
+  return (Array.isArray(images) ? images : []).map((image) => ({
+    name: String(image?.name || ""),
+    mimeType: String(image?.mimeType || ""),
+    data: String(image?.data || ""),
+    size: Number(image?.size) || 0,
+    width: Number(image?.width) || 0,
+    height: Number(image?.height) || 0
+  }));
+}
+
+function normalizePersistedQueuedSendItem(value) {
+  if (!value || typeof value !== "object") return null;
+  const text = String(value.text || "").trim();
+  let images;
+  try {
+    images = normalizeSendImages(value.images);
+  } catch {
+    return null;
+  }
+  if (!text && !images.length) return null;
+  const state = normalizedQueuedSendState(value.deliveryState);
+  return {
+    id: String(value.id || randomUUID()),
+    text,
+    images,
+    turnSettings: normalizeTurnSettings(value.turnSettings),
+    enqueuedAt: String(value.enqueuedAt || new Date().toISOString()),
+    lastError: value.lastError ? String(value.lastError).slice(0, 1200) : null,
+    nextAttemptAtMs: Number.isFinite(Number(value.nextAttemptAtMs)) ? Number(value.nextAttemptAtMs) : 0,
+    deliveryState: state === "sending" ? "awaitingConfirmation" : state,
+    deliveryBaseline: Math.max(0, Math.floor(Number(value.deliveryBaseline) || 0)),
+    deliveryTurnId: value.deliveryTurnId ? String(value.deliveryTurnId) : null,
+    deliveryAttemptedAtMs: Number.isFinite(Number(value.deliveryAttemptedAtMs))
+      ? Number(value.deliveryAttemptedAtMs)
+      : 0
+  };
+}
+
+function serializableQueuedSendItem(item) {
+  const normalized = normalizePersistedQueuedSendItem(item);
+  if (!normalized) return null;
+  return {
+    ...normalized,
+    images: cloneQueuedSendImages(normalized.images)
+  };
+}
+
+function pendingSendQueueDocument(queues = pendingSendQueues) {
+  const serializedQueues = {};
+  for (const [threadId, items] of queues.entries()) {
+    const key = String(threadId || "").trim();
+    if (!key || !Array.isArray(items)) continue;
+    const serializedItems = items.map(serializableQueuedSendItem).filter(Boolean);
+    if (serializedItems.length) serializedQueues[key] = serializedItems;
+  }
+  return {
+    version: PENDING_SEND_QUEUE_SCHEMA_VERSION,
+    updatedAt: new Date().toISOString(),
+    queues: serializedQueues
+  };
+}
+
+function persistPendingSendQueues() {
+  if (!IS_MAIN) return;
+  const directory = path.dirname(PENDING_SEND_QUEUE_FILE);
+  const temporaryPath = PENDING_SEND_QUEUE_FILE + "." + process.pid + "." + randomUUID() + ".tmp";
+  try {
+    mkdirSync(directory, { recursive: true });
+    writeFileSync(temporaryPath, JSON.stringify(pendingSendQueueDocument()), "utf8");
+    renameSync(temporaryPath, PENDING_SEND_QUEUE_FILE);
+  } catch (error) {
+    try {
+      unlinkSync(temporaryPath);
+    } catch {
+      // Best-effort cleanup for a failed atomic replacement.
+    }
+    throw error;
+  }
+}
+
+function restorePendingSendQueues() {
+  if (!IS_MAIN || !existsSync(PENDING_SEND_QUEUE_FILE)) return { restored: 0, dropped: 0 };
+  try {
+    const parsed = JSON.parse(readFileSync(PENDING_SEND_QUEUE_FILE, "utf8"));
+    const sourceQueues = parsed?.queues;
+    if (!sourceQueues || typeof sourceQueues !== "object" || Array.isArray(sourceQueues)) {
+      throw new Error("Queue document does not contain a queues object.");
+    }
+    pendingSendQueues.clear();
+    let restored = 0;
+    let dropped = 0;
+    for (const [threadId, items] of Object.entries(sourceQueues)) {
+      const key = String(threadId || "").trim();
+      if (!key || !Array.isArray(items)) {
+        dropped += Array.isArray(items) ? items.length : 1;
+        continue;
+      }
+      const restoredItems = items.map(normalizePersistedQueuedSendItem).filter(Boolean);
+      dropped += items.length - restoredItems.length;
+      if (!restoredItems.length) continue;
+      pendingSendQueues.set(key, restoredItems);
+      restored += restoredItems.length;
+      scheduleQueuedSendDrain(key, 1000);
+    }
+    if (dropped) persistPendingSendQueues();
+    logInfo("[queue] Restored " + restored + " pending message" + (restored === 1 ? "" : "s") + ".");
+    return { restored, dropped };
+  } catch (error) {
+    logError("[queue] Could not restore pending messages: " + (error?.message || error));
+    return { restored: 0, dropped: 0, error: error?.message || String(error) };
+  }
+}
+
+function setPendingSendQueue(threadId, nextQueue) {
+  const key = String(threadId || "");
+  const previous = pendingSendQueues.get(key);
+  if (nextQueue?.length) pendingSendQueues.set(key, nextQueue);
+  else pendingSendQueues.delete(key);
+  try {
+    persistPendingSendQueues();
+  } catch (error) {
+    if (previous?.length) pendingSendQueues.set(key, previous);
+    else pendingSendQueues.delete(key);
+    throw error;
+  }
+  return nextQueue || [];
+}
+
+function updateQueuedSendItem(threadId, itemId, updater) {
+  const key = String(threadId || "");
+  const queue = pendingSendQueues.get(key) || [];
+  const index = queue.findIndex((item) => item.id === itemId);
+  if (index < 0) return null;
+  const nextItem = updater({ ...queue[index], images: cloneQueuedSendImages(queue[index].images) });
+  if (!nextItem) return null;
+  const nextQueue = queue.slice();
+  nextQueue[index] = nextItem;
+  setPendingSendQueue(key, nextQueue);
+  return nextItem;
+}
+
+function removeQueuedSendItem(threadId, itemId) {
+  const key = String(threadId || "");
+  const queue = pendingSendQueues.get(key) || [];
+  const nextQueue = queue.filter((item) => item.id !== itemId);
+  if (nextQueue.length === queue.length) return false;
+  setPendingSendQueue(key, nextQueue);
+  if (!nextQueue.length) queueIdleObservations.delete(key);
+  return true;
+}
+
 function queuedSendStatus(threadId) {
   const queue = pendingSendQueues.get(String(threadId || "")) || [];
   return {
@@ -3555,10 +3745,11 @@ function queuedSendStatus(threadId) {
     queuedMessages: queue.map((item) => ({
       id: item.id,
       text: item.text,
-      preview: item.text.slice(0, 160),
+      preview: queuedMessagePreview(item.text, item.images.length),
       imageCount: item.images.length,
       enqueuedAt: item.enqueuedAt,
-      lastError: item.lastError || null
+      lastError: item.lastError || null,
+      deliveryState: normalizedQueuedSendState(item.deliveryState)
     }))
   };
 }
@@ -3587,10 +3778,13 @@ function enqueueSend(threadId, text, images, turnSettings) {
     turnSettings,
     enqueuedAt: new Date().toISOString(),
     lastError: null,
-    nextAttemptAtMs: 0
+    nextAttemptAtMs: 0,
+    deliveryState: "queued",
+    deliveryBaseline: 0,
+    deliveryTurnId: null,
+    deliveryAttemptedAtMs: 0
   };
-  queue.push(item);
-  pendingSendQueues.set(key, queue);
+  setPendingSendQueue(key, [...queue, item]);
   scheduleQueuedSendDrain(key);
   return {
     ok: true,
@@ -3598,7 +3792,7 @@ function enqueueSend(threadId, text, images, turnSettings) {
     queued: true,
     threadId: key,
     queueItem: queuedSendStatus(key).queuedMessages.find((entry) => entry.id === item.id),
-    queueLength: queue.length,
+    queueLength: queue.length + 1,
     sentAt: item.enqueuedAt
   };
 }
@@ -3609,9 +3803,8 @@ function cancelQueuedSend(threadId, itemId = "") {
   if (!queue.length) return { ok: true, threadId: key, cancelled: 0, ...queuedSendStatus(key) };
   const remaining = itemId ? queue.filter((item) => item.id !== itemId) : [];
   const cancelled = queue.length - remaining.length;
-  if (remaining.length) pendingSendQueues.set(key, remaining);
-  else {
-    pendingSendQueues.delete(key);
+  setPendingSendQueue(key, remaining);
+  if (!remaining.length) {
     queueIdleObservations.delete(key);
     const timer = queuedSendDrainTimers.get(key);
     if (timer) clearTimeout(timer);
@@ -3688,6 +3881,72 @@ function queuedSendIdleDecision(thinking, idleSinceMs, nowMs = Date.now(), settl
   };
 }
 
+function queuedSendMatchCount(messages, item) {
+  const expectedText = String(item?.text || "").trim();
+  const expectedImageCount = Array.isArray(item?.images) ? item.images.length : 0;
+  return (Array.isArray(messages) ? messages : []).filter((message) => {
+    if (message?.role !== "user") return false;
+    if (expectedText) {
+      return messageTextForMatch(message.content || message.text || message).includes(expectedText);
+    }
+    const imageCount = Math.max(message?.images?.length || 0, message?.localImages?.length || 0);
+    return expectedImageCount > 0 && imageCount >= expectedImageCount;
+  }).length;
+}
+
+function queuedSendConfirmed(response, item) {
+  const expectedTurnId = String(item?.deliveryTurnId || "").trim();
+  if (expectedTurnId) {
+    if (String(response?.status?.turnId || "") === expectedTurnId) return true;
+    if ((Array.isArray(response?.messages) ? response.messages : []).some((message) => String(message?.turnId || "") === expectedTurnId)) {
+      return true;
+    }
+  }
+  return queuedSendMatchCount(response?.messages, item) > Math.max(0, Number(item?.deliveryBaseline) || 0);
+}
+
+async function queuedSendConfirmationSnapshot(threadId, item) {
+  const response = await getMessages(threadId, { limit: 160, fullHistory: false });
+  return {
+    response,
+    matchCount: queuedSendMatchCount(response.messages, item)
+  };
+}
+
+async function waitForQueuedSendConfirmation(threadId, item, timeoutMs = QUEUE_CONFIRMATION_TIMEOUT_MS) {
+  const deadline = Date.now() + timeoutMs;
+  while (true) {
+    invalidateThreadCaches();
+    try {
+      const response = await getMessages(threadId, { limit: 160, fullHistory: false });
+      if (queuedSendConfirmed(response, item)) return true;
+    } catch {
+      // Codex can rotate its local data files while the new turn is being written.
+    }
+    if (Date.now() >= deadline) return false;
+    await sleep(Math.min(QUEUE_CONFIRMATION_POLL_MS, Math.max(1, deadline - Date.now())));
+  }
+}
+
+function setQueuedSendDeliveryState(threadId, itemId, patch) {
+  return updateQueuedSendItem(threadId, itemId, (item) => ({
+    ...item,
+    ...patch,
+    deliveryState: normalizedQueuedSendState(patch.deliveryState ?? item.deliveryState)
+  }));
+}
+
+function completeQueuedSend(threadId, itemId) {
+  if (!removeQueuedSendItem(threadId, itemId)) return false;
+  recordNotice(threadId, {
+    severity: "info",
+    title: "Queued message sent",
+    content: "The next queued message was confirmed in Codex after the previous task finished.",
+    source: "queue"
+  });
+  return true;
+}
+
 async function drainQueuedSend(threadId) {
   const key = String(threadId || "");
   if (!key || drainingSendQueues.has(key)) return;
@@ -3695,7 +3954,20 @@ async function drainQueuedSend(threadId) {
   if (!queue?.length) return;
   drainingSendQueues.add(key);
   try {
-    const item = queue[0];
+    let item = queue[0];
+    if (["sending", "awaitingConfirmation"].includes(normalizedQueuedSendState(item.deliveryState))) {
+      const confirmed = await waitForQueuedSendConfirmation(key, item);
+      if (confirmed) {
+        completeQueuedSend(key, item.id);
+      } else {
+        setQueuedSendDeliveryState(key, item.id, {
+          deliveryState: "awaitingConfirmation",
+          lastError: null,
+          nextAttemptAtMs: Date.now() + QUEUE_CONFIRMATION_RECHECK_MS
+        });
+      }
+      return;
+    }
     if (item.nextAttemptAtMs > Date.now()) return;
     const current = await getMessages(key, { limit: 20, fullHistory: true });
     const idleDecision = queuedSendIdleDecision(
@@ -3714,27 +3986,58 @@ async function drainQueuedSend(threadId) {
     }
     queueIdleObservations.delete(key);
     try {
-      await sendToCodex(item.text, key, item.images, { mode: "start", ...item.turnSettings });
-      queue.shift();
-      if (queue.length) pendingSendQueues.set(key, queue);
-      else pendingSendQueues.delete(key);
-      recordNotice(key, {
-        severity: "info",
-        title: "Queued message sent",
-        content: "The next queued message was sent after the previous task finished.",
-        source: "queue"
+      const snapshot = await queuedSendConfirmationSnapshot(key, item);
+      item = setQueuedSendDeliveryState(key, item.id, {
+        deliveryState: "sending",
+        deliveryBaseline: snapshot.matchCount,
+        deliveryTurnId: null,
+        deliveryAttemptedAtMs: Date.now(),
+        lastError: null,
+        nextAttemptAtMs: 0
       });
+      if (!item) return;
+      const result = await sendToCodex(item.text, key, item.images, { mode: "start", ...item.turnSettings });
+      item = setQueuedSendDeliveryState(key, item.id, {
+        deliveryState: "awaitingConfirmation",
+        deliveryTurnId: result?.turnId ? String(result.turnId) : null,
+        deliveryAttemptedAtMs: Date.now(),
+        lastError: null,
+        nextAttemptAtMs: 0
+      });
+      if (!item) return;
+      if (await waitForQueuedSendConfirmation(key, item)) {
+        completeQueuedSend(key, item.id);
+      } else {
+        setQueuedSendDeliveryState(key, item.id, {
+          deliveryState: "awaitingConfirmation",
+          lastError: null,
+          nextAttemptAtMs: Date.now() + QUEUE_CONFIRMATION_RECHECK_MS
+        });
+      }
     } catch (error) {
-      if (error?.status === 409 && /still running/i.test(error?.message || "")) return;
-      item.lastError = error?.message || "Queued send failed";
-      item.nextAttemptAtMs = Date.now() + 30_000;
+      if (error?.status === 409 && /still running/i.test(error?.message || "")) {
+        setQueuedSendDeliveryState(key, item.id, {
+          deliveryState: "queued",
+          lastError: null,
+          nextAttemptAtMs: 0
+        });
+        return;
+      }
+      const failureMessage = error?.message || "Queued send failed";
+      setQueuedSendDeliveryState(key, item.id, {
+        deliveryState: "failed",
+        lastError: failureMessage,
+        nextAttemptAtMs: Date.now() + 30_000
+      });
       recordNotice(key, {
         severity: "error",
         title: "Queued send failed",
-        content: item.lastError,
+        content: failureMessage,
         source: "queue"
       });
     }
+  } catch (error) {
+    logError("[queue] " + key + ": " + (error?.message || error));
   } finally {
     drainingSendQueues.delete(key);
     const remaining = pendingSendQueues.get(key);
@@ -4125,8 +4428,11 @@ async function waitForDesktopTurnPersistence(threadId, turnId, timeoutMs = 5000)
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
     try {
-      const current = await getMessages(id, { limit: 1, fullHistory: true });
+      const current = await getMessages(id, { limit: 80, fullHistory: false });
       if (String(current.status?.turnId || "") === expectedTurnId) return true;
+      if ((Array.isArray(current.messages) ? current.messages : []).some((message) => String(message?.turnId || "") === expectedTurnId)) {
+        return true;
+      }
     } catch {
       // The rollout may still be appended; retry until the bounded deadline.
     }
@@ -4138,7 +4444,11 @@ async function waitForDesktopTurnPersistence(threadId, turnId, timeoutMs = 5000)
 async function refreshCodexDesktopAfterSend(
   threadId,
   client = getCodexIpcClient(),
-  { turnId = null, waitForPersistence = waitForDesktopTurnPersistence } = {}
+  {
+    turnId = null,
+    waitForPersistence = waitForDesktopTurnPersistence,
+    openThread = (selectedThreadId) => openCodexUrl(`codex://threads/${encodeURIComponent(selectedThreadId)}`)
+  } = {}
 ) {
   const id = String(threadId || "").trim();
   if (!id) return { refreshed: false, failures: [] };
@@ -4164,7 +4474,7 @@ async function refreshCodexDesktopAfterSend(
         // reload the rollout before the bounded retry.
         if (following) {
           try {
-            await openCodexUrl(`codex://threads/${encodeURIComponent(id)}`);
+            await openThread(id);
             openedThread = true;
           } catch (openError) {
             failures.push(`open: ${openError?.message || openError}`);
@@ -4183,6 +4493,14 @@ async function refreshCodexDesktopAfterSend(
       await client.setActiveConversation(id, true, "local");
     } catch (error) {
       failures.push(`set active: ${error?.message || error}`);
+    }
+    if (!openedThread) {
+      try {
+        await openThread(id);
+        openedThread = true;
+      } catch (error) {
+        failures.push(`open: ${error?.message || error}`);
+      }
     }
   }
 
@@ -4357,6 +4675,10 @@ function isNoOpenOwnerError(error) {
 function isNoActiveTurnError(error) {
   const message = String(error?.message || "");
   return /without an active turn id|no active codex turn|no active turn/i.test(message);
+}
+
+async function forkThread(threadId, options = {}) {
+  return getCodexIpcClient().forkThread(threadId, options);
 }
 
 function isStaleInterruptTurnError(error) {
@@ -5103,6 +5425,24 @@ const server = http.createServer(async (req, res) => {
       sendJson(res, 200, await compactThread(compactMatch[1]));
       return;
     }
+    const branchMatch = url.pathname.match(/^\/api\/threads\/([0-9a-fA-F-]{20,})\/branch$/);
+    if (req.method === "POST" && branchMatch) {
+      if (!requireAuthorized(req, res, url)) return;
+      const body = await readJsonBody(req);
+      const source = await findThread(branchMatch[1]);
+      if (!source) {
+        const err = new Error("Thread not found");
+        err.status = 404;
+        throw err;
+      }
+      const result = await getCodexIpcClient().forkThread(branchMatch[1], {
+        lastTurnId: body.lastTurnId || null,
+        beforeTurnId: body.beforeTurnId || null
+      });
+      const thread = result?.result?.thread || result?.thread || result?.result || null;
+      sendJson(res, 200, { ok: true, thread, threadId: thread?.id || null });
+      return;
+    }
     const match = url.pathname.match(/^\/api\/threads\/([0-9a-fA-F-]{20,})\/messages$/);
     if (req.method === "GET" && match) {
       if (!requireAuthorized(req, res, url)) return;
@@ -5177,7 +5517,9 @@ if (IS_MAIN) process.once("SIGTERM", () => {
   void shutdown("SIGTERM");
 });
 
-if (IS_MAIN) server.listen(PORT, HOST, () => {
+if (IS_MAIN) {
+  restorePendingSendQueues();
+  server.listen(PORT, HOST, () => {
   const localUrl = `http://127.0.0.1:${PORT}/`;
   const lanUrls = Object.values(os.networkInterfaces())
     .flat()
@@ -5240,7 +5582,8 @@ if (IS_MAIN) server.listen(PORT, HOST, () => {
       }
     });
   }
-});
+  });
+}
 
 export {
   canExposeLocalFilesForMessage,
@@ -5277,6 +5620,7 @@ export {
   setThreadGoal,
   clearThreadGoal,
   compactThread,
+  forkThread,
   runSerializedThreadStart,
   sameFilePath,
   runIdempotentSend,

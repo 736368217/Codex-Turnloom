@@ -1480,6 +1480,8 @@ body.goal-dialog-open { overflow: hidden; }
   font-size: 12px;
   line-height: 1.35;
   padding: 6px;
+  min-width: 0;
+  overflow: hidden;
 }
 
 .queue-status-bar[hidden] {
@@ -1493,6 +1495,8 @@ body.goal-dialog-open { overflow: hidden; }
   align-items: center;
   justify-content: space-between;
   gap: 10px;
+  min-width: 0;
+  max-width: 100%;
 }
 
 .queue-status-header[hidden],
@@ -1518,6 +1522,8 @@ body.goal-dialog-open { overflow: hidden; }
 .queue-status-list {
   display: grid;
   gap: 5px;
+  min-width: 0;
+  max-width: 100%;
 }
 
 .queue-status-item {
@@ -1550,6 +1556,13 @@ body.goal-dialog-open { overflow: hidden; }
   display: flex;
   flex: 0 0 auto;
   gap: 4px;
+  flex-wrap: wrap;
+}
+
+.composer,
+.composer-input {
+  min-width: 0;
+  max-width: 100%;
 }
 
 .queue-status-actions button {

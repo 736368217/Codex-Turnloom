@@ -32,6 +32,7 @@ const state = {
   uncertainSend: null,
   reminders: {},
   contextThreadId: null,
+  contextMessage: null,
   model: "",
   effort: "",
   modelPanelOpen: false,
@@ -84,6 +85,9 @@ const els = {
   threadPinAction: document.querySelector("#threadPinAction"),
   threadReminderAction: document.querySelector("#threadReminderAction"),
   threadCopyLinkAction: document.querySelector("#threadCopyLinkAction"),
+  messageContextMenu: document.querySelector("#messageContextMenu"),
+  messageContextTitle: document.querySelector("#messageContextTitle"),
+  messageBranchAction: document.querySelector("#messageBranchAction"),
   threadTitle: document.querySelector("#threadTitle"),
   threadMeta: document.querySelector("#threadMeta"),
   goalPanel: document.querySelector("#goalPanel"),
@@ -272,6 +276,10 @@ const I18N = {
     copyThreadLink: "复制深度链接",
     threadLinkCopied: "已复制对话深度链接",
     threadLinkCopyFailed: "复制深度链接失败：{message}",
+    branchFromHere: "从这里创建分支",
+    branchCreated: "分支已创建",
+    branchFailed: "创建分支失败：{message}",
+    messageQueued: "排队中",
     pinThread: "置顶",
     unpinThread: "取消置顶",
     pinnedGroup: "置顶",
@@ -432,6 +440,10 @@ const I18N = {
     copyThreadLink: "Copy deep link",
     threadLinkCopied: "Conversation deep link copied",
     threadLinkCopyFailed: "Could not copy deep link: {message}",
+    branchFromHere: "Create branch from here",
+    branchCreated: "Branch created",
+    branchFailed: "Could not create branch: {message}",
+    messageQueued: "Queued",
     pinThread: "Pin",
     unpinThread: "Unpin",
     pinnedGroup: "Pinned",
@@ -1386,6 +1398,9 @@ function pendingDeliveryHtml(message) {
   if (message.deliveryStatus === "failed") {
     return `<div class="message-delivery failed"><span>${escapeHtml(t("messageFailed"))}</span><button type="button" class="message-retry-button" data-pending-action="retry">${escapeHtml(t("retrySend"))}</button></div>`;
   }
+  if (message.deliveryStatus === "queued") {
+    return `<div class="message-delivery queued">${escapeHtml(t("messageQueued"))}</div>`;
+  }
   return `<div class="message-delivery sending">${escapeHtml(t("messageSending"))}</div>`;
 }
 
@@ -1603,7 +1618,7 @@ function renderMessages(data) {
       const pendingClass = message.deliveryStatus && message.deliveryStatus !== "sent" ? " pending" : "";
       const pendingId = message.deliveryStatus ? ` data-pending-id="${escapeHtml(message.id || "")}"` : "";
       const messageArticle = `
-        <article class="message ${escapeHtml(message.role)}${pendingClass}${hidden}"${pendingId}>
+        <article class="message ${escapeHtml(message.role)}${pendingClass}${hidden}"${pendingId} data-message-id="${escapeHtml(message.id || "")}" data-turn-id="${escapeHtml(message.turnId || "")}">
           <div class="role">${roleBadge(message)}</div>
           <div class="bubble">
             ${metaTop ? `<div class="message-meta message-meta-top">${escapeHtml(metaTop)}</div>` : ""}
@@ -2205,7 +2220,7 @@ function renderQueueStatus(status = state.threadStatus) {
       (item, index) => `
         <div class="queue-status-item" data-queue-item-id="${escapeHtml(item.id || "")}">
           <div class="queue-status-copy">
-            <span class="queue-status-label">${escapeHtml(t("queuedItem"))} ${index + 1}</span>
+            <span class="queue-status-label">${escapeHtml(item.deliveryState === "failed" ? t("messageFailed") : item.deliveryState === "awaitingConfirmation" || item.deliveryState === "sending" ? t("messageSending") : t("queuedItem"))} ${index + 1}</span>
             <span class="queue-status-preview">${escapeHtml(compactPreview(item.preview || item.text))}</span>
           </div>
           <div class="queue-status-actions">
@@ -3019,7 +3034,7 @@ els.composerForm.addEventListener("submit", async (event) => {
   const sendMode = thinking && !isDraftThread ? state.followUpMode : "start";
   const previousThreadStatus = state.threadStatus;
   let sendAccepted = false;
-  const pendingMessageId = thinking || isDraftThread ? null : addPendingUserMessage(state.selectedId, sendMessage, images);
+  const pendingMessageId = isDraftThread ? null : addPendingUserMessage(state.selectedId, sendMessage, images);
   clearComposerAfterAcceptedSend();
   const clientRequestId = globalThis.crypto?.randomUUID?.() || `send-${Date.now()}-${Math.random().toString(16).slice(2)}`;
   state.composerBusy = true;
@@ -3076,6 +3091,7 @@ els.composerForm.addEventListener("submit", async (event) => {
         clearComposerAfterAcceptedSend();
       }
     } else if (sendMode === "queue") {
+      if (pendingMessageId) updatePendingMessage(pendingMessageId, { deliveryStatus: "queued" });
       const queuedMessages = [...(state.threadStatus?.queuedMessages || []), result.queueItem].filter(Boolean);
       state.threadStatus = {
         ...(state.threadStatus || {}),
@@ -3244,5 +3260,80 @@ async function bootstrap() {
   scheduleThreadSync();
   scheduleMessageSync();
 }
+
+function closeMessageContextMenu() {
+  if (els.messageContextMenu) els.messageContextMenu.hidden = true;
+  state.contextMessage = null;
+}
+
+function openMessageContextMenu(article, clientX, clientY) {
+  if (!article || !state.selectedId || !els.messageContextMenu) return;
+  state.contextMessage = {
+    threadId: state.selectedId,
+    turnId: article.dataset.turnId || "",
+    title: article.querySelector(".message-meta-top")?.textContent || t("branchFromHere")
+  };
+  els.messageContextTitle.textContent = state.contextMessage.title;
+  els.messageBranchAction.textContent = t("branchFromHere");
+  els.messageContextMenu.hidden = false;
+  const width = els.messageContextMenu.offsetWidth;
+  const height = els.messageContextMenu.offsetHeight;
+  els.messageContextMenu.style.left = `${Math.min(Math.max(10, clientX), window.innerWidth - width - 10)}px`;
+  els.messageContextMenu.style.top = `${Math.min(Math.max(10, clientY), window.innerHeight - height - 10)}px`;
+}
+
+let messageLongPressTimer = null;
+let messageLongPressStart = null;
+function cancelMessageLongPress() {
+  clearTimeout(messageLongPressTimer);
+  messageLongPressTimer = null;
+  messageLongPressStart = null;
+}
+
+els.messageList.addEventListener("pointerdown", (event) => {
+  const article = event.target.closest("article.message");
+  if (!article || article.classList.contains("thinking-message") || event.button > 0) return;
+  cancelMessageLongPress();
+  messageLongPressStart = { x: event.clientX, y: event.clientY, pointerId: event.pointerId };
+  messageLongPressTimer = setTimeout(() => {
+    openMessageContextMenu(article, event.clientX, event.clientY);
+    navigator.vibrate?.(12);
+    cancelMessageLongPress();
+  }, 520);
+});
+els.messageList.addEventListener("pointermove", (event) => {
+  if (!messageLongPressStart || event.pointerId !== messageLongPressStart.pointerId) return;
+  if (Math.hypot(event.clientX - messageLongPressStart.x, event.clientY - messageLongPressStart.y) > 10) cancelMessageLongPress();
+});
+for (const eventName of ["pointerup", "pointercancel", "scroll"]) els.messageList.addEventListener(eventName, cancelMessageLongPress, { passive: true });
+els.messageList.addEventListener("contextmenu", (event) => {
+  const article = event.target.closest("article.message");
+  if (!article || article.classList.contains("thinking-message")) return;
+  event.preventDefault();
+  openMessageContextMenu(article, event.clientX, event.clientY);
+});
+els.messageBranchAction?.addEventListener("click", async () => {
+  const context = state.contextMessage;
+  closeMessageContextMenu();
+  if (!context?.threadId) return;
+  try {
+    const result = await fetchJson(`/api/threads/${encodeURIComponent(context.threadId)}/branch`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(context.turnId ? { lastTurnId: context.turnId } : {})
+    });
+    els.sendStatus.textContent = t("branchCreated");
+    await loadThreads(false);
+    if (result.threadId) {
+      state.selectedId = result.threadId;
+      state.messagesSignature = "";
+      state.threadStatus = null;
+      renderThreads();
+      await loadMessages(true, result.threadId);
+    }
+  } catch (error) {
+    els.sendStatus.textContent = t("branchFailed", { message: error.message });
+  }
+});
 
 bootstrap();
