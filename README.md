@@ -1,6 +1,8 @@
-# Codex Pocket
+# codex-Turnloom
 
-Codex Pocket 是一个私有、自托管的 Codex Desktop 手机控制方案。它由本机服务、移动网页、Android APP 和 Windows 守护脚本组成，可在一部手机中扫码添加并切换多台电脑。
+把正在电脑上运行的 Codex，完整延续到你的手机里。`codex-Turnloom` 是一个私有、自托管的远程工作台：手机通过局域网或 HTTPS 连接你的 Codex Desktop，查看会话、发送消息、跟踪工具调用，并在多台电脑之间快速切换。
+
+它不替换 Codex Desktop，也不把对话上传到第三方云端；本机服务只负责把已有的 Codex 数据和操作安全地带到你的移动设备。
 
 ## 功能
 
@@ -20,7 +22,7 @@ Codex Pocket 是一个私有、自托管的 Codex Desktop 手机控制方案。�
 ```text
 server.js       Codex Desktop 本机服务与 IPC
 public/         手机交互页面
-android/        Codex Pocket Android 源码
+android/        codex-Turnloom Android 源码
 scripts/        安装、守护和设备二维码工具
 test/           服务端回归测试
 docs/           多电脑部署与安全说明
@@ -69,7 +71,7 @@ npm run android:build
 
 APP 支持三种设备导入内容：
 
-- `codexpocket://add?...` 设备二维码
+- `codexpocket://add?...` 设备二维码（旧协议继续兼容）
 - 含 `login` 或 `token` 参数的 HTTP(S) URL
 - `{ "name": "...", "url": "...", "token": "..." }` JSON
 
@@ -89,7 +91,7 @@ PowerShell 部署脚本同时兼容 Windows PowerShell 5.1 和 PowerShell 7。Gi
 
 仓库不会包含 Codex 数据、访问码、SSH 私钥、服务器凭据、每台机器的公网地址配置、APK、Gradle 缓存或运行日志。
 
-Windows 本地配置保存在 `%LOCALAPPDATA%\CodexPocket\config.json`。Android 端保存的设备访问码使用 Android Keystore 加密。公网入口应由 Caddy/Nginx 提供 TLS，并只将服务器本机回环端口转发给对应电脑。
+Windows 本地配置保存在 `%LOCALAPPDATA%\CodexPocket\config.json`；这是旧版本兼容目录，升级时无需迁移。Android 端保存的设备访问码使用 Android Keystore 加密。公网入口应由 Caddy/Nginx 提供 TLS，并只将服务器本机回环端口转发给对应电脑。
 
 ## 来源与许可
 

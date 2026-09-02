@@ -127,7 +127,7 @@ public class MainActivity extends ComponentActivity {
                 if (result.getContents() == null) return;
                 Device imported = parseDeviceQr(result.getContents());
                 if (imported == null) {
-                    Toast.makeText(this, "这不是可识别的 Codex Pocket 设备码", Toast.LENGTH_LONG).show();
+                    Toast.makeText(this, "这不是可识别的 codex-Turnloom 设备码", Toast.LENGTH_LONG).show();
                     return;
                 }
                 int existing = findDeviceByUrl(imported.url);
@@ -201,7 +201,7 @@ public class MainActivity extends ComponentActivity {
         appBar.setGravity(Gravity.CENTER_VERTICAL);
         appBar.setPadding(dp(18), dp(8), dp(10), dp(8));
         appBar.setBackgroundColor(INK);
-        TextView title = label("Codex Pocket", 20, Color.WHITE);
+        TextView title = label("codex-Turnloom", 20, Color.WHITE);
         title.setTypeface(Typeface.DEFAULT, Typeface.BOLD);
         appBar.addView(title, new LinearLayout.LayoutParams(0, dp(48), 1));
         appBar.addView(iconButton("扫码", "扫描二维码添加电脑", v -> startScanner()), new LinearLayout.LayoutParams(dp(58), dp(44)));
@@ -461,7 +461,7 @@ public class MainActivity extends ComponentActivity {
             String fileName = DownloadFileNames.resolve(url, contentDisposition, mimeType);
             DownloadManager.Request request = new DownloadManager.Request(Uri.parse(url));
             request.setTitle(fileName);
-            request.setDescription("来自 " + (activeDevice == null ? "Codex Pocket" : activeDevice.name));
+            request.setDescription("来自 " + (activeDevice == null ? "codex-Turnloom" : activeDevice.name));
             request.setMimeType(mimeType);
             request.setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED);
             request.setDestinationInExternalPublicDir(Environment.DIRECTORY_DOWNLOADS, fileName);

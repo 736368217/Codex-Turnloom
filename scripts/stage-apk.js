@@ -5,7 +5,7 @@ import { fileURLToPath } from "node:url";
 
 const projectDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const source = path.join(projectDir, "android", "app", "build", "outputs", "apk", "debug", "app-debug.apk");
-const target = path.join(projectDir, "public", "downloads", "CodexPocket.apk");
+const target = path.join(projectDir, "public", "downloads", "codex-Turnloom.apk");
 
 await mkdir(path.dirname(target), { recursive: true });
 await copyFile(source, target);

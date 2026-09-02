@@ -1,4 +1,4 @@
-# Codex Pocket Operations Record
+# codex-Turnloom Operations Record
 
 Read this record before changing deployment, tunnel, reverse-proxy, or scheduled-task settings. It intentionally contains no passwords, access codes, private keys, or API tokens.
 
@@ -10,7 +10,7 @@ Phone app / browser
   -> Alibaba Cloud loopback 127.0.0.1:18786
   -> reverse SSH tunnel
   -> this computer 127.0.0.1:8787
-  -> Codex Pocket service
+  -> codex-Turnloom service
   -> D:\codex\.codex
 ```
 
@@ -20,9 +20,9 @@ Phone app / browser
 
 ## Local persistent state
 
-- Deployment configuration: `%LOCALAPPDATA%\CodexPocket\config.json` (secret, never commit or copy into docs).
+- Deployment configuration: `%LOCALAPPDATA%\CodexPocket\config.json` (legacy-compatible internal path; secret, never commit or copy into docs).
 - Logs: `%LOCALAPPDATA%\CodexPocket\logs`.
-- Scheduled task: `Codex Pocket Supervisor`.
+- Scheduled task: `Codex Pocket Supervisor` (legacy-compatible internal name).
 - The single hidden supervisor checks both the local service and reverse tunnel every 5 seconds and restarts either child when needed. A one-minute repeating task trigger restores the supervisor itself after an external stop; `IgnoreNew` prevents duplicate instances while it is healthy.
 
 ## Incident history

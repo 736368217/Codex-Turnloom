@@ -13,7 +13,7 @@
 - Clear the composer immediately when sending and show one chat bubble with delivery state: sending, sent, or failed with a retry action.
 - Keep routine Desktop `no-client-found` refresh deferrals in logs instead of showing a repeated `Desktop refresh delayed` notice in the conversation.
 - Keep queued-message previews compact and single-line, with narrow-screen actions moved below the preview so edit/cancel buttons remain reachable.
-- Open conversation HTTP/HTTPS links in the Android system browser instead of navigating the Codex Pocket WebView away from the current task.
+- Open conversation HTTP/HTTPS links in the Android system browser instead of navigating the codex-Turnloom WebView away from the current task.
 - Keep the Desktop goal surface to one compact objective/status line; long-press opens pause, edit, and delete actions, and empty goal controls no longer occupy reading space.
 - Remove the companion-only token budget from Desktop goal IPC writes so mobile goal behavior matches Codex Desktop's objective/status model.
 - Keep ordinary conversations ungrouped unless Desktop explicitly assigns a project; working directories are never used as an inferred project category.

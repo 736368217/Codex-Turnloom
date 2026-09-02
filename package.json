@@ -7,7 +7,10 @@
   "bin": {
     "codex-turnloom": "./server.js",
     "codex-turnloom-install-service": "./scripts/install-service.js",
-    "codex-turnloom-uninstall-service": "./scripts/uninstall-service.js"
+    "codex-turnloom-uninstall-service": "./scripts/uninstall-service.js",
+    "codex-lan-companion": "./server.js",
+    "codex-lan-companion-install-service": "./scripts/install-service.js",
+    "codex-lan-companion-uninstall-service": "./scripts/uninstall-service.js"
   },
   "files": [
     "server.js",

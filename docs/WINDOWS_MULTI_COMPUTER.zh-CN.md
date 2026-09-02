@@ -1,6 +1,6 @@
 # Windows 多电脑部署
 
-本仓库包含服务端、Windows 守护脚本和 Android 客户端源码。每台电脑运行一套独立服务，并在 Codex Pocket APP 中保存为一台独立设备。
+本仓库包含服务端、Windows 守护脚本和 Android 客户端源码。每台电脑运行一套独立服务，并在 codex-Turnloom APP 中保存为一台独立设备。
 
 ## 设计原则
 
@@ -24,7 +24,7 @@
 
 ```powershell
 git clone <private-repository-url>
-Set-Location .\codex-pocket
+Set-Location .\codex-Turnloom
 npm ci
 .\scripts\install-windows.ps1 -MachineName "办公室电脑"
 ```
@@ -34,7 +34,7 @@ npm ci
 1. 自动定位最近使用的 Codex 数据目录。
 2. 生成一条六位访问码。
 3. 将配置写入 `%LOCALAPPDATA%\CodexPocket\config.json`。
-4. 创建 `Codex Pocket Server Watchdog` 计划任务。
+4. 创建 codex-Turnloom 后台守护任务（已有安装会继续沿用旧任务名）。
 5. 在后台启动服务，并在异常退出后重新启动。
 
 若电脑存在多个 `.codex` 目录，应明确指定：
@@ -87,7 +87,7 @@ Invoke-RestMethod "http://127.0.0.1:$($config.port)/api/health" -Headers $header
 Invoke-RestMethod "http://127.0.0.1:$($config.port)/api/threads" -Headers $headers
 ```
 
-计划任务应保持 `Running`：
+计划任务应保持 `Running`。为兼容已有安装，任务内部名称暂时仍是旧标识：
 
 ```powershell
 Get-ScheduledTask "Codex Pocket * Watchdog"

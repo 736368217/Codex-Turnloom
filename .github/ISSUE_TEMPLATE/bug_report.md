@@ -20,7 +20,7 @@ Describe the expected behavior.
 - Codex Desktop version:
 - Node.js version:
 - Browser/device used to access the web UI:
-- Codex LAN Companion version or commit:
+- codex-Turnloom version or commit:
 
 ## Steps to reproduce
 

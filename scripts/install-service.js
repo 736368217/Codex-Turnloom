@@ -19,18 +19,18 @@ const maxLogBytes = 1024 * 1024;
 const maxRotatedLogs = 5;
 
 function usage() {
-  console.log(`Install Codex LAN Companion as a macOS LaunchAgent.
+  console.log(`Install codex-Turnloom as a macOS LaunchAgent.
 
 Usage:
-  codex-lan-companion-install-service [server options]
+  codex-turnloom-install-service [server options]
 
 Examples:
-  codex-lan-companion-install-service
-  codex-lan-companion-install-service --no-auth
-  codex-lan-companion-install-service --readonly --port 8790
-  codex-lan-companion-install-service --password home-only
+  codex-turnloom-install-service
+  codex-turnloom-install-service --no-auth
+  codex-turnloom-install-service --readonly --port 8790
+  codex-turnloom-install-service --password home-only
 
-The options after this command are passed to codex-lan-companion.`);
+The options after this command are passed to codex-turnloom.`);
 }
 
 if (serviceArgs.includes("--help") || serviceArgs.includes("-h")) {
@@ -191,7 +191,7 @@ run("launchctl", ["bootstrap", userDomain, plistPath]);
 run("launchctl", ["enable", `${userDomain}/${label}`]);
 run("launchctl", ["kickstart", "-k", `${userDomain}/${label}`]);
 
-console.log("Codex LAN Companion LaunchAgent installed and started.");
+console.log("codex-Turnloom LaunchAgent installed and started.");
 console.log(`Service: ${label}`);
 console.log(`Plist:   ${plistPath}`);
 console.log(`Logs:    ${logDir}`);

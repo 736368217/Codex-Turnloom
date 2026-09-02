@@ -22,7 +22,7 @@ if (existsSync(plistPath)) {
   unlinkSync(plistPath);
 }
 
-console.log("Codex LAN Companion LaunchAgent uninstalled.");
+console.log("codex-Turnloom LaunchAgent uninstalled.");
 console.log(`Service: ${label}`);
 console.log(`Removed: ${plistPath}`);
 console.log("Logs were kept under ~/Library/Logs/CodexLanCompanion.");

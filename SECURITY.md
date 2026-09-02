@@ -1,6 +1,6 @@
 # Security Policy
 
-Codex LAN Companion is intended for trusted local networks only. Do not expose it to the public internet.
+codex-Turnloom is intended for trusted local networks only. Do not expose it to the public internet.
 
 ## Supported Versions
 

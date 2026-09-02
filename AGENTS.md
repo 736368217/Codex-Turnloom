@@ -1,4 +1,4 @@
-# Codex Pocket deployment guidance
+# codex-Turnloom deployment guidance
 
 When the user asks to deploy this repository on a Windows computer:
 

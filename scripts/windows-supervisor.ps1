@@ -8,7 +8,7 @@ $ErrorActionPreference = "Stop"
 
 function Read-Config {
   if (-not (Test-Path -LiteralPath $ConfigPath -PathType Leaf)) {
-    throw "Codex Pocket config not found: $ConfigPath"
+    throw "codex-Turnloom config not found: $ConfigPath"
   }
   return Get-Content -LiteralPath $ConfigPath -Raw | ConvertFrom-Json
 }
