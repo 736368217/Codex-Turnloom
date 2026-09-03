@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Redesign the Android computer picker and connected web workspace with a restrained Apple-influenced visual system, clearer computer identity and live connection states, first-use guidance, and a persistent quick-guide entry.
+- Stage every Android build under the `Codex-Turnloom.apk` release name while refreshing the legacy `CodexPocket.apk` compatibility copy so existing download paths never serve an older build.
+- Keep the Windows supervisor alive across idle and power-state changes, enforce a single supervisor instance, and recreate damaged scheduled-task state without opening a console window.
 - Match Desktop conversation visibility more strictly: archived threads and all detected spawned-agent records are excluded, including rows identified by spawn edges, `agent_path`, or `agent_created_thread` metadata. Label the ungrouped section as “Other conversations” so it cannot be mistaken for the preceding project.
 - Treat the Desktop state database as authoritative for the sidebar; stale session-index and IPC-only rows are no longer appended as phantom conversations when state metadata is available.
 - Add long-press “Copy deep link” to conversation actions, using the native `codex://threads/<thread-id>` scheme.
@@ -13,7 +16,7 @@
 - Clear the composer immediately when sending and show one chat bubble with delivery state: sending, sent, or failed with a retry action.
 - Keep routine Desktop `no-client-found` refresh deferrals in logs instead of showing a repeated `Desktop refresh delayed` notice in the conversation.
 - Keep queued-message previews compact and single-line, with narrow-screen actions moved below the preview so edit/cancel buttons remain reachable.
-- Open conversation HTTP/HTTPS links in the Android system browser instead of navigating the codex-Turnloom WebView away from the current task.
+- Open conversation HTTP/HTTPS links in the Android system browser instead of navigating the Codex-Turnloom WebView away from the current task.
 - Keep the Desktop goal surface to one compact objective/status line; long-press opens pause, edit, and delete actions, and empty goal controls no longer occupy reading space.
 - Remove the companion-only token budget from Desktop goal IPC writes so mobile goal behavior matches Codex Desktop's objective/status model.
 - Keep ordinary conversations ungrouped unless Desktop explicitly assigns a project; working directories are never used as an inferred project category.

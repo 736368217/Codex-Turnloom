@@ -147,6 +147,12 @@ const els = {
   effortSelectLabel: document.querySelector("#effortSelectLabel"),
   pluginPickerButton: document.querySelector("#pluginPickerButton"),
   skillPickerButton: document.querySelector("#skillPickerButton"),
+  guideButton: document.querySelector("#guideButton"),
+  guideButtonLabel: document.querySelector("#guideButtonLabel"),
+  privacyNote: document.querySelector("#privacyNote"),
+  welcomeDialog: document.querySelector("#welcomeDialog"),
+  welcomeClose: document.querySelector("#welcomeClose"),
+  welcomeStart: document.querySelector("#welcomeStart"),
   authGate: document.querySelector("#authGate"),
   authForm: document.querySelector("#authForm"),
   authInput: document.querySelector("#authInput"),
@@ -158,9 +164,9 @@ const els = {
 
 const I18N = {
   zh: {
-    documentTitle: "Codex LAN Viewer",
-    authTitle: "codex-Turnloom",
-    authHelp: "输入启动终端里显示的访问码。",
+    documentTitle: "Codex-Turnloom",
+    authTitle: "Codex-Turnloom",
+    authHelp: "连接这台电脑，继续查看和控制正在运行的 Codex。",
     accessCode: "访问码",
     showAccessCode: "显示访问码",
     hideAccessCode: "隐藏访问码",
@@ -318,13 +324,25 @@ const I18N = {
     planPrompt: "请先制定执行计划，再开始操作。",
     goalSaveFailed: "目标保存失败：{message}",
     goalClearFailed: "目标删除失败：{message}",
+    guide: "使用指引",
+    privacyNote: "连接保持在你的设备之间",
+    welcomeTitle: "把电脑上的 Codex，延续到手机",
+    welcomeDescription: "电脑仍是数据源，手机负责查看会话、发送消息和处理等待中的操作。",
+    welcomeStepOneTitle: "选择一个对话",
+    welcomeStepOneCopy: "从对话列表继续已有工作，或新建一次会话。",
+    welcomeStepTwoTitle: "直接在手机上继续",
+    welcomeStepTwoCopy: "发送文字、图片或文件，并按需选择模型和思考强度。",
+    welcomeStepThreeTitle: "只看需要的细节",
+    welcomeStepThreeCopy: "工具记录默认收起，点击右上角工具按钮后显示。",
+    welcomePrivacy: "所有内容仍保存在你的电脑上",
+    welcomeStart: "开始使用",
     untitled: "Untitled",
     separator: " · "
   },
   en: {
-    documentTitle: "Codex LAN Viewer",
-    authTitle: "codex-Turnloom",
-    authHelp: "Enter the access code shown in the terminal.",
+    documentTitle: "Codex-Turnloom",
+    authTitle: "Codex-Turnloom",
+    authHelp: "Connect to this computer and continue the Codex work already in progress.",
     accessCode: "Access code",
     showAccessCode: "Show access code",
     hideAccessCode: "Hide access code",
@@ -482,6 +500,18 @@ const I18N = {
     planPrompt: "Create an execution plan before starting.",
     goalSaveFailed: "Could not save goal: {message}",
     goalClearFailed: "Could not delete goal: {message}",
+    guide: "Quick guide",
+    privacyNote: "The connection stays between your devices",
+    welcomeTitle: "Continue your desktop Codex work from your phone",
+    welcomeDescription: "Your computer remains the source of truth. Your phone lets you view conversations, send messages, and handle waiting actions.",
+    welcomeStepOneTitle: "Choose a conversation",
+    welcomeStepOneCopy: "Continue existing work from the conversation list or start a new chat.",
+    welcomeStepTwoTitle: "Keep working from your phone",
+    welcomeStepTwoCopy: "Send text, images, or files and choose a model and reasoning effort when needed.",
+    welcomeStepThreeTitle: "Reveal details when needed",
+    welcomeStepThreeCopy: "Tool records stay hidden until you enable them from the top-right control.",
+    welcomePrivacy: "Your content remains on your computer",
+    welcomeStart: "Get started",
     untitled: "Untitled",
     separator: " · "
   }
@@ -577,6 +607,18 @@ function applyStaticText() {
   els.insertStatusItem.querySelector('[data-insert-action="edit"]').textContent = t("editInserted");
   els.insertStatusItem.querySelector('[data-insert-action="cancel"]').textContent = t("stopInserted");
   els.composerInput.placeholder = t("sendToCodex");
+  if (els.guideButtonLabel) els.guideButtonLabel.textContent = t("guide");
+  if (els.privacyNote) els.privacyNote.textContent = t("privacyNote");
+  document.querySelector("#welcomeTitle").textContent = t("welcomeTitle");
+  document.querySelector("#welcomeDescription").textContent = t("welcomeDescription");
+  document.querySelector("#welcomeStepOneTitle").textContent = t("welcomeStepOneTitle");
+  document.querySelector("#welcomeStepOneCopy").textContent = t("welcomeStepOneCopy");
+  document.querySelector("#welcomeStepTwoTitle").textContent = t("welcomeStepTwoTitle");
+  document.querySelector("#welcomeStepTwoCopy").textContent = t("welcomeStepTwoCopy");
+  document.querySelector("#welcomeStepThreeTitle").textContent = t("welcomeStepThreeTitle");
+  document.querySelector("#welcomeStepThreeCopy").textContent = t("welcomeStepThreeCopy");
+  document.querySelector("#welcomePrivacy").textContent = t("welcomePrivacy");
+  els.welcomeStart.textContent = t("welcomeStart");
 }
 
 function safeStorageGet(storage, key) {
@@ -1172,6 +1214,22 @@ function setThreadReminder(thread, enabled) {
   } catch {
     // The desktop browser has no native bridge.
   }
+}
+
+const WELCOME_STORAGE_KEY = "turnloom-welcome-seen-v1";
+
+function openWelcomeDialog() {
+  if (!els.welcomeDialog) return;
+  els.welcomeDialog.hidden = false;
+  document.body.classList.add("welcome-open");
+  els.welcomeStart?.focus({ preventScroll: true });
+}
+
+function closeWelcomeDialog({ remember = true } = {}) {
+  if (!els.welcomeDialog) return;
+  els.welcomeDialog.hidden = true;
+  document.body.classList.remove("welcome-open");
+  if (remember) safeStorageSet(localStorage, WELCOME_STORAGE_KEY, "1");
 }
 
 async function copyText(text) {
@@ -3299,6 +3357,16 @@ applyStaticText();
 configureImageInput();
 initAuthToken();
 initResponsiveSidebar();
+
+els.guideButton?.addEventListener("click", openWelcomeDialog);
+els.welcomeClose?.addEventListener("click", () => closeWelcomeDialog());
+els.welcomeStart?.addEventListener("click", () => closeWelcomeDialog());
+els.welcomeDialog?.querySelector("[data-guide-close]")?.addEventListener("click", () => closeWelcomeDialog());
+document.addEventListener("keydown", (event) => {
+  if (event.key === "Escape" && els.welcomeDialog && !els.welcomeDialog.hidden) closeWelcomeDialog();
+});
+const guideMode = new URLSearchParams(window.location.search).get("guide");
+if (guideMode === "1" || (!safeStorageGet(localStorage, WELCOME_STORAGE_KEY) && guideMode !== "0")) openWelcomeDialog();
 
 async function bootstrap() {
   await refresh(true);

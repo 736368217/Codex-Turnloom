@@ -48,7 +48,7 @@ function parseCliArgs(argv) {
       continue;
     }
     if (flag === "--dev-any-code") {
-      console.error("Unsupported option: --dev-any-code. This internal test flag is not valid for codex-Turnloom.");
+      console.error("Unsupported option: --dev-any-code. This internal test flag is not valid for Codex-Turnloom.");
       options.help = true;
       options.invalid = true;
       continue;
@@ -72,7 +72,7 @@ function parseCliArgs(argv) {
 }
 
 function printHelp() {
-  console.log(`codex-Turnloom
+  console.log(`Codex-Turnloom
 
 Usage:
   codex-turnloom [options]
@@ -263,7 +263,7 @@ const CODEX_CLI = process.env.CODEX_CLI || defaultCodexCli();
 const PUBLIC_DIR = path.join(__dirname, "public");
 const APK_PATH = process.env.CODEX_POCKET_APK_PATH
   ? path.resolve(process.env.CODEX_POCKET_APK_PATH)
-  : path.join(PUBLIC_DIR, "downloads", "CodexPocket.apk");
+  : path.join(PUBLIC_DIR, "downloads", "Codex-Turnloom.apk");
 const GENERATED_IMAGES_DIR = path.join(os.homedir(), ".codex", "generated_images");
 const CODEX_POCKET_DATA_DIR =
   process.env.LOCALAPPDATA || path.join(os.homedir(), process.platform === "win32" ? "AppData" : ".local", process.platform === "win32" ? "Local" : "share");
@@ -5277,7 +5277,7 @@ async function serveApk(res) {
     res.writeHead(200, {
       "content-type": "application/vnd.android.package-archive",
       "content-length": stat.size,
-      "content-disposition": contentDispositionForDownload("CodexPocket.apk"),
+      "content-disposition": contentDispositionForDownload("Codex-Turnloom.apk"),
       "cache-control": "no-cache, must-revalidate"
     });
     createReadStream(APK_PATH).pipe(res);
@@ -5525,12 +5525,12 @@ async function shutdown(signal) {
 
 server.on("error", (error) => {
   if (error?.code === "EADDRINUSE") {
-    logError(`[fatal] Cannot start codex-Turnloom: ${HOST}:${PORT} is already in use.`);
+    logError(`[fatal] Cannot start Codex-Turnloom: ${HOST}:${PORT} is already in use.`);
     logError("Stop the existing service first, choose another --port, or run:");
     logError(`  lsof -nP -iTCP:${PORT} -sTCP:LISTEN`);
     logError("  codex-turnloom-uninstall-service");
   } else if (error?.code === "EACCES") {
-    logError(`[fatal] Cannot start codex-Turnloom: permission denied for ${HOST}:${PORT}.`);
+    logError(`[fatal] Cannot start Codex-Turnloom: permission denied for ${HOST}:${PORT}.`);
     logError("Choose a different --host/--port or check local firewall and permission settings.");
   } else {
     logFatalError("HTTP server failed to start", error);
@@ -5567,7 +5567,7 @@ if (IS_MAIN) {
     qrcode.generate(loginUrlFor(primaryUrl), { small: true });
   };
 
-  logInfo("codex-Turnloom is running");
+  logInfo("Codex-Turnloom is running");
   logInfo(`Boot:   ${SYSTEM_BOOT_AT_ISO} (${formatDuration(PROCESS_STARTED_AT_MS - SYSTEM_BOOT_AT_MS)} ago)`);
   logInfo(`Start:  ${PROCESS_STARTED_AT_ISO}`);
   logInfo(`Origin: ${START_SOURCE}${IS_INTERACTIVE_TTY ? " · interactive terminal" : " · background service"}`);

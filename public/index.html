@@ -3,7 +3,7 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>codex-Turnloom</title>
+    <title>Codex-Turnloom</title>
     <link rel="icon" type="image/svg+xml" href="/assets/companion-mark.svg" />
     <link rel="stylesheet" href="/styles.css" />
   </head>
@@ -11,8 +11,9 @@
     <div id="authGate" class="auth-gate" hidden>
       <form id="authForm" class="auth-card">
         <img class="auth-mark" src="/assets/companion-mark.svg" alt="" />
-        <h2>codex-Turnloom</h2>
-        <p>输入启动终端里显示的访问码。</p>
+        <span class="auth-eyebrow">PRIVATE MOBILE WORKSPACE</span>
+        <h2>Codex-Turnloom</h2>
+        <p>连接这台电脑，继续查看和控制正在运行的 Codex。</p>
         <div class="auth-input-wrap">
           <input id="authInput" class="auth-input" type="password" placeholder="访问码" autocomplete="current-password" />
           <button id="authReveal" class="auth-reveal" type="button" title="显示访问码" aria-label="显示访问码" aria-pressed="false">
@@ -35,10 +36,16 @@
       <button id="drawerOverlay" class="drawer-overlay" type="button" title="关闭对话列表" aria-label="关闭对话列表"></button>
       <aside class="sidebar">
         <div class="sidebar-top">
-          <div>
-            <h1>codex-Turnloom</h1>
-            <p id="threadCount">加载中</p>
+          <div class="sidebar-brand">
+            <img src="/assets/companion-mark.svg" alt="" />
+            <div>
+              <h1>Codex-Turnloom</h1>
+              <p id="threadCount">加载中</p>
+            </div>
           </div>
+          <button id="sidebarCloseButton" class="sidebar-close-button" type="button" title="隐藏对话列表" aria-label="隐藏对话列表">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m15 18-6-6 6-6"></path></svg>
+          </button>
         </div>
         <div class="thread-search-row">
           <input id="searchInput" class="search" type="search" placeholder="搜索对话" autocomplete="off" />
@@ -48,6 +55,13 @@
           </button>
         </div>
         <div id="threadList" class="thread-list" aria-label="对话列表"></div>
+        <div class="sidebar-footer">
+          <button id="guideButton" class="guide-button" type="button">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"></circle><path d="M9.8 9a2.35 2.35 0 0 1 4.55.8c0 1.8-2.35 2.05-2.35 3.7"></path><path d="M12 17h.01"></path></svg>
+            <span id="guideButtonLabel">使用指引</span>
+          </button>
+          <span id="privacyNote">连接保持在你的设备之间</span>
+        </div>
       </aside>
 
       <div id="threadContextMenu" class="thread-context-menu" role="menu" hidden>
@@ -235,6 +249,31 @@
         </form>
       </section>
     </main>
+    <div id="welcomeDialog" class="welcome-dialog" role="dialog" aria-modal="true" aria-labelledby="welcomeTitle" hidden>
+      <button class="welcome-backdrop" type="button" data-guide-close aria-label="关闭指引"></button>
+      <section class="welcome-card">
+        <header class="welcome-header">
+          <img src="/assets/companion-mark.svg" alt="" />
+          <button id="welcomeClose" class="welcome-close" type="button" title="关闭" aria-label="关闭">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6 6 12 12M18 6 6 18"></path></svg>
+          </button>
+        </header>
+        <div class="welcome-body">
+          <span class="welcome-eyebrow">WELCOME TO TURNLOOM</span>
+          <h2 id="welcomeTitle">把电脑上的 Codex，延续到手机</h2>
+          <p id="welcomeDescription">电脑仍是数据源，手机负责查看会话、发送消息和处理等待中的操作。</p>
+          <ol class="welcome-steps">
+            <li><span>1</span><div><strong id="welcomeStepOneTitle">选择一个对话</strong><p id="welcomeStepOneCopy">从对话列表继续已有工作，或新建一次会话。</p></div></li>
+            <li><span>2</span><div><strong id="welcomeStepTwoTitle">直接在手机上继续</strong><p id="welcomeStepTwoCopy">发送文字、图片或文件，并按需选择模型和思考强度。</p></div></li>
+            <li><span>3</span><div><strong id="welcomeStepThreeTitle">只看需要的细节</strong><p id="welcomeStepThreeCopy">工具记录默认收起，点击右上角工具按钮后显示。</p></div></li>
+          </ol>
+        </div>
+        <footer class="welcome-footer">
+          <span id="welcomePrivacy">所有内容仍保存在你的电脑上</span>
+          <button id="welcomeStart" type="button">开始使用</button>
+        </footer>
+      </section>
+    </div>
     <script src="/vendor/purify.min.js"></script>
     <script src="/vendor/marked.umd.js"></script>
     <script src="/app.js" type="module"></script>

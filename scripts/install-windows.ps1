@@ -92,7 +92,7 @@ function Stop-ManagedServerProcess([string]$ManagedRepoRoot, [int]$ManagedPort) 
     $commandLine = [string]$process.CommandLine
     if ($commandLine -match $serverPattern -and $commandLine -match $portPattern) {
       Stop-Process -Id ([int]$process.ProcessId) -Force -ErrorAction SilentlyContinue
-      Write-Output ("Stopped previous codex-Turnloom server process: " + $process.ProcessId)
+      Write-Output ("Stopped previous Codex-Turnloom server process: " + $process.ProcessId)
     }
   }
 }
@@ -149,6 +149,9 @@ $settings = New-ScheduledTaskSettingsSet `
   -ExecutionTimeLimit ([TimeSpan]::Zero) `
   -MultipleInstances IgnoreNew `
   -Hidden `
+  -AllowStartIfOnBatteries `
+  -DontStopIfGoingOnBatteries `
+  -DontStopOnIdleEnd `
   -StartWhenAvailable
 $userId = $env:USERDOMAIN + "\" + $env:USERNAME
 $logonTrigger = New-ScheduledTaskTrigger -AtLogOn -User $userId

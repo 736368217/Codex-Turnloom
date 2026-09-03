@@ -1,4 +1,4 @@
-# codex-Turnloom Operations Record
+# Codex-Turnloom Operations Record
 
 Read this record before changing deployment, tunnel, reverse-proxy, or scheduled-task settings. It intentionally contains no passwords, access codes, private keys, or API tokens.
 
@@ -10,7 +10,7 @@ Phone app / browser
   -> Alibaba Cloud loopback 127.0.0.1:18786
   -> reverse SSH tunnel
   -> this computer 127.0.0.1:8787
-  -> codex-Turnloom service
+  -> Codex-Turnloom service
   -> D:\codex\.codex
 ```
 
@@ -62,10 +62,18 @@ Phone app / browser
 
 ### 2026-09-03: mobile showed the computer as offline
 
-- Symptom: the Android app marked the saved computer offline even though the local codex-Turnloom service was healthy.
+- Symptom: the Android app marked the saved computer offline even though the local Codex-Turnloom service was healthy.
 - Root cause: the public IP certificate had renewed on disk, but the host Nginx process was still serving the certificate that expired on September 3, 2026 at 05:32 China Standard Time. The reload command also collided with an already-running listener on port `1420`, so the new certificate was not loaded.
 - Recovery: restarted `clawpanel-proxy.service` after validating `/etc/nginx/clawpanel-nginx.conf`, then verified the public certificate is valid through September 8, 2026 at 18:47 China Standard Time and the authenticated health endpoint returns `200`.
 - Prevention: updated `/usr/local/sbin/deploy-openclaw-ip-cert.sh` to signal the exact host Nginx master process instead of relying on the missing default PID file. A backup was kept as `deploy-openclaw-ip-cert.sh.bak-20260903-turnloom`.
+
+### 2026-09-03: Windows supervisor stopped after a project update
+
+- Symptom: the scheduled task appeared to be running, but local port `8787` was no longer listening and the public mobile path could not reach the computer.
+- Root cause: the long-running task retained Windows defaults that allow it to stop when idle state changes or power conditions change. Repeated replacement attempts also left a damaged running-instance record that prevented a clean restart.
+- Recovery: removed the damaged scheduled-task record, recreated it with the repository installer, and verified the local and authenticated public health endpoints return `200`.
+- Prevention: the supervisor now owns a named single-instance mutex. The installer explicitly allows battery starts, prevents battery and idle-state termination, and continues to use the windowless VBS launcher.
+- Verification: the service remained on port `8787`, the hidden task stayed running, the current web interface was served, and the public APK endpoint returned `Codex-Turnloom.apk`.
 
 ## Change rules
 

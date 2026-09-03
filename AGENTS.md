@@ -1,4 +1,4 @@
-# codex-Turnloom deployment guidance
+# Codex-Turnloom deployment guidance
 
 ## Shared project memory
 
@@ -31,6 +31,6 @@ The machine-local config is `%LOCALAPPDATA%\CodexPocket\config.json`. It contain
 
 ## Android release delivery
 
-- Whenever an APK is rebuilt or updated, stage the latest artifact at `public/downloads/CodexPocket.apk`.
+- Whenever an APK is rebuilt or updated, stage the latest artifact at `public/downloads/Codex-Turnloom.apk` and refresh the `public/downloads/CodexPocket.apk` compatibility copy.
 - In the completion message, always include both the public mobile download URL and a clickable local APK file link so the user can install it directly from the current conversation.
 - Keep APK binaries out of Git; only commit source, build scripts, and release instructions.

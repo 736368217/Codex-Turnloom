@@ -37,6 +37,7 @@ import android.widget.LinearLayout;
 import android.widget.PopupMenu;
 import android.widget.ProgressBar;
 import android.widget.ScrollView;
+import android.widget.Space;
 import android.widget.TextView;
 import android.widget.Toast;
 
@@ -75,13 +76,15 @@ public class MainActivity extends ComponentActivity {
     public static final String EXTRA_DEVICE_URL = "codex_pocket_device_url";
     public static final String EXTRA_THREAD_ID = "codex_pocket_thread_id";
     private static final String REMINDERS_KEY = "thread_reminders";
+    private static final String ONBOARDING_KEY = "turnloom_onboarding_seen_v1";
     private static final int NOTIFICATION_PERMISSION_REQUEST = 7102;
 
-    private static final int INK = Color.rgb(24, 31, 38);
-    private static final int MUTED = Color.rgb(100, 112, 124);
-    private static final int PAPER = Color.rgb(247, 248, 250);
-    private static final int LINE = Color.rgb(224, 228, 233);
-    private static final int ACCENT = Color.rgb(22, 104, 218);
+    private static final int INK = Color.rgb(29, 29, 31);
+    private static final int MUTED = Color.rgb(110, 110, 115);
+    private static final int PAPER = Color.rgb(245, 245, 247);
+    private static final int LINE = Color.rgb(224, 224, 229);
+    private static final int ACCENT = Color.rgb(0, 102, 204);
+    private static final int ACCENT_SOFT = Color.rgb(232, 242, 255);
     private static final int ONLINE = Color.rgb(34, 139, 84);
     private static final int OFFLINE = Color.rgb(181, 55, 55);
 
@@ -127,7 +130,7 @@ public class MainActivity extends ComponentActivity {
                 if (result.getContents() == null) return;
                 Device imported = parseDeviceQr(result.getContents());
                 if (imported == null) {
-                    Toast.makeText(this, "这不是可识别的 codex-Turnloom 设备码", Toast.LENGTH_LONG).show();
+                    Toast.makeText(this, "这不是可识别的 Codex-Turnloom 设备码", Toast.LENGTH_LONG).show();
                     return;
                 }
                 int existing = findDeviceByUrl(imported.url);
@@ -159,6 +162,9 @@ public class MainActivity extends ComponentActivity {
         root.setBackgroundColor(PAPER);
         setContentView(root);
         showMachinePicker();
+        if (!getSharedPreferences(PREFS, MODE_PRIVATE).getBoolean(ONBOARDING_KEY, false)) {
+            root.post(() -> showWelcomeGuide(true));
+        }
         clearLegacyReminderNotification();
         ReminderScheduler.sync(this);
     }
@@ -194,42 +200,86 @@ public class MainActivity extends ComponentActivity {
         activeDevice = null;
         destroyWebView();
         root.removeAllViews();
-        getWindow().setStatusBarColor(INK);
+        getWindow().setStatusBarColor(Color.WHITE);
         getWindow().setNavigationBarColor(PAPER);
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) getWindow().getDecorView().setSystemUiVisibility(View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR);
 
         LinearLayout appBar = new LinearLayout(this);
         appBar.setGravity(Gravity.CENTER_VERTICAL);
         appBar.setPadding(dp(18), dp(8), dp(10), dp(8));
-        appBar.setBackgroundColor(INK);
-        TextView title = label("codex-Turnloom", 20, Color.WHITE);
+        appBar.setBackgroundColor(Color.WHITE);
+        TextView title = label("Codex-Turnloom", 19, INK);
         title.setTypeface(Typeface.DEFAULT, Typeface.BOLD);
         appBar.addView(title, new LinearLayout.LayoutParams(0, dp(48), 1));
-        appBar.addView(iconButton("扫码", "扫描二维码添加电脑", v -> startScanner()), new LinearLayout.LayoutParams(dp(58), dp(44)));
-        appBar.addView(iconButton("＋", "手动添加电脑", v -> showDeviceDialog(-1)), new LinearLayout.LayoutParams(dp(48), dp(44)));
+        appBar.addView(headerButton("?", "打开使用指引", v -> showWelcomeGuide(false)), new LinearLayout.LayoutParams(dp(44), dp(44)));
+        appBar.addView(headerButton("＋", "手动添加电脑", v -> showDeviceDialog(-1)), new LinearLayout.LayoutParams(dp(44), dp(44)));
         root.addView(appBar, new LinearLayout.LayoutParams(-1, dp(64)));
 
         ScrollView scroll = new ScrollView(this);
         scroll.setFillViewport(true);
         LinearLayout page = new LinearLayout(this);
         page.setOrientation(LinearLayout.VERTICAL);
-        page.setPadding(dp(16), dp(22), dp(16), dp(28));
+        page.setPadding(dp(18), dp(24), dp(18), dp(28));
         scroll.addView(page, new ScrollView.LayoutParams(-1, -2));
 
-        TextView heading = label("选择电脑", 24, INK);
+        TextView heading = label(devices.isEmpty() ? "连接你的电脑" : "选择电脑", 28, INK);
         heading.setTypeface(Typeface.DEFAULT, Typeface.BOLD);
         page.addView(heading);
-        TextView subtitle = label("选择后进入完整会话页面", 14, MUTED);
-        subtitle.setPadding(0, dp(4), 0, dp(18));
+        TextView subtitle = label(devices.isEmpty() ? "扫描电脑上显示的设备码，即可把正在运行的 Codex 延续到手机。" : "选择一台电脑，继续它上面的 Codex 会话。", 15, MUTED);
+        subtitle.setLineSpacing(0, 1.15f);
+        subtitle.setPadding(0, dp(6), 0, dp(22));
         page.addView(subtitle);
 
         LinearLayout list = new LinearLayout(this);
         list.setOrientation(LinearLayout.VERTICAL);
-        list.setBackground(rounded(Color.WHITE, 1, LINE, 8));
+        if (devices.isEmpty()) {
+            list.setGravity(Gravity.CENTER_HORIZONTAL);
+            list.setPadding(dp(22), dp(26), dp(22), dp(24));
+            list.setBackground(rounded(Color.WHITE, 1, LINE, 12));
+            TextView mark = label("◎", 40, ACCENT);
+            mark.setGravity(Gravity.CENTER);
+            list.addView(mark, new LinearLayout.LayoutParams(-1, dp(54)));
+            TextView emptyTitle = label("扫描设备码开始", 18, INK);
+            emptyTitle.setTypeface(Typeface.DEFAULT, Typeface.BOLD);
+            emptyTitle.setGravity(Gravity.CENTER);
+            list.addView(emptyTitle);
+            TextView emptyCopy = label("在电脑端运行设备二维码命令，然后用这里的扫描功能添加。", 13, MUTED);
+            emptyCopy.setGravity(Gravity.CENTER);
+            emptyCopy.setLineSpacing(0, 1.2f);
+            emptyCopy.setPadding(dp(10), dp(7), dp(10), dp(20));
+            list.addView(emptyCopy);
+            Button scan = primaryButton("扫描二维码", v -> startScanner());
+            list.addView(scan, new LinearLayout.LayoutParams(-1, dp(48)));
+            Button manual = secondaryButton("手动输入地址", v -> showDeviceDialog(-1));
+            LinearLayout.LayoutParams manualParams = new LinearLayout.LayoutParams(-1, dp(46));
+            manualParams.setMargins(0, dp(10), 0, 0);
+            list.addView(manual, manualParams);
+        } else {
+            list.setBackground(rounded(Color.WHITE, 1, LINE, 12));
+            for (int i = 0; i < devices.size(); i++) addDeviceRow(list, devices.get(i), i, i == devices.size() - 1);
+        }
         page.addView(list, new LinearLayout.LayoutParams(-1, -2));
-        for (int i = 0; i < devices.size(); i++) addDeviceRow(list, devices.get(i), i, i == devices.size() - 1);
 
-        TextView localNote = label("电脑信息和访问码仅保存在这台手机上。", 12, MUTED);
-        localNote.setPadding(dp(2), dp(16), dp(2), 0);
+        if (!devices.isEmpty()) {
+            TextView sectionTitle = label("添加另一台电脑", 14, INK);
+            sectionTitle.setTypeface(Typeface.DEFAULT, Typeface.BOLD);
+            sectionTitle.setPadding(dp(2), dp(24), 0, dp(10));
+            page.addView(sectionTitle);
+            LinearLayout actions = new LinearLayout(this);
+            actions.setOrientation(LinearLayout.HORIZONTAL);
+            actions.setGravity(Gravity.CENTER_VERTICAL);
+            Button scan = primaryButton("扫描二维码", v -> startScanner());
+            actions.addView(scan, new LinearLayout.LayoutParams(0, dp(48), 1));
+            Space gap = new Space(this);
+            actions.addView(gap, new LinearLayout.LayoutParams(dp(10), dp(1)));
+            Button manual = secondaryButton("手动添加", v -> showDeviceDialog(-1));
+            actions.addView(manual, new LinearLayout.LayoutParams(0, dp(48), 1));
+            page.addView(actions);
+        }
+
+        TextView localNote = label("电脑信息与访问码只保存在这台手机上。", 12, MUTED);
+        localNote.setGravity(Gravity.CENTER);
+        localNote.setPadding(dp(2), dp(22), dp(2), 0);
         page.addView(localNote);
         root.addView(scroll, new LinearLayout.LayoutParams(-1, 0, 1));
 
@@ -240,15 +290,15 @@ public class MainActivity extends ComponentActivity {
     private void addDeviceRow(LinearLayout list, Device device, int index, boolean last) {
         LinearLayout row = new LinearLayout(this);
         row.setGravity(Gravity.CENTER_VERTICAL);
-        row.setPadding(dp(16), dp(10), dp(8), dp(10));
-        int rowHeight = device.note.isEmpty() ? 76 : 94;
+        row.setPadding(dp(16), dp(12), dp(8), dp(12));
+        int rowHeight = device.note.isEmpty() ? 82 : 98;
         row.setMinimumHeight(dp(rowHeight));
         row.setClickable(true);
         row.setFocusable(true);
         row.setBackgroundColor(Color.TRANSPARENT);
         row.setOnClickListener(v -> openDevice(device));
 
-        TextView dot = label("●", 11, statusColor(device));
+        TextView dot = label("●", 12, statusColor(device));
         dot.setTag("status:" + device.url);
         dot.setGravity(Gravity.TOP);
         row.addView(dot, new LinearLayout.LayoutParams(dp(22), dp(48)));
@@ -264,12 +314,14 @@ public class MainActivity extends ComponentActivity {
             note.setMaxLines(1);
             copy.addView(note);
         }
-        TextView address = label(displayAddress(device.url), 12, MUTED);
+        String status = deviceStatus.get(device.url) == null ? "正在检测" : Boolean.TRUE.equals(deviceStatus.get(device.url)) ? "在线" : "离线";
+        TextView address = label(status + " · " + displayAddress(device.url), 12, MUTED);
+        address.setTag("status-copy:" + device.url);
         address.setMaxLines(1);
         copy.addView(address);
         row.addView(copy, new LinearLayout.LayoutParams(0, -2, 1));
 
-        TextView arrow = label("›", 28, MUTED);
+        TextView arrow = label("›", 26, MUTED);
         arrow.setGravity(Gravity.CENTER);
         row.addView(arrow, new LinearLayout.LayoutParams(dp(32), dp(48)));
         Button menu = iconButton("⋮", "管理这台电脑", v -> showDeviceMenu(v, index));
@@ -461,7 +513,7 @@ public class MainActivity extends ComponentActivity {
             String fileName = DownloadFileNames.resolve(url, contentDisposition, mimeType);
             DownloadManager.Request request = new DownloadManager.Request(Uri.parse(url));
             request.setTitle(fileName);
-            request.setDescription("来自 " + (activeDevice == null ? "codex-Turnloom" : activeDevice.name));
+            request.setDescription("来自 " + (activeDevice == null ? "Codex-Turnloom" : activeDevice.name));
             request.setMimeType(mimeType);
             request.setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED);
             request.setDestinationInExternalPublicDir(Environment.DIRECTORY_DOWNLOADS, fileName);
@@ -541,6 +593,10 @@ public class MainActivity extends ComponentActivity {
                 deviceStatus.put(device.url, value);
                 View dot = currentList.findViewWithTag("status:" + device.url);
                 if (dot instanceof TextView) ((TextView) dot).setTextColor(value ? ONLINE : OFFLINE);
+                View copy = currentList.findViewWithTag("status-copy:" + device.url);
+                if (copy instanceof TextView) {
+                    ((TextView) copy).setText((value ? "在线" : "离线") + " · " + displayAddress(device.url));
+                }
             });
         }).start();
     }
@@ -625,6 +681,35 @@ public class MainActivity extends ComponentActivity {
         button.setBackgroundColor(Color.TRANSPARENT);
         button.setContentDescription(description);
         button.setOnClickListener(listener);
+        return button;
+    }
+
+    private Button headerButton(String text, String description, View.OnClickListener listener) {
+        Button button = iconButton(text, description, listener);
+        button.setTextColor(INK);
+        button.setTextSize(text.length() > 1 ? 13 : 22);
+        return button;
+    }
+
+    private Button primaryButton(String text, View.OnClickListener listener) {
+        Button button = new Button(this);
+        button.setText(text);
+        button.setTextSize(15);
+        button.setTextColor(Color.WHITE);
+        button.setTypeface(Typeface.DEFAULT, Typeface.BOLD);
+        button.setAllCaps(false);
+        button.setMinHeight(0);
+        button.setMinimumHeight(0);
+        button.setPadding(dp(16), 0, dp(16), 0);
+        button.setBackground(rounded(ACCENT, 0, ACCENT, 24));
+        button.setOnClickListener(listener);
+        return button;
+    }
+
+    private Button secondaryButton(String text, View.OnClickListener listener) {
+        Button button = primaryButton(text, listener);
+        button.setTextColor(ACCENT);
+        button.setBackground(rounded(Color.WHITE, 1, LINE, 24));
         return button;
     }
 
@@ -807,6 +892,57 @@ public class MainActivity extends ComponentActivity {
             ReminderScheduler.sync(this);
         } catch (Exception ignored) {
         }
+    }
+
+    private void showWelcomeGuide(boolean firstRun) {
+        LinearLayout content = new LinearLayout(this);
+        content.setOrientation(LinearLayout.VERTICAL);
+        content.setPadding(dp(24), dp(6), dp(24), dp(6));
+
+        TextView intro = label("手机是电脑端 Codex 的控制窗口。电脑保留所有数据，手机只负责连接和操作。", 15, MUTED);
+        intro.setLineSpacing(0, 1.2f);
+        intro.setPadding(0, 0, 0, dp(18));
+        content.addView(intro);
+        addGuideStep(content, "1", "在电脑上启动服务", "保持 Codex Desktop 和 Codex-Turnloom 服务运行。");
+        addGuideStep(content, "2", "扫描设备二维码", "设备地址和访问码会加密保存在这台手机上。");
+        addGuideStep(content, "3", "选择电脑并继续", "打开会话、发送消息、图片或文件，必要时处理等待操作。");
+
+        AlertDialog dialog = new AlertDialog.Builder(this)
+                .setTitle("欢迎使用 Codex-Turnloom")
+                .setView(content)
+                .setNegativeButton(firstRun ? "稍后" : "关闭", null)
+                .setPositiveButton(devices.isEmpty() ? "扫描二维码" : "知道了", null)
+                .create();
+        dialog.setOnShowListener(value -> dialog.getButton(DialogInterface.BUTTON_POSITIVE).setOnClickListener(view -> {
+            getSharedPreferences(PREFS, MODE_PRIVATE).edit().putBoolean(ONBOARDING_KEY, true).apply();
+            dialog.dismiss();
+            if (devices.isEmpty()) startScanner();
+        }));
+        dialog.setOnDismissListener(value -> getSharedPreferences(PREFS, MODE_PRIVATE).edit().putBoolean(ONBOARDING_KEY, true).apply());
+        dialog.show();
+    }
+
+    private void addGuideStep(LinearLayout parent, String number, String title, String copy) {
+        LinearLayout row = new LinearLayout(this);
+        row.setOrientation(LinearLayout.HORIZONTAL);
+        row.setGravity(Gravity.TOP);
+        row.setPadding(0, 0, 0, dp(16));
+        TextView badge = label(number, 14, ACCENT);
+        badge.setGravity(Gravity.CENTER);
+        badge.setTypeface(Typeface.DEFAULT, Typeface.BOLD);
+        badge.setBackground(rounded(ACCENT_SOFT, 0, ACCENT_SOFT, 18));
+        row.addView(badge, new LinearLayout.LayoutParams(dp(34), dp(34)));
+        LinearLayout text = new LinearLayout(this);
+        text.setOrientation(LinearLayout.VERTICAL);
+        text.setPadding(dp(12), 0, 0, 0);
+        TextView heading = label(title, 15, INK);
+        heading.setTypeface(Typeface.DEFAULT, Typeface.BOLD);
+        text.addView(heading);
+        TextView description = label(copy, 13, MUTED);
+        description.setLineSpacing(0, 1.15f);
+        text.addView(description);
+        row.addView(text, new LinearLayout.LayoutParams(0, -2, 1));
+        parent.addView(row);
     }
 
     private void clearLegacyReminderNotification() {

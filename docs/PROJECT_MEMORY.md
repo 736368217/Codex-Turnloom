@@ -6,7 +6,7 @@ Do not copy credentials, access codes, tokens, private URLs containing secrets, 
 
 ## Product identity
 
-- Product name: `codex-Turnloom`.
+- Product name: `Codex-Turnloom`.
 - Chinese positioning: 把正在电脑上运行的 Codex，完整延续到你的手机里。
 - Official logo: the blue rounded-square mark with two open white rings, a mint node, and a coral node.
 - Canonical logo asset: `docs/assets/turnloom-logo.png`.
@@ -15,9 +15,11 @@ Do not copy credentials, access codes, tokens, private URLs containing secrets, 
 
 ## Product shape
 
-- codex-Turnloom is a private, self-hosted mobile control desk for an already-running Codex Desktop installation.
+- Codex-Turnloom is a private, self-hosted mobile control desk for an already-running Codex Desktop installation.
 - The computer remains the source of truth. The phone app and mobile web UI display conversations and send controls through the local companion service.
 - Supported workflows include conversation pagination and caching, message send/queue/insert/stop, model and reasoning-effort selection, image/file upload, local-file download, tool visibility, reminders, QR pairing, and multiple saved computers.
+- The interface uses a restrained Apple-influenced product UI: neutral white/gray surfaces, a single action blue, clear typographic hierarchy, stable touch targets, no decorative gradients, and guidance tied to real tasks.
+- Android provides the authoritative computer picker and encrypted device store. First use explains the connection model and leads to QR scanning; saved computers show identity, address, and live connection state. The connected web workspace provides a one-time quick guide that remains available from the conversation sidebar.
 
 ## Source and release layout
 

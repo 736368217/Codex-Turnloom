@@ -6,9 +6,16 @@ param(
 
 $ErrorActionPreference = "Stop"
 
+$createdNew = $false
+$supervisorMutex = New-Object System.Threading.Mutex($true, "Local\CodexPocketSupervisor", [ref]$createdNew)
+if (-not $createdNew) {
+  $supervisorMutex.Dispose()
+  exit 0
+}
+
 function Read-Config {
   if (-not (Test-Path -LiteralPath $ConfigPath -PathType Leaf)) {
-    throw "codex-Turnloom config not found: $ConfigPath"
+    throw "Codex-Turnloom config not found: $ConfigPath"
   }
   return Get-Content -LiteralPath $ConfigPath -Raw | ConvertFrom-Json
 }
@@ -98,14 +105,19 @@ function Start-Tunnel {
     -RedirectStandardError $stderr | Out-Null
 }
 
-Write-SupervisorLog ("Supervisor started. Config: {0}" -f $ConfigPath)
-while ($true) {
-  try {
-    $config = Read-Config
-    if (-not (Test-ServerReady)) { Start-Server }
-    if ($config.tunnel.enabled -and -not (Test-TunnelReady)) { Start-Tunnel }
-  } catch {
-    Write-SupervisorLog ("Failure: " + $_.Exception.Message)
+try {
+  Write-SupervisorLog ("Supervisor started. Config: {0}" -f $ConfigPath)
+  while ($true) {
+    try {
+      $config = Read-Config
+      if (-not (Test-ServerReady)) { Start-Server }
+      if ($config.tunnel.enabled -and -not (Test-TunnelReady)) { Start-Tunnel }
+    } catch {
+      Write-SupervisorLog ("Failure: " + $_.Exception.Message)
+    }
+    Start-Sleep -Seconds 5
   }
-  Start-Sleep -Seconds 5
+} finally {
+  try { $supervisorMutex.ReleaseMutex() } catch {}
+  $supervisorMutex.Dispose()
 }
