@@ -10,38 +10,11 @@ Codex-Turnloom 是面向 Codex Desktop 的私有、自托管移动工作台。�
 
 > 非 OpenAI 官方项目。它依赖 Codex Desktop 的本地数据和 IPC 接口，Codex Desktop 更新后可能需要同步适配。
 
-## 界面预览
+## 功能概览
 
-<table>
-  <tr>
-    <td width="50%" align="center">
-      <img src="docs/assets/phone-thread-list.png" alt="手机端对话列表" />
-      <br />
-      <strong>对话列表</strong><br />
-      搜索、置顶、项目分组，并隐藏子 Agent 和归档任务。
-    </td>
-    <td width="50%" align="center">
-      <img src="docs/assets/phone-usage.png" alt="手机端任务详情与输入区" />
-      <br />
-      <strong>持续参与任务</strong><br />
-      查看上下文、思考状态和工具调用，直接发送后续消息。
-    </td>
-  </tr>
-  <tr>
-    <td width="50%" align="center">
-      <img src="docs/assets/phone-approval.png" alt="手机端权限审批" />
-      <br />
-      <strong>处理交互请求</strong><br />
-      在手机上查看权限请求，并选择允许、拒绝或始终允许。
-    </td>
-    <td width="50%" align="center">
-      <img src="docs/assets/phone-skill-picker.png" alt="手机端技能选择器" />
-      <br />
-      <strong>使用 Codex 能力</strong><br />
-      从输入区选择技能和插件，保持与桌面端接近的工作流。
-    </td>
-  </tr>
-</table>
+Codex-Turnloom 提供任务列表、消息同步、思考状态、工具记录、权限处理、目标编辑、任务分支、消息排队/插入、图片和本地文件转发、完成提醒、二维码配对、多电脑切换和手机本地缓存。
+
+发布版本只使用脱敏的品牌素材；包含真实对话、文件路径或设备信息的界面截图不会进入仓库。
 
 ## 主要功能
 
@@ -149,7 +122,6 @@ npm run android:build
 
 - 原始产物：android/app/build/outputs/apk/debug/app-debug.apk
 - 稳定下载文件：public/downloads/Codex-Turnloom.apk
-- Android 下载文件：public/downloads/Codex-Turnloom.apk
 - 服务端下载接口：/api/apk
 
 APP 支持扫描设备二维码、带 login 或 token 参数的 HTTP(S) 地址，以及包含 name、url、token 的 JSON 设备记录。旧版 codexpocket 协议和 CodexPocket 配置目录继续保留，以便已有安装平滑升级。

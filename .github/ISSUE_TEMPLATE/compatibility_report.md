@@ -29,7 +29,7 @@ Describe the behavior after the Codex Desktop update.
 - macOS version:
 - Node.js version:
 - Browser/device used to access the web UI:
-- codex-Turnloom version or commit:
+- Codex-Turnloom version or commit:
 
 ## Notes
 

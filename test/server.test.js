@@ -100,7 +100,7 @@ test("thread list honors explicit projects and only infers unique longest roots"
     cwd: String.raw`\\?\C:\workspace\ignored`
   });
   const ungrouped = threadListMetadata({
-    cwd: String.raw`\\?\C:\Users\WIN10\Documents\ChatGPT\塔罗`
+    cwd: String.raw`\\?\C:\Users\demo\Documents\工作区\示例项目`
   });
 
   assert.equal(pinned.pinned, true);
@@ -112,43 +112,43 @@ test("thread list honors explicit projects and only infers unique longest roots"
   });
   assert.equal(ungrouped.project, null);
 
-  const tarotProject = { key: "project:tarot", id: "project-tarot", name: "塔罗", native: true };
+  const sampleProject = { key: "project:sample", id: "project-sample", name: "示例项目", native: true };
   const archiveProject = { key: "project:archive", id: "project-archive", name: "归档", native: true };
   const projectRoots = new Map([
-    ["c:\\users\\win10\\documents\\chatgpt\\塔罗", [tarotProject]],
-    ["c:\\users\\win10\\documents\\chatgpt\\塔罗\\归档", [archiveProject]]
+    ["c:\\users\\demo\\documents\\workspace\\sample-project", [sampleProject]],
+    ["c:\\users\\demo\\documents\\workspace\\sample-project\\archive", [archiveProject]]
   ]);
   assert.deepEqual(
-    threadListMetadata({ cwd: String.raw`\\?\C:\Users\WIN10\Documents\ChatGPT\塔罗\归档\2026` }, projectRoots).project,
+    threadListMetadata({ cwd: String.raw`\\?\C:\Users\demo\Documents\workspace\sample-project\archive\2026` }, projectRoots).project,
     archiveProject
   );
-  assert.equal(threadListMetadata({ cwd: String.raw`\\?\C:\Users\WIN10\Documents\ChatGPT\腾讯云` }, projectRoots).project, null);
+  assert.equal(threadListMetadata({ cwd: String.raw`\\?\C:\Users\demo\Documents\workspace\other-project` }, projectRoots).project, null);
 
   const explicitlyAssignedElsewhere = threadListMetadata({
     projectId: "project-explicit",
     projectName: "明确项目",
-    cwd: String.raw`\\?\C:\Users\WIN10\Documents\ChatGPT\塔罗\归档\2026`
+    cwd: String.raw`\\?\C:\Users\demo\Documents\workspace\sample-project\archive\2026`
   }, projectRoots);
   assert.equal(explicitlyAssignedElsewhere.project.id, "project-explicit");
 
   const unresolvedExplicitProject = threadListMetadata({
     projectId: "project-missing-name",
-    cwd: String.raw`\\?\C:\Users\WIN10\Documents\ChatGPT\塔罗\归档\2026`
+    cwd: String.raw`\\?\C:\Users\demo\Documents\workspace\sample-project\archive\2026`
   }, projectRoots);
   assert.equal(unresolvedExplicitProject.project, null);
 
   const duplicateRootProjects = new Map([
-    ["c:\\users\\win10\\documents\\chatgpt\\腾讯云", [
-      { key: "project:flynas", id: "project-flynas", name: "飞牛nas", native: true },
-      { key: "project:aliyun", id: "project-aliyun", name: "阿里云\\腾讯云", native: true }
+    ["c:\\users\\demo\\documents\\workspace\\shared-directory", [
+      { key: "project:first", id: "project-first", name: "项目一", native: true },
+      { key: "project:second", id: "project-second", name: "父项目\\共享目录", native: true }
     ]]
   ]);
-  assert.equal(threadListMetadata({ cwd: String.raw`\\?\C:\Users\WIN10\Documents\ChatGPT\腾讯云` }, duplicateRootProjects).project, null);
+  assert.equal(threadListMetadata({ cwd: String.raw`\\?\C:\Users\demo\Documents\workspace\shared-directory` }, duplicateRootProjects).project, null);
 
-  const duplicatedSameProject = new Map([["c:\\users\\win10\\documents\\chatgpt\\重复", [tarotProject, { ...tarotProject }]]]);
+  const duplicatedSameProject = new Map([["c:\\users\\demo\\documents\\workspace\\duplicate", [sampleProject, { ...sampleProject }]]]);
   assert.deepEqual(
-    threadListMetadata({ cwd: String.raw`\\?\C:\Users\WIN10\Documents\ChatGPT\重复\子目录` }, duplicatedSameProject).project,
-    tarotProject
+    threadListMetadata({ cwd: String.raw`\\?\C:\Users\demo\Documents\workspace\duplicate\nested` }, duplicatedSameProject).project,
+    sampleProject
   );
 });
 
@@ -172,7 +172,7 @@ test("older-message pagination grows in bounded pages and preserves the viewport
 test("migrated state rows use the rollout discovered in the active Codex home", () => {
   const row = {
     id: "thread-migrated",
-    rolloutPath: "C:\\Users\\WIN10\\.codex\\sessions\\2026\\08\\rollout-thread-migrated.jsonl"
+    rolloutPath: "C:\\Users\\demo\\.codex\\sessions\\2026\\08\\rollout-thread-migrated.jsonl"
   };
   const current = new Map([["thread-migrated", "D:\\codex\\.codex\\sessions\\2026\\08\\rollout-thread-migrated.jsonl"]]);
   assert.equal(rolloutPathForCurrentHome(row, current), current.get(row.id));
@@ -691,12 +691,12 @@ test("main-module detection follows npm-style directory junctions", () => {
 
 test("extracts Windows file references and removes line suffixes", () => {
   const paths = localPathCandidates(
-    "Open [report](C:\\Users\\WIN10\\Documents\\Quarterly Report.xlsx:42) and <image path=\"C:\\Users\\WIN10\\AppData\\Local\\Temp\\preview.png\">"
+    "Open [report](C:\\Users\\demo\\Documents\\workspace\\report.xlsx:42) and <image path=\"C:\\Users\\demo\\AppData\\Local\\Temp\\preview.png\">"
   );
 
   assert.deepEqual(paths, [
-    "C:\\Users\\WIN10\\Documents\\Quarterly Report.xlsx",
-    "C:\\Users\\WIN10\\AppData\\Local\\Temp\\preview.png"
+    "C:\\Users\\demo\\Documents\\workspace\\report.xlsx",
+    "C:\\Users\\demo\\AppData\\Local\\Temp\\preview.png"
   ]);
 });
 

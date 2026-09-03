@@ -5,3 +5,11 @@ npm-debug.log*
 # Local Codex Desktop bundles copied out for IPC inspection.
 app-session-*.js
 main-*.js
+AGENTS.md
+docs/PROJECT_MEMORY.md
+docs/OPERATIONS.md
+docs/OPERATIONS-CHANGELOG.md
+docs/assets/phone-*.png
+docs/assets/promo*.png
+!docs/assets/promo-Codex-Turnloom.png
+public/assets/turnloom-logo-candidates/

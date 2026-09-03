@@ -982,6 +982,19 @@ body.welcome-open {
 }
 
 @media (max-width: 760px) and (orientation: portrait) {
+  .shell.sidebar-collapsed {
+    grid-template-columns: 1fr;
+  }
+
+  .shell.sidebar-collapsed .sidebar {
+    transform: translateX(calc(-100% - 18px));
+    pointer-events: none;
+  }
+
+  .shell.sidebar-collapsed .drawer-tab {
+    display: grid;
+  }
+
   .conversation-header,
   .shell.sidebar-collapsed .conversation-header {
     min-height: 58px;
@@ -3386,6 +3399,19 @@ body.goal-dialog-open { overflow: hidden; }
 }
 
 @media (max-width: 760px) and (orientation: portrait) {
+  .shell.sidebar-collapsed {
+    grid-template-columns: 1fr;
+  }
+
+  .shell.sidebar-collapsed .sidebar {
+    transform: translateX(calc(-100% - 18px));
+    pointer-events: none;
+  }
+
+  .shell.sidebar-collapsed .drawer-tab {
+    display: grid;
+  }
+
   .conversation-header,
   .shell.sidebar-collapsed .conversation-header {
     min-height: 58px;
@@ -3451,5 +3477,21 @@ body.goal-dialog-open { overflow: hidden; }
 
   .model-summary {
     max-width: min(46vw, 150px);
+  }
+}
+
+/* Mobile must remain a single-column workspace even when the drawer is closed. */
+@media (max-width: 760px) and (orientation: portrait) {
+  .shell.sidebar-collapsed {
+    grid-template-columns: 1fr;
+  }
+
+  .shell.sidebar-collapsed .sidebar {
+    transform: translateX(calc(-100% - 18px));
+    pointer-events: none;
+  }
+
+  .shell.sidebar-collapsed .drawer-tab {
+    display: grid;
   }
 }
