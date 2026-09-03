@@ -31,5 +31,5 @@ importUrl.searchParams.set("token", config.accessCode || "");
 console.log("");
 console.log(`Device: ${config.machineName || os.hostname()}`);
 console.log(`URL:    ${publicUrl}`);
-console.log("Scan this code in codex-Turnloom to add or update the computer:");
+console.log("Scan this code in Codex-Turnloom to add or update the computer:");
 qrcode.generate(importUrl.toString(), { small: true });

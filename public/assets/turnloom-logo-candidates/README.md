@@ -1,4 +1,4 @@
-# codex-Turnloom logo candidates
+# Codex-Turnloom logo candidates
 
 这些 PNG 是四种视觉方向的候选板，每个方向包含 3 张生成结果；每张结果图内又排布了多个小标记变体，方便快速比较构图、配色和识别度。
 

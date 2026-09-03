@@ -1,4 +1,4 @@
-# codex-Turnloom Operations Changelog
+# Codex-Turnloom Operations Changelog
 
 This is a concise, secret-free record for humans and future agents. Detailed topology and guardrails are in `OPERATIONS.md`.
 
@@ -26,7 +26,7 @@ This is a concise, secret-free record for humans and future agents. Detailed top
 ## 2026-08-29
 
 - Capped and normalized queued-message previews so long mobile sends cannot push queue actions outside the viewport; narrow layouts keep actions on a dedicated row.
-- Android WebView now hands HTTP/HTTPS conversation links to the system browser, preserving the active codex-Turnloom page.
+- Android WebView now hands HTTP/HTTPS conversation links to the system browser, preserving the active Codex-Turnloom page.
 
 - Fixed the mobile goal panel's native `hidden` behavior being overridden by author CSS; empty goal forms no longer push conversation content down.
 - Goal writes now send only Desktop-supported `objective` and `status` fields; the old companion token-budget path was removed.
@@ -46,11 +46,11 @@ This is a concise, secret-free record for humans and future agents. Detailed top
 - Added project grouping from native Codex projects with a normalized working-directory fallback, plus Desktop-compatible pinned-section reads and pin/unpin writes.
 - Evaluated the official Codex app-server mutation API, but standalone startup stalled on remote plugin synchronization in this API-key-only environment. The pin endpoint therefore uses a scoped SQLite transaction and queues a Desktop refresh.
 - Fixed Windows reinstall behavior so the exact old managed Node child is stopped before the hidden supervisor starts the updated server.
-- Verified the public list, MuMu Android 1.11.0 UI, WorkManager jobs, and absence of active codex-Turnloom foreground notifications.
+- Verified the public list, MuMu Android 1.11.0 UI, WorkManager jobs, and absence of active Codex-Turnloom foreground notifications.
 
 ## 2026-08-26
 
-- Investigated mobile access failure: Alibaba Cloud proxy and reverse tunnel were healthy, but the local codex-Turnloom process was not listening on port `8787`, producing public `502` responses.
+- Investigated mobile access failure: Alibaba Cloud proxy and reverse tunnel were healthy, but the local Codex-Turnloom process was not listening on port `8787`, producing public `502` responses.
 - Restored the server watchdog and verified local health plus authenticated public health return `200`.
 - Confirmed the Alibaba Cloud public entry uses Nginx/OpenResty, not Caddy. Existing listeners and proxy configuration must be preserved.
 - Added an independent Windows `Codex Pocket Recovery Monitor` to restart a stopped server or tunnel watchdog after its health check fails.

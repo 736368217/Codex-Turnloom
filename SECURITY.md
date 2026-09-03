@@ -1,6 +1,6 @@
 # Security Policy
 
-codex-Turnloom is intended for trusted local networks only. Do not expose it to the public internet.
+Codex-Turnloom is intended for trusted local networks only. Do not expose it to the public internet.
 
 ## Supported Versions
 

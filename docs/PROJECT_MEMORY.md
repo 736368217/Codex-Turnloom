@@ -1,4 +1,4 @@
-# codex-Turnloom Shared Project Memory
+# Codex-Turnloom Shared Project Memory
 
 This file is the compact, durable context shared by Codex tasks working on this repository. Read it before project work and update it only when a decision, deployment fact, compatibility constraint, or verified incident outcome changes.
 
@@ -11,7 +11,7 @@ Do not copy credentials, access codes, tokens, private URLs containing secrets, 
 - Official logo: the blue rounded-square mark with two open white rings, a mint node, and a coral node.
 - Canonical logo asset: `docs/assets/turnloom-logo.png`.
 - Web mark: `public/assets/companion-mark.svg`.
-- Social preview: `docs/assets/promo-turnloom.png`.
+- Social preview: `docs/assets/promo-Codex-Turnloom.png` (Chinese banner; `promo-turnloom.png` remains as the earlier source artwork).
 
 ## Product shape
 

@@ -1,10 +1,10 @@
-# codex-Turnloom announcement
+# Codex-Turnloom announcement
 
 ## 中文
 
 把正在电脑上运行的 Codex，完整延续到你的手机里。
 
-**codex-Turnloom** 是一个私有、自托管的 Codex Desktop 移动控制台。电脑继续运行真正的 Codex，手机只负责把会话、消息、工具调用和任务状态带到你手边。
+**Codex-Turnloom** 是一个私有、自托管的 Codex Desktop 移动控制台。电脑继续运行真正的 Codex，手机只负责把会话、消息、工具调用和任务状态带到你手边。
 
 你可以用它：
 
@@ -24,6 +24,6 @@
 
 Carry the Codex session running on your computer all the way to your phone.
 
-**codex-Turnloom** is a private, self-hosted mobile control desk for Codex Desktop. Codex keeps running on your computer; your phone gets a focused view for conversations, prompts, tool activity, files, and task controls.
+**Codex-Turnloom** is a private, self-hosted mobile control desk for Codex Desktop. Codex keeps running on your computer; your phone gets a focused view for conversations, prompts, tool activity, files, and task controls.
 
 It is not a replacement Codex client and is not affiliated with OpenAI. It depends on Codex Desktop local files and private IPC behavior, so future desktop updates may require compatibility work.

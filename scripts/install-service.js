@@ -19,7 +19,7 @@ const maxLogBytes = 1024 * 1024;
 const maxRotatedLogs = 5;
 
 function usage() {
-  console.log(`Install codex-Turnloom as a macOS LaunchAgent.
+  console.log(`Install Codex-Turnloom as a macOS LaunchAgent.
 
 Usage:
   codex-turnloom-install-service [server options]
@@ -191,7 +191,7 @@ run("launchctl", ["bootstrap", userDomain, plistPath]);
 run("launchctl", ["enable", `${userDomain}/${label}`]);
 run("launchctl", ["kickstart", "-k", `${userDomain}/${label}`]);
 
-console.log("codex-Turnloom LaunchAgent installed and started.");
+console.log("Codex-Turnloom LaunchAgent installed and started.");
 console.log(`Service: ${label}`);
 console.log(`Plist:   ${plistPath}`);
 console.log(`Logs:    ${logDir}`);

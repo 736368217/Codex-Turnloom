@@ -1,4 +1,4 @@
-# codex-Turnloom GitHub metadata
+# Codex-Turnloom GitHub metadata
 
 ## About / Description
 
@@ -24,4 +24,4 @@ companion-app
 
 ## Social preview
 
-Use `docs/assets/promo-turnloom.png` as the project social preview image if GitHub repository settings allow uploading a social preview. The image uses the codex-Turnloom name and the current concept mark; replace it with the selected final logo when chosen.
+Use `docs/assets/promo-Codex-Turnloom.png` as the project social preview image if GitHub repository settings allow uploading a social preview. The banner uses the Codex-Turnloom name, Chinese positioning text, and the current concept mark.
