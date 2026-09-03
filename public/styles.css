@@ -686,6 +686,7 @@ button:active:not(:disabled) {
 .welcome-card {
   position: relative;
   display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto;
   width: 560px;
   min-width: 0;
   max-width: calc(100vw - 32px);
@@ -863,6 +864,179 @@ body.welcome-open {
 
   .welcome-footer > span {
     text-align: center;
+  }
+}
+
+/* Apple-inspired workspace pass: calm surfaces, one action color, stable touch geometry. */
+.conversation-header,
+.composer {
+  background: rgba(255, 255, 255, 0.9);
+  border-color: rgba(0, 0, 0, 0.08);
+  backdrop-filter: saturate(180%) blur(20px);
+}
+
+.conversation-header {
+  min-height: 64px;
+  padding: 10px 20px;
+}
+
+.conversation-header h2 {
+  font-size: 20px;
+  font-weight: 600;
+  letter-spacing: -0.2px;
+}
+
+.conversation-header p,
+.role-text,
+.message-meta {
+  color: #6e6e73;
+}
+
+.message-list {
+  background: #f5f5f7;
+  padding: 24px 24px 18px;
+}
+
+.message {
+  max-width: 980px;
+  margin-bottom: 18px;
+}
+
+.bubble {
+  border-color: rgba(0, 0, 0, 0.08);
+  border-radius: 12px;
+  background: #fff;
+  padding: 14px 16px;
+  line-height: 1.47;
+}
+
+.message.user .bubble {
+  border-color: transparent;
+  background: #e8f2ff;
+}
+
+.message.tool .bubble {
+  border-color: transparent;
+  background: #ececf0;
+  color: #48484a;
+}
+
+.composer {
+  gap: 10px;
+  padding: 12px 20px max(14px, env(safe-area-inset-bottom));
+}
+
+.composer-input {
+  min-height: 50px;
+  border-color: rgba(0, 0, 0, 0.1);
+  border-radius: 14px;
+  background: #fff;
+  padding: 12px 14px;
+}
+
+.composer-input:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px rgba(0, 102, 204, 0.14);
+}
+
+.send-button,
+.stop-button,
+.attach-button,
+.conversation-actions .icon-button,
+.toggle {
+  flex: 0 0 40px;
+  width: 40px;
+  min-width: 40px;
+  height: 40px;
+  min-height: 40px;
+}
+
+.send-button {
+  border-radius: 999px;
+  background: var(--accent);
+}
+
+.attach-button,
+.conversation-actions .icon-button,
+.toggle {
+  border-radius: 999px;
+  border-color: rgba(0, 0, 0, 0.08);
+  background: #fff;
+}
+
+.thread-item.active {
+  background: #e8f2ff;
+}
+
+.shell.sidebar-collapsed {
+  grid-template-columns: 0 minmax(0, 1fr);
+}
+
+.shell.sidebar-collapsed .sidebar {
+  transform: translateX(-100%);
+  pointer-events: none;
+}
+
+.shell.sidebar-collapsed .drawer-tab {
+  display: grid;
+}
+
+@media (max-width: 760px) and (orientation: portrait) {
+  .conversation-header,
+  .shell.sidebar-collapsed .conversation-header {
+    min-height: 58px;
+    padding: 9px 14px 9px 58px;
+  }
+
+  .conversation-header h2 {
+    max-width: calc(100vw - 170px);
+    font-size: 17px;
+  }
+
+  .message-list {
+    padding: 16px 14px 12px;
+  }
+
+  .composer {
+    padding: 10px 12px max(12px, env(safe-area-inset-bottom));
+  }
+
+  .composer-actions {
+    min-width: 0;
+    gap: 6px;
+  }
+
+  .composer-left {
+    min-width: 0;
+    gap: 5px;
+    overflow: hidden;
+  }
+
+  .model-summary {
+    max-width: min(42vw, 180px);
+  }
+
+  .plugin-picker-label {
+    display: none;
+  }
+
+  .plugin-picker-button {
+    width: 32px;
+    padding: 0;
+    justify-content: center;
+  }
+
+  .composer-buttons {
+    gap: 5px;
+  }
+
+  .welcome-card {
+    grid-template-rows: auto minmax(0, 1fr) auto;
+  }
+
+  .welcome-body {
+    min-height: 0;
+    overflow-y: auto;
   }
 }
 
@@ -3095,4 +3269,187 @@ body.goal-dialog-open { overflow: hidden; }
   .welcome-dialog { padding-right: 16px; padding-left: 16px; overflow: hidden; }
   .welcome-card { width: calc(100vw - 32px); max-width: calc(100vw - 32px); }
   .welcome-body > h2, .welcome-body > p, .welcome-steps li > div { min-width: 0; max-width: 100%; overflow-wrap: anywhere; }
+}
+
+/* Final Apple-inspired surface pass: calm surfaces, one action color, stable touch geometry. */
+.conversation-header,
+.composer {
+  background: rgba(255, 255, 255, 0.9);
+  border-color: rgba(0, 0, 0, 0.08);
+  backdrop-filter: saturate(180%) blur(20px);
+}
+
+.conversation-header {
+  min-height: 64px;
+  padding: 10px 20px;
+}
+
+.conversation-header h2 {
+  font-size: 20px;
+  font-weight: 600;
+  letter-spacing: -0.2px;
+}
+
+.conversation-header p,
+.role-text,
+.message-meta {
+  color: #6e6e73;
+}
+
+.message-list {
+  background: #f5f5f7;
+  padding: 24px 24px 18px;
+}
+
+.message {
+  max-width: 980px;
+  margin-bottom: 18px;
+}
+
+.bubble {
+  border-color: rgba(0, 0, 0, 0.08);
+  border-radius: 12px;
+  background: #fff;
+  padding: 14px 16px;
+  line-height: 1.47;
+}
+
+.message.user .bubble {
+  border-color: transparent;
+  background: #e8f2ff;
+}
+
+.message.tool .bubble {
+  border-color: transparent;
+  background: #ececf0;
+  color: #48484a;
+}
+
+.composer {
+  gap: 10px;
+  padding: 12px 20px max(14px, env(safe-area-inset-bottom));
+}
+
+.composer-input {
+  min-height: 50px;
+  border-color: rgba(0, 0, 0, 0.1);
+  border-radius: 14px;
+  background: #fff;
+  padding: 12px 14px;
+}
+
+.composer-input:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px rgba(0, 102, 204, 0.14);
+}
+
+.send-button,
+.stop-button,
+.attach-button,
+.conversation-actions .icon-button,
+.toggle {
+  flex: 0 0 40px;
+  width: 40px;
+  min-width: 40px;
+  height: 40px;
+  min-height: 40px;
+}
+
+.send-button {
+  border-radius: 999px;
+  background: var(--accent);
+}
+
+.attach-button,
+.conversation-actions .icon-button,
+.toggle {
+  border-radius: 999px;
+  border-color: rgba(0, 0, 0, 0.08);
+  background: #fff;
+}
+
+.thread-item.active {
+  background: #e8f2ff;
+}
+
+.shell.sidebar-collapsed {
+  grid-template-columns: 0 minmax(0, 1fr);
+}
+
+.shell.sidebar-collapsed .sidebar {
+  transform: translateX(-100%);
+  pointer-events: none;
+}
+
+.shell.sidebar-collapsed .drawer-tab {
+  display: grid;
+}
+
+@media (max-width: 760px) and (orientation: portrait) {
+  .conversation-header,
+  .shell.sidebar-collapsed .conversation-header {
+    min-height: 58px;
+    padding: 9px 14px 9px 58px;
+  }
+
+  .conversation-header h2 {
+    max-width: calc(100vw - 170px);
+    font-size: 17px;
+  }
+
+  .message-list {
+    padding: 16px 14px 12px;
+  }
+
+  .composer {
+    padding: 10px 12px max(12px, env(safe-area-inset-bottom));
+  }
+
+  .composer-actions {
+    min-width: 0;
+    gap: 6px;
+  }
+
+  .composer-left {
+    min-width: 0;
+    gap: 5px;
+    overflow: hidden;
+  }
+
+  .model-summary {
+    max-width: min(42vw, 180px);
+  }
+
+  .plugin-picker-label {
+    display: none;
+  }
+
+  .plugin-picker-button {
+    width: 32px;
+    padding: 0;
+    justify-content: center;
+  }
+
+  .composer-buttons {
+    gap: 5px;
+  }
+
+  .welcome-card {
+    grid-template-rows: auto minmax(0, 1fr) auto;
+  }
+
+  .welcome-body {
+    min-height: 0;
+    overflow-y: auto;
+  }
+}
+
+@media (max-width: 360px) and (orientation: portrait) {
+  .plugin-picker-button {
+    display: none;
+  }
+
+  .model-summary {
+    max-width: min(46vw, 150px);
+  }
 }

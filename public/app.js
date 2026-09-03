@@ -2944,6 +2944,7 @@ els.authForm.addEventListener("submit", async (event) => {
   try {
     await loadConfig();
     await refresh(true);
+    maybeOpenWelcomeGuide();
   } catch (error) {
     if (error.status === 401) {
       lockApp(t("accessCodeWrong"));
@@ -3366,10 +3367,15 @@ document.addEventListener("keydown", (event) => {
   if (event.key === "Escape" && els.welcomeDialog && !els.welcomeDialog.hidden) closeWelcomeDialog();
 });
 const guideMode = new URLSearchParams(window.location.search).get("guide");
-if (guideMode === "1" || (!safeStorageGet(localStorage, WELCOME_STORAGE_KEY) && guideMode !== "0")) openWelcomeDialog();
+
+function maybeOpenWelcomeGuide() {
+  if (!state.config || state.authLocked || els.authGate.hidden === false) return;
+  if (guideMode === "1" || (!safeStorageGet(localStorage, WELCOME_STORAGE_KEY) && guideMode !== "0")) openWelcomeDialog();
+}
 
 async function bootstrap() {
   await refresh(true);
+  maybeOpenWelcomeGuide();
   scheduleThreadSync();
   scheduleMessageSync();
 }

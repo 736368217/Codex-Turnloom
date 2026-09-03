@@ -361,28 +361,33 @@ public class MainActivity extends ComponentActivity {
     private void openDevice(Device device, String threadId) {
         activeDevice = device;
         root.removeAllViews();
-        getWindow().setStatusBarColor(INK);
-        getWindow().setNavigationBarColor(Color.WHITE);
+        // The WebView is the primary workspace, so keep the native chrome quiet and light.
+        getWindow().setStatusBarColor(Color.WHITE);
+        getWindow().setNavigationBarColor(PAPER);
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+            getWindow().getDecorView().setSystemUiVisibility(View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR);
+        }
 
         LinearLayout topBar = new LinearLayout(this);
         topBar.setGravity(Gravity.CENTER_VERTICAL);
-        topBar.setPadding(dp(4), dp(4), dp(6), dp(4));
-        topBar.setBackgroundColor(INK);
+        topBar.setPadding(dp(8), dp(2), dp(8), dp(2));
+        topBar.setBackgroundColor(Color.WHITE);
         Button back = iconButton("‹", "返回电脑列表", v -> showMachinePicker());
         back.setTextSize(30);
-        topBar.addView(back, new LinearLayout.LayoutParams(dp(48), dp(48)));
-        connectionDot = label("●", 10, Color.rgb(244, 190, 74));
+        back.setTextColor(INK);
+        topBar.addView(back, new LinearLayout.LayoutParams(dp(44), dp(44)));
+        connectionDot = label("●", 10, ONLINE);
         connectionDot.setGravity(Gravity.CENTER);
-        topBar.addView(connectionDot, new LinearLayout.LayoutParams(dp(22), dp(48)));
+        topBar.addView(connectionDot, new LinearLayout.LayoutParams(dp(22), dp(44)));
         LinearLayout connectedCopy = new LinearLayout(this);
         connectedCopy.setOrientation(LinearLayout.VERTICAL);
         connectedCopy.setGravity(Gravity.CENTER_VERTICAL);
-        TextView connectedTitle = label(device.name, 16, Color.WHITE);
+        TextView connectedTitle = label(device.name, 16, INK);
         connectedTitle.setTypeface(Typeface.DEFAULT, Typeface.BOLD);
         connectedTitle.setMaxLines(1);
         connectedCopy.addView(connectedTitle);
         if (!device.note.isEmpty()) {
-            TextView connectedNote = label(device.note, 11, Color.rgb(196, 205, 214));
+            TextView connectedNote = label(device.note, 11, MUTED);
             connectedNote.setMaxLines(1);
             connectedCopy.addView(connectedNote);
         }
@@ -391,8 +396,9 @@ public class MainActivity extends ComponentActivity {
             if (webView != null && activeDevice != null) webView.loadUrl(targetUrl(activeDevice));
         });
         refresh.setTextSize(24);
-        topBar.addView(refresh, new LinearLayout.LayoutParams(dp(48), dp(48)));
-        root.addView(topBar, new LinearLayout.LayoutParams(-1, dp(56)));
+        refresh.setTextColor(INK);
+        topBar.addView(refresh, new LinearLayout.LayoutParams(dp(44), dp(44)));
+        root.addView(topBar, new LinearLayout.LayoutParams(-1, dp(52)));
 
         pageProgress = new ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal);
         pageProgress.setMax(100);
