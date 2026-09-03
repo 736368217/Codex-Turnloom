@@ -60,6 +60,7 @@ function parseCliArgs(argv) {
     else if (flag === "--password") options.password = nextValue();
     else if (flag === "--codex-home") options.codexHome = nextValue();
     else if (flag === "--ipc-socket") options.ipcSocket = nextValue();
+    else if (flag === "--public-url") options.publicUrl = nextValue();
     else if (flag === "--readonly") options.readonly = true;
     else if (flag === "--no-auth") options.noAuth = true;
     else if (arg) {
@@ -86,6 +87,7 @@ Options:
   --no-auth              Disable access-code guard
   --codex-home <path>    Codex data directory. Default: ~/.codex
   --ipc-socket <path>    Codex Desktop IPC socket override
+  --public-url <url>     Public URL used for the device QR
   -h, --help             Show this help
 
 Examples:
@@ -260,6 +262,7 @@ function defaultCodexCli() {
 }
 
 const CODEX_CLI = process.env.CODEX_CLI || defaultCodexCli();
+const PUBLIC_URL = String(cli.publicUrl || process.env.CODEX_LAN_PUBLIC_URL || "").trim().replace(/\/+$/, "");
 const PUBLIC_DIR = path.join(__dirname, "public");
 const APK_PATH = process.env.CODEX_POCKET_APK_PATH
   ? path.resolve(process.env.CODEX_POCKET_APK_PATH)
@@ -385,9 +388,17 @@ function requireAuthorized(req, res, url) {
 function loginUrlFor(baseUrl) {
   if (!AUTH_REQUIRED) return baseUrl;
   const url = new URL(baseUrl);
-  url.searchParams.set("login", ACCESS_TOKEN);
+  // Keep the access code out of HTTP request logs and browser referrers.
+  url.hash = `login=${encodeURIComponent(ACCESS_TOKEN)}`;
   return url.toString();
 }
+
+const staticSecurityHeaders = {
+  "content-security-policy": "default-src 'self'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'; img-src 'self' data: blob:; object-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; connect-src 'self'",
+  "referrer-policy": "strict-origin-when-cross-origin",
+  "x-content-type-options": "nosniff",
+  "x-frame-options": "DENY"
+};
 
 function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -914,6 +925,7 @@ async function readJsonBody(req, limit = 128 * 1024) {
   let body = "";
   for await (const chunk of req) {
     body += chunk;
+    // The limit is measured in UTF-8 bytes, not JavaScript string characters.
     if (Buffer.byteLength(body) > limit) {
       const err = new Error("Request body too large");
       err.status = 413;
@@ -5149,7 +5161,8 @@ async function serveStatic(res, pathname) {
     };
     res.writeHead(200, {
       "content-type": types[ext] || "application/octet-stream",
-      "cache-control": "no-store, must-revalidate"
+      "cache-control": "no-store, must-revalidate",
+      ...staticSecurityHeaders
     });
     res.end(data);
   } catch {
@@ -5569,9 +5582,10 @@ if (IS_MAIN) {
     .flat()
     .filter((entry) => entry && entry.family === "IPv4" && !entry.internal)
     .map((entry) => `http://${entry.address}:${PORT}/`);
-  const primaryUrl = lanUrls[0] || localUrl;
+  const primaryUrl = PUBLIC_URL || lanUrls[0] || localUrl;
   const printRuntimeUrls = () => {
     logInfo(`Local:  ${localUrl}`);
+    if (PUBLIC_URL) logInfo(`Public: ${PUBLIC_URL}/`);
     for (const lanUrl of lanUrls) logInfo(`LAN:    ${lanUrl}`);
   };
   const printQr = () => {
@@ -5674,5 +5688,7 @@ export {
   stripHiddenMessageLocalAssets,
   isSubagentThread,
   threadListMetadata,
-  visibleThreadRows
+  visibleThreadRows,
+  loginUrlFor,
+  staticSecurityHeaders
 };

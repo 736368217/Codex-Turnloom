@@ -154,6 +154,7 @@ $installArgs = @{
 ~~~
 
 服务器端建议使用 HTTPS 反向代理，并将每个公网入口映射到对应电脑的 SSH 反向隧道端口。
+服务启动时可通过 `--public-url https://office.example.com` 或环境变量 `CODEX_LAN_PUBLIC_URL` 指定公网地址；Windows 安装脚本会把 `PublicUrl` 配置自动传给后台服务。运行时二维码会优先使用该地址，避免在反向代理场景下生成内网地址。
 
 ## Android APP
 

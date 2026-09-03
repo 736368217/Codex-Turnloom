@@ -10,6 +10,8 @@ import { nextMessageLimit, reconcilePendingMessages, retainedScrollTop } from ".
 import {
   canExposeLocalFilesForMessage,
   contentDispositionForDownload,
+  loginUrlFor,
+  staticSecurityHeaders,
   createRolloutParseState,
   contextCompactionMessage,
   planMessage,
@@ -729,4 +731,17 @@ test("download responses include ASCII and UTF-8 filename variants", () => {
 
   assert.match(header, /^attachment; filename="[\x20-\x7e]+"; filename\*=UTF-8''/);
   assert.match(header, /%E6%B5%8B%E8%AF%95%E6%8A%A5%E5%91%8A\.xlsx$/);
+});
+
+test("static responses include baseline browser isolation headers", () => {
+  assert.equal(staticSecurityHeaders["x-content-type-options"], "nosniff");
+  assert.equal(staticSecurityHeaders["x-frame-options"], "DENY");
+  assert.match(staticSecurityHeaders["content-security-policy"], /frame-ancestors 'none'/);
+  assert.equal(staticSecurityHeaders["referrer-policy"], "strict-origin-when-cross-origin");
+});
+
+test("login QR URLs keep access codes in the fragment", () => {
+  const url = new URL(loginUrlFor("https://office.example.com/"));
+  assert.equal(url.search, "");
+  assert.match(url.hash, /^#login=/);
 });

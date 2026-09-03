@@ -738,10 +738,14 @@ function adoptSelectedThreadModel() {
 
 function initAuthToken() {
   const url = new URL(window.location.href);
-  const urlToken = url.searchParams.get("login") || url.searchParams.get("token") || "";
+  const hashParams = new URLSearchParams(url.hash.startsWith("#") ? url.hash.slice(1) : "");
+  const urlToken = url.searchParams.get("login") || url.searchParams.get("token") || hashParams.get("login") || hashParams.get("token") || "";
   if (urlToken) {
     url.searchParams.delete("login");
     url.searchParams.delete("token");
+    hashParams.delete("login");
+    hashParams.delete("token");
+    url.hash = hashParams.toString() ? `#${hashParams.toString()}` : "";
     window.history.replaceState({}, document.title, `${url.pathname}${url.search}${url.hash}`);
   }
   safeStorageRemove(sessionStorage, "codexLanToken");

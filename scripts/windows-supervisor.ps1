@@ -64,6 +64,7 @@ function Start-Server {
     "--password", [string]$config.accessCode,
     "--codex-home", [string]$config.codexHome
   )
+  if ([string]$config.publicUrl) { $arguments += @("--public-url", [string]$config.publicUrl) }
   if ($config.readonly) { $arguments += "--readonly" }
   $stdout = Join-Path $logDir "server-out.log"
   $stderr = Join-Path $logDir "server-error.log"
