@@ -10,6 +10,11 @@ docs/PROJECT_MEMORY.md
 docs/OPERATIONS.md
 docs/OPERATIONS-CHANGELOG.md
 docs/assets/phone-*.png
+!docs/assets/phone-thread-list.png
+!docs/assets/phone-usage.png
+!docs/assets/phone-approval.png
+!docs/assets/phone-skill-picker.png
+!docs/assets/phone-plugin-picker.png
 docs/assets/promo*.png
 !docs/assets/promo-Codex-Turnloom.png
 public/assets/turnloom-logo-candidates/

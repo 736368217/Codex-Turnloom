@@ -16,6 +16,50 @@ Codex-Turnloom 提供任务列表、消息同步、思考状态、工具记录�
 
 发布版本只使用脱敏的品牌素材；包含真实对话、文件路径或设备信息的界面截图不会进入仓库。
 
+## 实机演示
+
+以下截图来自实际手机端运行，用于展示主要交互流程。截图中的内容为测试数据，不包含访问码或私人对话。
+
+<table>
+  <tr>
+    <td width="50%" align="center">
+      <img src="docs/assets/phone-thread-list.png" alt="手机端任务列表" />
+      <br />
+      <strong>任务列表</strong><br />
+      浏览任务、搜索会话并快速切换。
+    </td>
+    <td width="50%" align="center">
+      <img src="docs/assets/phone-usage.png" alt="手机端任务详情与用量" />
+      <br />
+      <strong>任务详情</strong><br />
+      查看消息、输入区和用量信息。
+    </td>
+  </tr>
+  <tr>
+    <td width="50%" align="center">
+      <img src="docs/assets/phone-approval.png" alt="手机端权限审批" />
+      <br />
+      <strong>权限审批</strong><br />
+      在手机上处理 Codex 等待中的权限请求。
+    </td>
+    <td width="50%" align="center">
+      <img src="docs/assets/phone-skill-picker.png" alt="手机端技能选择器" />
+      <br />
+      <strong>技能选择</strong><br />
+      从输入区选择并插入可用技能。
+    </td>
+  </tr>
+  <tr>
+    <td width="50%" align="center">
+      <img src="docs/assets/phone-plugin-picker.png" alt="手机端插件选择器" />
+      <br />
+      <strong>插件选择</strong><br />
+      选择已配置的插件并继续当前任务。
+    </td>
+    <td width="50%" align="center"></td>
+  </tr>
+</table>
+
 ## 主要功能
 
 ### 对话与任务
