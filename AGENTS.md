@@ -22,3 +22,9 @@ The machine-local config is `%LOCALAPPDATA%\CodexPocket\config.json`. It contain
 - If a push fails, diagnose it using the configured local credentials and the Clash proxy at `http://127.0.0.1:7897` when needed. Never silently leave verified changes only on this computer.
 - If synchronization still cannot be completed, clearly report the unpushed commit and the blocking reason.
 - Never commit or push machine-local configuration, access codes, credentials, private keys, tokens, Codex data, or logs containing secrets.
+
+## Android release delivery
+
+- Whenever an APK is rebuilt or updated, stage the latest artifact at `public/downloads/CodexPocket.apk`.
+- In the completion message, always include both the public mobile download URL and a clickable local APK file link so the user can install it directly from the current conversation.
+- Keep APK binaries out of Git; only commit source, build scripts, and release instructions.
