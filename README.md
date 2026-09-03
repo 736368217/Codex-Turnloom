@@ -4,6 +4,10 @@
 
 它不替换 Codex Desktop，也不把对话上传到第三方云端；本机服务只负责把已有的 Codex 数据和操作安全地带到你的移动设备。
 
+![codex-Turnloom](docs/assets/promo-turnloom.png)
+
+> 当前正式标志：回梭织线方案 1。它用一条连续的线穿过织梭，表达会话在电脑与手机之间持续流动。
+
 ## 功能
 
 - 查看 Codex 对话、思考状态和工具调用

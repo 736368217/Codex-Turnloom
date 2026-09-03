@@ -60,6 +60,13 @@ Phone app / browser
 - Verification: authenticated local and public `/api/threads` both returned 30 main tasks with zero sampled subagent rows; MuMu showed the pinned and project-grouped list.
 - Rollback: revert the installer process-stop helper, then reinstall the scheduled task. This may allow stale server children to survive future updates.
 
+### 2026-09-03: mobile showed the computer as offline
+
+- Symptom: the Android app marked the saved computer offline even though the local codex-Turnloom service was healthy.
+- Root cause: the public IP certificate had renewed on disk, but the host Nginx process was still serving the certificate that expired on September 3, 2026 at 05:32 China Standard Time. The reload command also collided with an already-running listener on port `1420`, so the new certificate was not loaded.
+- Recovery: restarted `clawpanel-proxy.service` after validating `/etc/nginx/clawpanel-nginx.conf`, then verified the public certificate is valid through September 8, 2026 at 18:47 China Standard Time and the authenticated health endpoint returns `200`.
+- Prevention: updated `/usr/local/sbin/deploy-openclaw-ip-cert.sh` to signal the exact host Nginx master process instead of relying on the missing default PID file. A backup was kept as `deploy-openclaw-ip-cert.sh.bak-20260903-turnloom`.
+
 ## Change rules
 
 1. Read this file and inspect current health before modifying proxy, tunnel, port, or task settings.
