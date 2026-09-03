@@ -1,104 +1,199 @@
-# codex-Turnloom
-
-把正在电脑上运行的 Codex，完整延续到你的手机里。`codex-Turnloom` 是一个私有、自托管的远程工作台：手机通过局域网或 HTTPS 连接你的 Codex Desktop，查看会话、发送消息、跟踪工具调用，并在多台电脑之间快速切换。
-
-它不替换 Codex Desktop，也不把对话上传到第三方云端；本机服务只负责把已有的 Codex 数据和操作安全地带到你的移动设备。
+# Codex-Turnloom
 
 <p align="center">
-  <img src="docs/assets/turnloom-logo.png" width="180" alt="codex-Turnloom logo" />
+  <img src="docs/assets/promo-Codex-Turnloom.png" width="960" alt="Codex-Turnloom：把电脑上的 Codex 延续到手机里" />
 </p>
 
-> 正式标志由两个相互延续的开放环和两个彩色节点组成，表达 Codex 会话在电脑与手机之间持续流动。
+Codex-Turnloom 是面向 Codex Desktop 的私有、自托管移动工作台。它让手机通过局域网或 HTTPS 连接正在运行 Codex 的电脑，在不使用远程桌面的情况下查看任务进度、继续对话、处理交互，并在多台电脑之间切换。
 
-## 功能
+项目由本机服务、移动 Web 界面和 Android APP 组成。对话和文件仍保存在自己的电脑上，服务只负责把 Codex Desktop 已有的数据和操作转发到已授权的移动设备。
 
-- 查看 Codex 对话、思考状态和工具调用
-- 从手机发送、插入、排队、编辑或取消消息
-- 查看对话中的图片并下载本地文件
-- 为指定对话启用完成通知；空闲时不显示常驻监测通知
-- 对话列表隐藏子 Agent 任务；保留桌面端置顶和手动项目分组，普通对话不按工作目录自动分类
-- 扫码添加和切换多台电脑，并为每台电脑设置手机本地备注
-- 系统返回键从会话页回到电脑列表，刷新或页面恢复时自动使用 APP 已保存的访问码
-- Codex 数据目录迁移兼容
-- Windows 服务与 SSH 隧道异常退出后自动恢复
-- 电脑关机时停止，下一次 Windows 登录时恢复
+> 非 OpenAI 官方项目。它依赖 Codex Desktop 的本地数据和 IPC 接口，Codex Desktop 更新后可能需要同步适配。
 
-## 结构
+## 界面预览
 
-```text
-server.js       Codex Desktop 本机服务与 IPC
-public/         手机交互页面
-android/        codex-Turnloom Android 源码
-scripts/        安装、守护和设备二维码工具
-test/           服务端回归测试
-docs/           多电脑部署与安全说明
-```
+<table>
+  <tr>
+    <td width="50%" align="center">
+      <img src="docs/assets/phone-thread-list.png" alt="手机端对话列表" />
+      <br />
+      <strong>对话列表</strong><br />
+      搜索、置顶、项目分组，并隐藏子 Agent 和归档任务。
+    </td>
+    <td width="50%" align="center">
+      <img src="docs/assets/phone-usage.png" alt="手机端任务详情与输入区" />
+      <br />
+      <strong>持续参与任务</strong><br />
+      查看上下文、思考状态和工具调用，直接发送后续消息。
+    </td>
+  </tr>
+  <tr>
+    <td width="50%" align="center">
+      <img src="docs/assets/phone-approval.png" alt="手机端权限审批" />
+      <br />
+      <strong>处理交互请求</strong><br />
+      在手机上查看权限请求，并选择允许、拒绝或始终允许。
+    </td>
+    <td width="50%" align="center">
+      <img src="docs/assets/phone-skill-picker.png" alt="手机端技能选择器" />
+      <br />
+      <strong>使用 Codex 能力</strong><br />
+      从输入区选择技能和插件，保持与桌面端接近的工作流。
+    </td>
+  </tr>
+</table>
 
-## 新电脑部署
+## 主要功能
 
-前置条件：Windows 10/11、Codex Desktop、Node.js 18+、Git。克隆私有仓库后运行：
+### 对话与任务
 
-```powershell
+- 浏览 Codex Desktop 的主任务列表，保留置顶和手动项目分组
+- 查看用户消息、Codex 回复、思考状态、工具调用和上下文压缩记录
+- 显示任务运行、等待处理、完成和暂停等状态
+- 查看和编辑 Codex 目标，在消息位置创建任务分支
+- 已读取的对话缓存在手机本地，再次进入时先显示缓存并在后台同步最新内容
+
+### 移动端操作
+
+- 从手机创建新任务或继续现有任务
+- 运行中可选择排队发送或插入当前任务
+- 消息发送后立即进入对话区，并显示发送中、失败和重试状态
+- 支持编辑或取消尚未发送的排队消息
+- 支持图片附件、对话内图片预览和本地文件下载
+- 网页链接交给手机默认浏览器打开，不覆盖当前 APP 页面
+
+### 多电脑与通知
+
+- 扫描二维码添加电脑，为设备设置手机本地备注
+- 在一台手机上保存并切换多台 Codex 电脑
+- 可为单独任务启用完成提醒，任务结束后发送系统通知
+- 空闲时不保留无意义的常驻检测通知
+- Android Keystore 加密保存设备访问码
+
+### 稳定运行
+
+- Windows 登录后静默启动，不弹出 PowerShell 或命令行窗口
+- 本机服务、守护进程和 SSH 反向隧道异常退出后自动恢复
+- 支持 Codex 数据目录迁移，并隔离不同数据版本的手机缓存
+- 电脑关机后自然停止，下次开机登录时恢复服务
+- 公网部署可由 Caddy 或 Nginx 提供 TLS，服务器只转发对应电脑的独立端口
+
+## 工作方式
+
+~~~text
+Android APP / 手机浏览器
+          |
+          | 局域网 HTTP 或公网 HTTPS
+          v
+Codex-Turnloom 本机服务
+          |
+          +-- 读取 Codex 对话、目标、状态和文件
+          +-- 通过本机 IPC 把操作发送给 Codex Desktop
+~~~
+
+它不是远程桌面，也不会把完整电脑画面传到手机。移动端只呈现 Codex 工作流需要的内容，因此在小屏幕上更易阅读和操作。
+
+## 快速开始
+
+### 环境要求
+
+- Windows 10 或 Windows 11
+- 已安装并运行 Codex Desktop
+- Node.js 18 或更高版本
+- Git
+
+### 安装本机服务
+
+~~~powershell
+git clone <repository-url>
+cd codex-Turnloom
 npm ci
 .\scripts\install-windows.ps1 -MachineName "办公室电脑"
-```
+~~~
 
-如果需要通过公网访问，需要为每台电脑分配独立的服务器回环端口和公网 URL：
+安装程序会创建本机配置、启动静默守护服务，并输出 APP 可以识别的设备二维码。需要再次显示二维码时运行：
 
-```powershell
-.\scripts\install-windows.ps1 `
-  -MachineName "办公室电脑" `
-  -CodexHome "<Codex 数据目录>" `
-  -PublicUrl "https://office.example.com" `
-  -TunnelHost "server.example.com" `
-  -TunnelUser "codextunnel" `
-  -RemotePort 29002 `
-  -SshKeyPath "$env:USERPROFILE\.ssh\codex_pocket_office_ed25519"
-```
-
-安装完成后会显示 APP 可识别的设备二维码。以后可重新显示：
-
-```powershell
+~~~powershell
 npm run device:qr
-```
+~~~
 
-完整步骤见 [Windows 多电脑部署](docs/WINDOWS_MULTI_COMPUTER.zh-CN.md)。Codex 自动部署规则见 [AGENTS.md](AGENTS.md)。
+完整步骤见 [Windows 多电脑部署](docs/WINDOWS_MULTI_COMPUTER.zh-CN.md)，当前部署约定和故障记录见 [运维说明](docs/OPERATIONS.md)。
 
-## Android
+## 公网访问与多电脑
 
-测试与构建：
+每台电脑都应使用独立的隧道端口和公网地址，避免设备之间互相覆盖。下面的参数可按自己的服务器环境调整：
 
-```powershell
+~~~powershell
+$installArgs = @{
+  MachineName = "办公室电脑"
+  CodexHome = "<Codex 数据目录>"
+  PublicUrl = "https://office.example.com"
+  TunnelHost = "server.example.com"
+  TunnelUser = "codextunnel"
+  RemotePort = 29002
+  SshKeyPath = "$env:USERPROFILE\.ssh\codex_turnloom_office_ed25519"
+}
+.\scripts\install-windows.ps1 @installArgs
+~~~
+
+服务器端建议使用 HTTPS 反向代理，并将每个公网入口映射到对应电脑的 SSH 反向隧道端口。
+
+## Android APP
+
+~~~powershell
 npm run android:test
 npm run android:build
-```
+~~~
 
-调试 APK 位于 `android\app\build\outputs\apk\debug\app-debug.apk`。
+构建完成后：
 
-APP 支持三种设备导入内容：
+- 原始产物：android/app/build/outputs/apk/debug/app-debug.apk
+- 稳定下载文件：public/downloads/Codex-Turnloom.apk
+- Android 下载文件：public/downloads/Codex-Turnloom.apk
+- 服务端下载接口：/api/apk
 
-- `codexpocket://add?...` 设备二维码（旧协议继续兼容）
-- 含 `login` 或 `token` 参数的 HTTP(S) URL
-- `{ "name": "...", "url": "...", "token": "..." }` JSON
+APP 支持扫描设备二维码、带 login 或 token 参数的 HTTP(S) 地址，以及包含 name、url、token 的 JSON 设备记录。旧版 codexpocket 协议和 CodexPocket 配置目录继续保留，以便已有安装平滑升级。
 
-完成提醒使用 Android WorkManager。手机发出任务或开启提醒后会立即开始跟踪运行中的对话；其余时间由系统周期任务兜底，因此不会再为后台监测显示常驻通知。
+## 开发与验证
 
-## 验证
-
-```powershell
+~~~powershell
 npm test
 npm run check
 npm run android:test
-```
+npm run android:build
+~~~
 
-PowerShell 部署脚本同时兼容 Windows PowerShell 5.1 和 PowerShell 7。GitHub Actions 会在每次推送后运行服务端测试并构建 Android 调试 APK。
+项目包含服务端协议、消息队列、对话分组、文件访问、静默启动和 Android 行为的回归测试。GitHub Actions 会在推送后运行服务端测试并构建 Android 调试 APK。
 
-## 本地配置与安全
+## 项目结构
 
-仓库不会包含 Codex 数据、访问码、SSH 私钥、服务器凭据、每台机器的公网地址配置、APK、Gradle 缓存或运行日志。
+~~~text
+server.js       本机 HTTP 服务、Codex 数据读取与 Desktop IPC
+public/         手机端界面、对话缓存和交互逻辑
+android/        Android APP 源码
+scripts/        Windows 安装、静默守护、隧道和二维码工具
+test/           自动化回归测试
+docs/           多电脑部署、安全和运维记录
+~~~
 
-Windows 本地配置保存在 `%LOCALAPPDATA%\CodexPocket\config.json`；这是旧版本兼容目录，升级时无需迁移。Android 端保存的设备访问码使用 Android Keystore 加密。公网入口应由 Caddy/Nginx 提供 TLS，并只将服务器本机回环端口转发给对应电脑。
+## 安全与隐私
+
+- 对话、目标和文件保留在运行 Codex Desktop 的电脑上
+- 默认要求访问码；公网入口应始终启用 HTTPS
+- 设备访问码在 Android 端使用 Keystore 加密保存
+- 仓库不会提交 Codex 数据、访问码、SSH 私钥、服务器凭据、本机配置、APK 或运行日志
+- 本地文件只在对话明确引用并通过授权校验后提供
+- Windows 本地配置位于 %LOCALAPPDATA%/CodexPocket/config.json，不得提交到 Git
+
+## 已知边界
+
+- 电脑关机、休眠或断网时，手机无法继续访问该电脑
+- Codex Desktop 的本地数据结构和 IPC 属于非公开实现，版本升级可能造成兼容性变化
+- 公网可用性取决于本机服务、SSH 隧道、服务器反向代理和 TLS 证书均正常运行
+- 当前 APK 是调试构建，正式分发前应配置独立签名和发布流程
 
 ## 来源与许可
 
-服务端基于 MIT 许可的 `dreamingboat/codex-lan-companion` 扩展。当前项目是非官方个人工具，与 OpenAI 无关联。它依赖 Codex Desktop 的本地文件和 IPC 私有实现，Codex Desktop 更新后可能需要适配。
+服务端最初基于 MIT 许可的 dreamingboat/codex-lan-companion 扩展，现已加入 Android APP、多电脑管理、消息写入、任务状态、通知、文件转发、手机缓存和 Windows 静默守护等能力。
+
+项目采用 [MIT License](LICENSE)。
