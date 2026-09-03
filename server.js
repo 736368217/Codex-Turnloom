@@ -855,8 +855,23 @@ async function refreshCodexHomeContext({ force = false, source = "poll" } = {}) 
 
 function runSqlJsonAttempt(sql, dbPath = codexPaths().stateDb) {
   return new Promise((resolve, reject) => {
-    execFile("sqlite3", ["-json", "-cmd", ".timeout 5000", dbPath, sql], { maxBuffer: 20 * 1024 * 1024 }, (error, stdout, stderr) => {
+    execFile("sqlite3", ["-json", "-cmd", ".timeout 5000", dbPath, sql], { maxBuffer: 20 * 1024 * 1024 }, async (error, stdout, stderr) => {
       if (error) {
+        if (error.code === "ENOENT") {
+          try {
+            const { DatabaseSync } = await import("node:sqlite");
+            const database = new DatabaseSync(dbPath, { readOnly: true });
+            try {
+              database.exec("PRAGMA busy_timeout = 5000");
+              resolve(database.prepare(sql).all());
+            } finally {
+              database.close();
+            }
+          } catch (fallbackError) {
+            reject(new Error(fallbackError?.message || stderr || error.message));
+          }
+          return;
+        }
         reject(new Error(stderr || error.message));
         return;
       }
