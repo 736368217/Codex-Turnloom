@@ -1,5 +1,11 @@
 # codex-Turnloom deployment guidance
 
+## Shared project memory
+
+- Before working on this project, read `docs/PROJECT_MEMORY.md` for durable product decisions, compatibility constraints, deployment facts, and current maintenance context.
+- Update that document after verifying a durable change. Keep detailed incident history in `docs/OPERATIONS.md`.
+- Do not send routine cross-task synchronization messages. Use the shared document so other Codex tasks can read the same compact context without consuming conversation tokens.
+
 When the user asks to deploy this repository on a Windows computer:
 
 0. Before changing a deployment, tunnel, proxy, or scheduled task, read `docs/OPERATIONS.md` and preserve its incident history.
