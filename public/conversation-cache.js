@@ -2,6 +2,7 @@ const DB_NAME = "codex-pocket-cache";
 const DB_VERSION = 1;
 const STORE_NAME = "conversations";
 const FALLBACK_PREFIX = "codex-pocket-conversation:";
+const DEFAULT_MESSAGE_LIMIT = 40;
 
 function canUseLocalStorage() {
   try {
@@ -50,7 +51,7 @@ function localStorageKey(key) {
   return FALLBACK_PREFIX + key;
 }
 
-export function conversationCacheKey({ origin = globalThis.location?.origin || "unknown", codexHomeVersion = "unknown", threadId, messageLimit = 80 } = {}) {
+export function conversationCacheKey({ origin = globalThis.location?.origin || "unknown", codexHomeVersion = "unknown", threadId, messageLimit = DEFAULT_MESSAGE_LIMIT } = {}) {
   return [origin, codexHomeVersion, threadId, messageLimit].map((value) => encodeURIComponent(String(value || ""))).join("|");
 }
 

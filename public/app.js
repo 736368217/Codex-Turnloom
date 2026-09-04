@@ -1,4 +1,4 @@
-import { MESSAGE_PAGE_SIZE, nextMessageLimit, reconcilePendingMessages, retainedScrollTop } from "./history.js";
+import { MESSAGE_PAGE_SIZE, messageScrollMode, nextMessageLimit, reconcilePendingMessages, retainedScrollTop } from "./history.js";
 import { renderMarkdown } from "./markdown.js";
 import { filterVisibleThreads, groupedVisibleThreads, threadDeepLink } from "./threads.js";
 import { resolveAuthToken } from "./auth.js";
@@ -2410,6 +2410,7 @@ async function loadMessages(force = false, threadId = state.selectedId, { preser
   const historyParam = state.messageLimit > MESSAGE_PAGE_SIZE ? "&history=full" : "";
   const networkRequest = fetchJson("/api/threads/" + threadId + "/messages?limit=" + state.messageLimit + historyParam);
   let cachedShown = false;
+  const openingThread = !state.lastMessagesData || state.lastMessagesData.thread?.id !== threadId;
   try {
     const cached = await readConversationCache(cacheKey);
     if (cached && state.selectedId === threadId && state.activeMessageRequest === request) {
@@ -2419,6 +2420,10 @@ async function loadMessages(force = false, threadId = state.selectedId, { preser
       state.messageLoading = false;
       renderComposerMode();
       renderMessages(cached);
+      if (openingThread) {
+        els.messageList.scrollTop = els.messageList.scrollHeight;
+        updateScrollToBottomButton();
+      }
       cachedShown = true;
     }
   } catch {
@@ -2434,14 +2439,20 @@ async function loadMessages(force = false, threadId = state.selectedId, { preser
     const signature = `${data.thread?.updatedAtMs || ""}:${data.size || ""}:${data.mtimeMs || ""}:${data.limit || ""}:${data.omittedMessages || 0}:${state.showTools}:${data.status?.thinking ? "thinking" : "idle"}:${data.status?.interactionRequired ? "interaction" : "clear"}:${data.status?.turnId || ""}:${pendingSignature()}`;
     if (force || signature !== state.messagesSignature) {
       const wasNearBottom = isMessageListNearBottom();
+      const scrollMode = messageScrollMode({
+        cacheHydration: cachedShown && openingThread,
+        force,
+        preserveScrollPosition: Boolean(preserveScrollPosition),
+        wasNearBottom
+      });
       state.messagesSignature = signature;
       renderMessages(data);
-      if (preserveScrollPosition) {
+      if (scrollMode === "retain") {
         els.messageList.scrollTop = retainedScrollTop({
           ...preserveScrollPosition,
           nextScrollHeight: els.messageList.scrollHeight
         });
-      } else if (wasNearBottom || force) {
+      } else if (scrollMode === "latest") {
         els.messageList.scrollTop = els.messageList.scrollHeight;
       }
       updateScrollToBottomButton();

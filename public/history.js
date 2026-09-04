@@ -1,5 +1,16 @@
-export const MESSAGE_PAGE_SIZE = 80;
+export const MESSAGE_PAGE_SIZE = 40;
 export const MAX_MESSAGE_HISTORY = 1000;
+
+export function messageScrollMode({
+  cacheHydration = false,
+  force = false,
+  preserveScrollPosition = false,
+  wasNearBottom = false
+} = {}) {
+  if (preserveScrollPosition) return "retain";
+  if (cacheHydration || force || wasNearBottom) return "latest";
+  return "keep";
+}
 
 export function nextMessageLimit(currentLimit, response, pageSize = MESSAGE_PAGE_SIZE, maxLimit = MAX_MESSAGE_HISTORY) {
   const hasOlderMessages =

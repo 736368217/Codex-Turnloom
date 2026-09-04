@@ -5,7 +5,7 @@ import path from "node:path";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
 
-import { nextMessageLimit, reconcilePendingMessages, retainedScrollTop } from "../public/history.js";
+import { messageScrollMode, nextMessageLimit, reconcilePendingMessages, retainedScrollTop } from "../public/history.js";
 
 import {
   canExposeLocalFilesForMessage,
@@ -162,13 +162,20 @@ test("subagent visibility recognizes spawn edges, agent paths, and agent-created
 });
 
 test("older-message pagination grows in bounded pages and preserves the viewport", () => {
-  assert.equal(nextMessageLimit(80, { truncated: true, omittedMessages: 120 }), 160);
-  assert.equal(nextMessageLimit(80, { hasOlderMessages: true, truncated: false, omittedMessages: 0 }), 160);
-  assert.equal(nextMessageLimit(160, { hasOlderMessages: false, truncated: true, omittedMessages: 765 }), null);
+  assert.equal(nextMessageLimit(40, { truncated: true, omittedMessages: 120 }), 80);
+  assert.equal(nextMessageLimit(40, { hasOlderMessages: true, truncated: false, omittedMessages: 0 }), 80);
+  assert.equal(nextMessageLimit(80, { hasOlderMessages: false, truncated: true, omittedMessages: 765 }), null);
   assert.equal(nextMessageLimit(960, { truncated: true, omittedMessages: 120 }), 1000);
   assert.equal(nextMessageLimit(1000, { truncated: true, omittedMessages: 120 }), null);
-  assert.equal(nextMessageLimit(80, { truncated: false, omittedMessages: 0 }), null);
+  assert.equal(nextMessageLimit(40, { truncated: false, omittedMessages: 0 }), null);
   assert.equal(retainedScrollTop({ scrollTop: 12, scrollHeight: 900, nextScrollHeight: 1500 }), 612);
+});
+
+test("opening a cached conversation starts at the latest messages without disrupting history reads", () => {
+  assert.equal(messageScrollMode({ cacheHydration: true, wasNearBottom: false }), "latest");
+  assert.equal(messageScrollMode({ force: false, wasNearBottom: true }), "latest");
+  assert.equal(messageScrollMode({ force: false, wasNearBottom: false }), "keep");
+  assert.equal(messageScrollMode({ preserveScrollPosition: true, cacheHydration: true, force: true, wasNearBottom: true }), "retain");
 });
 
 test("migrated state rows use the rollout discovered in the active Codex home", () => {
