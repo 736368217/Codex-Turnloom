@@ -8,6 +8,7 @@ import { fileURLToPath } from "node:url";
 import { messageScrollMode, nextMessageLimit, reconcilePendingMessages, retainedScrollTop } from "../public/history.js";
 
 import {
+  DesktopCodexIpcClient,
   canExposeLocalFilesForMessage,
   contentDispositionForDownload,
   loginUrlFor,
@@ -539,10 +540,12 @@ test("interrupt requests use Desktop v4 with a turn id and v3 without one", () =
 
 test("start-turn opens the task and retries once after no-client-found", async () => {
   const calls = [];
+  let startCalls = 0;
   const ipcClient = {
-    async startTurn() {
-      calls.push("start");
-      if (calls.filter((call) => call === "start").length === 1) throw new Error("no-client-found");
+    async startTurn(threadId, text, images, settings, options) {
+      startCalls += 1;
+      calls.push(["start", threadId, text, options || {}]);
+      if (startCalls === 1) throw new Error("no-client-found");
       return { ok: true };
     },
     async waitForThreadOwner(threadId, options) {
@@ -557,14 +560,86 @@ test("start-turn opens the task and retries once after no-client-found", async (
   });
 
   assert.deepEqual(result, { ok: true });
-  assert.deepEqual(calls, ["start", ["open", "thread-123"], ["owner", "thread-123", 3210], "start"]);
+  assert.deepEqual(calls, [
+    ["start", "thread-123", "hello", {}],
+    ["open", "thread-123"],
+    ["owner", "thread-123", 3210],
+    ["start", "thread-123", "hello", { targetClientId: "owner-client" }]
+  ]);
+});
+
+test("IPC requests can target the discovered Desktop owner", async () => {
+  const client = new DesktopCodexIpcClient();
+  let sentMessage = null;
+  client.clientId = "companion-client";
+  client.socket = {
+    writable: true,
+    write(frame) {
+      const length = frame.readUInt32LE(0);
+      sentMessage = JSON.parse(frame.subarray(4, 4 + length).toString("utf8"));
+    },
+    removeAllListeners() {},
+    end() {},
+    destroy() {}
+  };
+  const responsePromise = client.request(
+    "thread-follower-start-turn",
+    { conversationId: "thread-123", hostId: "local" },
+    { targetClientId: "owner-client" }
+  );
+
+  assert.equal(sentMessage.sourceClientId, "companion-client");
+  assert.equal(sentMessage.targetClientId, "owner-client");
+  assert.equal(sentMessage.hostId, undefined);
+  assert.equal(sentMessage.version, 2);
+  client.handleMessage({
+    type: "response",
+    requestId: sentMessage.requestId,
+    resultType: "success",
+    method: sentMessage.method,
+    result: { ok: true }
+  });
+  assert.equal((await responsePromise).result.ok, true);
+  client.close();
+});
+
+test("remote Desktop follower requests use the routed host protocol version", async () => {
+  const client = new DesktopCodexIpcClient();
+  let sentMessage = null;
+  client.clientId = "companion-client";
+  client.socket = {
+    writable: true,
+    write(frame) {
+      const length = frame.readUInt32LE(0);
+      sentMessage = JSON.parse(frame.subarray(4, 4 + length).toString("utf8"));
+    },
+    removeAllListeners() {},
+    end() {},
+    destroy() {}
+  };
+  const responsePromise = client.request("thread-follower-start-turn", {
+    conversationId: "thread-123",
+    hostId: "remote-host"
+  });
+
+  assert.equal(sentMessage.hostId, "remote-host");
+  assert.equal(sentMessage.version, 3);
+  client.handleMessage({
+    type: "response",
+    requestId: sentMessage.requestId,
+    resultType: "success",
+    method: sentMessage.method,
+    result: { ok: true }
+  });
+  assert.equal((await responsePromise).result.ok, true);
+  client.close();
 });
 
 test("interrupt opens the task, refreshes the active turn, and retries after no-client-found", async () => {
   const calls = [];
   const ipcClient = {
-    async interruptTurn(threadId, expectedTurnId) {
-      calls.push(["interrupt", threadId, expectedTurnId]);
+    async interruptTurn(threadId, expectedTurnId, options) {
+      calls.push(["interrupt", threadId, expectedTurnId, options || {}]);
       if (calls.filter(([call]) => call === "interrupt").length === 1) throw new Error("no-client-found");
       return { ok: true };
     },
@@ -582,10 +657,10 @@ test("interrupt opens the task, refreshes the active turn, and retries after no-
 
   assert.deepEqual(result, { ok: true });
   assert.deepEqual(calls, [
-    ["interrupt", "thread-123", "turn-old"],
+    ["interrupt", "thread-123", "turn-old", {}],
     ["open", "thread-123"],
     ["owner", "thread-123", 4321],
-    ["interrupt", "thread-123", "turn-current"]
+    ["interrupt", "thread-123", "turn-current", { targetClientId: "owner-client" }]
   ]);
 });
 

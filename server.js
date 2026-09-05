@@ -1318,7 +1318,7 @@ class DesktopCodexIpcClient {
       .filter(Boolean);
   }
 
-  request(method, params = {}, { includeVersion = true, timeoutMs = 12000 } = {}) {
+  request(method, params = {}, { includeVersion = true, timeoutMs = 12000, targetClientId = null } = {}) {
     return new Promise((resolve, reject) => {
       if (!this.socket?.writable) {
         reject(new Error("Codex desktop IPC is not connected"));
@@ -1332,11 +1332,15 @@ class DesktopCodexIpcClient {
         method,
         params
       };
-      if (params?.hostId) {
-        message.hostId = params.hostId;
+      const routedHostId = params?.hostId && params.hostId !== "local" ? String(params.hostId) : null;
+      if (routedHostId) {
+        message.hostId = routedHostId;
+      }
+      if (targetClientId) {
+        message.targetClientId = String(targetClientId);
       }
       if (includeVersion) {
-        message.version = ipcVersionForRequest(method, params);
+        message.version = ipcVersionForRequest(method, params, routedHostId);
       }
       const timer = setTimeout(() => {
         this.pending.delete(requestId);
@@ -1360,10 +1364,10 @@ class DesktopCodexIpcClient {
     });
   }
 
-  async startTurn(threadId, text, images = [], turnSettings = {}) {
+  async startTurn(threadId, text, images = [], turnSettings = {}, options = {}) {
     await this.ensureReady();
     const { method, params } = desktopStartTurnRequest(threadId, text, images, turnSettings);
-    return this.request(method, params);
+    return this.request(method, params, options);
   }
 
   async findThreadOwner(threadId, hostId = "local") {
@@ -1406,10 +1410,10 @@ class DesktopCodexIpcClient {
     });
   }
 
-  async interruptTurn(threadId, expectedTurnId = null) {
+  async interruptTurn(threadId, expectedTurnId = null, options = {}) {
     await this.ensureReady();
     const { method, params } = desktopInterruptTurnRequest(threadId, expectedTurnId);
-    return this.request(method, params);
+    return this.request(method, params, options);
   }
 
   async getThreadGoal(threadId) {
@@ -3567,7 +3571,10 @@ function ipcVersionForMethod(method) {
   return IPC_VERSION_BY_METHOD[method] ?? 0;
 }
 
-function ipcVersionForRequest(method, params = {}) {
+function ipcVersionForRequest(method, params = {}, routedHostId = null) {
+  if (routedHostId && method.startsWith("thread-follower-")) {
+    return ipcVersionForMethod(method) + 1;
+  }
   if (method === "thread-follower-interrupt-turn") {
     return typeof params.expectedTurnId === "string" && params.expectedTurnId ? 4 : 3;
   }
@@ -4752,7 +4759,7 @@ async function startTurnWithOwnerRecovery(
     await openThread(threadId);
     const ownerClientId = await ipcClient.waitForThreadOwner(threadId, { timeoutMs: ownerTimeoutMs });
     if (!ownerClientId) throw error;
-    return ipcClient.startTurn(threadId, text, images, turnSettings);
+    return ipcClient.startTurn(threadId, text, images, turnSettings, { targetClientId: ownerClientId });
   }
 }
 
@@ -4773,7 +4780,7 @@ async function interruptTurnWithOwnerRecovery(
     await openThread(threadId);
     const ownerClientId = await ipcClient.waitForThreadOwner(threadId, { timeoutMs: ownerTimeoutMs });
     if (!ownerClientId) throw error;
-    return ipcClient.interruptTurn(threadId, await refreshExpectedTurnId());
+    return ipcClient.interruptTurn(threadId, await refreshExpectedTurnId(), { targetClientId: ownerClientId });
   }
 }
 
@@ -5644,6 +5651,7 @@ if (IS_MAIN) {
 }
 
 export {
+  DesktopCodexIpcClient,
   canExposeLocalFilesForMessage,
   contentDispositionForDownload,
   createRolloutParseState,
