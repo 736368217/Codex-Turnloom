@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdtempSync, rmSync, symlinkSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync, symlinkSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
@@ -826,4 +826,12 @@ test("login QR URLs keep access codes in the fragment", () => {
   const url = new URL(loginUrlFor("https://office.example.com/"));
   assert.equal(url.search, "");
   assert.match(url.hash, /^#login=/);
+});
+
+test("mobile composer does not clip the model picker overlay", () => {
+  const styles = readFileSync(path.join(fileURLToPath(new URL("..", import.meta.url)), "public", "styles.css"), "utf8");
+  const composerLeftRules = [...styles.matchAll(/\.composer-left\s*\{([^}]*)\}/g)].map((match) => match[1]);
+  assert.ok(composerLeftRules.length, "expected a composer-left rule");
+  assert.ok(composerLeftRules.some((rule) => /overflow:\s*visible\s*;/.test(rule)));
+  assert.ok(composerLeftRules.every((rule) => !/overflow:\s*hidden\s*;/.test(rule)));
 });

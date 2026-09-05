@@ -1022,7 +1022,7 @@ body.welcome-open {
   .composer-left {
     min-width: 0;
     gap: 5px;
-    overflow: hidden;
+    overflow: visible;
   }
 
   .model-summary {
@@ -3439,7 +3439,7 @@ body.goal-dialog-open { overflow: hidden; }
   .composer-left {
     min-width: 0;
     gap: 5px;
-    overflow: hidden;
+    overflow: visible;
   }
 
   .model-summary {
