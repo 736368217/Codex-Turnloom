@@ -12,6 +12,9 @@ import {
   canExposeLocalFilesForMessage,
   contentDispositionForDownload,
   loginUrlFor,
+  modelConfigurationFromCatalog,
+  normalizeTurnSettings,
+  parseCodexModelConfig,
   staticSecurityHeaders,
   createRolloutParseState,
   contextCompactionMessage,
@@ -52,6 +55,67 @@ import {
 function rolloutLine(timestamp, ordinal, type, payload) {
   return JSON.stringify({ timestamp, ordinal, type, payload });
 }
+
+test("active Codex catalog exposes Astra and its supported reasoning levels", () => {
+  const config = parseCodexModelConfig(`
+model = "gpt-6-astra"
+model_catalog_json = "model-catalogs/current.json" # refreshed by Codex Desktop
+model_reasoning_effort = "high" # keep the configured default
+
+[model_providers.custom]
+model = "must-not-overwrite-the-top-level-model"
+  `);
+  const catalog = {
+    models: [
+      {
+        slug: "gpt-5.6-sol",
+        display_name: "GPT-5.6 Sol",
+        visibility: "list",
+        priority: 1000,
+        default_reasoning_level: "low",
+        supported_reasoning_levels: [{ effort: "low" }, { effort: "medium" }]
+      },
+      {
+        slug: "codex-auto-review",
+        display_name: "Codex Auto Review",
+        visibility: "list",
+        priority: 1001,
+        default_reasoning_level: "medium",
+        supported_reasoning_levels: [{ effort: "medium" }]
+      },
+      {
+        slug: "gpt-6-astra",
+        display_name: "GPT-6 Astra",
+        visibility: "list",
+        priority: 1009,
+        default_reasoning_level: "medium",
+        supported_reasoning_levels: [
+          { effort: "low" },
+          { effort: "medium" },
+          { effort: "high" },
+          { effort: "xhigh" }
+        ]
+      }
+    ]
+  };
+
+  const result = modelConfigurationFromCatalog(catalog, config);
+
+  assert.equal(config.modelCatalogJson, "model-catalogs/current.json");
+  assert.equal(result.defaultModel, "gpt-6-astra");
+  assert.equal(result.defaultEffort, "high");
+  assert.deepEqual(result.models.map((model) => model.id), ["gpt-5.6-sol", "gpt-6-astra"]);
+  assert.deepEqual(result.models.at(-1).efforts, ["low", "medium", "high", "xhigh"]);
+  assert.deepEqual(
+    normalizeTurnSettings({ model: "gpt-6-astra", effort: "xhigh" }, result),
+    { model: "gpt-6-astra", effort: "xhigh" }
+  );
+  assert.deepEqual(
+    normalizeTurnSettings({ model: "gpt-6-astra", effort: "ultra" }, result),
+    { model: "gpt-6-astra", effort: "high" }
+  );
+  assert.equal(modelConfigurationFromCatalog({ models: [] }, config).source, "fallback");
+});
 
 test("thread list hides subagents even when a hidden task was selected", () => {
   const rows = [

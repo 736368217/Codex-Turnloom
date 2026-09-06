@@ -153,14 +153,21 @@ const THREADS_STALE_CACHE_MS = 60 * 1000;
 const THREAD_ACCOUNT_CACHE_MS = 5 * 60 * 1000;
 const SESSION_ROLLOUT_PATH_CACHE_MS = 5000;
 const AUTH_WARN_LOG_INTERVAL_MS = 5 * 60 * 1000;
-const CODEX_MODELS = [
-  { id: "gpt-5.6-sol", label: "GPT-5.6 Sol", efforts: ["low", "medium", "high", "xhigh", "max", "ultra"] },
-  { id: "gpt-5.6-terra", label: "GPT-5.6 Terra", efforts: ["low", "medium", "high", "xhigh", "max", "ultra"] },
-  { id: "gpt-5.6-luna", label: "GPT-5.6 Luna", efforts: ["low", "medium", "high", "xhigh", "max"] },
-  { id: "gpt-5.5", label: "GPT-5.5", efforts: ["low", "medium", "high", "xhigh"] }
+const FALLBACK_CODEX_MODELS = [
+  { id: "gpt-5.6-sol", label: "GPT-5.6 Sol", efforts: ["low", "medium", "high", "xhigh", "max", "ultra"], defaultEffort: "medium" },
+  { id: "gpt-5.6-terra", label: "GPT-5.6 Terra", efforts: ["low", "medium", "high", "xhigh", "max", "ultra"], defaultEffort: "medium" },
+  { id: "gpt-5.6-luna", label: "GPT-5.6 Luna", efforts: ["low", "medium", "high", "xhigh", "max"], defaultEffort: "medium" },
+  { id: "gpt-5.5", label: "GPT-5.5", efforts: ["low", "medium", "high", "xhigh"], defaultEffort: "medium" }
 ];
 const DEFAULT_CODEX_MODEL = "gpt-5.6-sol";
 const DEFAULT_CODEX_EFFORT = "medium";
+let activeModelConfiguration = {
+  models: FALLBACK_CODEX_MODELS,
+  defaultModel: DEFAULT_CODEX_MODEL,
+  defaultEffort: DEFAULT_CODEX_EFFORT,
+  source: "fallback"
+};
+let modelConfigurationCache = null;
 const authWarnLogState = new Map();
 let threadsCache = null;
 let sessionRolloutPathCache = null;
@@ -3528,14 +3535,177 @@ function desktopTurnInput(text, images = []) {
   return input;
 }
 
-function normalizeTurnSettings({ model, effort } = {}) {
-  const selectedModel = CODEX_MODELS.find((entry) => entry.id === String(model || "").trim()) ||
-    CODEX_MODELS.find((entry) => entry.id === DEFAULT_CODEX_MODEL) || CODEX_MODELS[0];
+function parseTomlString(value) {
+  const trimmed = String(value || "").trim();
+  if (trimmed.startsWith('"')) {
+    const match = trimmed.match(/^("(?:\\.|[^"\\])*")/);
+    if (!match) return "";
+    try {
+      return JSON.parse(match[1]);
+    } catch {
+      return "";
+    }
+  }
+  if (trimmed.startsWith("'")) {
+    const closingQuote = trimmed.indexOf("'", 1);
+    return closingQuote > 0 ? trimmed.slice(1, closingQuote) : "";
+  }
+  return "";
+}
+
+function parseCodexModelConfig(source) {
+  const values = {};
+  let inTopLevel = true;
+  for (const rawLine of String(source || "").split(/\r?\n/)) {
+    const line = rawLine.trim();
+    if (!line || line.startsWith("#")) continue;
+    if (line.startsWith("[")) {
+      inTopLevel = false;
+      continue;
+    }
+    if (!inTopLevel) continue;
+    const match = line.match(/^([A-Za-z0-9_-]+)\s*=\s*(.+)$/);
+    if (!match) continue;
+    const value = parseTomlString(match[2]);
+    if (value) values[match[1]] = value;
+  }
+  return {
+    model: values.model || "",
+    modelCatalogJson: values.model_catalog_json || "",
+    modelReasoningEffort: values.model_reasoning_effort || ""
+  };
+}
+
+function fallbackModelConfiguration(config = {}) {
+  const defaultModel = FALLBACK_CODEX_MODELS.some((entry) => entry.id === config.model)
+    ? config.model
+    : DEFAULT_CODEX_MODEL;
+  const selectedModel = FALLBACK_CODEX_MODELS.find((entry) => entry.id === defaultModel) || FALLBACK_CODEX_MODELS[0];
+  const requestedEffort = String(config.modelReasoningEffort || "").trim();
+  return {
+    models: FALLBACK_CODEX_MODELS,
+    defaultModel: selectedModel.id,
+    defaultEffort: selectedModel.efforts.includes(requestedEffort) ? requestedEffort : selectedModel.defaultEffort,
+    source: "fallback"
+  };
+}
+
+function modelConfigurationFromCatalog(catalog, config = {}) {
+  const models = Array.isArray(catalog?.models)
+    ? catalog.models
+        .filter((entry) => entry?.visibility === "list" && entry?.supported_in_api !== false)
+        .filter((entry) => String(entry?.slug || "").trim() && entry.slug !== "codex-auto-review")
+        .map((entry) => {
+          const efforts = [...new Set(
+            (Array.isArray(entry.supported_reasoning_levels) ? entry.supported_reasoning_levels : [])
+              .map((level) => String(level?.effort || "").trim())
+              .filter(Boolean)
+          )];
+          const defaultEffort = efforts.includes(String(entry.default_reasoning_level || "").trim())
+            ? String(entry.default_reasoning_level).trim()
+            : efforts.includes(DEFAULT_CODEX_EFFORT)
+              ? DEFAULT_CODEX_EFFORT
+              : efforts[0];
+          return {
+            id: String(entry.slug).trim(),
+            label: String(entry.display_name || entry.slug).trim(),
+            efforts,
+            defaultEffort,
+            priority: Number.isFinite(Number(entry.priority)) ? Number(entry.priority) : Number.MAX_SAFE_INTEGER
+          };
+        })
+        .filter((entry) => entry.efforts.length)
+        .sort((left, right) => left.priority - right.priority || left.id.localeCompare(right.id))
+        .map(({ priority, ...entry }) => entry)
+    : [];
+  if (!models.length) return fallbackModelConfiguration(config);
+
+  const configuredModel = String(config.model || "").trim();
+  const selectedModel = models.find((entry) => entry.id === configuredModel) || models[0];
+  const configuredEffort = String(config.modelReasoningEffort || "").trim();
+  return {
+    models,
+    defaultModel: selectedModel.id,
+    defaultEffort: selectedModel.efforts.includes(configuredEffort) ? configuredEffort : selectedModel.defaultEffort,
+    source: "catalog"
+  };
+}
+
+async function newestModelCatalogPath(home) {
+  const directory = path.join(home, "model-catalogs");
+  const entries = await fs.readdir(directory, { withFileTypes: true });
+  const candidates = await Promise.all(
+    entries
+      .filter((entry) => entry.isFile() && entry.name.toLowerCase().endsWith(".json"))
+      .map(async (entry) => {
+        const filePath = path.join(directory, entry.name);
+        return { filePath, stat: await fs.stat(filePath) };
+      })
+  );
+  candidates.sort((left, right) => right.stat.mtimeMs - left.stat.mtimeMs);
+  return candidates[0]?.filePath || "";
+}
+
+async function loadCodexModelConfiguration(home = codexHomeState.home) {
+  const resolvedHome = path.resolve(home);
+  const configPath = path.join(resolvedHome, "config.toml");
+  try {
+    const configStat = await fs.stat(configPath);
+    if (
+      modelConfigurationCache?.home === resolvedHome &&
+      modelConfigurationCache.configMtimeMs === configStat.mtimeMs &&
+      modelConfigurationCache.configSize === configStat.size
+    ) {
+      const catalogStat = await fs.stat(modelConfigurationCache.catalogPath);
+      if (
+        modelConfigurationCache.catalogMtimeMs === catalogStat.mtimeMs &&
+        modelConfigurationCache.catalogSize === catalogStat.size
+      ) {
+        activeModelConfiguration = modelConfigurationCache.configuration;
+        return activeModelConfiguration;
+      }
+    }
+
+    const config = parseCodexModelConfig(await fs.readFile(configPath, "utf8"));
+    const catalogPath = config.modelCatalogJson
+      ? path.resolve(resolvedHome, config.modelCatalogJson)
+      : await newestModelCatalogPath(resolvedHome);
+    if (!catalogPath) throw new Error("No Codex model catalog found");
+    const [catalogStat, catalogText] = await Promise.all([fs.stat(catalogPath), fs.readFile(catalogPath, "utf8")]);
+    const configuration = modelConfigurationFromCatalog(JSON.parse(catalogText), config);
+    activeModelConfiguration = { ...configuration, source: catalogPath };
+    modelConfigurationCache = {
+      home: resolvedHome,
+      configMtimeMs: configStat.mtimeMs,
+      configSize: configStat.size,
+      catalogPath,
+      catalogMtimeMs: catalogStat.mtimeMs,
+      catalogSize: catalogStat.size,
+      configuration: activeModelConfiguration
+    };
+    return activeModelConfiguration;
+  } catch (error) {
+    const configuration = fallbackModelConfiguration();
+    activeModelConfiguration = configuration;
+    modelConfigurationCache = null;
+    logError(`[models] Using fallback model list: ${error?.message || error}`);
+    return configuration;
+  }
+}
+
+function normalizeTurnSettings({ model, effort } = {}, modelConfiguration = activeModelConfiguration) {
+  const models = Array.isArray(modelConfiguration?.models) && modelConfiguration.models.length
+    ? modelConfiguration.models
+    : FALLBACK_CODEX_MODELS;
+  const configuredDefaultModel = String(modelConfiguration?.defaultModel || DEFAULT_CODEX_MODEL);
+  const configuredDefaultEffort = String(modelConfiguration?.defaultEffort || DEFAULT_CODEX_EFFORT);
+  const selectedModel = models.find((entry) => entry.id === String(model || "").trim()) ||
+    models.find((entry) => entry.id === configuredDefaultModel) || models[0];
   const selectedEffort = selectedModel.efforts.includes(String(effort || "").trim())
     ? String(effort).trim()
-    : selectedModel.efforts.includes(DEFAULT_CODEX_EFFORT)
-      ? DEFAULT_CODEX_EFFORT
-      : selectedModel.efforts[0];
+    : selectedModel.efforts.includes(configuredDefaultEffort)
+      ? configuredDefaultEffort
+      : selectedModel.defaultEffort || selectedModel.efforts[0];
   return { model: selectedModel.id, effort: selectedEffort };
 }
 
@@ -3649,7 +3819,12 @@ function normalizePersistedQueuedSendItem(value) {
     id: String(value.id || randomUUID()),
     text,
     images,
-    turnSettings: normalizeTurnSettings(value.turnSettings),
+    // Validate against the live catalog at delivery time. The service may be
+    // restoring this item before the active Codex catalog has been loaded.
+    turnSettings: {
+      model: String(value.turnSettings?.model || "").trim(),
+      effort: String(value.turnSettings?.effort || "").trim()
+    },
     enqueuedAt: String(value.enqueuedAt || new Date().toISOString()),
     lastError: value.lastError ? String(value.lastError).slice(0, 1200) : null,
     nextAttemptAtMs: Number.isFinite(Number(value.nextAttemptAtMs)) ? Number(value.nextAttemptAtMs) : 0,
@@ -4224,7 +4399,8 @@ function webpDimensions(bytes) {
 }
 
 async function sendToCodex(text, threadId, images = [], { newThread = false, mode = "start", model, effort } = {}) {
-  await refreshCodexHomeContext({ source: "send" });
+  const homeState = await refreshCodexHomeContext({ source: "send" });
+  const modelConfiguration = await loadCodexModelConfiguration(homeState.home);
   if (!ALLOW_WRITE) {
     const err = new Error("Read-only mode is enabled. Restart without --readonly to send messages to Codex Desktop.");
     err.status = 403;
@@ -4232,7 +4408,7 @@ async function sendToCodex(text, threadId, images = [], { newThread = false, mod
   }
   const trimmed = String(text || "").trim();
   const normalizedImages = normalizeSendImages(images);
-  const turnSettings = normalizeTurnSettings({ model, effort });
+  const turnSettings = normalizeTurnSettings({ model, effort }, modelConfiguration);
   const sendMode = newThread ? "start" : String(mode || "start").toLowerCase();
   if (!["start", "queue", "steer"].includes(sendMode)) {
     const err = new Error("Invalid send mode. Use start, queue, or steer.");
@@ -5357,6 +5533,7 @@ const server = http.createServer(async (req, res) => {
       if (!requireAuthorized(req, res, url)) return;
       keepIpcWarm();
       const homeState = await refreshCodexHomeContext({ force: true, source: "health" });
+      const modelConfiguration = await loadCodexModelConfiguration(homeState.home);
       sendJson(res, 200, {
         ok: true,
         codexHome: homeState.home,
@@ -5367,9 +5544,9 @@ const server = http.createServer(async (req, res) => {
         codexIpcSocket: CODEX_IPC_SOCKET,
         authRequired: AUTH_REQUIRED,
         allowWrite: ALLOW_WRITE,
-        models: CODEX_MODELS,
-        defaultModel: DEFAULT_CODEX_MODEL,
-        defaultEffort: DEFAULT_CODEX_EFFORT,
+        models: modelConfiguration.models,
+        defaultModel: modelConfiguration.defaultModel,
+        defaultEffort: modelConfiguration.defaultEffort,
         now: new Date().toISOString(),
         apkAvailable: existsSync(APK_PATH),
         apkUrl: "/api/apk"
@@ -5669,7 +5846,10 @@ export {
   isNoOpenOwnerError,
   limitMessagesForClient,
   localPathCandidates,
+  loadCodexModelConfiguration,
+  modelConfigurationFromCatalog,
   normalizeTurnSettings,
+  parseCodexModelConfig,
   parseRolloutLine,
   parseRolloutTail,
   cancelQueuedSend,
