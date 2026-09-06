@@ -12,6 +12,10 @@ export function messageScrollMode({
   return "keep";
 }
 
+export function shouldHydrateConversationCache({ preserveScrollPosition = false } = {}) {
+  return !preserveScrollPosition;
+}
+
 export function nextMessageLimit(currentLimit, response, pageSize = MESSAGE_PAGE_SIZE, maxLimit = MAX_MESSAGE_HISTORY) {
   const hasOlderMessages =
     typeof response?.hasOlderMessages === "boolean"

@@ -5,7 +5,7 @@ import path from "node:path";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
 
-import { messageScrollMode, nextMessageLimit, reconcilePendingMessages, retainedScrollTop } from "../public/history.js";
+import { messageScrollMode, nextMessageLimit, reconcilePendingMessages, retainedScrollTop, shouldHydrateConversationCache } from "../public/history.js";
 
 import {
   DesktopCodexIpcClient,
@@ -241,6 +241,8 @@ test("opening a cached conversation starts at the latest messages without disrup
   assert.equal(messageScrollMode({ force: false, wasNearBottom: true }), "latest");
   assert.equal(messageScrollMode({ force: false, wasNearBottom: false }), "keep");
   assert.equal(messageScrollMode({ preserveScrollPosition: true, cacheHydration: true, force: true, wasNearBottom: true }), "retain");
+  assert.equal(shouldHydrateConversationCache({ preserveScrollPosition: true }), false);
+  assert.equal(shouldHydrateConversationCache({ preserveScrollPosition: false }), true);
 });
 
 test("migrated state rows use the rollout discovered in the active Codex home", () => {

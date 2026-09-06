@@ -1,4 +1,4 @@
-import { MESSAGE_PAGE_SIZE, messageScrollMode, nextMessageLimit, reconcilePendingMessages, retainedScrollTop } from "./history.js";
+import { MESSAGE_PAGE_SIZE, messageScrollMode, nextMessageLimit, reconcilePendingMessages, retainedScrollTop, shouldHydrateConversationCache } from "./history.js";
 import { renderMarkdown } from "./markdown.js";
 import { filterVisibleThreads, groupedVisibleThreads, threadDeepLink } from "./threads.js";
 import { resolveAuthToken } from "./auth.js";
@@ -2413,7 +2413,7 @@ async function loadMessages(force = false, threadId = state.selectedId, { preser
   const openingThread = !state.lastMessagesData || state.lastMessagesData.thread?.id !== threadId;
   try {
     const cached = await readConversationCache(cacheKey);
-    if (cached && state.selectedId === threadId && state.activeMessageRequest === request) {
+    if (cached && shouldHydrateConversationCache({ preserveScrollPosition }) && state.selectedId === threadId && state.activeMessageRequest === request) {
       state.lastMessagesData = cached;
       state.threadStatus = cached.status || null;
       state.messagesSignature = "cache:" + (cached.cachedAt || 0);
@@ -2533,7 +2533,7 @@ function scheduleThreadSync(delayMs = syncDelay(THREAD_SYNC_INTERVAL_MS, state.t
 function scheduleMessageSync(delayMs = syncDelay(state.threadStatus?.thinking ? MESSAGE_SYNC_THINKING_MS : MESSAGE_SYNC_IDLE_MS, state.messageSyncBackoffMs)) {
   setTimeout(async () => {
     try {
-      if (shouldSync()) await loadMessages(false);
+      if (shouldSync() && !state.messageHistoryLoading) await loadMessages(false);
     } catch (error) {
       if (error.status === 401) handleUnauthorized(error);
       else noteSyncFailure("message", state.threadStatus?.thinking ? MESSAGE_SYNC_THINKING_MS : MESSAGE_SYNC_IDLE_MS, MESSAGE_SYNC_BACKOFF_MAX_MS);
