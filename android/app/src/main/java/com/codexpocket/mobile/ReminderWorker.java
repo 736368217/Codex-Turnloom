@@ -39,6 +39,7 @@ public class ReminderWorker extends Worker {
     private static final String REMINDERS_KEY = "thread_reminders";
     private static final String KEY_ALIAS = "codex-pocket-device-store";
     private static final String CHANNEL_ID = "codex-pocket-completions";
+    private static final Object WORK_LOCK = new Object();
 
     public ReminderWorker(@NonNull Context context, @NonNull WorkerParameters parameters) {
         super(context, parameters);
@@ -47,6 +48,12 @@ public class ReminderWorker extends Worker {
     @NonNull
     @Override
     public Result doWork() {
+        synchronized (WORK_LOCK) {
+            return doWorkSerially();
+        }
+    }
+
+    private Result doWorkSerially() {
         List<Reminder> reminders = loadReminders();
         if (reminders.isEmpty()) {
             ReminderScheduler.cancel(getApplicationContext());
@@ -56,6 +63,7 @@ public class ReminderWorker extends Worker {
         boolean changed = false;
         boolean anyThinking = false;
         int successes = 0;
+        List<CompletionNotice> notices = new ArrayList<>();
         for (Reminder reminder : reminders) {
             Device device = findDevice(devices, reminder.deviceUrl);
             if (device == null) continue;
@@ -64,14 +72,14 @@ public class ReminderWorker extends Worker {
                 successes += 1;
                 anyThinking |= snapshot.thinking;
                 boolean baselineReady = reminder.baselineSet && reminder.completionBaselineSet;
-                boolean transitionedToIdle = reminder.baselineSet && reminder.lastThinking && !snapshot.thinking;
                 boolean notify = ReminderDecision.shouldNotify(
                         baselineReady,
                         snapshot.thinking,
                         reminder.lastCompletedAtMs,
-                        snapshot.latestCompletedAtMs
-                ) || (transitionedToIdle && snapshot.latestCompletedAtMs == 0L);
-                if (notify) showCompletionNotification(reminder, device);
+                        snapshot.latestCompletedAtMs,
+                        snapshot.observedAtMs
+                );
+                if (notify) notices.add(new CompletionNotice(reminder, device));
                 if (!reminder.baselineSet
                         || !reminder.completionBaselineSet
                         || reminder.lastThinking != snapshot.thinking
@@ -86,7 +94,8 @@ public class ReminderWorker extends Worker {
                 anyThinking |= reminder.lastThinking;
             }
         }
-        if (changed) saveReminders(reminders);
+        if (changed && !saveReminders(reminders)) return Result.retry();
+        for (CompletionNotice notice : notices) showCompletionNotification(notice.reminder, notice.device);
         if (anyThinking) ReminderScheduler.scheduleActiveFollowUp(getApplicationContext());
         return successes == 0 ? Result.retry() : Result.success();
     }
@@ -100,6 +109,8 @@ public class ReminderWorker extends Worker {
         connection.setRequestProperty("Accept", "application/json");
         if (!device.token.isEmpty()) connection.setRequestProperty("x-access-token", device.token);
         int code = connection.getResponseCode();
+        long observedAtMs = connection.getDate();
+        if (observedAtMs <= 0L) observedAtMs = System.currentTimeMillis();
         InputStream stream = code >= 200 && code < 300 ? connection.getInputStream() : connection.getErrorStream();
         StringBuilder result = new StringBuilder();
         if (stream != null) {
@@ -113,7 +124,8 @@ public class ReminderWorker extends Worker {
         JSONObject status = new JSONObject(result.toString()).optJSONObject("status");
         return new Snapshot(
                 status != null && status.optBoolean("thinking", false),
-                status == null ? 0L : status.optLong("latestCompletedAtMs", 0L)
+                status == null ? 0L : status.optLong("latestCompletedAtMs", 0L),
+                observedAtMs
         );
     }
 
@@ -140,7 +152,7 @@ public class ReminderWorker extends Worker {
                 .setCategory(Notification.CATEGORY_STATUS)
                 .setPriority(Notification.PRIORITY_DEFAULT);
         ((NotificationManager) getApplicationContext().getSystemService(Context.NOTIFICATION_SERVICE)).notify(
-                (device.url + reminder.threadId + System.currentTimeMillis()).hashCode(), builder.build());
+                ReminderDecision.notificationId(device.url, reminder.threadId), builder.build());
     }
 
     private void createChannel() {
@@ -191,7 +203,7 @@ public class ReminderWorker extends Worker {
         return reminders;
     }
 
-    private void saveReminders(List<Reminder> reminders) {
+    private boolean saveReminders(List<Reminder> reminders) {
         try {
             JSONArray array = new JSONArray();
             for (Reminder reminder : reminders) {
@@ -205,9 +217,10 @@ public class ReminderWorker extends Worker {
                 item.put("lastCompletedAtMs", reminder.lastCompletedAtMs);
                 array.put(item);
             }
-            getApplicationContext().getSharedPreferences(PREFS, Context.MODE_PRIVATE)
-                    .edit().putString(REMINDERS_KEY, array.toString()).apply();
+            return getApplicationContext().getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+                    .edit().putString(REMINDERS_KEY, array.toString()).commit();
         } catch (Exception ignored) {
+            return false;
         }
     }
 
@@ -247,10 +260,22 @@ public class ReminderWorker extends Worker {
     private static class Snapshot {
         final boolean thinking;
         final long latestCompletedAtMs;
+        final long observedAtMs;
 
-        Snapshot(boolean thinking, long latestCompletedAtMs) {
+        Snapshot(boolean thinking, long latestCompletedAtMs, long observedAtMs) {
             this.thinking = thinking;
             this.latestCompletedAtMs = latestCompletedAtMs;
+            this.observedAtMs = observedAtMs;
+        }
+    }
+
+    private static class CompletionNotice {
+        final Reminder reminder;
+        final Device device;
+
+        CompletionNotice(Reminder reminder, Device device) {
+            this.reminder = reminder;
+            this.device = device;
         }
     }
 

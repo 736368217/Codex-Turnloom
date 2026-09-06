@@ -954,7 +954,7 @@ public class MainActivity extends ComponentActivity {
     private void clearLegacyReminderNotification() {
         NotificationManager manager = (NotificationManager) getSystemService(NOTIFICATION_SERVICE);
         if (manager == null) return;
-        manager.cancel(7101);
+        manager.cancelAll();
         if (Build.VERSION.SDK_INT >= 26) manager.deleteNotificationChannel("codex-pocket-monitor");
     }
 
