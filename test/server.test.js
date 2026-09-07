@@ -41,7 +41,8 @@ import {
   rolloutPathForCurrentHome,
   rolloutResultFromState,
   runIdempotentSend,
-  refreshCodexDesktopAfterSend,
+  attemptCodexDesktopRefresh as refreshCodexDesktopAfterSend,
+  createDesktopRefreshQueue,
   shouldRecordDesktopRefreshNotice,
   sanitizeThreadGoal,
   runSerializedThreadStart,
@@ -157,7 +158,7 @@ test("Desktop plan events become a compact plan notice", () => {
   assert.match(message.content, /\[>\] 修复问题/);
 });
 
-test("thread list honors explicit projects and only infers unique longest roots", () => {
+test("thread list honors explicit projects and never infers assignment from directories", () => {
   const pinned = threadListMetadata({
     isPinned: 0,
     threadSectionId: "pinned-section",
@@ -187,7 +188,7 @@ test("thread list honors explicit projects and only infers unique longest roots"
   ]);
   assert.deepEqual(
     threadListMetadata({ cwd: String.raw`\\?\C:\Users\demo\Documents\workspace\sample-project\archive\2026` }, projectRoots).project,
-    archiveProject
+    null
   );
   assert.equal(threadListMetadata({ cwd: String.raw`\\?\C:\Users\demo\Documents\workspace\other-project` }, projectRoots).project, null);
 
@@ -215,7 +216,7 @@ test("thread list honors explicit projects and only infers unique longest roots"
   const duplicatedSameProject = new Map([["c:\\users\\demo\\documents\\workspace\\duplicate", [sampleProject, { ...sampleProject }]]]);
   assert.deepEqual(
     threadListMetadata({ cwd: String.raw`\\?\C:\Users\demo\Documents\workspace\duplicate\nested` }, duplicatedSameProject).project,
-    sampleProject
+    null
   );
 });
 
@@ -379,6 +380,63 @@ test("Desktop refresh waits for the new turn to persist before opening the conve
 test("routine no-client-found refresh failures stay out of the conversation timeline", () => {
   assert.equal(shouldRecordDesktopRefreshNotice(["refresh: no-client-found", "refresh: no-client-found"]), false);
   assert.equal(shouldRecordDesktopRefreshNotice(["refresh: no-client-found", "set active: permission denied"]), true);
+});
+
+test("Desktop refresh retries after an unavailable desktop without resending a message", async () => {
+  let available = false;
+  let calls = 0;
+  const queue = createDesktopRefreshQueue(async () => {
+    calls += 1;
+    if (!available) throw new Error("no-client-found");
+    return { refreshed: true, persisted: true, failures: [] };
+  });
+  try {
+    await queue.enqueue("thread-1", {}, { turnId: "turn-1" });
+    assert.equal(queue.pending.size, 1);
+    available = true;
+    await queue.flush();
+    assert.equal(calls, 2);
+    assert.equal(queue.pending.size, 0);
+  } finally {
+    queue.close();
+  }
+});
+
+test("Desktop refresh keeps a newer send queued when an older refresh finishes", async () => {
+  let release;
+  const queue = createDesktopRefreshQueue(() => new Promise((resolve) => { release = resolve; }));
+  try {
+    const first = queue.enqueue("thread-1", {}, { turnId: "old" });
+    await queue.enqueue("thread-1", {}, { turnId: "new" });
+    release({ refreshed: true, persisted: true, failures: [] });
+    await first;
+    assert.equal(queue.pending.get("thread-1").options.turnId, "new");
+  } finally {
+    queue.close();
+  }
+});
+
+test("an IPC timeout discards the unresponsive pipe and the next request reconnects", async () => {
+  const client = new DesktopCodexIpcClient();
+  let destroyed = false;
+  let writes = 0;
+  client.socket = {
+    writable: true,
+    write() { writes += 1; },
+    removeAllListeners() {},
+    destroy() { destroyed = true; }
+  };
+  client.ready = Promise.resolve();
+  await assert.rejects(client.request("refresh-recent-conversations-for-host", {}, { timeoutMs: 5 }), /timed out/);
+  assert.equal(destroyed, true);
+  assert.equal(client.socket, null);
+  assert.equal(client.ready, null);
+  assert.equal(client.pending.size, 0);
+  let connections = 0;
+  client.connect = async () => { connections += 1; };
+  await client.ensureReady();
+  assert.equal(connections, 1);
+  assert.equal(writes, 1);
 });
 
 test("Desktop goal statuses from the goal store are normalized for mobile", () => {

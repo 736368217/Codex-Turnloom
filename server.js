@@ -1003,6 +1003,11 @@ class DesktopCodexIpcClient {
   }
 
   reset(error) {
+    const socket = this.socket;
+    if (socket) {
+      socket.removeAllListeners();
+      socket.destroy();
+    }
     for (const { reject, timer } of this.pending.values()) {
       clearTimeout(timer);
       if (error) reject(error);
@@ -1361,6 +1366,9 @@ class DesktopCodexIpcClient {
           error: `${method} timed out`
         });
         reject(new Error(`${method} timed out`));
+        // A writable pipe can still be unresponsive after Desktop suspends.
+        // Reconnect on the next request; never replay a timed-out send.
+        this.reset(new Error("Codex desktop IPC connection timed out"));
       }, timeoutMs);
       this.pending.set(requestId, { resolve, reject, timer, method, params });
       this.captureEvent({
@@ -1988,8 +1996,7 @@ function threadListMetadata(row, projectRootsByPath = null) {
       project: projectName ? { key: `project:${projectId}`, id: projectId, name: projectName, native: true } : null
     };
   }
-  const project = projectForRoot(row?.cwd, projectRootsByPath);
-  if (project) return { pinned, project };
+  // Sharing a working directory is not an explicit Desktop project assignment.
   return { pinned, project: null };
 }
 
@@ -4654,7 +4661,64 @@ async function waitForDesktopTurnPersistence(threadId, turnId, timeoutMs = 5000)
   return false;
 }
 
-async function refreshCodexDesktopAfterSend(
+function createDesktopRefreshQueue(refresh, { retryMs = 15000 } = {}) {
+  const pending = new Map();
+  let timer = null;
+  let running = false;
+  let stopped = false;
+  function schedule() {
+    if (stopped || timer || !pending.size) return;
+    timer = setTimeout(() => {
+      timer = null;
+      void flush();
+    }, retryMs);
+    timer.unref?.();
+  }
+  async function flush() {
+    if (running || stopped) return;
+    running = true;
+    try {
+      for (const [id, entry] of pending) {
+        try {
+          const result = await refresh(id, entry.client, entry.options);
+          if (result.refreshed && (result.persisted || !entry.options?.turnId) && !result.failures.length && pending.get(id) === entry) {
+            pending.delete(id);
+          }
+        } catch {
+          // Keep the refresh intent through a missing or reconnecting Desktop.
+        }
+      }
+    } finally {
+      running = false;
+      schedule();
+    }
+  }
+  return {
+    pending,
+    flush,
+    enqueue(id, client, options) {
+      pending.set(id, { client, options });
+      return flush();
+    },
+    close() {
+      stopped = true;
+      clearTimeout(timer);
+      timer = null;
+      pending.clear();
+    }
+  };
+}
+
+const desktopRefreshQueue = createDesktopRefreshQueue(attemptCodexDesktopRefresh);
+
+async function refreshCodexDesktopAfterSend(threadId, client = getCodexIpcClient(), options = {}) {
+  const id = String(threadId || "").trim();
+  if (!id) return;
+  invalidateThreadCaches();
+  return desktopRefreshQueue.enqueue(id, client, options);
+}
+
+async function attemptCodexDesktopRefresh(
   threadId,
   client = getCodexIpcClient(),
   {
@@ -4675,6 +4739,15 @@ async function refreshCodexDesktopAfterSend(
   let refreshed = false;
   let openedThread = false;
   const following = client.followingConversationState?.(id) === true;
+  let ownerClientId = null;
+  if (!following && typeof client.findThreadOwner === "function") {
+    try {
+      ownerClientId = await client.findThreadOwner(id, "local");
+    } catch (error) {
+      failures.push(`owner: ${error?.message || error}`);
+    }
+  }
+  const shouldOpen = following || Boolean(ownerClientId);
   for (let attempt = 0; attempt < 2 && !refreshed; attempt += 1) {
     try {
       await client.refreshRecentConversations("local");
@@ -4685,7 +4758,7 @@ async function refreshCodexDesktopAfterSend(
         // If the desktop currently follows this conversation, reopening its
         // deep link re-establishes the owner and prompts the detail view to
         // reload the rollout before the bounded retry.
-        if (following) {
+        if (shouldOpen) {
           try {
             await openThread(id);
             openedThread = true;
@@ -4701,7 +4774,7 @@ async function refreshCodexDesktopAfterSend(
   // Only re-select the conversation when Desktop has told us it is currently
   // following that stream. This refreshes an open detail view without pulling
   // the user away from a different conversation on the computer.
-  if (following) {
+  if (shouldOpen) {
     try {
       await client.setActiveConversation(id, true, "local");
     } catch (error) {
@@ -4717,17 +4790,7 @@ async function refreshCodexDesktopAfterSend(
     }
   }
 
-  const onlyNoClientFound = failures.length > 0 && failures.every((failure) => /no-client-found/i.test(String(failure)));
-  if (shouldRecordDesktopRefreshNotice(failures)) {
-    recordNotice(id, {
-      severity: "warning",
-      title: "Desktop refresh delayed",
-      content: `The message was sent, but Codex Desktop did not fully refresh yet.\n\n${failures.join("\n")}`,
-      source: "send-refresh"
-    });
-  } else if (onlyNoClientFound) {
-    logInfo(`[send-refresh] Desktop refresh deferred for ${id}: no active Desktop client.`);
-  }
+  // Refresh failures are retried by the queue, not inserted into chat history.
   return { refreshed, failures, openedThread, persisted };
 }
 
@@ -5708,6 +5771,7 @@ let shuttingDown = false;
 async function shutdown(signal) {
   if (shuttingDown) return;
   shuttingDown = true;
+  desktopRefreshQueue.close();
   logInfo(`[shutdown] Received ${signal}; closing HTTP server and IPC client.`);
   const closeServer = new Promise((resolve) => {
     if (!server.listening) {
@@ -5828,6 +5892,8 @@ if (IS_MAIN) {
 }
 
 export {
+  attemptCodexDesktopRefresh,
+  createDesktopRefreshQueue,
   DesktopCodexIpcClient,
   canExposeLocalFilesForMessage,
   contentDispositionForDownload,
