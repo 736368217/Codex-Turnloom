@@ -274,6 +274,8 @@ const PUBLIC_DIR = path.join(__dirname, "public");
 const APK_PATH = process.env.CODEX_POCKET_APK_PATH
   ? path.resolve(process.env.CODEX_POCKET_APK_PATH)
   : path.join(PUBLIC_DIR, "downloads", "Codex-Turnloom.apk");
+const APP_VERSION_CODE = 18;
+const APP_VERSION_NAME = "1.14.0";
 const GENERATED_IMAGES_DIR = path.join(os.homedir(), ".codex", "generated_images");
 const CODEX_POCKET_DATA_DIR =
   process.env.LOCALAPPDATA || path.join(os.homedir(), process.platform === "win32" ? "AppData" : ".local", process.platform === "win32" ? "Local" : "share");
@@ -5612,7 +5614,9 @@ const server = http.createServer(async (req, res) => {
         defaultEffort: modelConfiguration.defaultEffort,
         now: new Date().toISOString(),
         apkAvailable: existsSync(APK_PATH),
-        apkUrl: "/api/apk"
+        apkUrl: "/api/apk",
+        appVersionCode: APP_VERSION_CODE,
+        appVersionName: APP_VERSION_NAME
       });
       return;
     }

@@ -3,9 +3,12 @@ package com.codexpocket.mobile;
 import android.app.AlertDialog;
 import android.app.DownloadManager;
 import android.app.NotificationManager;
+import android.app.PendingIntent;
+import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.DialogInterface;
 import android.content.Intent;
+import android.content.IntentFilter;
 import android.content.res.Configuration;
 import android.graphics.Color;
 import android.graphics.Typeface;
@@ -70,6 +73,8 @@ import javax.crypto.SecretKey;
 import javax.crypto.spec.GCMParameterSpec;
 
 public class MainActivity extends ComponentActivity {
+    private static final int APP_VERSION_CODE = 18;
+    private static final String APP_VERSION_NAME = "1.14.0";
     private static final String PREFS = "codex_pocket";
     private static final String DEVICES_KEY = "devices";
     private static final String KEY_ALIAS = "codex-pocket-device-store";
@@ -90,6 +95,7 @@ public class MainActivity extends ComponentActivity {
 
     private final List<Device> devices = new ArrayList<>();
     private final Map<String, Boolean> deviceStatus = new HashMap<>();
+    private final Map<String, Boolean> updatePromptShown = new HashMap<>();
     private LinearLayout root;
     private WebView webView;
     private ProgressBar pageProgress;
@@ -99,6 +105,34 @@ public class MainActivity extends ComponentActivity {
     private String pendingNotificationDeviceUrl;
     private String pendingNotificationThreadId;
     private ValueCallback<Uri[]> fileChooserCallback;
+    private long updateDownloadId = -1L;
+    private final BroadcastReceiver updateDownloadReceiver = new BroadcastReceiver() {
+        @Override
+        public void onReceive(Context context, Intent intent) {
+            if (!DownloadManager.ACTION_DOWNLOAD_COMPLETE.equals(intent.getAction())) return;
+            long id = intent.getLongExtra(DownloadManager.EXTRA_DOWNLOAD_ID, -1L);
+            if (id != updateDownloadId) return;
+            DownloadManager manager = (DownloadManager) getSystemService(DOWNLOAD_SERVICE);
+            if (manager == null) return;
+            DownloadManager.Query query = new DownloadManager.Query().setFilterById(id);
+            try (android.database.Cursor cursor = manager.query(query)) {
+                if (cursor == null || !cursor.moveToFirst()) return;
+                int status = cursor.getInt(cursor.getColumnIndexOrThrow(DownloadManager.COLUMN_STATUS));
+                if (status != DownloadManager.STATUS_SUCCESSFUL) {
+                    Toast.makeText(MainActivity.this, "更新下载失败，请稍后重试", Toast.LENGTH_LONG).show();
+                    return;
+                }
+                String uri = cursor.getString(cursor.getColumnIndexOrThrow(DownloadManager.COLUMN_LOCAL_URI));
+                if (uri == null || uri.isBlank()) {
+                    Toast.makeText(MainActivity.this, "更新文件已下载，请从系统下载通知打开", Toast.LENGTH_LONG).show();
+                    return;
+                }
+                installApk(Uri.parse(uri));
+            } catch (Exception error) {
+                Toast.makeText(MainActivity.this, "更新文件已下载，请从系统下载通知打开", Toast.LENGTH_LONG).show();
+            }
+        }
+    };
 
     private final ActivityResultLauncher<Intent> fileChooser = registerForActivityResult(
             new ActivityResultContracts.StartActivityForResult(), result -> {
@@ -161,6 +195,13 @@ public class MainActivity extends ComponentActivity {
         root.setOrientation(LinearLayout.VERTICAL);
         root.setBackgroundColor(PAPER);
         setContentView(root);
+        if (Build.VERSION.SDK_INT >= 33) {
+            registerReceiver(updateDownloadReceiver,
+                    new IntentFilter(DownloadManager.ACTION_DOWNLOAD_COMPLETE),
+                    Context.RECEIVER_EXPORTED);
+        } else {
+            registerReceiver(updateDownloadReceiver, new IntentFilter(DownloadManager.ACTION_DOWNLOAD_COMPLETE));
+        }
         showMachinePicker();
         if (!getSharedPreferences(PREFS, MODE_PRIVATE).getBoolean(ONBOARDING_KEY, false)) {
             root.post(() -> showWelcomeGuide(true));
@@ -587,13 +628,15 @@ public class MainActivity extends ComponentActivity {
     private void checkConnection(Device device, LinearLayout currentList) {
         new Thread(() -> {
             boolean online;
+            JSONObject health = null;
             try {
-                httpGet(device, "/api/health");
+                health = new JSONObject(httpGet(device, "/api/health"));
                 online = true;
             } catch (Exception ignored) {
                 online = false;
             }
             boolean value = online;
+            JSONObject healthResult = health;
             runOnUiThread(() -> {
                 if (activeDevice != null || root.getChildCount() == 0) return;
                 deviceStatus.put(device.url, value);
@@ -603,8 +646,55 @@ public class MainActivity extends ComponentActivity {
                 if (copy instanceof TextView) {
                     ((TextView) copy).setText((value ? "在线" : "离线") + " · " + displayAddress(device.url));
                 }
+                if (value && healthResult != null) maybeOfferUpdate(device, healthResult);
             });
         }).start();
+    }
+
+    private void maybeOfferUpdate(Device device, JSONObject health) {
+        if (Boolean.TRUE.equals(updatePromptShown.get(device.url))) return;
+        int remoteCode = health.optInt("appVersionCode", 0);
+        if (remoteCode <= APP_VERSION_CODE || !health.optBoolean("apkAvailable", false)) return;
+        updatePromptShown.put(device.url, true);
+        String remoteName = health.optString("appVersionName", "新版本");
+        new AlertDialog.Builder(this)
+                .setTitle("发现新版本")
+                .setMessage("Codex-Turnloom " + remoteName + " 已可用，下载后可从系统通知安装。")
+                .setNegativeButton("稍后", null)
+                .setPositiveButton("下载更新", (dialog, which) -> {
+                    String path = health.optString("apkUrl", "/api/apk");
+                    downloadUpdate(device, trimTrailingSlash(device.url) + path);
+                })
+                .show();
+    }
+
+    private void downloadUpdate(Device device, String url) {
+        try {
+            DownloadManager.Request request = new DownloadManager.Request(Uri.parse(url));
+            request.setTitle("Codex-Turnloom " + APP_VERSION_NAME + " 更新");
+            request.setDescription("正在下载应用更新");
+            request.setMimeType("application/vnd.android.package-archive");
+            request.setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED);
+            request.setDestinationInExternalPublicDir(Environment.DIRECTORY_DOWNLOADS, "Codex-Turnloom-update.apk");
+            if (!device.token.isBlank()) request.addRequestHeader("x-access-token", device.token);
+            DownloadManager manager = (DownloadManager) getSystemService(DOWNLOAD_SERVICE);
+            if (manager == null) throw new IllegalStateException("DownloadManager unavailable");
+            updateDownloadId = manager.enqueue(request);
+            Toast.makeText(this, "正在下载更新，完成后会打开安装界面", Toast.LENGTH_SHORT).show();
+        } catch (Exception error) {
+            Toast.makeText(this, "无法下载更新，请稍后重试", Toast.LENGTH_LONG).show();
+        }
+    }
+
+    private void installApk(Uri uri) {
+        try {
+            Intent intent = new Intent(Intent.ACTION_VIEW, uri);
+            intent.setDataAndType(uri, "application/vnd.android.package-archive");
+            intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION | Intent.FLAG_ACTIVITY_NEW_TASK);
+            startActivity(intent);
+        } catch (Exception error) {
+            Toast.makeText(this, "无法打开安装界面，请从下载通知打开更新文件", Toast.LENGTH_LONG).show();
+        }
     }
 
     private void testConnectionWithFeedback(Device device) {
@@ -834,6 +924,10 @@ public class MainActivity extends ComponentActivity {
 
     @Override
     protected void onDestroy() {
+        try {
+            unregisterReceiver(updateDownloadReceiver);
+        } catch (Exception ignored) {
+        }
         destroyWebView();
         super.onDestroy();
     }

@@ -74,5 +74,6 @@ Do not copy credentials, access codes, tokens, private URLs containing secrets, 
 - IPC request timeouts now discard the unresponsive named-pipe connection so the next request reconnects, including after lock or sleep.
 - Desktop detail refresh also probes the current thread owner when passive following events are missing.
 - Mobile project grouping recognizes only explicit Desktop project assignments; working-directory overlap no longer creates a project category.
+- Android version checks use the authenticated service health response; a higher `appVersionCode` prompts a system-managed APK download from `/api/apk`.
 
 Static web assets include baseline CSP, referrer, MIME-sniffing, and frame-isolation response headers.
