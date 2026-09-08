@@ -1069,6 +1069,16 @@ body.welcome-open {
   display: none;
 }
 
+.goal-view {
+  display: block;
+  width: 100%;
+  border: 0;
+  background: transparent;
+  text-align: left;
+  cursor: pointer;
+  padding: 4px 0;
+}
+
 .goal-heading,
 .goal-form-row,
 .goal-form-actions {
@@ -1147,6 +1157,7 @@ body.welcome-open {
 .goal-dialog-card {
   position: relative;
   display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
   width: min(92vw, 440px);
   max-height: min(86dvh, 620px);
   overflow: hidden;
@@ -1195,6 +1206,31 @@ body.welcome-open {
 }
 
 .goal-dialog-card .goal-form textarea { min-height: 104px; resize: vertical; }
+
+.goal-detail-view {
+  display: grid;
+  grid-template-rows: minmax(0, 1fr) auto auto;
+  gap: 12px;
+  min-height: 0;
+  padding: 16px;
+}
+
+.goal-detail-view[hidden],
+.goal-dialog-card .goal-form[hidden] { display: none; }
+
+.goal-detail-objective {
+  min-height: 0;
+  margin: 0;
+  overflow-y: auto;
+  color: var(--text);
+  font-size: 14px;
+  line-height: 1.6;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.goal-detail-status { color: #1f6f62; font-size: 12px; }
+.goal-detail-actions { display: flex; justify-content: flex-end; gap: 8px; }
 
 body.goal-dialog-open { overflow: hidden; }
 
@@ -2264,6 +2300,23 @@ body.goal-dialog-open { overflow: hidden; }
   color: #213d36;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.queue-status-images {
+  display: flex;
+  gap: 5px;
+  margin-top: 5px;
+  overflow: hidden;
+}
+
+.queue-status-images img {
+  width: 42px;
+  height: 42px;
+  flex: 0 0 auto;
+  border: 1px solid #c9d8d3;
+  border-radius: 5px;
+  object-fit: cover;
+  background: #fff;
 }
 
 .queue-status-actions {

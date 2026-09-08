@@ -3975,6 +3975,10 @@ function queuedSendStatus(threadId) {
       text: item.text,
       preview: queuedMessagePreview(item.text, item.images.length),
       imageCount: item.images.length,
+      images: item.images.map((image, index) => ({
+        name: image.name,
+        url: `/api/queue/image?threadId=${encodeURIComponent(threadId)}&itemId=${encodeURIComponent(item.id)}&index=${index}`
+      })),
       enqueuedAt: item.enqueuedAt,
       lastError: item.lastError || null,
       deliveryState: normalizedQueuedSendState(item.deliveryState)
@@ -4025,10 +4029,21 @@ function enqueueSend(threadId, text, images, turnSettings) {
   };
 }
 
-function cancelQueuedSend(threadId, itemId = "") {
+function cancelQueuedSend(threadId, itemId = "", { edit = false } = {}) {
   const key = String(threadId || "");
   const queue = pendingSendQueues.get(key) || [];
   if (!queue.length) return { ok: true, threadId: key, cancelled: 0, ...queuedSendStatus(key) };
+  const selected = queue.filter((item) => !itemId || item.id === itemId);
+  if (selected.some((item) => ["sending", "awaitingConfirmation"].includes(item.deliveryState))) {
+    const error = new Error("这条消息正在发送或等待确认，暂时不能编辑或取消。");
+    error.status = 409;
+    throw error;
+  }
+  if (edit && (!itemId || !selected.length)) {
+    const error = new Error("排队消息已发送或已移除，请刷新后查看。");
+    error.status = 409;
+    throw error;
+  }
   const remaining = itemId ? queue.filter((item) => item.id !== itemId) : [];
   const cancelled = queue.length - remaining.length;
   setPendingSendQueue(key, remaining);
@@ -4038,7 +4053,12 @@ function cancelQueuedSend(threadId, itemId = "") {
     if (timer) clearTimeout(timer);
     queuedSendDrainTimers.delete(key);
   }
-  return { ok: true, threadId: key, cancelled, ...queuedSendStatus(key) };
+  return {
+    ok: true, threadId: key, cancelled,
+    cancelledIds: selected.map((item) => item.id),
+    ...(edit ? { draft: { text: selected[0].text, images: cloneQueuedSendImages(selected[0].images) } } : {}),
+    ...queuedSendStatus(key)
+  };
 }
 
 function sendRequestFingerprint(body = {}) {
@@ -4959,7 +4979,7 @@ function isNoOpenOwnerError(error) {
 
 function isNoActiveTurnError(error) {
   const message = String(error?.message || "");
-  return /without an active turn id|no active codex turn|no active turn/i.test(message);
+  return /without an active turn id|no active codex turn|no active turn|active turn (?:already |has )?ended/i.test(message);
 }
 
 async function forkThread(threadId, options = {}) {
@@ -5663,7 +5683,17 @@ const server = http.createServer(async (req, res) => {
     if (req.method === "POST" && url.pathname === "/api/queue/cancel") {
       if (!requireAuthorized(req, res, url)) return;
       const body = await readJsonBody(req);
-      sendJson(res, 200, cancelQueuedSend(body.threadId, body.itemId));
+      sendJson(res, 200, cancelQueuedSend(body.threadId, body.itemId, { edit: body.edit === true }));
+      return;
+    }
+    if (req.method === "GET" && url.pathname === "/api/queue/image") {
+      if (!requireAuthorized(req, res, url)) return;
+      const queue = pendingSendQueues.get(url.searchParams.get("threadId")) || [];
+      const item = queue.find((entry) => entry.id === url.searchParams.get("itemId"));
+      const image = item?.images[Number(url.searchParams.get("index"))];
+      if (!image) return sendJson(res, 404, { error: "Queued image not found" });
+      res.writeHead(200, { "content-type": image.mimeType, "cache-control": "private, no-store", "x-content-type-options": "nosniff" });
+      res.end(Buffer.from(image.data, "base64"));
       return;
     }
     if (req.method === "POST" && url.pathname === "/api/new-thread") {

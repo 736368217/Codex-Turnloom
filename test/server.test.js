@@ -306,7 +306,19 @@ test("a queued follow-up waits through a transient idle status before it can be 
 
 test("Desktop no-active-turn errors are recognized as an insert race", () => {
   assert.equal(isNoActiveTurnError(new Error("Cannot steer conversation thread-1 without an active turn id")), true);
+  assert.equal(isNoActiveTurnError(new Error("Cannot steer conversation thread-1 because its active turn already ended")), true);
   assert.equal(isNoActiveTurnError(new Error("thread-follower-steer-turn timed out")), false);
+});
+
+test("queued message status exposes image previews", () => {
+  const threadId = `queue-image-test-${Date.now()}`;
+  const queued = enqueueSend(threadId, "with image", [
+    { name: "sample.png", mimeType: "image/png", data: "aGVsbG8=", size: 5 }
+  ], { model: "gpt-6-astra", effort: "medium" });
+  const item = queuedSendStatus(threadId).queuedMessages[0];
+  assert.equal(item.imageCount, 1);
+  assert.equal(item.images[0].name, "sample.png");
+  cancelQueuedSend(threadId);
 });
 
 test("duplicate mobile send requests share one in-flight operation", async () => {

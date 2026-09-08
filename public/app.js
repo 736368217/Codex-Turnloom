@@ -29,7 +29,6 @@ const state = {
   threadStatus: null,
   goal: null,
   goalEditing: false,
-  goalPressTimer: null,
   composerBusy: false,
   uncertainSend: null,
   reminders: {},
@@ -90,6 +89,11 @@ const els = {
   goalPanel: document.querySelector("#goalPanel"),
   goalView: document.querySelector("#goalView"),
   goalEditDialog: document.querySelector("#goalEditDialog"),
+  goalDialogTitle: document.querySelector("#goalEditDialogTitle"),
+  goalDetailView: document.querySelector("#goalDetailView"),
+  goalDetailObjective: document.querySelector("#goalDetailObjective"),
+  goalDetailStatus: document.querySelector("#goalDetailStatus"),
+  goalDetailBackButton: document.querySelector("#goalDetailBackButton"),
   goalDialogClose: document.querySelector("#goalDialogClose"),
   goalForm: document.querySelector("#goalForm"),
   goalObjective: document.querySelector("#goalObjective"),
@@ -300,6 +304,8 @@ const I18N = {
     skillPickerLoading: "正在加载技能...",
     skillPickerEmpty: "没有找到匹配技能",
     goalLabel: "目标",
+    goalDetail: "目标详情",
+    goalBack: "返回",
     goalEdit: "编辑目标",
     goalSave: "保存",
     goalCancel: "取消",
@@ -472,6 +478,8 @@ const I18N = {
     skillPickerLoading: "Loading skills...",
     skillPickerEmpty: "No matching skills",
     goalLabel: "Goal",
+    goalDetail: "Goal details",
+    goalBack: "Back",
     goalEdit: "Edit goal",
     goalSave: "Save",
     goalCancel: "Cancel",
@@ -565,6 +573,8 @@ function applyStaticText() {
   els.threadList.setAttribute("aria-label", t("threadList"));
   els.threadTitle.textContent = t("selectThread");
   els.threadMeta.textContent = t("syncEvery");
+  els.goalDetailBackButton.textContent = t("goalBack");
+  els.goalEditButton.textContent = t("goalEdit");
   document.querySelector("#toolToggleLabel").textContent = "🔧";
   document.querySelector(".toggle").setAttribute("title", t("tool"));
   document.querySelector(".toggle").setAttribute("aria-label", t("tool"));
@@ -1605,11 +1615,28 @@ function renderGoal(goal) {
   els.goalObjective.textContent = goal?.objective || "";
   els.goalObjective.classList.remove("empty");
   els.goalStatus.textContent = goalStatusLabel(goal?.status);
+  els.goalDetailObjective.textContent = goal.objective;
+  els.goalDetailStatus.textContent = goalStatusLabel(goal.status);
+}
+
+function openGoalDetailDialog() {
+  if (!state.goal?.objective || !els.goalEditDialog) return;
+  state.goalEditing = false;
+  renderGoal(state.goal);
+  els.goalDialogTitle.textContent = t("goalDetail");
+  els.goalDetailView.hidden = false;
+  els.goalForm.hidden = true;
+  els.goalEditDialog.hidden = false;
+  document.body.classList.add("goal-dialog-open");
+  els.goalDetailBackButton.focus();
 }
 
 function openGoalEditDialog() {
   if (!state.goal?.objective || !els.goalEditDialog) return;
   state.goalEditing = true;
+  els.goalDialogTitle.textContent = t("goalEdit");
+  els.goalDetailView.hidden = true;
+  els.goalForm.hidden = false;
   els.goalObjectiveInput.value = state.goal.objective || "";
   els.goalStatusInput.value = state.goal.status || "active";
   els.goalEditDialog.hidden = false;
@@ -1621,9 +1648,11 @@ function openGoalEditDialog() {
 }
 
 function closeGoalEditDialog() {
+  const wasOpen = els.goalEditDialog && !els.goalEditDialog.hidden;
   state.goalEditing = false;
   if (els.goalEditDialog) els.goalEditDialog.hidden = true;
   document.body.classList.remove("goal-dialog-open");
+  if (wasOpen && !els.goalPanel.hidden) els.goalView.focus();
 }
 
 async function requestContextCompaction() {
@@ -2305,6 +2334,7 @@ function renderQueueStatus(status = state.threadStatus) {
           <div class="queue-status-copy">
             <span class="queue-status-label">${escapeHtml(item.deliveryState === "failed" ? t("messageFailed") : item.deliveryState === "awaitingConfirmation" || item.deliveryState === "sending" ? t("messageSending") : t("queuedItem"))} ${index + 1}</span>
             <span class="queue-status-preview">${escapeHtml(compactPreview(item.preview || item.text))}</span>
+            ${Array.isArray(item.images) && item.images.length ? `<div class="queue-status-images">${item.images.map((image) => `<img src="${escapeHtml(withAuthToken(image.url))}" alt="${escapeHtml(image.name || t("addImage"))}" loading="lazy" />`).join("")}</div>` : ""}
           </div>
           <div class="queue-status-actions">
             <button type="button" data-queue-action="edit">${escapeHtml(t("editQueued"))}</button>
@@ -2482,6 +2512,12 @@ async function loadMessages(force = false, threadId = state.selectedId, { preser
     if (state.activeMessageRequest === request) state.activeMessageRequest = null;
     if (state.activeMessageRequest === null) state.messageLoading = false;
   }
+}
+
+function withAuthToken(url) {
+  if (!state.authToken || !url) return url;
+  const separator = url.includes("?") ? "&" : "?";
+  return `${url}${separator}token=${encodeURIComponent(state.authToken)}`;
 }
 
 async function loadOlderMessages() {
@@ -2683,6 +2719,9 @@ els.goalEditButton?.addEventListener("click", () => {
   openGoalEditDialog();
 });
 
+els.goalView?.addEventListener("click", openGoalDetailDialog);
+els.goalDetailBackButton?.addEventListener("click", closeGoalEditDialog);
+
 els.goalContextMenu?.addEventListener("click", (event) => {
   const action = event.target.closest("button")?.id;
   if (action === "goalPauseAction") void updateGoalStatus("paused");
@@ -2696,14 +2735,6 @@ els.goalContextMenu?.addEventListener("click", (event) => {
   }
 });
 
-els.goalPanel?.addEventListener("pointerdown", (event) => {
-  if (event.target.closest("button, textarea, select")) return;
-  clearTimeout(state.goalPressTimer);
-  state.goalPressTimer = window.setTimeout(() => openGoalContextMenu(), 520);
-});
-els.goalPanel?.addEventListener("pointerup", () => clearTimeout(state.goalPressTimer));
-els.goalPanel?.addEventListener("pointercancel", () => clearTimeout(state.goalPressTimer));
-els.goalPanel?.addEventListener("pointerleave", () => clearTimeout(state.goalPressTimer));
 els.goalPanel?.addEventListener("contextmenu", (event) => {
   if (!state.goal?.objective) return;
   event.preventDefault();
@@ -2711,7 +2742,7 @@ els.goalPanel?.addEventListener("contextmenu", (event) => {
 });
 
 els.goalCancelButton?.addEventListener("click", () => {
-  closeGoalEditDialog();
+  openGoalDetailDialog();
 });
 
 els.goalDialogClose?.addEventListener("click", closeGoalEditDialog);
@@ -3226,7 +3257,7 @@ els.composerForm.addEventListener("submit", async (event) => {
         clearComposerAfterAcceptedSend();
       }
     } else if (sendMode === "queue") {
-      if (pendingMessageId) updatePendingMessage(pendingMessageId, { deliveryStatus: "queued" });
+      if (pendingMessageId) updatePendingMessage(pendingMessageId, { deliveryStatus: "queued", queueItemId: result.queueItem?.id || null });
       const queuedMessages = [...(state.threadStatus?.queuedMessages || []), result.queueItem].filter(Boolean);
       state.threadStatus = {
         ...(state.threadStatus || {}),
@@ -3334,12 +3365,25 @@ els.queueStatusList.addEventListener("click", async (event) => {
   state.composerBusy = true;
   renderComposerMode();
   try {
-    const result = await postJson("/api/queue/cancel", { threadId: state.selectedId, itemId });
+    const result = await postJson("/api/queue/cancel", { threadId: state.selectedId, itemId, edit });
     applyQueueStatusResult(result);
+    state.pendingMessages = state.pendingMessages.filter((message) => message.queueItemId !== itemId);
+    state.messagesSignature = "";
+    renderCurrentMessages(false);
     if (edit) {
       state.followUpMode = "queue";
       safeStorageSet(localStorage, "codex-follow-up-mode", state.followUpMode);
-      els.composerInput.value = item.text || item.preview || "";
+      const draft = result.draft || { text: item.text || item.preview || "", images: [] };
+      els.composerInput.value = draft.text || "";
+      state.imageAttachments = (draft.images || []).map((image, index) => ({
+        id: `queue-edit-${Date.now()}-${index}`,
+        name: image.name || "image.jpg",
+        mimeType: image.mimeType || "image/jpeg",
+        size: Number(image.size) || 0,
+        data: image.data || "",
+        dataUrl: image.data ? `data:${image.mimeType || "image/jpeg"};base64,${image.data}` : ""
+      }));
+      renderImageAttachments();
       autoResizeComposerInput();
       if (shouldRefocusComposer()) els.composerInput.focus();
     }

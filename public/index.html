@@ -77,9 +77,9 @@
             <h2 id="threadTitle">选择一个对话</h2>
             <p id="threadMeta">每 3 秒自动同步</p>
             <section id="goalPanel" class="goal-panel" hidden>
-              <div class="goal-view" id="goalView">
-                <div class="goal-heading"><span id="goalLabel">目标</span><p id="goalObjective" class="goal-objective"></p><span id="goalStatus" class="goal-status"></span></div>
-              </div>
+              <button class="goal-view" id="goalView" type="button" aria-haspopup="dialog">
+                <span class="goal-heading"><span id="goalLabel">目标</span><span id="goalObjective" class="goal-objective"></span><span id="goalStatus" class="goal-status"></span></span>
+              </button>
             </section>
             <div id="goalContextMenu" class="goal-context-menu" role="menu" hidden>
               <button id="goalPauseAction" type="button" role="menuitem">暂停目标</button>
@@ -104,10 +104,18 @@
           <div class="goal-dialog-backdrop" data-goal-dialog-close></div>
           <div class="goal-dialog-card" role="document">
             <div class="goal-dialog-header">
-              <h3 id="goalEditDialogTitle">编辑目标</h3>
+              <h3 id="goalEditDialogTitle">目标详情</h3>
               <button id="goalDialogClose" class="goal-dialog-close" type="button" title="关闭" aria-label="关闭">×</button>
             </div>
-            <form id="goalForm" class="goal-form">
+            <div id="goalDetailView" class="goal-detail-view">
+              <p id="goalDetailObjective" class="goal-detail-objective"></p>
+              <span id="goalDetailStatus" class="goal-detail-status"></span>
+              <div class="goal-detail-actions">
+                <button id="goalDetailBackButton" class="goal-action" type="button">返回</button>
+                <button id="goalEditButton" class="goal-action primary" type="button">编辑</button>
+              </div>
+            </div>
+            <form id="goalForm" class="goal-form" hidden>
               <label><span>目标</span><textarea id="goalObjectiveInput" rows="4" maxlength="4000"></textarea></label>
               <div class="goal-form-row">
                 <label><span>状态</span><select id="goalStatusInput"><option value="active">进行中</option><option value="paused">已暂停</option><option value="blocked">已阻塞</option><option value="usageLimited">用量受限</option><option value="budgetLimited">预算受限</option><option value="complete">已完成</option></select></label>
