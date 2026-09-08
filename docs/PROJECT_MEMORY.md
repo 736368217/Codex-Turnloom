@@ -75,5 +75,6 @@ Do not copy credentials, access codes, tokens, private URLs containing secrets, 
 - Desktop detail refresh also probes the current thread owner when passive following events are missing.
 - Mobile project grouping recognizes only explicit Desktop project assignments; working-directory overlap no longer creates a project category.
 - Android version checks use the authenticated service health response; a higher `appVersionCode` prompts a system-managed APK download from `/api/apk`.
+- Mobile model selection is validated once against the active Desktop catalog and then preserved through IPC dispatch; internal fallback catalogs must not remap newly available models such as Astra back to Sol.
 
 Static web assets include baseline CSP, referrer, MIME-sniffing, and frame-isolation response headers.

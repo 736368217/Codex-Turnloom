@@ -3718,8 +3718,15 @@ function normalizeTurnSettings({ model, effort } = {}, modelConfiguration = acti
   return { model: selectedModel.id, effort: selectedEffort };
 }
 
+function preparedTurnSettings({ model, effort } = {}) {
+  const requestedModel = String(model || "").trim();
+  const requestedEffort = String(effort || "").trim();
+  if (requestedModel && requestedEffort) return { model: requestedModel, effort: requestedEffort };
+  return normalizeTurnSettings({ model, effort });
+}
+
 function desktopStartTurnRequest(threadId, text, images = [], turnSettings = {}) {
-  const { model, effort } = normalizeTurnSettings(turnSettings);
+  const { model, effort } = preparedTurnSettings(turnSettings);
   return {
     method: "thread-follower-start-turn",
     params: {
@@ -4992,7 +4999,10 @@ async function startTurnWithOwnerRecovery(
     ownerTimeoutMs = THREAD_OWNER_OPEN_TIMEOUT_MS
   } = {}
 ) {
-  const turnSettings = normalizeTurnSettings({ model, effort });
+  // sendToCodex already validated these values against the active Desktop
+  // catalog. Preserve them here so a transient catalog fallback cannot map a
+  // newer model back to the default between validation and IPC dispatch.
+  const turnSettings = preparedTurnSettings({ model, effort });
   try {
     return await ipcClient.startTurn(threadId, text, images, turnSettings);
   } catch (error) {

@@ -627,12 +627,31 @@ test("start-turn requests use the current Desktop IPC v2 envelope", () => {
 
 test("start-turn requests preserve the selected model and reasoning effort", () => {
   const request = desktopStartTurnRequest("thread-123", "hello", [], {
-    model: "gpt-5.6-terra",
-    effort: "xhigh"
+    model: "gpt-6-astra",
+    effort: "high"
   });
 
-  assert.equal(request.params.turnStart.request.model, "gpt-5.6-terra");
-  assert.equal(request.params.turnStart.request.effort, "xhigh");
+  assert.equal(request.params.turnStart.request.model, "gpt-6-astra");
+  assert.equal(request.params.turnStart.request.effort, "high");
+});
+
+test("mobile turns preserve models that exist only in the active Desktop catalog", async () => {
+  const calls = [];
+  const client = {
+    async startTurn(threadId, text, images, settings, options) {
+      calls.push(["start", threadId, text, settings, options || null]);
+      return { result: { turn: { id: "turn-1" } } };
+    }
+  };
+
+  await startTurnWithOwnerRecovery(client, "thread-1", "hello", [], {
+    model: "gpt-6-astra",
+    effort: "high"
+  });
+
+  assert.deepEqual(calls, [
+    ["start", "thread-1", "hello", { model: "gpt-6-astra", effort: "high" }, null]
+  ]);
 });
 
 test("start-turn requests preserve uploaded images as Desktop data URLs", () => {
