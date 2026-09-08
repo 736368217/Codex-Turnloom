@@ -2211,7 +2211,6 @@ body.goal-dialog-open { overflow: hidden; }
 }
 
 .queue-status-header,
-.insert-status-item,
 .queue-status-item {
   display: flex;
   align-items: center;
@@ -2222,23 +2221,16 @@ body.goal-dialog-open { overflow: hidden; }
 }
 
 .queue-status-header[hidden],
-.insert-status-item[hidden],
 .queue-status-list[hidden] {
   display: none;
 }
 
-.queue-status-header > span,
-.insert-status-item > span {
+.queue-status-header > span {
   flex: 1 1 auto;
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-}
-
-.insert-status-item {
-  border-bottom: 1px solid #d8e4e0;
-  padding: 1px 3px 6px;
 }
 
 .queue-status-list {

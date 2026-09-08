@@ -42,7 +42,6 @@ const state = {
   followUpMode: "queue",
   imageAttachments: [],
   pendingMessages: [],
-  lastInsertedByThread: {},
   approvalSubmissions: {},
   lastMessagesData: null,
   plugins: [],
@@ -134,8 +133,6 @@ const els = {
   queueStatusText: document.querySelector("#queueStatusText"),
   queueStatusList: document.querySelector("#queueStatusList"),
   clearQueueButton: document.querySelector("#clearQueueButton"),
-  insertStatusItem: document.querySelector("#insertStatusItem"),
-  insertStatusText: document.querySelector("#insertStatusText"),
   sendStatus: document.querySelector("#sendStatus"),
   modelSummary: document.querySelector("#modelSummary"),
   modelName: document.querySelector("#modelName"),
@@ -221,10 +218,6 @@ const I18N = {
     queuedItem: "排队消息",
     editQueued: "编辑",
     cancelQueued: "取消",
-    insertedItem: "已插入 · {preview}",
-    stopInserted: "停止",
-    editInserted: "停止后编辑",
-    insertActionFailed: "处理插入消息失败：{message}",
     steerBecameNewTurn: "原任务刚好完成，这条消息已作为下一步发送。",
     modelSettings: "选择模型和思考强度",
     modelLabel: "模型",
@@ -397,10 +390,6 @@ const I18N = {
     queuedItem: "Queued message",
     editQueued: "Edit",
     cancelQueued: "Cancel",
-    insertedItem: "Inserted · {preview}",
-    stopInserted: "Stop",
-    editInserted: "Stop and edit",
-    insertActionFailed: "Could not update inserted message: {message}",
     steerBecameNewTurn: "The previous task finished, so this message was sent as the next step.",
     modelSettings: "Choose model and reasoning effort",
     modelLabel: "Model",
@@ -604,8 +593,6 @@ function applyStaticText() {
   els.followUpMode.querySelector('[data-follow-up-mode="steer"]').setAttribute("title", t("steerFollowUp"));
   els.clearQueueButton.setAttribute("title", t("clearQueue"));
   els.clearQueueButton.setAttribute("aria-label", t("clearQueue"));
-  els.insertStatusItem.querySelector('[data-insert-action="edit"]').textContent = t("editInserted");
-  els.insertStatusItem.querySelector('[data-insert-action="cancel"]').textContent = t("stopInserted");
   els.composerInput.placeholder = t("sendToCodex");
   if (els.guideButtonLabel) els.guideButtonLabel.textContent = t("guide");
   if (els.privacyNote) els.privacyNote.textContent = t("privacyNote");
@@ -1465,6 +1452,37 @@ function pendingDeliveryHtml(message) {
   return `<div class="message-delivery sending">${escapeHtml(t("messageSending"))}</div>`;
 }
 
+// Native Android back first dismisses the active web surface instead of
+// destroying the workspace and losing the current draft.
+globalThis.codexPocketHandleBack = () => {
+  if (els.goalEditDialog && !els.goalEditDialog.hidden) {
+    closeGoalEditDialog();
+    return true;
+  }
+  if (state.modelPanelOpen) {
+    closeModelPanel();
+    return true;
+  }
+  if (state.pluginMenuOpen) {
+    closePluginMentionMenu();
+    return true;
+  }
+  if (state.skillMenuOpen) {
+    closeSkillMentionMenu();
+    return true;
+  }
+  if (els.imagePickerMenu && !els.imagePickerMenu.hidden) {
+    closeImagePickerMenu();
+    return true;
+  }
+  if (state.sidebarCollapsed === false && isCompactPortrait()) {
+    state.sidebarCollapsed = true;
+    renderSidebarState();
+    return true;
+  }
+  return false;
+};
+
 function renderCurrentMessages(scrollToBottom = true) {
   const data =
     state.lastMessagesData || {
@@ -2266,21 +2284,13 @@ function renderComposerMode() {
 function renderQueueStatus(status = state.threadStatus) {
   const queuedMessages = Array.isArray(status?.queuedMessages) ? status.queuedMessages : [];
   const count = Number(status?.queueLength) || queuedMessages.length;
-  let inserted = state.lastInsertedByThread[state.selectedId] || null;
-  if (inserted && status?.thinking === false) {
-    delete state.lastInsertedByThread[state.selectedId];
-    inserted = null;
-  }
-  els.queueStatusBar.hidden = count <= 0 && !inserted;
+  els.queueStatusBar.hidden = count <= 0;
   els.queueStatusHeader.hidden = count <= 0;
   els.queueStatusList.hidden = count <= 0;
-  els.insertStatusItem.hidden = !inserted;
   const compactPreview = (value, maxLength = 120) => {
     const text = String(value || "").replace(/[\r\n\t]+/g, " ").replace(/\s{2,}/g, " ").trim();
     return text.length > maxLength ? `${text.slice(0, maxLength - 1)}…` : text;
   };
-  if (inserted) els.insertStatusText.textContent = t("insertedItem", { preview: compactPreview(inserted.preview) });
-  else els.insertStatusText.textContent = "";
   if (count <= 0) {
     els.queueStatusText.textContent = "";
     els.queueStatusList.innerHTML = "";
@@ -3019,7 +3029,7 @@ els.composerInput.addEventListener("keydown", (event) => {
       return;
     }
   }
-  if (event.key === "Enter" && !event.shiftKey) {
+  if (event.key === "Enter" && !event.shiftKey && !event.isComposing) {
     event.preventDefault();
     els.composerForm.requestSubmit();
   }
@@ -3152,6 +3162,12 @@ els.composerForm.addEventListener("submit", async (event) => {
   if (!sendMessage && !images.length) return;
   const sendMode = thinking && !isDraftThread ? state.followUpMode : "start";
   const previousThreadStatus = state.threadStatus;
+  const draftSnapshot = {
+    message: els.composerInput.value,
+    images,
+    selectedPlugins: [...state.selectedPlugins],
+    selectedSkills: [...state.selectedSkills]
+  };
   let sendAccepted = false;
   const pendingMessageId = isDraftThread ? null : addPendingUserMessage(state.selectedId, sendMessage, images);
   clearComposerAfterAcceptedSend();
@@ -3217,20 +3233,13 @@ els.composerForm.addEventListener("submit", async (event) => {
         queueLength: result.queueLength || queuedMessages.length,
         queuedMessages
       };
-      els.sendStatus.textContent = t("queueAccepted");
+      els.sendStatus.textContent = "";
     } else if (sendMode === "steer") {
       state.threadStatus = { ...(state.threadStatus || {}), thinking: true, turnId: result.turnId || state.threadStatus?.turnId || null };
       if (result.mode === "start-after-steer") {
-        delete state.lastInsertedByThread[state.selectedId];
         els.sendStatus.textContent = t("steerBecameNewTurn");
       } else {
-        const editableContent = message || sendMessage;
-        state.lastInsertedByThread[state.selectedId] = {
-          content: editableContent,
-          preview: editableContent.slice(0, 160) || t("addImage"),
-          sentAt: result.sentAt || new Date().toISOString()
-        };
-        els.sendStatus.textContent = t("steerAccepted");
+        els.sendStatus.textContent = "";
       }
     } else {
       state.threadStatus = { ...(state.threadStatus || {}), thinking: true, turnId: result.turnId || state.threadStatus?.turnId || null };
@@ -3243,6 +3252,16 @@ els.composerForm.addEventListener("submit", async (event) => {
       state.threadStatus = previousThreadStatus;
       state.messagesSignature = "";
       renderCurrentMessages(true);
+    }
+    if (isDraftThread) {
+      els.composerInput.value = draftSnapshot.message;
+      state.selectedPlugins = draftSnapshot.selectedPlugins;
+      state.selectedSkills = draftSnapshot.selectedSkills;
+      state.imageAttachments = draftSnapshot.images;
+      renderSelectedPlugins();
+      renderSelectedSkills();
+      renderImageAttachments();
+      autoResizeComposerInput();
     }
     if (!thinking && /image/i.test(error.message || "")) {
       state.imageAttachments = [];
@@ -3326,32 +3345,6 @@ els.queueStatusList.addEventListener("click", async (event) => {
     }
   } catch (error) {
     els.sendStatus.textContent = t("queueClearFailed", { message: error.message });
-  } finally {
-    state.composerBusy = false;
-    renderComposerMode();
-  }
-});
-
-els.insertStatusItem.addEventListener("click", async (event) => {
-  const button = event.target.closest("[data-insert-action]");
-  const inserted = state.lastInsertedByThread[state.selectedId];
-  if (!button || !inserted || !state.selectedId || state.composerBusy) return;
-  const edit = button.dataset.insertAction === "edit";
-  state.composerBusy = true;
-  renderComposerMode();
-  try {
-    await postJson("/api/interrupt", { threadId: state.selectedId });
-    delete state.lastInsertedByThread[state.selectedId];
-    state.threadStatus = { ...(state.threadStatus || {}), thinking: false, turnId: null };
-    if (edit) {
-      els.composerInput.value = inserted.content || "";
-      autoResizeComposerInput();
-      if (shouldRefocusComposer()) els.composerInput.focus();
-    }
-    state.messagesSignature = "";
-    refreshSoon();
-  } catch (error) {
-    els.sendStatus.textContent = t("insertActionFailed", { message: error.message });
   } finally {
     state.composerBusy = false;
     renderComposerMode();

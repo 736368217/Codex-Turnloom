@@ -914,6 +914,18 @@ public class MainActivity extends ComponentActivity {
 
     @Override
     public void onBackPressed() {
+        if (webView != null) {
+            final boolean[] handled = {false};
+            webView.evaluateJavascript(
+                "(typeof window.codexPocketHandleBack === 'function' && window.codexPocketHandleBack()) ? 'true' : 'false'",
+                value -> {
+                    if (!"true".equals(value) && !"\"true\"".equals(value)) {
+                        showMachinePicker();
+                    }
+                }
+            );
+            return;
+        }
         BackNavigation.Action action = BackNavigation.action(activeDevice != null);
         if (action == BackNavigation.Action.SHOW_COMPUTER_PICKER) {
             showMachinePicker();

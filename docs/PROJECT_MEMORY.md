@@ -76,5 +76,6 @@ Do not copy credentials, access codes, tokens, private URLs containing secrets, 
 - Mobile project grouping recognizes only explicit Desktop project assignments; working-directory overlap no longer creates a project category.
 - Android version checks use the authenticated service health response; a higher `appVersionCode` prompts a system-managed APK download from `/api/apk`.
 - Mobile model selection is validated once against the active Desktop catalog and then preserved through IPC dispatch; internal fallback catalogs must not remap newly available models such as Astra back to Sol.
+- Insert follow-ups now show only their delivery state; interrupt/edit controls are not repeated in the inserted-message status row. Android back dismisses active web overlays/sidebar before returning to the computer picker, and the composer guards Chinese IME composition plus restores a failed new-conversation draft.
 
 Static web assets include baseline CSP, referrer, MIME-sniffing, and frame-isolation response headers.
