@@ -2244,16 +2244,16 @@ function textFromContent(content) {
 
 function imagesFromContent(content) {
   if (!Array.isArray(content)) return [];
-  return content
-    .map((part) => {
+  return Array.from(new Set(content.flatMap((part) => {
       const source = part?.source || {};
       if (part?.type === "input_image" && typeof part.image_url === "string" && part.image_url.startsWith("data:image/")) {
-        return part.image_url;
+        return [part.image_url];
       }
-      if (part?.type !== "image" || source.type !== "base64" || !source.data || !source.media_type) return null;
-      return `data:${source.media_type};base64,${source.data}`;
-    })
-    .filter(Boolean);
+      if (part?.type === "image" && source.type === "base64" && source.data && source.media_type) {
+        return [`data:${source.media_type};base64,${source.data}`];
+      }
+      return imageUrlsFromValue(part);
+    })));
 }
 
 function stripCodexDirectives(text) {
@@ -2998,13 +2998,19 @@ function getRecentNoticeMessages(threadId) {
 
 function messageFromEvent(timestamp, payload, meta = {}) {
   if (payload?.type === "user_message") {
+    const images = [
+      ...imageUrlsFromValue(payload.images),
+      ...imagesFromContent(payload.content),
+      ...imageUrlsFromValue(payload.input),
+      ...imageUrlsFromValue(payload.input_images)
+    ];
     return {
       role: "user",
       kind: "message",
       timestamp,
       ...meta,
       content: stripCodexDirectives(payload.message),
-      images: Array.isArray(payload.images) ? payload.images : [],
+      images: Array.from(new Set(images)),
       localImages: Array.isArray(payload.local_images) ? payload.local_images : []
     };
   }
@@ -4127,6 +4133,42 @@ function queuedSendIdleDecision(thinking, idleSinceMs, nowMs = Date.now(), settl
     idleSinceMs: observedIdleSinceMs,
     retryAfterMs: Math.max(0, settleMs - elapsedMs)
   };
+}
+
+async function steerQueuedSend(threadId, itemId) {
+  const key = String(threadId || "");
+  const queue = pendingSendQueues.get(key) || [];
+  const index = queue.findIndex((item) => item.id === itemId);
+  if (index < 0) {
+    const error = new Error("排队消息已发送或已移除，请刷新后查看。");
+    error.status = 409;
+    throw error;
+  }
+  const item = queue[index];
+  if (["sending", "awaitingConfirmation"].includes(normalizedQueuedSendState(item.deliveryState))) {
+    const error = new Error("这条消息正在发送，暂时不能转为插入。");
+    error.status = 409;
+    throw error;
+  }
+  const remaining = queue.filter((entry) => entry.id !== itemId);
+  setPendingSendQueue(key, remaining);
+  try {
+    const result = await sendToCodex(item.text, key, item.images, { mode: "steer", ...item.turnSettings });
+    return {
+      ok: true,
+      threadId: key,
+      mode: result?.mode || "steer",
+      turnId: result?.turnId || null,
+      ...queuedSendStatus(key)
+    };
+  } catch (error) {
+    // Restore the item at its original position so a failed insert never loses
+    // the user's queued message.
+    const current = pendingSendQueues.get(key) || [];
+    setPendingSendQueue(key, [...current.slice(0, index), item, ...current.slice(index)]);
+    scheduleQueuedSendDrain(key);
+    throw error;
+  }
 }
 
 function queuedSendMatchCount(messages, item) {
@@ -5686,6 +5728,12 @@ const server = http.createServer(async (req, res) => {
       sendJson(res, 200, cancelQueuedSend(body.threadId, body.itemId, { edit: body.edit === true }));
       return;
     }
+    if (req.method === "POST" && url.pathname === "/api/queue/steer") {
+      if (!requireAuthorized(req, res, url)) return;
+      const body = await readJsonBody(req);
+      sendJson(res, 200, await steerQueuedSend(body.threadId, body.itemId));
+      return;
+    }
     if (req.method === "GET" && url.pathname === "/api/queue/image") {
       if (!requireAuthorized(req, res, url)) return;
       const queue = pendingSendQueues.get(url.searchParams.get("threadId")) || [];
@@ -5946,6 +5994,7 @@ export {
   desktopStartTurnRequest,
   desktopSteerRestoreMessage,
   enqueueSend,
+  steerQueuedSend,
   ipcVersionForMethod,
   ipcVersionForRequest,
   interruptTurnAndConfirm,

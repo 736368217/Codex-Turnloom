@@ -220,6 +220,7 @@ const I18N = {
     queueCleared: "已取消 {count} 条排队消息。",
     queueClearFailed: "取消队列失败：{message}",
     queuedItem: "排队消息",
+    insertQueued: "转为插入",
     editQueued: "编辑",
     cancelQueued: "取消",
     steerBecameNewTurn: "原任务刚好完成，这条消息已作为下一步发送。",
@@ -394,6 +395,7 @@ const I18N = {
     queueCleared: "Cancelled {count} queued messages.",
     queueClearFailed: "Could not cancel queue: {message}",
     queuedItem: "Queued message",
+    insertQueued: "Insert now",
     editQueued: "Edit",
     cancelQueued: "Cancel",
     steerBecameNewTurn: "The previous task finished, so this message was sent as the next step.",
@@ -1446,7 +1448,7 @@ function pendingMessagesForThread(threadId) {
 function mergePendingMessages(data) {
   const threadId = data.thread?.id || state.selectedId;
   state.pendingMessages = reconcilePendingMessages(state.pendingMessages, data.messages, threadId);
-  const pending = pendingMessagesForThread(threadId);
+  const pending = pendingMessagesForThread(threadId).filter((message) => message.deliveryStatus !== "queued");
   if (!pending.length) return data.messages;
   return [...data.messages, ...pending];
 }
@@ -2337,6 +2339,7 @@ function renderQueueStatus(status = state.threadStatus) {
             ${Array.isArray(item.images) && item.images.length ? `<div class="queue-status-images">${item.images.map((image) => `<img src="${escapeHtml(withAuthToken(image.url))}" alt="${escapeHtml(image.name || t("addImage"))}" loading="lazy" />`).join("")}</div>` : ""}
           </div>
           <div class="queue-status-actions">
+            ${item.deliveryState === "queued" ? `<button type="button" data-queue-action="steer">${escapeHtml(t("insertQueued"))}</button>` : ""}
             <button type="button" data-queue-action="edit">${escapeHtml(t("editQueued"))}</button>
             <button type="button" data-queue-action="cancel">${escapeHtml(t("cancelQueued"))}</button>
           </div>
@@ -3389,10 +3392,21 @@ els.queueStatusList.addEventListener("click", async (event) => {
   const itemId = itemElement?.dataset.queueItemId;
   const item = state.threadStatus?.queuedMessages?.find((entry) => entry.id === itemId);
   if (!button || !item || !state.selectedId || state.composerBusy) return;
-  const edit = button.dataset.queueAction === "edit";
+  const action = button.dataset.queueAction;
+  const edit = action === "edit";
   state.composerBusy = true;
   renderComposerMode();
   try {
+    if (action === "steer") {
+      const result = await postJson("/api/queue/steer", { threadId: state.selectedId, itemId });
+      applyQueueStatusResult(result);
+      state.pendingMessages = state.pendingMessages.filter((message) => message.queueItemId !== itemId);
+      state.threadStatus = { ...(state.threadStatus || {}), thinking: true, turnId: result.turnId || state.threadStatus?.turnId || null };
+      state.messagesSignature = "";
+      renderCurrentMessages(false);
+      refreshSoon(800);
+      return;
+    }
     const result = await postJson("/api/queue/cancel", { threadId: state.selectedId, itemId, edit });
     applyQueueStatusResult(result);
     state.pendingMessages = state.pendingMessages.filter((message) => message.queueItemId !== itemId);
@@ -3428,6 +3442,10 @@ els.clearQueueButton.addEventListener("click", async () => {
   try {
     const result = await postJson("/api/queue/cancel", { threadId: state.selectedId });
     applyQueueStatusResult(result);
+    const cancelledIds = new Set(result.cancelledIds || []);
+    state.pendingMessages = state.pendingMessages.filter((message) => !cancelledIds.has(message.queueItemId));
+    state.messagesSignature = "";
+    renderCurrentMessages(false);
     els.sendStatus.textContent = t("queueCleared", { count: result.cancelled || 0 });
   } catch (error) {
     els.sendStatus.textContent = t("queueClearFailed", { message: error.message });

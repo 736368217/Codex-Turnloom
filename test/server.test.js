@@ -321,6 +321,33 @@ test("queued message status exposes image previews", () => {
   cancelQueuedSend(threadId);
 });
 
+test("rollout user messages preserve multiple inline images", () => {
+  const state = createRolloutParseState({ size: 0, mtimeMs: Date.now() }, Date.now());
+  const first = "aGVsbG8=";
+  const second = "d29ybGQ=";
+  parseRolloutLine(
+    rolloutLine(new Date().toISOString(), 1, "event_msg", {
+      type: "user_message",
+      message: "two images",
+      images: [
+        { type: "image", source: { type: "base64", media_type: "image/png", data: first } },
+        { type: "image", source: { type: "base64", media_type: "image/jpeg", data: second } }
+      ]
+    }),
+    state
+  );
+  const result = rolloutResultFromState({
+    filePath: "fixture.jsonl",
+    stat: { size: 1, mtimeMs: Date.now() },
+    nowMs: Date.now(),
+    state
+  });
+  const message = result.messages.find((entry) => entry.role === "user");
+  assert.equal(message.images.length, 2);
+  assert.equal(message.images[0], `data:image/png;base64,${first}`);
+  assert.equal(message.images[1], `data:image/jpeg;base64,${second}`);
+});
+
 test("duplicate mobile send requests share one in-flight operation", async () => {
   const store = new Map();
   let calls = 0;
