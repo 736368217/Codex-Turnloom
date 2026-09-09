@@ -78,5 +78,6 @@ Do not copy credentials, access codes, tokens, private URLs containing secrets, 
 - Mobile model selection is validated once against the active Desktop catalog and then preserved through IPC dispatch; internal fallback catalogs must not remap newly available models such as Astra back to Sol.
 - Insert follow-ups now show only their delivery state; interrupt/edit controls are not repeated in the inserted-message status row. Android back dismisses active web overlays/sidebar before returning to the computer picker, and the composer guards Chinese IME composition plus restores a failed new-conversation draft.
 - Insert errors that report an already-ended Desktop turn are treated as a race and fall back to a normal turn. Queued messages expose authenticated image previews; editing a queued item returns its original text and image data and removes the stale optimistic bubble.
+- Android release `1.15.0` / version code `19` adds a visible manual update check on the computer picker and computer menu. Manual conversation refresh preserves the current reading position; older-history loading also rechecks short pages and restores scroll after delayed images load.
 
 Static web assets include baseline CSP, referrer, MIME-sniffing, and frame-isolation response headers.

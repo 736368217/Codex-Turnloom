@@ -73,8 +73,8 @@ import javax.crypto.SecretKey;
 import javax.crypto.spec.GCMParameterSpec;
 
 public class MainActivity extends ComponentActivity {
-    private static final int APP_VERSION_CODE = 18;
-    private static final String APP_VERSION_NAME = "1.14.0";
+    private static final int APP_VERSION_CODE = 19;
+    private static final String APP_VERSION_NAME = "1.15.0";
     private static final String PREFS = "codex_pocket";
     private static final String DEVICES_KEY = "devices";
     private static final String KEY_ALIAS = "codex-pocket-device-store";
@@ -253,6 +253,7 @@ public class MainActivity extends ComponentActivity {
         title.setTypeface(Typeface.DEFAULT, Typeface.BOLD);
         appBar.addView(title, new LinearLayout.LayoutParams(0, dp(48), 1));
         appBar.addView(headerButton("?", "打开使用指引", v -> showWelcomeGuide(false)), new LinearLayout.LayoutParams(dp(44), dp(44)));
+        appBar.addView(headerButton("更新", "检查应用更新", v -> checkForUpdates()), new LinearLayout.LayoutParams(dp(58), dp(44)));
         appBar.addView(headerButton("＋", "手动添加电脑", v -> showDeviceDialog(-1)), new LinearLayout.LayoutParams(dp(44), dp(44)));
         root.addView(appBar, new LinearLayout.LayoutParams(-1, dp(64)));
 
@@ -384,11 +385,13 @@ public class MainActivity extends ComponentActivity {
         PopupMenu menu = new PopupMenu(this, anchor);
         menu.getMenu().add("编辑");
         menu.getMenu().add("测试连接");
+        menu.getMenu().add("检查更新");
         menu.getMenu().add("删除");
         menu.setOnMenuItemClickListener(item -> {
             String action = item.getTitle().toString();
             if ("编辑".equals(action)) showDeviceDialog(index);
             else if ("测试连接".equals(action)) testConnectionWithFeedback(devices.get(index));
+            else if ("检查更新".equals(action)) checkForUpdates(devices.get(index));
             else if ("删除".equals(action)) confirmDelete(index);
             return true;
         });
@@ -666,6 +669,34 @@ public class MainActivity extends ComponentActivity {
                     downloadUpdate(device, trimTrailingSlash(device.url) + path);
                 })
                 .show();
+    }
+
+    private void checkForUpdates() {
+        if (devices.isEmpty()) {
+            Toast.makeText(this, "请先添加一台电脑", Toast.LENGTH_SHORT).show();
+            return;
+        }
+        for (Device device : new ArrayList<>(devices)) checkForUpdates(device);
+    }
+
+    private void checkForUpdates(Device device) {
+        Toast.makeText(this, "正在检查更新…", Toast.LENGTH_SHORT).show();
+        new Thread(() -> {
+            try {
+                JSONObject health = new JSONObject(httpGet(device, "/api/health"));
+                runOnUiThread(() -> {
+                    updatePromptShown.remove(device.url);
+                    int remoteCode = health.optInt("appVersionCode", 0);
+                    if (remoteCode > APP_VERSION_CODE && health.optBoolean("apkAvailable", false)) {
+                        maybeOfferUpdate(device, health);
+                    } else {
+                        Toast.makeText(this, "当前已是最新版本", Toast.LENGTH_SHORT).show();
+                    }
+                });
+            } catch (Exception error) {
+                runOnUiThread(() -> Toast.makeText(this, "检查更新失败，请确认电脑在线", Toast.LENGTH_LONG).show());
+            }
+        }).start();
     }
 
     private void downloadUpdate(Device device, String url) {

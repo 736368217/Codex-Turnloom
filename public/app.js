@@ -2488,14 +2488,37 @@ async function loadMessages(force = false, threadId = state.selectedId, { preser
       state.messagesSignature = signature;
       renderMessages(data);
       if (scrollMode === "retain") {
-        els.messageList.scrollTop = retainedScrollTop({
+        const restoreScrollPosition = () => {
+          const target = retainedScrollTop({
           ...preserveScrollPosition,
           nextScrollHeight: els.messageList.scrollHeight
+          });
+          els.messageList.scrollTop = target;
+          updateScrollToBottomButton();
+        };
+        restoreScrollPosition();
+        window.requestAnimationFrame(() => {
+          window.requestAnimationFrame(restoreScrollPosition);
+        });
+        window.setTimeout(restoreScrollPosition, 300);
+        els.messageList.querySelectorAll("img").forEach((image) => {
+          image.addEventListener("load", restoreScrollPosition, { once: true });
         });
       } else if (scrollMode === "latest") {
         els.messageList.scrollTop = els.messageList.scrollHeight;
       }
       updateScrollToBottomButton();
+      if (!preserveScrollPosition && openingThread && data.hasOlderMessages) {
+        window.requestAnimationFrame(() => {
+          if (
+            state.selectedId === threadId &&
+            !state.messageHistoryLoading &&
+            els.messageList.scrollHeight <= els.messageList.clientHeight + 8
+          ) {
+            void loadOlderMessages();
+          }
+        });
+      }
     }
     void writeConversationCache(cacheKey, data);
     noteSyncSuccess("message");
@@ -2537,11 +2560,16 @@ async function loadOlderMessages() {
   }
 }
 
-async function refresh(forceMessages = false) {
+async function refresh(forceMessages = false, { preserveScrollPosition = false } = {}) {
   try {
     if (!state.config) await loadConfig();
+    const previousThreadId = state.selectedId;
+    const scrollSnapshot =
+      preserveScrollPosition && state.lastMessagesData?.thread?.id === previousThreadId
+        ? { scrollTop: els.messageList.scrollTop, scrollHeight: els.messageList.scrollHeight }
+        : null;
     await loadThreads();
-    await loadMessages(forceMessages);
+    await loadMessages(forceMessages, state.selectedId, { preserveScrollPosition: previousThreadId === state.selectedId ? scrollSnapshot : null });
   } catch (error) {
     if (error.status === 401) {
       lockApp(state.authToken ? t("accessCodeWrong") : t("enterAccessCode"));
@@ -2713,7 +2741,7 @@ els.newThreadButton.addEventListener("click", () => {
   if (shouldRefocusComposer()) els.composerInput.focus();
 });
 
-els.refreshButton.addEventListener("click", () => refresh(true));
+els.refreshButton.addEventListener("click", () => refresh(true, { preserveScrollPosition: true }));
 
 els.goalEditButton?.addEventListener("click", () => {
   openGoalEditDialog();
