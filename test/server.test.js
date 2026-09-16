@@ -367,7 +367,7 @@ test("duplicate mobile send requests share one in-flight operation", async () =>
   await assert.rejects(runIdempotentSend("request-1", "different-message", execute, store), /already used/);
 });
 
-test("a successful mobile send refreshes Desktop without stealing another open conversation", async () => {
+test("background Desktop refresh never activates or opens a conversation", async () => {
   const calls = [];
   const client = {
     async refreshRecentConversations(hostId) {
@@ -386,12 +386,11 @@ test("a successful mobile send refreshes Desktop without stealing another open c
 
   assert.deepEqual(calls, [
     ["refresh", "local"],
-    ["active", "thread-following", true, "local"],
     ["refresh", "local"]
   ]);
 });
 
-test("Desktop refresh waits for the new turn to persist before opening the conversation", async () => {
+test("Desktop refresh waits for the new turn to persist before refreshing the list", async () => {
   const calls = [];
   const client = {
     async refreshRecentConversations() {
@@ -413,7 +412,24 @@ test("Desktop refresh waits for the new turn to persist before opening the conve
     }
   });
   assert.equal(result.persisted, true);
-  assert.deepEqual(calls, [["persist", "thread-1", "turn-1"], "refresh", "refresh", "active"]);
+  assert.deepEqual(calls, [["persist", "thread-1", "turn-1"], "refresh", "refresh"]);
+});
+
+test("background Desktop refresh never launches a Codex deep link", async () => {
+  const calls = [];
+  const client = {
+    async refreshRecentConversations() {
+      throw new Error("no-client-found");
+    }
+  };
+
+  await refreshCodexDesktopAfterSend("thread-1", client, {
+    waitForPersistence: async () => true,
+    openThread: async (threadId) => calls.push(["open", threadId]),
+    setActiveConversation: async (threadId) => calls.push(["active", threadId])
+  });
+
+  assert.deepEqual(calls, []);
 });
 
 test("routine no-client-found refresh failures stay out of the conversation timeline", () => {

@@ -82,3 +82,8 @@ Do not copy credentials, access codes, tokens, private URLs containing secrets, 
 - Android release `1.15.0` / version code `19` adds a visible manual update check on the computer picker and computer menu. Manual conversation refresh preserves the current reading position; older-history loading also rechecks short pages and restores scroll after delayed images load.
 
 Static web assets include baseline CSP, referrer, MIME-sniffing, and frame-isolation response headers.
+
+## 2026-09-16 focus stability
+
+- Background Desktop refresh is data-only. It may invalidate local caches and call `refresh-recent-conversations-for-host`, but it must never launch a `codex://threads/...` deep link or call `set-active-conversation`; the retry queue can otherwise keep pulling the Codex window away from what the user is viewing.
+- User-initiated send and interrupt recovery may still open the target thread when Desktop reports no owner, because that action is required to complete the requested operation.

@@ -4794,8 +4794,7 @@ async function attemptCodexDesktopRefresh(
   client = getCodexIpcClient(),
   {
     turnId = null,
-    waitForPersistence = waitForDesktopTurnPersistence,
-    openThread = (selectedThreadId) => openCodexUrl(`codex://threads/${encodeURIComponent(selectedThreadId)}`)
+    waitForPersistence = waitForDesktopTurnPersistence
   } = {}
 ) {
   const id = String(threadId || "").trim();
@@ -4808,17 +4807,6 @@ async function attemptCodexDesktopRefresh(
 
   const failures = [];
   let refreshed = false;
-  let openedThread = false;
-  const following = client.followingConversationState?.(id) === true;
-  let ownerClientId = null;
-  if (!following && typeof client.findThreadOwner === "function") {
-    try {
-      ownerClientId = await client.findThreadOwner(id, "local");
-    } catch (error) {
-      failures.push(`owner: ${error?.message || error}`);
-    }
-  }
-  const shouldOpen = following || Boolean(ownerClientId);
   for (let attempt = 0; attempt < 2 && !refreshed; attempt += 1) {
     try {
       await client.refreshRecentConversations("local");
@@ -4826,43 +4814,15 @@ async function attemptCodexDesktopRefresh(
     } catch (error) {
       failures.push(`refresh: ${error?.message || error}`);
       if (attempt === 0) {
-        // If the desktop currently follows this conversation, reopening its
-        // deep link re-establishes the owner and prompts the detail view to
-        // reload the rollout before the bounded retry.
-        if (shouldOpen) {
-          try {
-            await openThread(id);
-            openedThread = true;
-          } catch (openError) {
-            failures.push(`open: ${openError?.message || openError}`);
-          }
-        }
         await sleep(persisted ? 250 : 650);
       }
     }
   }
 
-  // Only re-select the conversation when Desktop has told us it is currently
-  // following that stream. This refreshes an open detail view without pulling
-  // the user away from a different conversation on the computer.
-  if (shouldOpen) {
-    try {
-      await client.setActiveConversation(id, true, "local");
-    } catch (error) {
-      failures.push(`set active: ${error?.message || error}`);
-    }
-    if (!openedThread) {
-      try {
-        await openThread(id);
-        openedThread = true;
-      } catch (error) {
-        failures.push(`open: ${error?.message || error}`);
-      }
-    }
-  }
-
-  // Refresh failures are retried by the queue, not inserted into chat history.
-  return { refreshed, failures, openedThread, persisted };
+  // Background synchronization must never open or re-select a Desktop
+  // conversation. The refresh queue retries for minutes, so doing that here
+  // would repeatedly pull focus away from whatever the user is viewing.
+  return { refreshed, failures, persisted };
 }
 
 function shouldRecordDesktopRefreshNotice(failures = []) {
