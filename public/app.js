@@ -2,6 +2,7 @@ import { MESSAGE_PAGE_SIZE, messageScrollMode, nextMessageLimit, reconcilePendin
 import { renderMarkdown } from "./markdown.js";
 import { filterVisibleThreads, groupedVisibleThreads, threadDeepLink } from "./threads.js";
 import { resolveAuthToken } from "./auth.js";
+import { runningTimeLabel } from "./runtime.js";
 import { clearConversationCache, conversationCacheKey, readConversationCache, writeConversationCache } from "./conversation-cache.js";
 
 const state = {
@@ -1757,7 +1758,7 @@ function renderMessages(data) {
       <article class="message assistant thinking-message">
         <div class="role">${roleBadge({ role: "assistant" })}</div>
         <div class="bubble thinking-bubble">
-          <div class="message-meta message-meta-top">${escapeHtml(t("processing"))}</div>
+          <div class="message-meta message-meta-top running-time">${escapeHtml(runningTimeLabel(data.status, Date.now(), state.locale) || t("processing"))}</div>
           <p>${escapeHtml(t("thinking").replace("...", ""))}<span class="thinking-dots" aria-hidden="true"></span></p>
         </div>
       </article>
@@ -1771,6 +1772,14 @@ function renderBranchAction(message) {
   if (!message?.id || message.deliveryStatus || !["user", "assistant"].includes(message.role)) return "";
   return `<button type="button" class="message-branch-button" data-branch-message-id="${escapeHtml(message.id)}" data-branch-turn-id="${escapeHtml(message.turnId || "")}">${escapeHtml(t("branchFromHere"))}</button>`;
 }
+
+window.setInterval(() => {
+  if (document.hidden) return;
+  const label = els.messageList.querySelector(".running-time");
+  if (!label) return;
+  const text = runningTimeLabel(state.threadStatus, Date.now(), state.locale) || t("processing");
+  if (label.textContent !== text) label.textContent = text;
+}, 1000);
 
 async function fetchJson(url, options = {}) {
   const response = await fetch(url, {

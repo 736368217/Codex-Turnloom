@@ -3540,3 +3540,8 @@ body.goal-dialog-open { overflow: hidden; }
     display: grid;
   }
 }
+.running-time {
+  min-height: 1.4em;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
