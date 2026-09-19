@@ -87,3 +87,9 @@ Static web assets include baseline CSP, referrer, MIME-sniffing, and frame-isola
 
 - Background Desktop refresh is data-only. It may invalidate local caches and call `refresh-recent-conversations-for-host`, but it must never launch a `codex://threads/...` deep link or call `set-active-conversation`; the retry queue can otherwise keep pulling the Codex window away from what the user is viewing.
 - User-initiated send and interrupt recovery may still open the target thread when Desktop reports no owner, because that action is required to complete the requested operation.
+
+## 2026-09-19 IPC recovery
+
+- Connection establishment is single-flight, clears failed sockets/promises, and applies a two-second failure cooldown plus an eight-second connect timeout. Never replay a send after an ambiguous request timeout.
+- Windows pipe EPERM can be a privilege mismatch, not network loss: the affected Desktop process was high integrity while the supervisor was medium integrity. The local supervisor task was changed to Highest for the same interactive user; authenticated service checks then confirmed initialized IPC. Preserve this local task setting on reinstall while Desktop remains elevated. Do not loosen pipe ACLs or elevate other installations by default.
+- Desktop long-running UI hangs have not been reproduced or proven to share the IPC cause; connection regression tests do not establish that Desktop hangs are resolved.

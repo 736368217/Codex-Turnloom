@@ -471,6 +471,45 @@ test("Desktop refresh keeps a newer send queued when an older refresh finishes",
   }
 });
 
+test("concurrent IPC callers share one connection attempt", async () => {
+  const client = new DesktopCodexIpcClient();
+  let attempts = 0;
+  client.connect = async () => {
+    attempts += 1;
+    await new Promise((resolve) => setTimeout(resolve, 5));
+    return { resultType: "success" };
+  };
+  await Promise.all(Array.from({ length: 20 }, () => client.ensureReady()));
+  assert.equal(attempts, 1);
+  client.close();
+});
+
+test("IPC permission failure clears the failed socket and can recover after cooldown", async () => {
+  const client = new DesktopCodexIpcClient();
+  let destroyed = false;
+  let attempts = 0;
+  client.connect = async () => {
+    attempts += 1;
+    if (attempts > 1) return { resultType: "success" };
+    client.socket = {
+      writable: true,
+      removeAllListeners() {},
+      destroy() { destroyed = true; }
+    };
+    throw Object.assign(new Error("connect EPERM"), { code: "EPERM" });
+  };
+  await assert.rejects(client.ensureReady(), /EPERM/);
+  assert.equal(destroyed, true);
+  assert.equal(client.ready, null);
+  assert.equal(client.socket, null);
+  await assert.rejects(client.ensureReady(), /EPERM/);
+  assert.equal(attempts, 1);
+  client.retryConnectionAt = 0;
+  await client.ensureReady();
+  assert.equal(attempts, 2);
+  client.close();
+});
+
 test("an IPC timeout discards the unresponsive pipe and the next request reconnects", async () => {
   const client = new DesktopCodexIpcClient();
   let destroyed = false;

@@ -960,14 +960,28 @@ class DesktopCodexIpcClient {
     this.events = [];
     this.desktopConversationRows = new Map();
     this.followingByConversation = new Map();
+    this.connectionFailure = null;
+    this.retryConnectionAt = 0;
   }
 
   async ensureReady() {
-    if (this.socket?.writable && this.ready) {
-      return this.ready;
+    if (this.ready) return this.ready;
+    if (Date.now() < this.retryConnectionAt) throw this.connectionFailure;
+    const operation = Promise.resolve().then(() => this.connect());
+    this.ready = operation;
+    try {
+      const response = await operation;
+      this.connectionFailure = null;
+      this.retryConnectionAt = 0;
+      return response;
+    } catch (error) {
+      if (this.ready === operation) {
+        this.reset(error);
+      }
+      this.connectionFailure = error;
+      this.retryConnectionAt = Date.now() + 2000;
+      throw error;
     }
-    this.ready = this.connect();
-    return this.ready;
   }
 
   async connect() {
@@ -980,11 +994,14 @@ class DesktopCodexIpcClient {
 
     await new Promise((resolve, reject) => {
       const socket = net.createConnection(CODEX_IPC_SOCKET);
+      const timer = setTimeout(() => fail(new Error("Codex desktop IPC connect timed out")), 8000);
       const fail = (error) => {
+        clearTimeout(timer);
         socket.destroy();
         reject(error);
       };
       socket.once("connect", () => {
+        clearTimeout(timer);
         socket.off("error", fail);
         resolve();
       });
