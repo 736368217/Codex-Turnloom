@@ -1853,7 +1853,7 @@ async function findSessionRolloutPathsInDir(dir, home, depth = 0) {
       continue;
     }
     if (!entry.isFile() || !entry.name.endsWith(".jsonl")) continue;
-    const id = entry.name.match(/([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})\.jsonl$/)?.[1];
+    const id = sessionIdFromRolloutName(entry.name);
     if (!id) continue;
     let mtimeMs = 0;
     try {
@@ -1930,6 +1930,37 @@ async function readSessionIndexRows() {
 function displayThreadTitle(row, sessionIndexTitles) {
   const indexedTitle = sessionIndexTitles?.get(String(row.id || ""));
   return indexedTitle || row.title || "Untitled";
+}
+
+async function readSessionRolloutPathsForThread(threadId) {
+  const id = String(threadId || "").trim();
+  if (!id) return [];
+  const homeState = await refreshCodexHomeContext();
+  const { home, sessionsDir, archivedSessionsDir } = codexPaths(homeState.home);
+  const rows = [
+    ...(await findSessionRolloutPathsInDir(sessionsDir, home)),
+    ...(await findSessionRolloutPathsInDir(archivedSessionsDir, home))
+  ]
+    .filter((row) => row.id === id)
+    .sort((a, b) => a.mtimeMs - b.mtimeMs);
+  const fallback = rows.length ? [] : [resolveRolloutPath((await findThreadRowFallback(id))?.rolloutPath)].filter(Boolean);
+  return [...new Set([...rows.map((row) => resolveRolloutPath(row.rolloutPath)), ...fallback])];
+}
+
+async function findThreadRowFallback(id) {
+  const rows = await runSqlJson(`
+    SELECT id, rollout_path AS rolloutPath
+    FROM threads
+    WHERE id = '${sqlString(id)}'
+    LIMIT 1;
+  `);
+  return rows[0] || null;
+}
+
+function sessionIdFromRolloutName(name) {
+  return String(name || "").match(
+    /([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})(?:_[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})?\.jsonl$/
+  )?.[1] || "";
 }
 
 function isSubagentThread(row) {
@@ -3430,7 +3461,8 @@ async function getMessages(id, { limit = DEFAULT_MESSAGE_LIMIT, fullHistory = fa
   const goal = await getThreadGoalSafe(id);
   const serverNotices = getRecentNoticeMessages(id);
   const liveMessages = [...ipcInteractions, ...ipcNotices, ...serverNotices];
-  const rolloutPath = resolveRolloutPath(thread.rolloutPath);
+  const rolloutPaths = await readSessionRolloutPathsForThread(id);
+  const rolloutPath = rolloutPaths.at(-1) || resolveRolloutPath(thread.rolloutPath);
   if (!rolloutPath || !existsSync(rolloutPath)) {
     const messages = await decorateMessageFiles(dedupeInteractionMessages(liveMessages).sort(messageSortCompare), id, thread);
     const limited = limitMessagesForClient(messages, { thinking: false, interactionRequired: ipcInteractions.some((message) => message.requiresDesktopAction) }, limit);
@@ -3451,7 +3483,19 @@ async function getMessages(id, { limit = DEFAULT_MESSAGE_LIMIT, fullHistory = fa
       ...limited
     });
   }
-  const parsed = await parseRollout(rolloutPath, { limit, preferTail: !fullHistory });
+  const parsedResults = await Promise.all(
+    rolloutPaths.map((filePath) => parseRollout(filePath, { limit, preferTail: !fullHistory }))
+  );
+  const parsed = parsedResults.reduce(
+    (merged, current) => ({
+      ...merged,
+      ...current,
+      status: current.status || merged.status,
+      messages: [...merged.messages, ...(current.messages || [])]
+    }),
+    { messages: [], status: { thinking: false, turnId: null, startedAtMs: null } }
+  );
+  parsed.messages = Array.from(new Map(parsed.messages.map((message) => [clientMessageKey(message), message])).values()).sort(messageSortCompare);
   if (!liveMessages.length) {
     const messages = await decorateMessageFiles(parsed.messages, id, thread);
     const limited = limitMessagesForClient(messages, parsed.status, limit);
@@ -5994,6 +6038,7 @@ export {
   repairInvalidCustomToolCallIdsInText,
   requestedByteRange,
   rolloutPathForCurrentHome,
+  sessionIdFromRolloutName,
   rolloutResultFromState,
   contextCompactionMessage,
   planMessage,

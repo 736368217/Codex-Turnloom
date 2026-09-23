@@ -40,6 +40,7 @@ import {
   repairInvalidCustomToolCallIdsInText,
   requestedByteRange,
   rolloutPathForCurrentHome,
+  sessionIdFromRolloutName,
   rolloutResultFromState,
   runIdempotentSend,
   attemptCodexDesktopRefresh as refreshCodexDesktopAfterSend,
@@ -309,6 +310,17 @@ test("Desktop no-active-turn errors are recognized as an insert race", () => {
   assert.equal(isNoActiveTurnError(new Error("Cannot steer conversation thread-1 without an active turn id")), true);
   assert.equal(isNoActiveTurnError(new Error("Cannot steer conversation thread-1 because its active turn already ended")), true);
   assert.equal(isNoActiveTurnError(new Error("thread-follower-steer-turn timed out")), false);
+});
+
+test("session rollout discovery accepts turn-suffixed rollout filenames", () => {
+  assert.equal(
+    sessionIdFromRolloutName("rollout-2026-09-23T17-40-06-01a0a883-2b0b-7943-9dd6-1eb94593ed3f_01a0cda2-fd13-7363-8c63-6a974ee4bc8e.jsonl"),
+    "01a0a883-2b0b-7943-9dd6-1eb94593ed3f"
+  );
+  assert.equal(
+    sessionIdFromRolloutName("rollout-2026-08-22T10-10-53-01a0273c-38f8-7ce1-8742-eed595f84ab3.jsonl"),
+    "01a0273c-38f8-7ce1-8742-eed595f84ab3"
+  );
 });
 
 test("conversation cache is rejected when the thread list has newer data", () => {
