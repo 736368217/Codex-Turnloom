@@ -102,3 +102,10 @@ Static web assets include baseline CSP, referrer, MIME-sniffing, and frame-isola
 - Local verification on September 23, 2026: the active thread API returned messages through `2026/9/23 12:40:46`, with `totalMessages` 146. The updated `app.js` and `conversation-cache.js` were served by the local service after restart. MuMu/ADB was not available as a running emulator instance on this machine, so real-device validation remains outstanding.
 - Codex Desktop can split one conversation across rollout filenames with a turn suffix (`..._<turn-id>.jsonl`). The companion must discover and merge all rollout files for a thread; selecting only the newest file makes the latest message visible but drops older history.
 - MuMu emulator is installed at `D:\Program Files\Netease\MuMu\nx_main\MuMuNxMain.exe`; use `D:\Program Files\Netease\MuMu\nx_main\MuMuManager.exe control --vmindex all launch`, then `adb connect 127.0.0.1:16384` for Android 15 device testing. Do not substitute UU GameViewer.
+
+## 2026-09-24 emulator testing safety
+
+- MuMu regression tests should run in the background or minimized so they do not steal the user's foreground focus.
+- Create a dedicated test conversation for send/queue/insert/stop/edit/delete/branch/goal tests. Real conversations are read-only test fixtures: open, refresh, scroll, inspect screenshots and network responses only.
+- Never send a message, insert, stop, edit, delete, branch, change a goal, or change model settings in a real user conversation during emulator verification. If a test needs a write action, use only the dedicated test conversation and clean up only that test data afterward.
+- Before any test action, record the selected thread ID and assert it is the dedicated test ID for write operations; abort on any mismatch. Keep the MuMu device connection isolated through its ADB endpoint and do not control the user's physical phone.
