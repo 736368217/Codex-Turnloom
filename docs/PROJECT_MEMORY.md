@@ -109,3 +109,8 @@ Static web assets include baseline CSP, referrer, MIME-sniffing, and frame-isola
 - Create a dedicated test conversation for send/queue/insert/stop/edit/delete/branch/goal tests. Real conversations are read-only test fixtures: open, refresh, scroll, inspect screenshots and network responses only.
 - Never send a message, insert, stop, edit, delete, branch, change a goal, or change model settings in a real user conversation during emulator verification. If a test needs a write action, use only the dedicated test conversation and clean up only that test data afterward.
 - Before any test action, record the selected thread ID and assert it is the dedicated test ID for write operations; abort on any mismatch. Keep the MuMu device connection isolated through its ADB endpoint and do not control the user's physical phone.
+
+## 2026-09-23 project grouping
+
+- Desktop project folders are backed by `project_roots` plus the session working directory; many legacy rows have `threads.project_id` set to NULL. Mobile grouping must use a unique longest-root match when explicit `project_id` is absent.
+- If a working directory belongs to multiple Desktop projects, keep the conversation under `其他对话` rather than guessing. This matches the desktop data ambiguity and prevents false classification.

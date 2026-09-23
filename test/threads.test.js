@@ -39,6 +39,15 @@ test("ordinary conversations share the ungrouped section even when they have dif
   assert.deepEqual(groups[0].threads.map((thread) => thread.id), ["one", "two"]);
 });
 
+test("mobile grouping preserves Desktop project names from server metadata", () => {
+  const groups = groupedVisibleThreads([
+    { id: "fast", title: "Fast", project: { key: "project:fast", name: "fast监控" } },
+    { id: "pocket", title: "Pocket", project: { key: "project:pocket", name: "codex poket" } },
+    { id: "plain", title: "Plain", project: null }
+  ]);
+  assert.deepEqual(groups.map((group) => group.label), ["fast监控", "codex poket", "其他对话"]);
+});
+
 test("thread deep links use the Codex Desktop thread scheme", () => {
   assert.equal(threadDeepLink("01abc-123"), "codex://threads/01abc-123");
   assert.equal(threadDeepLink(""), "");

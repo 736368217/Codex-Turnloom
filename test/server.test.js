@@ -160,7 +160,7 @@ test("Desktop plan events become a compact plan notice", () => {
   assert.match(message.content, /\[>\] 修复问题/);
 });
 
-test("thread list honors explicit projects and never infers assignment from directories", () => {
+test("thread list matches Desktop projects from unique roots and preserves explicit assignments", () => {
   const pinned = threadListMetadata({
     isPinned: 0,
     threadSectionId: "pinned-section",
@@ -170,8 +170,12 @@ test("thread list honors explicit projects and never infers assignment from dire
     cwd: String.raw`\\?\C:\workspace\ignored`
   });
   const ungrouped = threadListMetadata({
-    cwd: String.raw`\\?\C:\Users\demo\Documents\工作区\示例项目`
-  });
+    cwd: String.raw`\\?\C:\Users\demo\Documents\workspace\sample-project\示例项目`
+  }, new Map([
+    ["c:\\users\\demo\\documents\\workspace\\sample-project", [
+      { key: "project:sample", id: "project-sample", name: "示例项目", native: true, root: String.raw`C:\Users\demo\Documents\workspace\sample-project` }
+    ]]
+  ]));
 
   assert.equal(pinned.pinned, true);
   assert.deepEqual(pinned.project, {
@@ -180,7 +184,13 @@ test("thread list honors explicit projects and never infers assignment from dire
     name: "Codex Pocket",
     native: true
   });
-  assert.equal(ungrouped.project, null);
+  assert.deepEqual(ungrouped.project, {
+    key: "project:sample",
+    id: "project-sample",
+    name: "示例项目",
+    native: true,
+    root: String.raw`C:\Users\demo\Documents\workspace\sample-project`
+  });
 
   const sampleProject = { key: "project:sample", id: "project-sample", name: "示例项目", native: true };
   const archiveProject = { key: "project:archive", id: "project-archive", name: "归档", native: true };
@@ -190,7 +200,12 @@ test("thread list honors explicit projects and never infers assignment from dire
   ]);
   assert.deepEqual(
     threadListMetadata({ cwd: String.raw`\\?\C:\Users\demo\Documents\workspace\sample-project\archive\2026` }, projectRoots).project,
-    null
+    {
+      key: "project:archive",
+      id: "project-archive",
+      name: "归档",
+      native: true
+    }
   );
   assert.equal(threadListMetadata({ cwd: String.raw`\\?\C:\Users\demo\Documents\workspace\other-project` }, projectRoots).project, null);
 
@@ -218,7 +233,7 @@ test("thread list honors explicit projects and never infers assignment from dire
   const duplicatedSameProject = new Map([["c:\\users\\demo\\documents\\workspace\\duplicate", [sampleProject, { ...sampleProject }]]]);
   assert.deepEqual(
     threadListMetadata({ cwd: String.raw`\\?\C:\Users\demo\Documents\workspace\duplicate\nested` }, duplicatedSameProject).project,
-    null
+    sampleProject
   );
 });
 

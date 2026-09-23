@@ -2046,8 +2046,10 @@ function threadListMetadata(row, projectRootsByPath = null) {
       project: projectName ? { key: `project:${projectId}`, id: projectId, name: projectName, native: true } : null
     };
   }
-  // Sharing a working directory is not an explicit Desktop project assignment.
-  return { pinned, project: null };
+  // Desktop groups sessions by the unique project root when the older
+  // threads table has no project_id. Only use an unambiguous root match;
+  // shared or conflicting roots remain in the ungrouped section.
+  return { pinned, project: projectForRoot(row?.cwd, projectRootsByPath) };
 }
 
 async function readProjectRoots() {
