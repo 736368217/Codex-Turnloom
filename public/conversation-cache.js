@@ -55,6 +55,14 @@ export function conversationCacheKey({ origin = globalThis.location?.origin || "
   return [origin, codexHomeVersion, threadId, messageLimit].map((value) => encodeURIComponent(String(value || ""))).join("|");
 }
 
+export function isConversationCacheFresh(cached, thread) {
+  if (!cached || !thread) return false;
+  const cachedUpdatedAt = Number(cached.thread?.updatedAtMs);
+  const currentUpdatedAt = Number(thread.updatedAtMs);
+  if (!Number.isFinite(cachedUpdatedAt) || !Number.isFinite(currentUpdatedAt)) return true;
+  return cachedUpdatedAt >= currentUpdatedAt;
+}
+
 export async function readConversationCache(key) {
   const database = await openDatabase();
   if (database) {

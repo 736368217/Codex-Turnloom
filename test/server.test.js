@@ -6,6 +6,7 @@ import test from "node:test";
 import { fileURLToPath } from "node:url";
 
 import { messageScrollMode, nextMessageLimit, reconcilePendingMessages, retainedScrollTop, shouldHydrateConversationCache } from "../public/history.js";
+import { isConversationCacheFresh } from "../public/conversation-cache.js";
 
 import {
   DesktopCodexIpcClient,
@@ -308,6 +309,23 @@ test("Desktop no-active-turn errors are recognized as an insert race", () => {
   assert.equal(isNoActiveTurnError(new Error("Cannot steer conversation thread-1 without an active turn id")), true);
   assert.equal(isNoActiveTurnError(new Error("Cannot steer conversation thread-1 because its active turn already ended")), true);
   assert.equal(isNoActiveTurnError(new Error("thread-follower-steer-turn timed out")), false);
+});
+
+test("conversation cache is rejected when the thread list has newer data", () => {
+  assert.equal(
+    isConversationCacheFresh(
+      { thread: { updatedAtMs: 1000 } },
+      { id: "thread-1", updatedAtMs: 2000 }
+    ),
+    false
+  );
+  assert.equal(
+    isConversationCacheFresh(
+      { thread: { updatedAtMs: 2000 } },
+      { id: "thread-1", updatedAtMs: 2000 }
+    ),
+    true
+  );
 });
 
 test("queued message status exposes image previews", () => {

@@ -3,7 +3,7 @@ import { renderMarkdown } from "./markdown.js";
 import { filterVisibleThreads, groupedVisibleThreads, threadDeepLink } from "./threads.js";
 import { resolveAuthToken } from "./auth.js";
 import { runningTimeLabel } from "./runtime.js";
-import { clearConversationCache, conversationCacheKey, readConversationCache, writeConversationCache } from "./conversation-cache.js";
+import { clearConversationCache, conversationCacheKey, isConversationCacheFresh, readConversationCache, writeConversationCache } from "./conversation-cache.js";
 
 const state = {
   threads: [],
@@ -2463,9 +2463,16 @@ async function loadMessages(force = false, threadId = state.selectedId, { preser
   const networkRequest = fetchJson("/api/threads/" + threadId + "/messages?limit=" + state.messageLimit + historyParam);
   let cachedShown = false;
   const openingThread = !state.lastMessagesData || state.lastMessagesData.thread?.id !== threadId;
+  const currentThread = state.threads.find((thread) => thread.id === threadId) || null;
   try {
     const cached = await readConversationCache(cacheKey);
-    if (cached && shouldHydrateConversationCache({ preserveScrollPosition }) && state.selectedId === threadId && state.activeMessageRequest === request) {
+    if (
+      cached &&
+      isConversationCacheFresh(cached, currentThread) &&
+      shouldHydrateConversationCache({ preserveScrollPosition }) &&
+      state.selectedId === threadId &&
+      state.activeMessageRequest === request
+    ) {
       state.lastMessagesData = cached;
       state.threadStatus = cached.status || null;
       state.messagesSignature = "cache:" + (cached.cachedAt || 0);

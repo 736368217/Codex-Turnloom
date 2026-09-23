@@ -95,3 +95,8 @@ Static web assets include baseline CSP, referrer, MIME-sniffing, and frame-isola
 - Connection establishment is single-flight, clears failed sockets/promises, and applies a two-second failure cooldown plus an eight-second connect timeout. Never replay a send after an ambiguous request timeout.
 - Windows pipe EPERM can be a privilege mismatch, not network loss: the affected Desktop process was high integrity while the supervisor was medium integrity. The local supervisor task was changed to Highest for the same interactive user; authenticated service checks then confirmed initialized IPC. Preserve this local task setting on reinstall while Desktop remains elevated. Do not loosen pipe ACLs or elevate other installations by default.
 - Desktop long-running UI hangs have not been reproduced or proven to share the IPC cause; connection regression tests do not establish that Desktop hangs are resolved.
+
+## 2026-09-23 conversation freshness
+
+- Mobile conversation cache hydration now compares the cached thread's `updatedAtMs` with the current thread-list row. Older IndexedDB/localStorage data is never rendered as the opening conversation when the desktop has newer activity; the network request remains authoritative and still refreshes the cache.
+- Local verification on September 23, 2026: the active thread API returned messages through `2026/9/23 12:40:46`, with `totalMessages` 146. The updated `app.js` and `conversation-cache.js` were served by the local service after restart. MuMu/ADB was not available as a running emulator instance on this machine, so real-device validation remains outstanding.
