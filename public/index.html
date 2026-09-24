@@ -54,6 +54,13 @@
             <span id="newThreadLabel">新对话</span>
           </button>
         </div>
+        <label class="thread-sort-control">
+          <span>排序</span>
+          <select id="threadSortMode" aria-label="对话排序">
+            <option value="project">按项目</option>
+            <option value="recent">按最近</option>
+          </select>
+        </label>
         <div id="threadList" class="thread-list" aria-label="对话列表"></div>
         <div class="sidebar-footer">
           <button id="guideButton" class="guide-button" type="button">

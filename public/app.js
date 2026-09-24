@@ -14,6 +14,8 @@ const state = {
   showTools: false,
   expandedNotices: {},
   sidebarCollapsed: false,
+  threadSortMode: safeStorageGet(localStorage, "codex-thread-sort-mode") === "recent" ? "recent" : "project",
+  collapsedThreadGroups: JSON.parse(safeStorageGet(localStorage, "codex-collapsed-thread-groups") || "{}"),
   messageRequestSeq: 0,
   activeMessageRequest: null,
   messageLoading: false,
@@ -80,6 +82,7 @@ const els = {
   shell: document.querySelector("#shell"),
   threadCount: document.querySelector("#threadCount"),
   threadList: document.querySelector("#threadList"),
+  threadSortMode: document.querySelector("#threadSortMode"),
   threadContextMenu: document.querySelector("#threadContextMenu"),
   threadContextTitle: document.querySelector("#threadContextTitle"),
   threadPinAction: document.querySelector("#threadPinAction"),
@@ -1328,15 +1331,33 @@ function renderThreads() {
   const groups = groupedVisibleThreads(state.threads, {
     query: state.filter,
     pinnedLabel: t("pinnedGroup"),
-    ungroupedLabel: t("otherConversations")
+    ungroupedLabel: t("otherConversations"),
+    sortMode: state.threadSortMode
   });
   els.threadList.innerHTML = `${draft}${groups.map((group) => `
-    <section class="thread-group${group.ungrouped ? " thread-group-ungrouped" : ""}" data-group-key="${escapeHtml(group.key)}">
-      <h2 class="thread-group-title">${escapeHtml(group.label)}</h2>
-      ${group.threads.map(renderThread).join("")}
+    <section class="thread-group${group.ungrouped ? " thread-group-ungrouped" : ""}${state.collapsedThreadGroups[group.key] ? " is-collapsed" : ""}" data-group-key="${escapeHtml(group.key)}">
+      <button type="button" class="thread-group-title" data-thread-group-toggle="${escapeHtml(group.key)}" aria-expanded="${String(!state.collapsedThreadGroups[group.key])}">
+        <span>${escapeHtml(group.label)}</span><span class="thread-group-chevron" aria-hidden="true">⌄</span>
+      </button>
+      <div class="thread-group-items">${group.threads.map(renderThread).join("")}</div>
     </section>
   `).join("")}`;
 }
+
+els.threadSortMode?.addEventListener("change", () => {
+  state.threadSortMode = els.threadSortMode.value === "recent" ? "recent" : "project";
+  safeStorageSet(localStorage, "codex-thread-sort-mode", state.threadSortMode);
+  renderThreads();
+});
+
+els.threadList.addEventListener("click", (event) => {
+  const toggle = event.target.closest("[data-thread-group-toggle]");
+  if (!toggle) return;
+  const key = toggle.dataset.threadGroupToggle;
+  state.collapsedThreadGroups[key] = !state.collapsedThreadGroups[key];
+  safeStorageSet(localStorage, "codex-collapsed-thread-groups", JSON.stringify(state.collapsedThreadGroups));
+  renderThreads();
+});
 
 function renderSidebarState() {
   els.shell.classList.toggle("sidebar-collapsed", state.sidebarCollapsed);

@@ -34,9 +34,9 @@ test("ordinary conversations share the ungrouped section even when they have dif
     { id: "three", title: "Gamma", project: { key: "project:three", name: "Project Three" } }
   ]);
 
-  assert.deepEqual(groups.map((group) => group.label), ["其他对话", "Project Three"]);
-  assert.equal(groups[0].ungrouped, true);
-  assert.deepEqual(groups[0].threads.map((thread) => thread.id), ["one", "two"]);
+  assert.deepEqual(groups.map((group) => group.label), ["Project Three", "其他对话"]);
+  assert.equal(groups[1].ungrouped, true);
+  assert.deepEqual(groups[1].threads.map((thread) => thread.id), ["one", "two"]);
 });
 
 test("mobile grouping preserves Desktop project names from server metadata", () => {
@@ -46,6 +46,19 @@ test("mobile grouping preserves Desktop project names from server metadata", () 
     { id: "plain", title: "Plain", project: null }
   ]);
   assert.deepEqual(groups.map((group) => group.label), ["fast监控", "codex poket", "其他对话"]);
+});
+
+test("project sorting puts other conversations last and recent sorting uses updated time", () => {
+  const projectGroups = groupedVisibleThreads([
+    { id: "other", title: "Other", updatedAtMs: 300, project: null },
+    { id: "project", title: "Project", updatedAtMs: 100, project: { key: "project:a", name: "A" } }
+  ]);
+  assert.deepEqual(projectGroups.map((group) => group.label), ["A", "其他对话"]);
+  const recentGroups = groupedVisibleThreads([
+    { id: "old", title: "Old", updatedAtMs: 100, project: { key: "project:a", name: "A" } },
+    { id: "new", title: "New", updatedAtMs: 300, project: null }
+  ], { sortMode: "recent" });
+  assert.deepEqual(recentGroups[0].threads.map((thread) => thread.id), ["new", "old"]);
 });
 
 test("thread deep links use the Codex Desktop thread scheme", () => {

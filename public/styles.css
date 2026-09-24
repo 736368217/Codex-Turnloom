@@ -1283,12 +1283,52 @@ body.goal-dialog-open { overflow: hidden; }
 }
 
 .thread-group-title {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
   margin: 0;
   padding: 4px 11px 7px;
+  border: 0;
+  background: transparent;
   color: var(--muted);
   font-size: 12px;
   font-weight: 600;
   line-height: 1.2;
+  text-align: left;
+  cursor: pointer;
+}
+
+.thread-group-chevron {
+  transition: transform 140ms ease;
+}
+
+.thread-group.is-collapsed .thread-group-chevron {
+  transform: rotate(-90deg);
+}
+
+.thread-group.is-collapsed .thread-group-items {
+  display: none;
+}
+
+.thread-sort-control {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin: 0 14px 10px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.thread-sort-control select {
+  min-height: 30px;
+  padding: 3px 8px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
 }
 
 .thread-item {
