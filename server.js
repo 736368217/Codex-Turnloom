@@ -1401,7 +1401,7 @@ class DesktopCodexIpcClient {
   async startTurn(threadId, text, images = [], turnSettings = {}, options = {}) {
     await this.ensureReady();
     const { method, params } = desktopStartTurnRequest(threadId, text, images, turnSettings);
-    return this.request(method, params, options);
+    return this.request(method, params, { timeoutMs: 60_000, ...options });
   }
 
   async findThreadOwner(threadId, hostId = "local") {
@@ -1441,7 +1441,7 @@ class DesktopCodexIpcClient {
       attachments: [],
       clientUserMessageId,
       additionalContext: null
-    });
+    }, { timeoutMs: 60_000 });
   }
 
   async interruptTurn(threadId, expectedTurnId = null, options = {}) {
@@ -4635,7 +4635,7 @@ async function sendToCodex(text, threadId, images = [], { newThread = false, mod
     };
     void refreshCodexDesktopAfterSend(targetThreadId, getCodexIpcClient(), { turnId: response.turnId }).catch((error) => {
       logError(`[send-refresh] ${targetThreadId}: ${error?.message || error}`);
-    });
+    }, { timeoutMs: 60_000 });
     return response;
   }
   return runSerializedThreadStart(targetThreadId, async () => {

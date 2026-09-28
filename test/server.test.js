@@ -529,6 +529,20 @@ test("concurrent IPC callers share one connection attempt", async () => {
   client.close();
 });
 
+test("turn dispatch allows slow Desktop responses without using the short control timeout", async () => {
+  const client = new DesktopCodexIpcClient();
+  const calls = [];
+  client.ensureReady = async () => {};
+  client.request = async (method, params, options) => {
+    calls.push({ method, options });
+    return { resultType: "success", result: { turn: { id: "turn-1" } } };
+  };
+  await client.startTurn("thread-1", "hello", [], {});
+  await client.steerTurn("thread-1", "follow up", []);
+  assert.equal(calls[0].options.timeoutMs, 60_000);
+  assert.equal(calls[1].options.timeoutMs, 60_000);
+});
+
 test("IPC permission failure clears the failed socket and can recover after cooldown", async () => {
   const client = new DesktopCodexIpcClient();
   let destroyed = false;
