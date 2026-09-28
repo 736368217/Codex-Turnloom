@@ -115,3 +115,8 @@ Static web assets include baseline CSP, referrer, MIME-sniffing, and frame-isola
 - Desktop project folders are backed by `project_roots` plus the session working directory; many legacy rows have `threads.project_id` set to NULL. Mobile grouping must use a unique longest-root match when explicit `project_id` is absent.
 - If a working directory belongs to multiple Desktop projects, keep the conversation under `其他对话` rather than guessing. This matches the desktop data ambiguity and prevents false classification.
 - Mobile sidebar now matches the Desktop navigation model more closely: project mode puts `其他对话` last, project sections can be collapsed or expanded, and the top selector switches between `按项目` and `按最近`. The selection and collapsed sections persist locally on the device.
+
+## 2026-09-28 send timeout state
+
+- A Desktop IPC timeout is ambiguous on the wire, but the mobile optimistic message must not remain indefinitely in `正在发送中`. After refresh confirms neither the user message nor an active turn, the row becomes `发送失败` with the existing `重试` action; the original text and image attachments remain available for explicit retry.
+- If refresh confirms the message or an active turn, the optimistic row becomes sent and no retry is shown. The timeout path never automatically resends the request.

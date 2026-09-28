@@ -299,6 +299,7 @@ const I18N = {
     resetAt: "重置 {time}",
     sendFailed: "发送失败：{message}",
     sendUncertain: "桌面端没有及时确认，已刷新且不会重复发送；请先确认对话内容。",
+    sendUncertainFailed: "发送未确认，可能未到达桌面端。请重试。",
     sendUncertainAccepted: "桌面端已接收这条消息，正在刷新状态。",
     interruptFailed: "停止失败：{message}",
     busyCannotSend: "Codex 正在处理。请先停止当前任务，再发送这条消息。",
@@ -474,6 +475,7 @@ const I18N = {
     resetAt: "resets {time}",
     sendFailed: "Send failed: {message}",
     sendUncertain: "Desktop did not confirm in time. Refreshed without sending a duplicate; verify the conversation before retrying.",
+    sendUncertainFailed: "The send was not confirmed and may not have reached Desktop. Retry it.",
     sendUncertainAccepted: "Desktop accepted the message. Refreshing the conversation state.",
     interruptFailed: "Stop failed: {message}",
     busyCannotSend: "Codex is still processing. Stop the current task before sending this message.",
@@ -3322,7 +3324,20 @@ els.composerForm.addEventListener("submit", async (event) => {
       if (hasDisplayedUserMessage(sendMessage) || state.threadStatus?.thinking) {
         sendAccepted = true;
         state.uncertainSend = null;
+        if (pendingMessageId) updatePendingMessage(pendingMessageId, { deliveryStatus: "sent", kind: "message" });
         clearComposerAfterAcceptedSend();
+      } else {
+        // A timeout is not a successful send. Keep the original payload in
+        // the optimistic row so the user can explicitly retry it.
+        if (pendingMessageId) {
+          updatePendingMessage(pendingMessageId, {
+            deliveryStatus: "failed",
+            kind: "pending",
+            error: t("sendUncertainFailed")
+          });
+        }
+        state.uncertainSend = null;
+        els.sendStatus.textContent = t("sendUncertainFailed");
       }
     } else if (sendMode === "queue") {
       if (pendingMessageId) updatePendingMessage(pendingMessageId, { deliveryStatus: "queued", queueItemId: result.queueItem?.id || null });
