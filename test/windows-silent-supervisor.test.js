@@ -20,6 +20,9 @@ test("Windows supervisor uses a windowless scheduled-task launcher", async () =>
   assert.match(launcher, /shell\.Run\(command, 0, True\)/i);
   assert.match(supervisor, /System\.Threading\.Mutex/);
   assert.match(supervisor, /Local\\CodexPocketSupervisor/);
+  assert.match(supervisor, /tunnelBackoffUntil/);
+  assert.match(supervisor, /retrying in/);
+  assert.doesNotMatch(installer, /RepetitionInterval.*Minutes\s+1/);
   assert.match(installer, /-AllowStartIfOnBatteries/);
   assert.match(installer, /-DontStopIfGoingOnBatteries/);
   assert.match(installer, /-DontStopOnIdleEnd/);

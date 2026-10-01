@@ -27,6 +27,8 @@ if (-not $logDir) {
 }
 New-Item -ItemType Directory -Path $logDir -Force | Out-Null
 $supervisorLog = Join-Path $logDir "supervisor.log"
+$script:tunnelBackoffUntil = [DateTime]::MinValue
+$script:tunnelFailureCount = 0
 
 function Write-SupervisorLog([string]$Message) {
   $line = "{0} [supervisor] {1}" -f (Get-Date -Format "yyyy-MM-dd HH:mm:ss"), $Message
@@ -78,6 +80,8 @@ function Start-Server {
 }
 
 function Start-Tunnel {
+  $now = [DateTime]::UtcNow
+  if ($now -lt $script:tunnelBackoffUntil) { return }
   $sshPath = Join-Path $env:WINDIR "System32\OpenSSH\ssh.exe"
   if (-not (Test-Path -LiteralPath $sshPath -PathType Leaf)) {
     throw "Windows OpenSSH client not found: $sshPath"
@@ -98,12 +102,23 @@ function Start-Tunnel {
   $stdout = Join-Path $logDir "tunnel-out.log"
   $stderr = Join-Path $logDir "tunnel-error.log"
   Write-SupervisorLog ("Starting tunnel to {0}; remote port {1}." -f $config.tunnel.host, $config.tunnel.remotePort)
-  Start-Process `
+  $process = Start-Process `
     -FilePath $sshPath `
     -ArgumentList $arguments `
     -WindowStyle Hidden `
     -RedirectStandardOutput $stdout `
-    -RedirectStandardError $stderr | Out-Null
+    -RedirectStandardError $stderr `
+    -PassThru
+  Start-Sleep -Seconds 2
+  if ($process.HasExited) {
+    $script:tunnelFailureCount++
+    $delay = [Math]::Min(300, [Math]::Pow(2, [Math]::Min(7, $script:tunnelFailureCount)))
+    $script:tunnelBackoffUntil = [DateTime]::UtcNow.AddSeconds($delay)
+    Write-SupervisorLog ("Tunnel exited with code {0}; retrying in {1}s." -f $process.ExitCode, $delay)
+  } else {
+    $script:tunnelFailureCount = 0
+    $script:tunnelBackoffUntil = [DateTime]::MinValue
+  }
 }
 
 try {

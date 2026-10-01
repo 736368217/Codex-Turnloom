@@ -155,13 +155,8 @@ $settings = New-ScheduledTaskSettingsSet `
   -StartWhenAvailable
 $userId = $env:USERDOMAIN + "\" + $env:USERNAME
 $logonTrigger = New-ScheduledTaskTrigger -AtLogOn -User $userId
-$recoveryTrigger = New-ScheduledTaskTrigger `
-  -Once `
-  -At (Get-Date).AddMinutes(1) `
-  -RepetitionInterval (New-TimeSpan -Minutes 1) `
-  -RepetitionDuration (New-TimeSpan -Days 3650)
-$triggers = @($logonTrigger, $recoveryTrigger)
-$principal = New-ScheduledTaskPrincipal -UserId $userId -LogonType Interactive -RunLevel Limited
+$triggers = @($logonTrigger)
+$principal = New-ScheduledTaskPrincipal -UserId $userId -LogonType Interactive -RunLevel Highest
 
 $taskName = "Codex Pocket Supervisor"
 $argument = "//B //Nologo `"$launcher`" `"$powershell`" `"$supervisor`" `"$configPath`""

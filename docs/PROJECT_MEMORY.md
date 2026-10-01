@@ -121,3 +121,9 @@ Static web assets include baseline CSP, referrer, MIME-sniffing, and frame-isola
 - A Desktop IPC timeout is ambiguous on the wire, but the mobile optimistic message must not remain indefinitely in `正在发送中`. After refresh confirms neither the user message nor an active turn, the row becomes `发送失败` with the existing `重试` action; the original text and image attachments remain available for explicit retry.
 - If refresh confirms the message or an active turn, the optimistic row becomes sent and no retry is shown. The timeout path never automatically resends the request.
 - Root-cause mitigation: Desktop turn start and insert IPC requests now use a 60-second response window. The generic 12-second control timeout remains for list/status/metadata requests; a busy Codex Desktop must not be treated as a failed send merely because turn dispatch takes longer than a control refresh.
+
+## 2026-10-02 supervisor health
+
+- The remote tunnel listener on Alibaba Cloud `127.0.0.1:18786` was already occupied while no matching local SSH process existed. This made the old supervisor retry tunnel startup every 5 seconds and the one-minute scheduled trigger relaunch the supervisor, causing black-box flashes and unnecessary process churn.
+- The supervisor now applies exponential tunnel-start backoff up to five minutes and the Windows installer no longer adds a one-minute repetition trigger. The existing scheduled task was disabled during recovery because changing its highest-privilege registration requires an elevated administrator shell; do not re-enable the old task unchanged.
+- Local service `8787` and the authenticated public health endpoint were healthy during diagnosis. A future elevated reinstall must preserve the existing config/access code and use the repository installer so the task remains windowless and starts only at logon with Task Scheduler failure recovery.
