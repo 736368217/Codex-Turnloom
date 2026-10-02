@@ -250,6 +250,24 @@ test("thread list uses Desktop global project assignments before cwd fallback", 
   );
 });
 
+test("message cursor returns an earlier page without retransmitting the latest tail", () => {
+  const messages = Array.from({ length: 65 }, (_, index) => ({
+    id: `message-${index}`,
+    role: "assistant",
+    timestamp: `2026-10-02T00:00:${String(index).padStart(2, "0")}.000Z`,
+    content: `message ${index}`,
+    lineNumber: index + 1
+  }));
+  const latest = limitMessagesForClient(messages, {}, 40);
+  assert.equal(latest.messages.length, 40);
+  assert.equal(latest.messages[0].id, "message-25");
+  assert.equal(latest.hasOlderMessages, true);
+  const older = limitMessagesForClient(messages, {}, 40, latest.olderCursor);
+  assert.equal(older.messages.length, 25);
+  assert.equal(older.messages[0].id, "message-0");
+  assert.equal(older.hasOlderMessages, false);
+});
+
 test("subagent visibility recognizes spawn edges, agent paths, and agent-created threads", () => {
   assert.equal(isSubagentThread({ hasSpawnParent: 1 }), true);
   assert.equal(isSubagentThread({ agentPath: "/root/audit" }), true);

@@ -2865,7 +2865,9 @@ function limitMessagesForClient(messages, status = {}, limit = DEFAULT_MESSAGE_L
   const recentLowPriorityKeys = new Set(sorted.slice(-10).filter(isLowPriorityHiddenByDefaultMessage).map(clientMessageKey));
   const visiblePriorityMessages = sorted.filter((message) => !isLowPriorityHiddenByDefaultMessage(message) || recentLowPriorityKeys.has(clientMessageKey(message)));
   const hiddenMessages = Math.max(0, sorted.length - visiblePriorityMessages.length);
-  if (visiblePriorityMessages.length <= normalizedLimit) {
+  const beforeIndex = beforeKey ? visiblePriorityMessages.findIndex((message) => clientMessageKey(message) === beforeKey) : -1;
+  const end = beforeIndex >= 0 ? beforeIndex : visiblePriorityMessages.length;
+  if (end <= normalizedLimit && !beforeKey) {
     return {
       messages: visiblePriorityMessages,
       totalMessages: sorted.length,
@@ -2876,8 +2878,6 @@ function limitMessagesForClient(messages, status = {}, limit = DEFAULT_MESSAGE_L
       hiddenMessages
     };
   }
-  const beforeIndex = beforeKey ? visiblePriorityMessages.findIndex((message) => clientMessageKey(message) === beforeKey) : -1;
-  const end = beforeIndex >= 0 ? beforeIndex : visiblePriorityMessages.length;
   const start = Math.max(0, end - normalizedLimit);
   const tail = visiblePriorityMessages.slice(start, end);
   const includedKeys = new Set(tail.map(clientMessageKey));
@@ -2886,11 +2886,11 @@ function limitMessagesForClient(messages, status = {}, limit = DEFAULT_MESSAGE_L
   return {
     messages: limited,
     totalMessages: sorted.length,
-    truncated: true,
-      hasOlderMessages: start > 0,
+    truncated: start > 0,
+    hasOlderMessages: start > 0,
     limit: normalizedLimit,
-      omittedMessages: Math.max(0, start),
-      olderCursor: tail.length ? clientMessageKey(tail[0]) : null,
+    omittedMessages: Math.max(0, start),
+    olderCursor: start > 0 && tail.length ? clientMessageKey(tail[0]) : null,
     hiddenMessages
   };
 }
