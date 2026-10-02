@@ -64,6 +64,8 @@ const state = {
   selectedSkills: [],
   threadSyncBackoffMs: 0,
   messageSyncBackoffMs: 0,
+  messageStreamController: null,
+  messageStreamGeneration: 0,
   accountSyncBackoffMs: 0,
   lastSyncActivityAt: Date.now()
 };
@@ -2633,6 +2635,54 @@ function refreshSoon(delayMs = 700) {
   }, delayMs);
 }
 
+function messageChangeCursor(data = state.lastMessagesData) {
+  if (!data) return "";
+  return JSON.stringify({
+    updatedAtMs: data.thread?.updatedAtMs || 0,
+    size: data.size || 0,
+    mtimeMs: data.mtimeMs || 0,
+    turnId: data.status?.turnId || null,
+    thinking: Boolean(data.status?.thinking),
+    queueLength: data.status?.queueLength || 0
+  });
+}
+
+function stopMessageStream() {
+  state.messageStreamGeneration += 1;
+  state.messageStreamController?.abort();
+  state.messageStreamController = null;
+}
+
+async function startMessageStream(threadId = state.selectedId) {
+  stopMessageStream();
+  if (!threadId || threadId === DRAFT_THREAD_ID) return;
+  const generation = state.messageStreamGeneration;
+  const controller = new AbortController();
+  state.messageStreamController = controller;
+  let cursor = messageChangeCursor();
+  while (!controller.signal.aborted && generation === state.messageStreamGeneration && state.selectedId === threadId) {
+    try {
+      const result = await fetchJson(`/api/threads/${encodeURIComponent(threadId)}/changes?timeout=25000&cursor=${encodeURIComponent(cursor)}`, { signal: controller.signal });
+      if (result.changed && generation === state.messageStreamGeneration && state.selectedId === threadId) {
+        await loadMessages(true, threadId);
+        cursor = result.cursor || messageChangeCursor();
+      } else {
+        cursor = result.cursor || cursor;
+      }
+      state.messageSyncBackoffMs = 0;
+    } catch (error) {
+      if (controller.signal.aborted || generation !== state.messageStreamGeneration) break;
+      if (error.status === 401) {
+        handleUnauthorized(error);
+        break;
+      }
+      state.messageSyncBackoffMs = Math.min(MESSAGE_SYNC_BACKOFF_MAX_MS, Math.max(1000, state.messageSyncBackoffMs * 2 || 1000));
+      await new Promise((resolve) => setTimeout(resolve, state.messageSyncBackoffMs));
+      cursor = messageChangeCursor();
+    }
+  }
+}
+
 function scheduleThreadSync(delayMs = syncDelay(THREAD_SYNC_INTERVAL_MS, state.threadSyncBackoffMs)) {
   setTimeout(async () => {
     try {
@@ -2646,17 +2696,8 @@ function scheduleThreadSync(delayMs = syncDelay(THREAD_SYNC_INTERVAL_MS, state.t
   }, delayMs);
 }
 
-function scheduleMessageSync(delayMs = syncDelay(state.threadStatus?.thinking ? MESSAGE_SYNC_THINKING_MS : MESSAGE_SYNC_IDLE_MS, state.messageSyncBackoffMs)) {
-  setTimeout(async () => {
-    try {
-      if (shouldSync() && !state.messageHistoryLoading) await loadMessages(false);
-    } catch (error) {
-      if (error.status === 401) handleUnauthorized(error);
-      else noteSyncFailure("message", state.threadStatus?.thinking ? MESSAGE_SYNC_THINKING_MS : MESSAGE_SYNC_IDLE_MS, MESSAGE_SYNC_BACKOFF_MAX_MS);
-    } finally {
-      scheduleMessageSync();
-    }
-  }, delayMs);
+function scheduleMessageSync() {
+  void startMessageStream();
 }
 
 function shouldRefocusComposer() {
@@ -2672,6 +2713,7 @@ els.threadList.addEventListener("click", (event) => {
   }
   closeThreadContextMenu();
   closeGoalEditDialog();
+  stopMessageStream();
   state.selectedId = button.dataset.id;
   state.messageLimit = MESSAGE_PAGE_SIZE;
   state.messageHistoryLoading = false;
@@ -2685,6 +2727,7 @@ els.threadList.addEventListener("click", (event) => {
   renderComposerMode();
   renderThreads();
   loadMessages(true, state.selectedId);
+  void startMessageStream(state.selectedId);
   closeSidebarOnCompact();
 });
 

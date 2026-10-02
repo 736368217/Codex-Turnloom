@@ -171,6 +171,7 @@ let modelConfigurationCache = null;
 const authWarnLogState = new Map();
 let threadsCache = null;
 let sessionRolloutPathCache = null;
+let globalProjectStateCache = null;
 let accountInfoInFlight = null;
 let threadsInFlight = null;
 
@@ -2035,7 +2036,7 @@ function projectForRoot(cwd, projectRootsByPath) {
   return uniqueCandidates[0];
 }
 
-function threadListMetadata(row, projectRootsByPath = null) {
+function threadListMetadata(row, projectRootsByPath = null, globalProjects = null) {
   const projectId = String(row?.projectId || row?.project_id || "").trim();
   const projectName = String(row?.projectName || row?.project_name || "").trim();
   const sectionName = String(row?.sectionName || row?.section_name || "").trim();
@@ -2046,6 +2047,8 @@ function threadListMetadata(row, projectRootsByPath = null) {
       project: projectName ? { key: `project:${projectId}`, id: projectId, name: projectName, native: true } : null
     };
   }
+  const assigned = globalProjects?.byThread?.get(String(row?.id || ""));
+  if (assigned) return { pinned, project: assigned };
   // Desktop groups sessions by the unique project root when the older
   // threads table has no project_id. Only use an unambiguous root match;
   // shared or conflicting roots remain in the ungrouped section.
@@ -2062,6 +2065,31 @@ async function readProjectRoots() {
     `));
   } catch {
     return new Map();
+  }
+}
+
+async function readGlobalProjectState() {
+  const home = (await refreshCodexHomeContext()).home;
+  const filePath = path.join(home, ".codex-global-state.json");
+  try {
+    const stat = await fs.stat(filePath);
+    if (globalProjectStateCache?.path === filePath && globalProjectStateCache.mtimeMs === stat.mtimeMs) return globalProjectStateCache.value;
+    const raw = JSON.parse(await fs.readFile(filePath, "utf8"));
+    const state = raw?.["electron-persisted-atom-state"] || raw || {};
+    const projects = state["local-projects"] || {};
+    const assignments = state["thread-project-assignments"] || {};
+    const byThread = new Map();
+    for (const [threadId, assignment] of Object.entries(assignments)) {
+      if (assignment?.projectKind !== "local" || !assignment.projectId) continue;
+      const project = projects[assignment.projectId];
+      if (!project?.name) continue;
+      byThread.set(threadId, { key: `project:${assignment.projectId}`, id: assignment.projectId, name: String(project.name), native: true });
+    }
+    const value = { byThread };
+    globalProjectStateCache = { path: filePath, mtimeMs: stat.mtimeMs, value };
+    return value;
+  } catch {
+    return { byThread: new Map() };
   }
 }
 
@@ -2144,6 +2172,7 @@ async function loadThreadsUncached({ preserveIds = [], preserveKey = "" } = {}) 
   const { stateDb, sessionIndex } = codexPaths((await refreshCodexHomeContext()).home);
   const currentRolloutPaths = await readSessionRolloutPathMap();
   const projectRootsByPath = await readProjectRoots();
+  const globalProjects = await readGlobalProjectState();
   const appendRecentIpcRows = (rows, excludedIds = new Set()) => {
     const seen = new Set(rows.map((row) => String(row.id || "")));
     const recentRows = codexIpcClient?.getDesktopConversationRows?.() || codexIpcClient?.getRecentConversationRows?.() || [];
@@ -2190,7 +2219,7 @@ async function loadThreadsUncached({ preserveIds = [], preserveKey = "" } = {}) 
         preview: row.preview || "",
         cwd: row.cwd || "",
         model: row.model || "",
-         ...threadListMetadata(row, projectRootsByPath)
+         ...threadListMetadata(row, projectRootsByPath, globalProjects)
       }));
       // With a live Desktop state database, it is authoritative for sidebar
       // membership. Session-index and IPC rows may be stale or lack archived /
@@ -2202,7 +2231,7 @@ async function loadThreadsUncached({ preserveIds = [], preserveKey = "" } = {}) 
       const filtered = await filterRowsForCurrentAccount(rows, (row) => row.id, preserveIds);
       value = appendRecentIpcRows(visibleThreadRows(filtered.rows, preserveIds)).map((row) => ({
         ...row,
-        ...threadListMetadata(row, projectRootsByPath)
+        ...threadListMetadata(row, projectRootsByPath, globalProjects)
       }));
     }
     const statusRows = await Promise.all(value.slice(0, 120).map(async (row) => ({
@@ -3516,6 +3545,38 @@ async function getMessages(id, { limit = DEFAULT_MESSAGE_LIMIT, fullHistory = fa
     status,
     ...includePartialHistoryAvailability(limited, parsed.partial)
   });
+}
+
+async function threadChangeSignature(id) {
+  const thread = await findThread(id);
+  if (!thread) return "";
+  const paths = await readSessionRolloutPathsForThread(id);
+  const files = [];
+  for (const filePath of paths) {
+    try {
+      const stat = await fs.stat(filePath);
+      files.push(`${filePath}:${stat.size}:${stat.mtimeMs}`);
+    } catch {
+      files.push(`${filePath}:missing`);
+    }
+  }
+  const queue = queuedSendStatus(id);
+  return JSON.stringify({
+    updatedAtMs: thread.updatedAtMs || 0,
+    files,
+    queueLength: queue.queueLength,
+    deliveryStates: queue.queuedMessages.map((item) => `${item.id}:${item.deliveryState}`)
+  });
+}
+
+async function waitForThreadChange(id, cursor, timeoutMs = 25_000) {
+  const deadline = Date.now() + Math.min(30_000, Math.max(250, Number(timeoutMs) || 25_000));
+  let current = await threadChangeSignature(id);
+  while (current === cursor && Date.now() < deadline) {
+    await sleep(Math.min(750, Math.max(50, deadline - Date.now())));
+    current = await threadChangeSignature(id);
+  }
+  return { cursor: current, changed: current !== cursor };
 }
 
 async function getThreadGoalSafe(threadId) {
@@ -5863,6 +5924,15 @@ const server = http.createServer(async (req, res) => {
       return;
     }
     const match = url.pathname.match(/^\/api\/threads\/([0-9a-fA-F-]{20,})\/messages$/);
+    const changesMatch = url.pathname.match(/^\/api\/threads\/([0-9a-fA-F-]{20,})\/changes$/);
+    if (req.method === "GET" && changesMatch) {
+      if (!requireAuthorized(req, res, url)) return;
+      const threadId = changesMatch[1];
+      const cursor = String(url.searchParams.get("cursor") || "");
+      const result = await waitForThreadChange(threadId, cursor, url.searchParams.get("timeout"));
+      sendJson(res, 200, result);
+      return;
+    }
     if (req.method === "GET" && match) {
       if (!requireAuthorized(req, res, url)) return;
       sendJson(res, 200, await getMessages(match[1], {

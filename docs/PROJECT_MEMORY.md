@@ -127,3 +127,9 @@ Static web assets include baseline CSP, referrer, MIME-sniffing, and frame-isola
 - The remote tunnel listener on Alibaba Cloud `127.0.0.1:18786` was already occupied while no matching local SSH process existed. This made the old supervisor retry tunnel startup every 5 seconds and the one-minute scheduled trigger relaunch the supervisor, causing black-box flashes and unnecessary process churn.
 - The supervisor now applies exponential tunnel-start backoff up to five minutes and the Windows installer no longer adds a one-minute repetition trigger. The existing scheduled task was disabled during recovery because changing its highest-privilege registration requires an elevated administrator shell; do not re-enable the old task unchanged.
 - Local service `8787` and the authenticated public health endpoint were healthy during diagnosis. A future elevated reinstall must preserve the existing config/access code and use the repository installer so the task remains windowless and starts only at logon with Task Scheduler failure recovery.
+
+## 2026-10-02 mobile bridge P0 adoption
+
+- Added a single-session long-poll change endpoint at `/api/threads/:id/changes`. The mobile page now owns one abortable generation-scoped stream per selected conversation, replacing the 2s/6s message refresh loop. A change response triggers one authoritative message reload; stale sessions are aborted and cannot update the current conversation.
+- Added server-side reading of Codex Desktop `.codex-global-state.json` assignments. Explicit `thread-project-assignments` now win over SQLite project fields and cwd fallback, fixing projects such as “控制隔壁电脑” whose `threads.project_id` is empty.
+- The next long-history increment should add stable cursor pagination instead of expanding and retransmitting the entire tail. Current rollout parsing remains cached by file signature and page limit, with split rollout merging already in place.

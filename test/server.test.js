@@ -237,6 +237,19 @@ test("thread list matches Desktop projects from unique roots and preserves expli
   );
 });
 
+test("thread list uses Desktop global project assignments before cwd fallback", () => {
+  const globalProjects = {
+    byThread: new Map([[
+      "thread-control",
+      { key: "project:control", id: "project-control", name: "控制隔壁电脑", native: true }
+    ]])
+  };
+  assert.deepEqual(
+    threadListMetadata({ id: "thread-control", cwd: "C:\\Users\\demo\\Documents\\Codex" }, new Map(), globalProjects).project,
+    globalProjects.byThread.get("thread-control")
+  );
+});
+
 test("subagent visibility recognizes spawn edges, agent paths, and agent-created threads", () => {
   assert.equal(isSubagentThread({ hasSpawnParent: 1 }), true);
   assert.equal(isSubagentThread({ agentPath: "/root/audit" }), true);
