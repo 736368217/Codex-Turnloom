@@ -20,6 +20,7 @@ const state = {
   activeMessageRequest: null,
   messageLoading: false,
   messageLimit: MESSAGE_PAGE_SIZE,
+  messageBeforeCursor: "",
   messageHistoryLoading: false,
   account: null,
   accountExpanded: false,
@@ -2443,6 +2444,7 @@ async function loadThreads() {
   }
   if (state.selectedId !== previousSelectedId) {
     state.messageLimit = MESSAGE_PAGE_SIZE;
+    state.messageBeforeCursor = "";
     state.messageHistoryLoading = false;
     closeGoalEditDialog();
     state.goal = null;
@@ -2485,7 +2487,9 @@ async function loadMessages(force = false, threadId = state.selectedId, { preser
     messageLimit: state.messageLimit
   });
   const historyParam = state.messageLimit > MESSAGE_PAGE_SIZE ? "&history=full" : "";
-  const networkRequest = fetchJson("/api/threads/" + threadId + "/messages?limit=" + state.messageLimit + historyParam);
+  const beforeParam = state.messageBeforeCursor ? `&before=${encodeURIComponent(state.messageBeforeCursor)}` : "";
+  const requestedBefore = state.messageBeforeCursor;
+  const networkRequest = fetchJson("/api/threads/" + threadId + "/messages?limit=" + state.messageLimit + beforeParam + historyParam);
   let cachedShown = false;
   const openingThread = !state.lastMessagesData || state.lastMessagesData.thread?.id !== threadId;
   const currentThread = state.threads.find((thread) => thread.id === threadId) || null;
@@ -2516,6 +2520,14 @@ async function loadMessages(force = false, threadId = state.selectedId, { preser
   try {
     const data = await networkRequest;
     if (state.selectedId !== threadId || state.activeMessageRequest !== request) return;
+    if (requestedBefore && state.lastMessagesData?.thread?.id === threadId) {
+      const byKey = new Map([...(data.messages || []), ...(state.lastMessagesData.messages || [])].map((message) => [
+        `${message.id || ""}:${message.lineNumber || ""}:${message.timestamp || ""}:${message.role || ""}`,
+        message
+      ]));
+      data.messages = [...byKey.values()].sort((a, b) => String(a.timestamp || "").localeCompare(String(b.timestamp || "")));
+      data.hasOlderMessages = Boolean(data.hasOlderMessages);
+    }
     state.lastMessagesData = data;
     state.messageLoading = false;
     state.threadStatus = data.status || null;
@@ -2597,6 +2609,7 @@ async function loadOlderMessages() {
     scrollHeight: els.messageList.scrollHeight
   };
   state.messageLimit = nextLimit;
+  state.messageBeforeCursor = state.lastMessagesData?.olderCursor || "";
   try {
     await loadMessages(true, state.selectedId, { preserveScrollPosition });
   } finally {
@@ -2716,6 +2729,7 @@ els.threadList.addEventListener("click", (event) => {
   stopMessageStream();
   state.selectedId = button.dataset.id;
   state.messageLimit = MESSAGE_PAGE_SIZE;
+  state.messageBeforeCursor = "";
   state.messageHistoryLoading = false;
   adoptSelectedThreadModel();
   if (state.selectedId !== DRAFT_THREAD_ID) clearDraftThread();
@@ -2809,6 +2823,7 @@ els.newThreadButton.addEventListener("click", () => {
   state.draftStartedAt = Date.now();
   state.selectedId = DRAFT_THREAD_ID;
   state.messageLimit = MESSAGE_PAGE_SIZE;
+  state.messageBeforeCursor = "";
   state.messageHistoryLoading = false;
   state.modelThreadId = DRAFT_THREAD_ID;
   normalizeModelSettings();

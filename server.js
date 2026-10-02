@@ -2859,7 +2859,7 @@ function clientMessageKey(message) {
     .join(":");
 }
 
-function limitMessagesForClient(messages, status = {}, limit = DEFAULT_MESSAGE_LIMIT) {
+function limitMessagesForClient(messages, status = {}, limit = DEFAULT_MESSAGE_LIMIT, beforeKey = "") {
   const normalizedLimit = normalizeMessageLimit(limit);
   const sorted = Array.isArray(messages) ? messages.slice().sort(messageSortCompare) : [];
   const recentLowPriorityKeys = new Set(sorted.slice(-10).filter(isLowPriorityHiddenByDefaultMessage).map(clientMessageKey));
@@ -2876,7 +2876,10 @@ function limitMessagesForClient(messages, status = {}, limit = DEFAULT_MESSAGE_L
       hiddenMessages
     };
   }
-  const tail = visiblePriorityMessages.slice(-normalizedLimit);
+  const beforeIndex = beforeKey ? visiblePriorityMessages.findIndex((message) => clientMessageKey(message) === beforeKey) : -1;
+  const end = beforeIndex >= 0 ? beforeIndex : visiblePriorityMessages.length;
+  const start = Math.max(0, end - normalizedLimit);
+  const tail = visiblePriorityMessages.slice(start, end);
   const includedKeys = new Set(tail.map(clientMessageKey));
   const pinned = visiblePriorityMessages.filter((message) => shouldAlwaysReturnMessage(message, status) && !includedKeys.has(clientMessageKey(message)));
   const limited = [...pinned, ...tail].sort(messageSortCompare);
@@ -2884,9 +2887,10 @@ function limitMessagesForClient(messages, status = {}, limit = DEFAULT_MESSAGE_L
     messages: limited,
     totalMessages: sorted.length,
     truncated: true,
-    hasOlderMessages: true,
+      hasOlderMessages: start > 0,
     limit: normalizedLimit,
-    omittedMessages: Math.max(0, visiblePriorityMessages.length - limited.length),
+      omittedMessages: Math.max(0, start),
+      olderCursor: tail.length ? clientMessageKey(tail[0]) : null,
     hiddenMessages
   };
 }
@@ -3479,7 +3483,7 @@ async function parseRollout(filePath, { limit = DEFAULT_MESSAGE_LIMIT, preferTai
   return result;
 }
 
-async function getMessages(id, { limit = DEFAULT_MESSAGE_LIMIT, fullHistory = false } = {}) {
+async function getMessages(id, { limit = DEFAULT_MESSAGE_LIMIT, fullHistory = false, before = "" } = {}) {
   keepIpcWarm();
   const thread = await findThread(id);
   if (!thread) {
@@ -3496,7 +3500,7 @@ async function getMessages(id, { limit = DEFAULT_MESSAGE_LIMIT, fullHistory = fa
   const rolloutPath = rolloutPaths.at(-1) || resolveRolloutPath(thread.rolloutPath);
   if (!rolloutPath || !existsSync(rolloutPath)) {
     const messages = await decorateMessageFiles(dedupeInteractionMessages(liveMessages).sort(messageSortCompare), id, thread);
-    const limited = limitMessagesForClient(messages, { thinking: false, interactionRequired: ipcInteractions.some((message) => message.requiresDesktopAction) }, limit);
+    const limited = limitMessagesForClient(messages, { thinking: false, interactionRequired: ipcInteractions.some((message) => message.requiresDesktopAction) }, limit, before);
     return finalizeMessagesResponse(id, {
       thread,
       goal,
@@ -3529,7 +3533,7 @@ async function getMessages(id, { limit = DEFAULT_MESSAGE_LIMIT, fullHistory = fa
   parsed.messages = Array.from(new Map(parsed.messages.map((message) => [clientMessageKey(message), message])).values()).sort(messageSortCompare);
   if (!liveMessages.length) {
     const messages = await decorateMessageFiles(parsed.messages, id, thread);
-    const limited = limitMessagesForClient(messages, parsed.status, limit);
+    const limited = limitMessagesForClient(messages, parsed.status, limit, before);
     return finalizeMessagesResponse(id, { thread, goal, ...parsed, messages, ...includePartialHistoryAvailability(limited, parsed.partial) });
   }
   const status = {
@@ -3537,7 +3541,7 @@ async function getMessages(id, { limit = DEFAULT_MESSAGE_LIMIT, fullHistory = fa
     interactionRequired: parsed.status?.interactionRequired || ipcInteractions.some((message) => message.requiresDesktopAction)
   };
   const messages = await decorateMessageFiles(dedupeInteractionMessages([...parsed.messages, ...liveMessages]).sort(messageSortCompare), id, thread);
-  const limited = limitMessagesForClient(messages, status, limit);
+  const limited = limitMessagesForClient(messages, status, limit, before);
   return finalizeMessagesResponse(id, {
     thread,
     goal,
@@ -5937,6 +5941,7 @@ const server = http.createServer(async (req, res) => {
       if (!requireAuthorized(req, res, url)) return;
       sendJson(res, 200, await getMessages(match[1], {
         limit: url.searchParams.get("limit"),
+        before: url.searchParams.get("before"),
         fullHistory: url.searchParams.get("history") === "full"
       }));
       return;
