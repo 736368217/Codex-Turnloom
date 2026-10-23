@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 import { execFile, spawn } from "node:child_process";
-import { randomInt, randomUUID } from "node:crypto";
+import { createHash, randomInt, randomUUID } from "node:crypto";
 import {
   createReadStream,
   existsSync,
@@ -35,6 +35,32 @@ function sameFilePath(left, right) {
   }
 }
 
+// All child processes go through these helpers. On Windows a service-started
+// Node process has no console of its own, so execFile/spawn default
+// (windowsHide: false) allocates a fresh conhost and flashes a black window.
+function execFileHidden(command, args, options = {}) {
+  return new Promise((resolve, reject) => {
+    execFile(command, args, { maxBuffer: 20 * 1024 * 1024, windowsHide: true, ...options }, (error, stdout, stderr) => {
+      if (error) {
+        error.stderr = stderr;
+        reject(error);
+        return;
+      }
+      resolve({ stdout, stderr });
+    });
+  });
+}
+
+function spawnHidden(command, args, options = {}) {
+  return spawn(command, args, { windowsHide: true, ...options });
+}
+
+function positiveMinutes(value, fallback) {
+  const number = Number(value);
+  if (!Number.isFinite(number) || number <= 0) return fallback;
+  return Math.min(number, 24 * 60);
+}
+
 const IS_MAIN = sameFilePath(process.argv[1], modulePath);
 
 function parseCliArgs(argv) {
@@ -61,6 +87,9 @@ function parseCliArgs(argv) {
     else if (flag === "--codex-home") options.codexHome = nextValue();
     else if (flag === "--ipc-socket") options.ipcSocket = nextValue();
     else if (flag === "--public-url") options.publicUrl = nextValue();
+    else if (flag === "--active-turn-stale-minutes") options.activeTurnStaleMinutes = nextValue();
+    else if (flag === "--status-max-age-minutes") options.statusMaxAgeMinutes = nextValue();
+    else if (flag === "--sqlite-driver") options.sqliteDriver = String(nextValue() || "").toLowerCase();
     else if (flag === "--readonly") options.readonly = true;
     else if (flag === "--no-auth") options.noAuth = true;
     else if (arg) {
@@ -88,6 +117,14 @@ Options:
   --codex-home <path>    Codex data directory. Default: ~/.codex
   --ipc-socket <path>    Codex Desktop IPC socket override
   --public-url <url>     Public URL used for the device QR
+  --active-turn-stale-minutes <n>
+                         Treat an active turn with no rollout writes as ended after n
+                         minutes (default 10; also CODEX_LAN_ACTIVE_TURN_STALE_MINUTES).
+  --status-max-age-minutes <n>
+                         Trust adapter-provided thread status for at most n minutes
+                         (default 60; also CODEX_LAN_STATUS_MAX_AGE_MINUTES).
+  --sqlite-driver <auto|node|cli>
+                         SQLite driver preference. Default: auto (node:sqlite first).
   -h, --help             Show this help
 
 Examples:
@@ -115,6 +152,11 @@ function logInfo(message = "") {
 function logError(message = "") {
   if (!message) console.error("");
   else console.error(`[${timestamp()}] ${message}`);
+}
+
+function logWarning(message = "") {
+  if (!message) console.warn("");
+  else console.warn(`[${timestamp()}] ${message}`);
 }
 
 function logFatalError(label, error) {
@@ -174,6 +216,14 @@ let sessionRolloutPathCache = null;
 let globalProjectStateCache = null;
 let accountInfoInFlight = null;
 let threadsInFlight = null;
+let threadsCacheGeneration = 0;
+let threadStatusColumnsCache = null;
+const threadStatusParseCache = new Map();
+const adapterStatusOverrides = new Map();
+const rolloutIssueLogState = new Map();
+let modelFallbackLogState = { key: "", at: 0, suppressed: 0 };
+let nodeSqliteModulePromise = null;
+const sqliteDriverState = { active: "unknown", lastNodeError: "", lastCliError: "", nodeQueries: 0, cliQueries: 0 };
 
 function normalizeLogPath(pathname) {
   return String(pathname || "/").replace(/\/api\/threads\/[0-9a-fA-F-]{20,}\/messages$/, "/api/threads/:id/messages");
@@ -209,12 +259,15 @@ function clearThreadsCache() {
   threadsCache = null;
   threadsInFlight = null;
   accountInfoInFlight = null;
+  threadsCacheGeneration += 1;
 }
 
 function invalidateThreadCaches() {
   threadsCache = null;
   threadsInFlight = null;
+  threadsCacheGeneration += 1;
   messageCache.clear();
+  threadStatusParseCache.clear();
 }
 
 if (IS_MAIN) {
@@ -297,7 +350,14 @@ const MIN_SEND_IMAGE_EDGE = 16;
 const MAX_SEND_IMAGE_EDGE = 4096;
 const MAX_SEND_IMAGE_PIXELS = 12_000_000;
 const SUPPORTED_SEND_IMAGE_MIME_TYPES = new Set(["image/jpeg", "image/png", "image/webp"]);
-const ACTIVE_TURN_STALE_MS = 10 * 60 * 1000;
+const ACTIVE_TURN_STALE_MS =
+  positiveMinutes(cli.activeTurnStaleMinutes ?? process.env.CODEX_LAN_ACTIVE_TURN_STALE_MINUTES, 10) * 60 * 1000;
+const STATUS_OVERRIDE_MAX_AGE_MS =
+  positiveMinutes(cli.statusMaxAgeMinutes ?? process.env.CODEX_LAN_STATUS_MAX_AGE_MINUTES, 60) * 60 * 1000;
+const THREADS_STATUS_CACHE_MS = 15_000;
+const THREADS_STATUS_PARALLELISM = 12;
+const MAX_THREADS_LIMIT = 500;
+const SQLITE_DRIVER_PREFERENCE = String(cli.sqliteDriver || process.env.CODEX_LAN_SQLITE_DRIVER || "auto").toLowerCase();
 const ACTIVE_STATUS_CACHE_MS = 5000;
 const QUEUE_IDLE_SETTLE_MS = 3500;
 const QUEUE_CONFIRMATION_POLL_MS = 350;
@@ -365,14 +425,48 @@ function rawDebugEventsLimit(value = 80) {
   return Math.max(1, Math.min(300, Math.floor(limit)));
 }
 
-function sendJson(res, status, body) {
-  res.writeHead(status, jsonHeaders);
+function sendJson(res, status, body, extraHeaders = {}) {
+  res.writeHead(status, { ...jsonHeaders, ...extraHeaders });
   res.end(JSON.stringify(body));
 }
 
 function sendText(res, status, text) {
   res.writeHead(status, { "content-type": "text/plain; charset=utf-8" });
   res.end(text);
+}
+
+function normalizeThreadsLimit(value) {
+  if (value === null || value === undefined || value === "") return 0;
+  const limit = Number(value);
+  if (!Number.isFinite(limit) || limit <= 0) return 0;
+  return Math.min(Math.floor(limit), MAX_THREADS_LIMIT);
+}
+
+function threadsPage(threads, { limit = 0, cursor = "" } = {}) {
+  const list = Array.isArray(threads) ? threads : [];
+  const pageLimit = normalizeThreadsLimit(limit);
+  if (!pageLimit) return { threads: list, total: list.length, nextCursor: null };
+  const parsedCursor = Number.parseInt(String(cursor || "0"), 10);
+  const offset = Number.isFinite(parsedCursor) && parsedCursor > 0 ? parsedCursor : 0;
+  const page = list.slice(offset, offset + pageLimit);
+  const nextOffset = offset + page.length;
+  return {
+    threads: page,
+    total: list.length,
+    nextCursor: nextOffset < list.length ? String(nextOffset) : null
+  };
+}
+
+function weakEtagFor(value) {
+  return `W/"${createHash("sha1").update(String(value)).digest("base64url").slice(0, 27)}"`;
+}
+
+function ifNoneMatchMatches(header, etag) {
+  if (!header) return false;
+  return String(header)
+    .split(",")
+    .map((value) => value.trim())
+    .some((value) => value === "*" || value === etag || value === etag.slice(2) || `W/${value}` === etag);
 }
 
 function requestToken(req, url) {
@@ -708,7 +802,11 @@ function clearHomeScopedCaches() {
   threadAccountRefreshInFlight = null;
   threadsCache = null;
   threadsInFlight = null;
+  threadsCacheGeneration += 1;
   messageCache.clear();
+  threadStatusParseCache.clear();
+  threadStatusColumnsCache = null;
+  adapterStatusOverrides.clear();
   referencedFilesByThread.clear();
   recentNotices.splice(0, recentNotices.length);
   codexIpcClient?.clearHomeScopedState?.();
@@ -874,35 +972,65 @@ async function refreshCodexHomeContext({ force = false, source = "poll" } = {}) 
   return codexHomeState;
 }
 
-function runSqlJsonAttempt(sql, dbPath = codexPaths().stateDb) {
-  return new Promise((resolve, reject) => {
-    execFile("sqlite3", ["-json", "-cmd", ".timeout 5000", dbPath, sql], { maxBuffer: 20 * 1024 * 1024 }, async (error, stdout, stderr) => {
-      if (error) {
-        if (error.code === "ENOENT") {
-          try {
-            const { DatabaseSync } = await import("node:sqlite");
-            const database = new DatabaseSync(dbPath, { readOnly: true });
-            try {
-              database.exec("PRAGMA busy_timeout = 5000");
-              resolve(database.prepare(sql).all());
-            } finally {
-              database.close();
-            }
-          } catch (fallbackError) {
-            reject(new Error(fallbackError?.message || stderr || error.message));
-          }
-          return;
-        }
-        reject(new Error(stderr || error.message));
-        return;
-      }
+async function loadNodeSqliteModule() {
+  if (!nodeSqliteModulePromise) {
+    nodeSqliteModulePromise = import("node:sqlite")
+      .then((module) => (module?.DatabaseSync ? module : null))
+      .catch((error) => {
+        sqliteDriverState.lastNodeError = error?.message || String(error);
+        return null;
+      });
+  }
+  return nodeSqliteModulePromise;
+}
+
+function querySqlJsonWithNode(DatabaseSync, sql, dbPath) {
+  const database = new DatabaseSync(dbPath, { readOnly: true });
+  try {
+    database.exec("PRAGMA busy_timeout = 5000");
+    return database.prepare(sql).all();
+  } finally {
+    database.close();
+  }
+}
+
+async function runSqlJsonAttempt(sql, dbPath = codexPaths().stateDb) {
+  if (SQLITE_DRIVER_PREFERENCE !== "cli") {
+    const module = await loadNodeSqliteModule();
+    if (module?.DatabaseSync) {
       try {
-        resolve(stdout.trim() ? JSON.parse(stdout) : []);
-      } catch (parseError) {
-        reject(parseError);
+        const rows = querySqlJsonWithNode(module.DatabaseSync, sql, dbPath);
+        sqliteDriverState.active = "node:sqlite";
+        sqliteDriverState.nodeQueries += 1;
+        return rows;
+      } catch (error) {
+        sqliteDriverState.lastNodeError = error?.message || String(error);
+        if (SQLITE_DRIVER_PREFERENCE === "node") throw error;
       }
-    });
-  });
+    } else if (SQLITE_DRIVER_PREFERENCE === "node") {
+      throw new Error(`node:sqlite is unavailable: ${sqliteDriverState.lastNodeError || "unknown error"}`);
+    }
+  }
+  try {
+    const { stdout } = await execFileHidden("sqlite3", ["-json", "-cmd", ".timeout 5000", dbPath, sql]);
+    sqliteDriverState.active = "sqlite3-cli";
+    sqliteDriverState.cliQueries += 1;
+    return stdout.trim() ? JSON.parse(stdout) : [];
+  } catch (error) {
+    sqliteDriverState.lastCliError = String(error?.stderr || error?.message || error);
+    throw new Error(error?.stderr || error?.message || String(error));
+  }
+}
+
+function sqliteDriverInfo() {
+  return {
+    preference: SQLITE_DRIVER_PREFERENCE,
+    active: sqliteDriverState.active,
+    nodeSqliteError: sqliteDriverState.lastNodeError || null,
+    cliError: sqliteDriverState.lastCliError || null,
+    nodeQueries: sqliteDriverState.nodeQueries,
+    cliQueries: sqliteDriverState.cliQueries
+  };
 }
 
 async function runSqlJsonFromDb(dbPath, sql) {
@@ -929,6 +1057,166 @@ async function runSqlJsonFromDb(dbPath, sql) {
 async function runSqlJson(sql) {
   const { stateDb } = codexPaths((await refreshCodexHomeContext()).home);
   return runSqlJsonFromDb(stateDb, sql);
+}
+
+const STATUS_STATES = new Set(["running", "waiting", "ended"]);
+
+function normalizeStatusState(value) {
+  const state = String(value || "").trim().toLowerCase();
+  return STATUS_STATES.has(state) ? state : "";
+}
+
+async function threadStatusColumns(dbPath) {
+  const now = Date.now();
+  if (threadStatusColumnsCache?.dbPath === dbPath && now - threadStatusColumnsCache.checkedAt < 30_000) {
+    return threadStatusColumnsCache.columns;
+  }
+  let columns = new Set();
+  try {
+    const rows = await runSqlJsonFromDb(dbPath, "PRAGMA table_info(threads);");
+    columns = new Set(rows.map((row) => String(row?.name || "").toLowerCase()).filter(Boolean));
+  } catch {
+    // A missing or unreadable state database is handled by the caller.
+  }
+  threadStatusColumnsCache = { dbPath, columns, checkedAt: now };
+  return columns;
+}
+
+function threadStatusSelectSql(columns) {
+  const has = (name) => Boolean(columns?.has?.(name));
+  return [
+    has("status_state") ? "threads.status_state AS statusState" : "NULL AS statusState",
+    has("status_turn_id") ? "threads.status_turn_id AS statusTurnId" : "NULL AS statusTurnId",
+    has("status_started_ms") ? "threads.status_started_ms AS statusStartedMs" : "NULL AS statusStartedMs",
+    has("status_updated_ms") ? "threads.status_updated_ms AS statusUpdatedMs" : "NULL AS statusUpdatedMs"
+  ].join(", ");
+}
+
+function statusFieldsFromOverride(record) {
+  const thinking = record.state === "running" || record.state === "waiting";
+  return {
+    state: record.state,
+    thinking,
+    interactionRequired: record.state === "waiting",
+    turnId: record.turnId || null,
+    startedAtMs: Number.isFinite(record.startedAtMs) ? record.startedAtMs : null,
+    statusSource: record.source
+  };
+}
+
+function adapterStatusOverrideFor(threadId, now = Date.now()) {
+  const key = String(threadId || "").trim();
+  if (!key) return null;
+  const entry = adapterStatusOverrides.get(key);
+  if (!entry) return null;
+  if (entry.expiresAtMs <= now) {
+    adapterStatusOverrides.delete(key);
+    return null;
+  }
+  return entry;
+}
+
+function statusOverrideFromRow(row, now = Date.now()) {
+  const state = normalizeStatusState(row?.statusState);
+  if (!state) return null;
+  const updatedAtMs = Number(row?.statusUpdatedMs);
+  if (!Number.isFinite(updatedAtMs) || updatedAtMs <= 0) return null;
+  if (now - updatedAtMs > STATUS_OVERRIDE_MAX_AGE_MS) return null;
+  // Reject absurd future timestamps from a clock-skewed adapter, but allow a
+  // few minutes so a small skew does not make a fresh status disappear.
+  if (updatedAtMs - now > 5 * 60 * 1000) return null;
+  const startedAtMs = Number(row?.statusStartedMs);
+  return {
+    threadId: String(row?.id || ""),
+    state,
+    turnId: row?.statusTurnId ? String(row.statusTurnId) : null,
+    startedAtMs: Number.isFinite(startedAtMs) && startedAtMs > 0 ? startedAtMs : null,
+    updatedAtMs,
+    expiresAtMs: updatedAtMs + STATUS_OVERRIDE_MAX_AGE_MS,
+    source: "db"
+  };
+}
+
+function statusOverrideForThread(threadId, row = null, now = Date.now()) {
+  return adapterStatusOverrideFor(threadId, now) || statusOverrideFromRow(row, now);
+}
+
+function setAdapterStatusOverride(threadId, { state, turnId = null, startedAtMs = null, ttlMs = null } = {}) {
+  const id = String(threadId || "").trim();
+  const normalized = normalizeStatusState(state);
+  if (!id) {
+    const error = new Error("threadId is required");
+    error.status = 400;
+    throw error;
+  }
+  if (!normalized) {
+    const error = new Error("state must be one of running, waiting, ended");
+    error.status = 400;
+    throw error;
+  }
+  const now = Date.now();
+  const requestedTtl = Number(ttlMs);
+  const effectiveTtl = Number.isFinite(requestedTtl) && requestedTtl > 0
+    ? Math.min(Math.max(Math.floor(requestedTtl), 1000), 24 * 60 * 60 * 1000)
+    : STATUS_OVERRIDE_MAX_AGE_MS;
+  const started = Number(startedAtMs);
+  const record = {
+    threadId: id,
+    state: normalized,
+    turnId: turnId ? String(turnId) : null,
+    startedAtMs: Number.isFinite(started) && started > 0 ? started : null,
+    updatedAtMs: now,
+    expiresAtMs: now + effectiveTtl,
+    source: "adapter"
+  };
+  adapterStatusOverrides.set(id, record);
+  clearThreadsCache();
+  return record;
+}
+
+function clearAdapterStatusOverride(threadId) {
+  const id = String(threadId || "").trim();
+  if (!id) return false;
+  const removed = adapterStatusOverrides.delete(id);
+  if (removed) clearThreadsCache();
+  return removed;
+}
+
+function activeAdapterStatusOverrides(now = Date.now()) {
+  const entries = [];
+  for (const [threadId, record] of adapterStatusOverrides) {
+    if (record.expiresAtMs <= now) {
+      adapterStatusOverrides.delete(threadId);
+      continue;
+    }
+    entries.push({ ...record });
+  }
+  return entries.sort((left, right) => right.updatedAtMs - left.updatedAtMs);
+}
+
+function logRolloutIssue(threadId, reason) {
+  const id = String(threadId || "").trim() || "(unknown)";
+  const message = String(reason || "unknown error");
+  const key = `${id}|${message}`;
+  const now = Date.now();
+  const lastLoggedAt = rolloutIssueLogState.get(key) || 0;
+  if (now - lastLoggedAt < 5 * 60 * 1000) return;
+  if (rolloutIssueLogState.size > 500) {
+    for (const [oldKey, oldAt] of rolloutIssueLogState) {
+      if (now - oldAt > 10 * 60 * 1000) rolloutIssueLogState.delete(oldKey);
+    }
+  }
+  rolloutIssueLogState.set(key, now);
+  logWarning(`[threads] thread ${id} skipped: ${message}`);
+}
+
+function safeResolveRolloutPath(rolloutPath, threadId = "") {
+  try {
+    return resolveRolloutPath(rolloutPath);
+  } catch (error) {
+    logRolloutIssue(threadId, error?.message || String(error));
+    return null;
+  }
 }
 
 async function readJsonBody(req, limit = 128 * 1024) {
@@ -1944,8 +2232,8 @@ async function readSessionRolloutPathsForThread(threadId) {
   ]
     .filter((row) => row.id === id)
     .sort((a, b) => a.mtimeMs - b.mtimeMs);
-  const fallback = rows.length ? [] : [resolveRolloutPath((await findThreadRowFallback(id))?.rolloutPath)].filter(Boolean);
-  return [...new Set([...rows.map((row) => resolveRolloutPath(row.rolloutPath)), ...fallback])];
+  const fallback = rows.length ? [] : [safeResolveRolloutPath((await findThreadRowFallback(id))?.rolloutPath, id)].filter(Boolean);
+  return [...new Set([...rows.map((row) => safeResolveRolloutPath(row.rolloutPath, id)), ...fallback].filter(Boolean))];
 }
 
 async function findThreadRowFallback(id) {
@@ -2093,23 +2381,158 @@ async function readGlobalProjectState() {
   }
 }
 
+async function parseThreadListStatus(rolloutPath, nowMs) {
+  let stat = null;
+  try {
+    stat = await fs.stat(rolloutPath);
+  } catch {
+    return null;
+  }
+  const cached = threadStatusParseCache.get(rolloutPath);
+  if (
+    cached &&
+    cached.size === stat.size &&
+    cached.mtimeMs === stat.mtimeMs &&
+    nowMs - cached.cachedAtMs < THREADS_STATUS_CACHE_MS
+  ) {
+    return cached.status;
+  }
+  const parsed = await parseRollout(rolloutPath, { limit: 1, preferTail: true });
+  const status = {
+    state: parsed.status?.thinking ? "running" : parsed.status?.interactionRequired ? "waiting" : "ended",
+    thinking: Boolean(parsed.status?.thinking),
+    interactionRequired: Boolean(parsed.status?.interactionRequired),
+    turnId: parsed.status?.turnId || null,
+    startedAtMs: parsed.status?.startedAtMs || null
+  };
+  threadStatusParseCache.set(rolloutPath, {
+    size: stat.size,
+    mtimeMs: stat.mtimeMs,
+    cachedAtMs: nowMs,
+    status
+  });
+  if (threadStatusParseCache.size > 500) {
+    const cutoff = nowMs - 5 * 60 * 1000;
+    for (const [filePath, entry] of threadStatusParseCache) {
+      if (entry.cachedAtMs < cutoff) threadStatusParseCache.delete(filePath);
+    }
+  }
+  return status;
+}
+
 async function threadListStatus(row) {
-  const rolloutPath = resolveRolloutPath(row?.rolloutPath);
+  const now = Date.now();
+  const override = statusOverrideForThread(row?.id, row, now);
+  if (override) return statusFieldsFromOverride(override);
+  const rolloutPath = safeResolveRolloutPath(row?.rolloutPath, row?.id);
   if (!rolloutPath || !existsSync(rolloutPath)) {
     return { state: "unknown", thinking: false, interactionRequired: false };
   }
   try {
-    const parsed = await parseRollout(rolloutPath, { limit: 1, preferTail: true });
-    return {
-      state: parsed.status?.thinking ? "running" : parsed.status?.interactionRequired ? "waiting" : "ended",
-      thinking: Boolean(parsed.status?.thinking),
-      interactionRequired: Boolean(parsed.status?.interactionRequired),
-      turnId: parsed.status?.turnId || null,
-      startedAtMs: parsed.status?.startedAtMs || null
+    return (await parseThreadListStatus(rolloutPath, now)) || {
+      state: "unknown",
+      thinking: false,
+      interactionRequired: false
     };
-  } catch {
+  } catch (error) {
+    logRolloutIssue(row?.id, error?.message || String(error));
     return { state: "unknown", thinking: false, interactionRequired: false };
   }
+}
+
+async function mapWithConcurrency(items, limit, mapper) {
+  const results = new Array(items.length);
+  let nextIndex = 0;
+  const workerCount = Math.max(1, Math.min(Math.floor(limit) || 1, items.length));
+  const workers = Array.from({ length: workerCount }, async () => {
+    while (true) {
+      const index = nextIndex;
+      nextIndex += 1;
+      if (index >= items.length) return;
+      results[index] = await mapper(items[index], index);
+    }
+  });
+  await Promise.all(workers);
+  return results;
+}
+
+async function buildThreadDiagnostics() {
+  const homeState = await refreshCodexHomeContext({ force: true, source: "diagnostics" });
+  const { home, stateDb } = codexPaths(homeState.home);
+  const statusColumns = existsSync(stateDb) ? await threadStatusColumns(stateDb) : new Set();
+  let rows = [];
+  let stateDbError = null;
+  if (existsSync(stateDb)) {
+    try {
+      rows = await runSqlJsonFromDb(
+        stateDb,
+        `SELECT id, title, rollout_path AS rolloutPath, archived, updated_at_ms AS updatedAtMs
+         FROM threads
+         ORDER BY updated_at_ms DESC
+         LIMIT 1000;`
+      );
+    } catch (error) {
+      stateDbError = error?.message || String(error);
+    }
+  } else {
+    stateDbError = "state_5.sqlite is missing";
+  }
+
+  const missing = [];
+  const outsideHome = [];
+  for (const row of rows) {
+    const id = String(row.id || "");
+    const rolloutPath = row.rolloutPath ? String(row.rolloutPath) : "";
+    if (!rolloutPath) {
+      missing.push({ id, reason: "empty" });
+      continue;
+    }
+    try {
+      const resolved = resolveRolloutPath(rolloutPath);
+      if (!resolved || !existsSync(resolved)) {
+        missing.push({ id, rolloutPath, resolvedPath: resolved || null, reason: "not-found" });
+      }
+    } catch (error) {
+      outsideHome.push({ id, rolloutPath, reason: error?.message || String(error) });
+    }
+  }
+  const overrides = activeAdapterStatusOverrides();
+  const cachedAt = threadsCache?.cachedAt || 0;
+  return {
+    ok: true,
+    codexHome: home,
+    codexHomeVersion: homeState.version,
+    threads: {
+      total: rows.length,
+      archived: rows.filter((row) => isArchivedThread(row)).length,
+      statusColumns: [...statusColumns].filter((name) => name.startsWith("status_")).sort()
+    },
+    rolloutIssues: {
+      missingCount: missing.length,
+      outsideHomeCount: outsideHome.length,
+      missing: missing.slice(0, 100),
+      outsideHome: outsideHome.slice(0, 100),
+      truncated: missing.length > 100 || outsideHome.length > 100
+    },
+    adapterStatus: {
+      count: overrides.length,
+      overrides
+    },
+    sqlite: sqliteDriverInfo(),
+    caches: {
+      threadsCachedAt: cachedAt ? new Date(cachedAt).toISOString() : null,
+      threadsCacheAgeMs: cachedAt ? Date.now() - cachedAt : null,
+      messageEntries: messageCache.size,
+      statusEntries: threadStatusParseCache.size
+    },
+    settings: {
+      activeTurnStaleMinutes: ACTIVE_TURN_STALE_MS / 60_000,
+      statusMaxAgeMinutes: STATUS_OVERRIDE_MAX_AGE_MS / 60_000,
+      threadsStatusCacheMs: THREADS_STATUS_CACHE_MS,
+      threadsStatusParallelism: THREADS_STATUS_PARALLELISM
+    },
+    stateDbError
+  };
 }
 
 function isArchivedThread(row) {
@@ -2169,7 +2592,9 @@ async function getThreads({ preserveIds = [] } = {}) {
 }
 
 async function loadThreadsUncached({ preserveIds = [], preserveKey = "" } = {}) {
+  const cacheGeneration = threadsCacheGeneration;
   const { stateDb, sessionIndex } = codexPaths((await refreshCodexHomeContext()).home);
+  const statusColumns = existsSync(stateDb) ? await threadStatusColumns(stateDb) : new Set();
   const currentRolloutPaths = await readSessionRolloutPathMap();
   const projectRootsByPath = await readProjectRoots();
   const globalProjects = await readGlobalProjectState();
@@ -2200,7 +2625,8 @@ async function loadThreadsUncached({ preserveIds = [], preserveKey = "" } = {}) 
                EXISTS (SELECT 1 FROM thread_spawn_edges tse WHERE tse.child_thread_id = threads.id) AS hasSpawnParent,
                threads.is_pinned AS isPinned, threads.thread_section_id AS threadSectionId,
                thread_sections.name AS sectionName, threads.section_position AS sectionPosition,
-               threads.project_id AS projectId, projects.name AS projectName
+               threads.project_id AS projectId, projects.name AS projectName,
+               ${threadStatusSelectSql(statusColumns)}
         FROM threads
         LEFT JOIN thread_sections ON thread_sections.id = threads.thread_section_id
         LEFT JOIN projects ON projects.id = threads.project_id
@@ -2219,6 +2645,10 @@ async function loadThreadsUncached({ preserveIds = [], preserveKey = "" } = {}) 
         preview: row.preview || "",
         cwd: row.cwd || "",
         model: row.model || "",
+        statusState: row.statusState || "",
+        statusTurnId: row.statusTurnId || null,
+        statusStartedMs: row.statusStartedMs ?? null,
+        statusUpdatedMs: row.statusUpdatedMs ?? null,
          ...threadListMetadata(row, projectRootsByPath, globalProjects)
       }));
       // With a live Desktop state database, it is authoritative for sidebar
@@ -2234,16 +2664,18 @@ async function loadThreadsUncached({ preserveIds = [], preserveKey = "" } = {}) 
         ...threadListMetadata(row, projectRootsByPath, globalProjects)
       }));
     }
-    const statusRows = await Promise.all(value.slice(0, 120).map(async (row) => ({
+    const statusRows = await mapWithConcurrency(value.slice(0, 120), THREADS_STATUS_PARALLELISM, async (row) => ({
       id: row.id,
       status: await threadListStatus(row)
-    })));
+    }));
     const statusById = new Map(statusRows.map((row) => [String(row.id || ""), row.status]));
     value = value.map((row) => ({
       ...row,
       status: statusById.get(String(row.id || "")) || { state: "unknown", thinking: false, interactionRequired: false }
     }));
-    threadsCache = { key: preserveKey, cachedAt: Date.now(), value };
+    if (cacheGeneration === threadsCacheGeneration) {
+      threadsCache = { key: preserveKey, cachedAt: Date.now(), value };
+    }
     return value;
   } catch (error) {
     if (threadsCache?.key === preserveKey && Date.now() - threadsCache.cachedAt < THREADS_STALE_CACHE_MS) {
@@ -2260,8 +2692,11 @@ async function findThread(id) {
     null;
   const sessionIndexTitles = await readSessionIndexTitleMap();
   const currentRolloutPaths = await readSessionRolloutPathMap();
+  const { stateDb } = codexPaths((await refreshCodexHomeContext()).home);
+  const statusColumns = existsSync(stateDb) ? await threadStatusColumns(stateDb) : new Set();
   const rows = await runSqlJson(`
-    SELECT id, title, rollout_path AS rolloutPath, updated_at_ms AS updatedAtMs, cwd
+    SELECT id, title, rollout_path AS rolloutPath, updated_at_ms AS updatedAtMs, cwd,
+           ${threadStatusSelectSql(statusColumns)}
     FROM threads
     WHERE id = '${sqlString(id)}'
     LIMIT 1;
@@ -2304,6 +2739,23 @@ function resolveRolloutPath(rolloutPath) {
   const normalizedHome = path.resolve(home);
   const relative = path.relative(normalizedHome, normalized);
   if (relative === ".." || relative.startsWith(`..${path.sep}`) || path.isAbsolute(relative)) {
+    // A junction/symlinked home (for example C:\Users\<user>\.codex -> D:\codex\.codex) makes a
+    // rollout that really lives inside the home look external. Resolve both sides before
+    // rejecting, so migrated profiles keep working instead of failing the whole thread list.
+    let realHome = null;
+    let realTarget = null;
+    try {
+      realHome = realpathSync(normalizedHome);
+      realTarget = realpathSync(normalized);
+    } catch {
+      // Leave both null and fall through to the rejection below.
+    }
+    if (realHome && realTarget) {
+      const realRelative = path.relative(realHome, realTarget);
+      if (realRelative !== ".." && !realRelative.startsWith(`..${path.sep}`) && !path.isAbsolute(realRelative)) {
+        return realTarget;
+      }
+    }
     throw new Error("Rollout path is outside CODEX_HOME");
   }
   return normalized;
@@ -3180,7 +3632,7 @@ function repairInvalidCustomToolCallIdsInText(text) {
 
 async function repairInvalidCustomToolCallIds(threadId) {
   const thread = await findThread(threadId);
-  const filePath = resolveRolloutPath(thread?.rolloutPath);
+  const filePath = safeResolveRolloutPath(thread?.rolloutPath, threadId);
   if (!filePath || !existsSync(filePath)) return { repaired: 0, filePath: null, backupPath: null };
 
   for (let attempt = 0; attempt < 2; attempt += 1) {
@@ -3491,16 +3943,25 @@ async function getMessages(id, { limit = DEFAULT_MESSAGE_LIMIT, fullHistory = fa
     err.status = 404;
     throw err;
   }
+  const statusOverride = statusOverrideForThread(id, thread);
   const ipcInteractions = codexIpcClient?.getRecentInteractionMessages(id) || [];
   const ipcNotices = codexIpcClient?.getRecentNoticeMessages(id) || [];
   const goal = await getThreadGoalSafe(id);
   const serverNotices = getRecentNoticeMessages(id);
   const liveMessages = [...ipcInteractions, ...ipcNotices, ...serverNotices];
   const rolloutPaths = await readSessionRolloutPathsForThread(id);
-  const rolloutPath = rolloutPaths.at(-1) || resolveRolloutPath(thread.rolloutPath);
+  const rolloutPath = rolloutPaths.at(-1) || safeResolveRolloutPath(thread.rolloutPath, id);
   if (!rolloutPath || !existsSync(rolloutPath)) {
     const messages = await decorateMessageFiles(dedupeInteractionMessages(liveMessages).sort(messageSortCompare), id, thread);
-    const limited = limitMessagesForClient(messages, { thinking: false, interactionRequired: ipcInteractions.some((message) => message.requiresDesktopAction) }, limit, before);
+    const baseStatus = {
+      thinking: false,
+      turnId: null,
+      startedAtMs: null,
+      interactionRequired: ipcInteractions.some((message) => message.requiresDesktopAction),
+      possibleDesktopAttention: false
+    };
+    const status = statusOverride ? { ...baseStatus, ...statusFieldsFromOverride(statusOverride) } : baseStatus;
+    const limited = limitMessagesForClient(messages, status, limit, before);
     return finalizeMessagesResponse(id, {
       thread,
       goal,
@@ -3508,13 +3969,7 @@ async function getMessages(id, { limit = DEFAULT_MESSAGE_LIMIT, fullHistory = fa
       file: null,
       size: 0,
       mtimeMs: 0,
-      status: {
-        thinking: false,
-        turnId: null,
-        startedAtMs: null,
-        interactionRequired: ipcInteractions.some((message) => message.requiresDesktopAction),
-        possibleDesktopAttention: false
-      },
+      status,
       ...limited
     });
   }
@@ -3531,14 +3986,15 @@ async function getMessages(id, { limit = DEFAULT_MESSAGE_LIMIT, fullHistory = fa
     { messages: [], status: { thinking: false, turnId: null, startedAtMs: null } }
   );
   parsed.messages = Array.from(new Map(parsed.messages.map((message) => [clientMessageKey(message), message])).values()).sort(messageSortCompare);
+  const parsedStatus = statusOverride ? { ...parsed.status, ...statusFieldsFromOverride(statusOverride) } : parsed.status;
   if (!liveMessages.length) {
     const messages = await decorateMessageFiles(parsed.messages, id, thread);
-    const limited = limitMessagesForClient(messages, parsed.status, limit, before);
-    return finalizeMessagesResponse(id, { thread, goal, ...parsed, messages, ...includePartialHistoryAvailability(limited, parsed.partial) });
+    const limited = limitMessagesForClient(messages, parsedStatus, limit, before);
+    return finalizeMessagesResponse(id, { thread, goal, ...parsed, status: parsedStatus, messages, ...includePartialHistoryAvailability(limited, parsed.partial) });
   }
   const status = {
-    ...parsed.status,
-    interactionRequired: parsed.status?.interactionRequired || ipcInteractions.some((message) => message.requiresDesktopAction)
+    ...parsedStatus,
+    interactionRequired: parsedStatus?.interactionRequired || ipcInteractions.some((message) => message.requiresDesktopAction)
   };
   const messages = await decorateMessageFiles(dedupeInteractionMessages([...parsed.messages, ...liveMessages]).sort(messageSortCompare), id, thread);
   const limited = limitMessagesForClient(messages, status, limit, before);
@@ -3554,6 +4010,7 @@ async function getMessages(id, { limit = DEFAULT_MESSAGE_LIMIT, fullHistory = fa
 async function threadChangeSignature(id) {
   const thread = await findThread(id);
   if (!thread) return "";
+  const statusOverride = statusOverrideForThread(id, thread);
   const paths = await readSessionRolloutPathsForThread(id);
   const files = [];
   for (const filePath of paths) {
@@ -3568,6 +4025,7 @@ async function threadChangeSignature(id) {
   return JSON.stringify({
     updatedAtMs: thread.updatedAtMs || 0,
     files,
+    statusOverride: statusOverride ? `${statusOverride.state}:${statusOverride.updatedAtMs}` : "",
     queueLength: queue.queueLength,
     deliveryStates: queue.queuedMessages.map((item) => `${item.id}:${item.deliveryState}`)
   });
@@ -3789,6 +4247,18 @@ async function newestModelCatalogPath(home) {
   return candidates[0]?.filePath || "";
 }
 
+function logModelFallback(error) {
+  const key = String(error?.message || error || "unknown error");
+  const now = Date.now();
+  if (modelFallbackLogState.key === key && now - modelFallbackLogState.at < 10 * 60 * 1000) {
+    modelFallbackLogState.suppressed += 1;
+    return;
+  }
+  const suppressed = modelFallbackLogState.suppressed;
+  logError(`[models] Using fallback model list: ${key}${suppressed ? ` (suppressed ${suppressed} similar)` : ""}`);
+  modelFallbackLogState = { key, at: now, suppressed: 0 };
+}
+
 async function loadCodexModelConfiguration(home = codexHomeState.home) {
   const resolvedHome = path.resolve(home);
   const configPath = path.join(resolvedHome, "config.toml");
@@ -3831,7 +4301,7 @@ async function loadCodexModelConfiguration(home = codexHomeState.home) {
     const configuration = fallbackModelConfiguration();
     activeModelConfiguration = configuration;
     modelConfigurationCache = null;
-    logError(`[models] Using fallback model list: ${error?.message || error}`);
+    logModelFallback(error);
     return configuration;
   }
 }
@@ -4992,13 +5462,14 @@ async function startNewCodexThread(text, turnSettings) {
 function startNewCodexThreadViaAppServer(text) {
   return new Promise((resolve, reject) => {
     const { home } = codexPaths();
-    const child = spawn(CODEX_CLI, ["debug", "app-server", "send-message-v2", text], {
+    const child = spawnHidden(CODEX_CLI, ["debug", "app-server", "send-message-v2", text], {
       cwd: process.cwd(),
       env: {
         ...process.env,
         CODEX_HOME: home
       },
-      stdio: ["ignore", "pipe", "pipe"]
+      stdio: ["ignore", "pipe", "pipe"],
+      windowsHide: true
     });
     let stdout = "";
     let stderr = "";
@@ -5088,18 +5559,13 @@ function firstRegexGroup(text, regex) {
 }
 
 async function openCodexUrl(url) {
-  await new Promise((resolve, reject) => {
-    const command = process.platform === "win32" ? "rundll32.exe" : "open";
-    const args = process.platform === "win32"
-      ? ["url.dll,FileProtocolHandler", url]
-      : String(url || "").startsWith("codex://")
-        ? ["-b", "com.openai.codex", url]
-        : [url];
-    execFile(command, args, (error) => {
-      if (error) reject(error);
-      else resolve();
-    });
-  });
+  const command = process.platform === "win32" ? "rundll32.exe" : "open";
+  const args = process.platform === "win32"
+    ? ["url.dll,FileProtocolHandler", url]
+    : String(url || "").startsWith("codex://")
+      ? ["-b", "com.openai.codex", url]
+      : [url];
+  await execFileHidden(command, args);
 }
 
 function isNoOpenOwnerError(error) {
@@ -5769,6 +6235,9 @@ const server = http.createServer(async (req, res) => {
         codexIpcSocket: CODEX_IPC_SOCKET,
         authRequired: AUTH_REQUIRED,
         allowWrite: ALLOW_WRITE,
+        activeTurnStaleMinutes: ACTIVE_TURN_STALE_MS / 60_000,
+        statusMaxAgeMinutes: STATUS_OVERRIDE_MAX_AGE_MS / 60_000,
+        sqliteDriver: sqliteDriverInfo(),
         models: modelConfiguration.models,
         defaultModel: modelConfiguration.defaultModel,
         defaultEffort: modelConfiguration.defaultEffort,
@@ -5778,6 +6247,11 @@ const server = http.createServer(async (req, res) => {
         appVersionCode: APP_VERSION_CODE,
         appVersionName: APP_VERSION_NAME
       });
+      return;
+    }
+    if (req.method === "GET" && url.pathname === "/api/admin/diagnostics") {
+      if (!requireAuthorized(req, res, url)) return;
+      sendJson(res, 200, await buildThreadDiagnostics());
       return;
     }
     if (req.method === "GET" && url.pathname === "/api/debug/events") {
@@ -5794,6 +6268,39 @@ const server = http.createServer(async (req, res) => {
         eventCount: codexIpcClient?.events?.length || 0,
         events: codexIpcClient?.rawEvents(url.searchParams.get("limit")) || []
       });
+      return;
+    }
+    if (url.pathname === "/api/adapters/status") {
+      if (!requireAuthorized(req, res, url)) return;
+      if (req.method === "GET") {
+        sendJson(res, 200, { ok: true, overrides: activeAdapterStatusOverrides() });
+        return;
+      }
+      if (req.method === "POST") {
+        const body = await readJsonBody(req);
+        const threadId = body.threadId || body.id || "";
+        if (body.clear === true || String(body.state || "").toLowerCase() === "clear") {
+          sendJson(res, 200, { ok: true, cleared: clearAdapterStatusOverride(threadId) });
+          return;
+        }
+        const record = setAdapterStatusOverride(threadId, {
+          state: body.state,
+          turnId: body.turnId,
+          startedAtMs: body.startedAtMs,
+          ttlMs: body.ttlMs
+        });
+        sendJson(res, 200, {
+          ok: true,
+          status: { ...record, expiresInMs: Math.max(0, record.expiresAtMs - Date.now()) }
+        });
+        return;
+      }
+      if (req.method === "DELETE") {
+        const threadId = url.searchParams.get("threadId") || "";
+        sendJson(res, 200, { ok: true, cleared: clearAdapterStatusOverride(threadId) });
+        return;
+      }
+      sendJson(res, 405, { error: "Method not allowed" });
       return;
     }
     if (req.method === "POST" && url.pathname === "/api/send") {
@@ -5873,11 +6380,25 @@ const server = http.createServer(async (req, res) => {
     if (req.method === "GET" && url.pathname === "/api/threads") {
       if (!requireAuthorized(req, res, url)) return;
       const homeState = await refreshCodexHomeContext({ source: "threads" });
-      sendJson(res, 200, {
-        threads: await getThreads({ preserveIds: [url.searchParams.get("selectedId")] }),
+      const allThreads = await getThreads({ preserveIds: [url.searchParams.get("selectedId")] });
+      const limit = normalizeThreadsLimit(url.searchParams.get("limit"));
+      const page = threadsPage(allThreads, {
+        limit,
+        cursor: url.searchParams.get("cursor")
+      });
+      const body = {
+        threads: page.threads,
+        ...(limit ? { total: page.total, nextCursor: page.nextCursor } : {}),
         codexHome: homeState.home,
         codexHomeVersion: homeState.version
-      });
+      };
+      const etag = weakEtagFor(JSON.stringify(body));
+      if (ifNoneMatchMatches(req.headers["if-none-match"], etag)) {
+        res.writeHead(304, { etag, "cache-control": "private, no-cache" });
+        res.end();
+        return;
+      }
+      sendJson(res, 200, body, { etag, "cache-control": "private, no-cache" });
       return;
     }
     const pinMatch = url.pathname.match(/^\/api\/threads\/([0-9a-fA-F-]{20,})\/pin$/);
@@ -6136,5 +6657,18 @@ export {
   threadListMetadata,
   visibleThreadRows,
   loginUrlFor,
-  staticSecurityHeaders
+  staticSecurityHeaders,
+  buildThreadDiagnostics,
+  ifNoneMatchMatches,
+  normalizeStatusState,
+  normalizeThreadsLimit,
+  sqliteDriverInfo,
+  statusFieldsFromOverride,
+  statusOverrideFromRow,
+  safeResolveRolloutPath,
+  adapterStatusOverrideFor,
+  clearAdapterStatusOverride,
+  setAdapterStatusOverride,
+  threadsPage,
+  weakEtagFor
 };

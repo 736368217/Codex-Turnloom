@@ -3,6 +3,13 @@
 ## Unreleased
 
 - Keep the mobile model and reasoning picker visible above the composer instead of clipping it inside the narrow-screen toolbar.
+- Isolate rollout-path failures per thread: one bad or missing rollout now leaves that thread at `unknown` instead of failing the whole `/api/threads` response, and the new authenticated `/api/admin/diagnostics` endpoint lists every missing or out-of-home rollout for repair.
+- Add an adapter status channel: optional `threads.status_state`, `status_turn_id`, `status_started_ms`, and `status_updated_ms` columns, plus `POST /api/adapters/status` with TTL overrides, so non-Codex backends can report `running`/`waiting`/`ended` directly and avoid rollout inference. `--status-max-age-minutes` controls trust; `--active-turn-stale-minutes` makes the rollout fallback threshold configurable.
+- Prefer `node:sqlite` for state reads with a `sqlite3` CLI fallback (`--sqlite-driver auto|node|cli`), eliminating a child process per database query on modern Node.js.
+- Cache per-file rollout status by `(size, mtimeMs)` and bound status parsing to 12 concurrent files, reducing repeat `/api/threads` scans.
+- Support `?limit=&cursor=` and `ETag`/`304` on `/api/threads`; the web client revalidates cached thread lists instead of downloading them again unchanged.
+- Rate-limit the `[models] Using fallback model list` log so a missing `config.toml` cannot flood the service log.
+- Route every `execFile`/`spawn` call through Windows-hidden helpers, keeping the child-process guard on the SQLite CLI and app-server fallback in one place.
 - Restore mobile sending with Codex Desktop 26.901 by discovering the open conversation owner and routing start/stop retries directly to that Desktop client; keep local follower requests on the local protocol envelope.
 - Open conversations at the latest message even when hydrating from the offline cache, load only the latest 40 messages initially, and fetch older history in bounded pages while preserving the reading position.
 - Redesign the Android computer picker and connected web workspace with a restrained Apple-influenced visual system, clearer computer identity and live connection states, first-use guidance, and a persistent quick-guide entry.
