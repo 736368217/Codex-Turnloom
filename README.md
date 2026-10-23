@@ -157,7 +157,7 @@ npm run desktop:dev
 
 首次启动会打开设置向导，自动检测 Codex 数据目录，设置端口和访问码，并显示手机配对二维码。之后登录 Windows 时控制台会静默驻留托盘；关闭窗口只是最小化，托盘菜单可以启动、停止、重启服务和退出。已有 `install-windows.ps1` 安装的电脑会复用现有配置，不需要重新配对。
 
-桌面端的开发说明、打包和退出语义见 [desktop/README.md](desktop/README.md)。当前版本 `1.16.0` 的发布说明与安装包入口见 [发布说明](docs/RELEASE_NOTES_1.16.0.zh-CN.md) / [GitHub Releases](https://github.com/736368217/Codex-Turnloom/releases/tag/v1.16.0)。
+桌面端的开发说明、打包和退出语义见 [desktop/README.md](desktop/README.md)。当前版本 `1.17.0` 的发布说明与安装包入口见 [发布说明](docs/RELEASE_NOTES_1.17.0.zh-CN.md) / [GitHub Releases](https://github.com/736368217/Codex-Turnloom/releases/tag/v1.17.0)。
 
 完整步骤见 [Windows 多电脑部署](docs/WINDOWS_MULTI_COMPUTER.zh-CN.md)，当前部署约定和故障记录见 [运维说明](docs/OPERATIONS.md)。
 
@@ -207,6 +207,12 @@ node server.js --port 8790 --profiles profiles.json
 ```
 
 不同 token 只能看到各自后端的会话；HTTP 端契约见 [HTTP 后端适配器](docs/HTTP_BACKEND.zh-CN.md)。
+
+### 登录与短时会话
+
+浏览器访问 `/login?token=<访问码>` 会换取一个 8 小时有效的 HttpOnly `turnloom_session` cookie，并 302 到去掉访问码的页面。后续 API 请求使用 cookie；`POST /api/auth/logout` 会立即吊销当前会话。访问码不再需要长期留在 URL query 或 localStorage。
+
+`/api/auth/session` 也支持由 Web 客户端用 `{"token":"..."}` 主动换取 session，适用于旧版 hash 登录链接。
 
 ## Android APP
 

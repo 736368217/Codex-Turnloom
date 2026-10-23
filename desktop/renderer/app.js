@@ -35,6 +35,10 @@
     pairing: null,
     pairingLoading: false,
     pairingError: "",
+    pairingDeviceId: "local",
+    devices: [],
+    deviceStatus: [],
+    deviceBusy: false,
     view: "overview",
     pendingView: "",
     initialReady: false,
@@ -262,7 +266,8 @@
 
   function configPairingKey(config) {
     if (!config) return "";
-    return [config.machineName, config.port, config.publicUrl, config.accessCodeMasked, config.hasAccessCode].join("|");
+    return [config.machineName, config.port, config.publicUrl, config.accessCodeMasked, config.hasAccessCode,
+      (config.extraDevices || []).map((device) => `${device.id}:${device.url}:${device.hasAccessCode}`).join(",")].join("|");
   }
 
   function configUiKey(config) {
@@ -271,12 +276,14 @@
       port: config.port,
       host: config.host,
       codexHome: config.codexHome,
+      ipcSocket: config.ipcSocket,
       publicUrl: config.publicUrl,
       logDir: config.logDir,
       readonly: config.readonly,
       accessCodeMasked: config.accessCodeMasked,
       tunnel: config.tunnel,
-      console: config.console
+      console: config.console,
+      extraDevices: config.extraDevices
     });
   }
 
@@ -857,9 +864,11 @@
     state.pairingError = "";
     renderPairing();
     try {
-      const result = await api.getPairing();
+      const result = await api.getPairing(state.pairingDeviceId);
       if (result && result.ok !== false && result.dataUrl) {
         state.pairing = result;
+        state.devices = result.devices || state.devices;
+        state.pairingDeviceId = result.deviceId || state.pairingDeviceId;
         state.pairingError = "";
       } else {
         state.pairing = null;
@@ -885,6 +894,7 @@
     if (errorEl) errorEl.hidden = loading || !error;
     if (content) content.hidden = loading || Boolean(error) || !data;
     setText($("#pairing-error-text"), error || "请稍后重试。");
+    renderPairingDevices(data?.devices || state.devices);
     const card = $("#pairing-card");
     if (card) card.setAttribute("aria-busy", String(loading));
     const stateTag = $("#pairing-state-tag");
@@ -898,12 +908,43 @@
     }
     const image = $("#pairing-image");
     if (image) image.src = data.dataUrl;
-    setText($("#pairing-machine"), data.machineName || state.config?.machineName || "这台电脑");
+    setText($("#pairing-machine"), data.deviceName || data.machineName || state.config?.machineName || "这台电脑");
     setTextWithTitle($("#pairing-url"), data.url || "—", data.url || "");
     setTextWithTitle($("#pairing-lan"), data.lanUrl || "—", data.lanUrl || "");
     setTextWithTitle($("#pairing-public"), data.publicUrl || "未配置", data.publicUrl || "");
     setText($("#pairing-code"), data.accessCode || "—");
     renderOverviewPairing(data);
+  }
+
+  function renderPairingDevices(devices) {
+    const box = $("#pairing-devices");
+    if (!box) return;
+    if (Array.isArray(devices)) state.devices = devices;
+    box.replaceChildren();
+    if (state.devices.length <= 1) {
+      box.hidden = true;
+      return;
+    }
+    box.hidden = false;
+    for (const device of state.devices) {
+      const button = document.createElement("button");
+      button.type = "button";
+      button.className = "device-tab";
+      button.setAttribute("role", "tab");
+      button.setAttribute("aria-selected", String(device.id === state.pairingDeviceId));
+      const status = state.deviceStatus.find((item) => item.id === device.id);
+      const dot = document.createElement("span");
+      dot.className = `dot ${status ? (status.online ? "ok" : "err") : ""}`;
+      const label = document.createElement("span");
+      label.textContent = device.name;
+      button.append(dot, label);
+      button.addEventListener("click", () => {
+        if (state.pairingDeviceId === device.id) return;
+        state.pairingDeviceId = device.id;
+        loadPairing({ force: true });
+      });
+      box.appendChild(button);
+    }
   }
 
   function renderOverviewPairing(data) {
@@ -1272,6 +1313,7 @@
     $("#btn-open-config")?.addEventListener("click", () => openPathSafe("config", "配置目录"));
     $("#btn-settings-open-logs")?.addEventListener("click", () => openPathSafe("logs", "日志目录"));
     $("#btn-settings-export-logs")?.addEventListener("click", exportLogs);
+    bindDevicesCard();
 
     $$("#settings-form [data-setting]").forEach((control) => {
       control.addEventListener("input", () => onSettingChanged(control));
@@ -1389,6 +1431,7 @@
     setInputValue("#set-port", values.port);
     setInputValue("#set-host", values.host);
     setInputValue("#set-codex-home", values.codexHome);
+    setInputValue("#set-ipc-socket", values.ipcSocket);
     setInputValue("#set-public-url", values.publicUrl);
     setInputValue("#set-tunnel-host", values.tunnel.host);
     setInputValue("#set-tunnel-user", values.tunnel.user);
@@ -1410,6 +1453,7 @@
     state.themePreview = false;
     clearFieldErrors();
     updateSettingsDirty();
+    renderDevicesCard(config);
   }
 
   function setInputValue(selector, value) {
@@ -1418,6 +1462,182 @@
     const stringValue = value == null ? "" : String(value);
     if (element.tagName === "SELECT" && !Array.from(element.options).some((option) => option.value === stringValue)) return;
     element.value = stringValue;
+  }
+
+  function renderDevicesCard(config) {
+    const list = $("#extra-devices-list");
+    if (!list) return;
+    const devices = config?.extraDevices || [];
+    list.replaceChildren();
+    if (!devices.length) {
+      const empty = document.createElement("div");
+      empty.className = "device-row";
+      const meta = document.createElement("div");
+      meta.className = "meta";
+      const name = document.createElement("div");
+      name.className = "name";
+      name.textContent = "还没有添加其他设备";
+      const tip = document.createElement("div");
+      tip.className = "url";
+      tip.textContent = "连接 PI-Desktop 时，点右侧「检测 PI-Desktop 桥」";
+      meta.append(name, tip);
+      empty.appendChild(meta);
+      list.appendChild(empty);
+      return;
+    }
+    for (const device of devices) {
+      const status = state.deviceStatus.find((item) => item.id === device.id);
+      const row = document.createElement("div");
+      row.className = "device-row";
+      const meta = document.createElement("div");
+      meta.className = "meta";
+      const name = document.createElement("div");
+      name.className = "name";
+      name.textContent = device.name;
+      const url = document.createElement("div");
+      url.className = "url";
+      url.textContent = device.url;
+      meta.append(name, url);
+      const tag = document.createElement("span");
+      tag.className = `tag ${status ? (status.online ? "ok" : "err") : "muted"}`;
+      tag.textContent = status
+        ? (status.online ? `${status.threadCount ?? "?"} 个会话` : "离线")
+        : "未检测";
+      const actions = document.createElement("div");
+      actions.className = "actions";
+      const probe = document.createElement("button");
+      probe.type = "button";
+      probe.className = "btn sm";
+      probe.textContent = "检测";
+      probe.addEventListener("click", () => probeDevices());
+      const remove = document.createElement("button");
+      remove.type = "button";
+      remove.className = "btn sm ghost";
+      remove.textContent = "移除";
+      remove.addEventListener("click", () => removeDevice(device));
+      actions.append(probe, remove);
+      row.append(meta, tag, actions);
+      list.appendChild(row);
+    }
+  }
+
+  async function probeDevices() {
+    if (state.deviceBusy) return;
+    state.deviceBusy = true;
+    try {
+      const result = await api.probeDevices();
+      if (result?.ok) {
+        state.deviceStatus = result.devices || [];
+        renderDevicesCard(state.config);
+        if (state.view === "pairing") renderPairingDevices(state.devices);
+        const local = state.deviceStatus.find((item) => item.isLocal);
+        showToast(local?.online ? "本机服务正常" : "本机服务未响应", local?.online ? "success" : "error", 2200);
+      }
+    } catch (error) {
+      showToast(`检测失败：${error?.message || error}`, "error");
+    } finally {
+      state.deviceBusy = false;
+    }
+  }
+
+  async function addExtraDevice() {
+    if (state.deviceBusy) return;
+    const name = $("#extra-device-name")?.value.trim() || "";
+    const url = $("#extra-device-url")?.value.trim() || "";
+    const accessCode = $("#extra-device-code")?.value.trim() || "";
+    if (!name || !url || !accessCode) {
+      showToast("名称、地址和访问码都要填写。", "error", 3200);
+      return;
+    }
+    state.deviceBusy = true;
+    try {
+      const result = await api.addDevice({ name, url, accessCode });
+      if (!result?.ok) {
+        showToast(result?.error || "添加设备失败。", "error", 4000);
+        return;
+      }
+      if (result.config) {
+        state.config = result.config;
+        renderSettings(result.config, true);
+      }
+      ["#extra-device-name", "#extra-device-url", "#extra-device-code"].forEach((selector) => {
+        const input = $(selector);
+        if (input) input.value = "";
+      });
+      invalidatePairing({ reload: false });
+      showToast("设备已添加，可在配对页生成二维码。", "success", 3200);
+      probeDevices();
+    } catch (error) {
+      showToast(`添加设备失败：${error?.message || error}`, "error");
+    } finally {
+      state.deviceBusy = false;
+    }
+  }
+
+  async function removeDevice(device) {
+    if (state.deviceBusy) return;
+    state.deviceBusy = true;
+    try {
+      const result = await api.removeDevice(device.id);
+      if (!result?.ok) {
+        showToast(result?.error || "移除设备失败。", "error", 4000);
+        return;
+      }
+      if (result.config) {
+        state.config = result.config;
+        renderSettings(result.config, true);
+      }
+      state.deviceStatus = state.deviceStatus.filter((item) => item.id !== device.id);
+      if (state.pairingDeviceId === device.id) state.pairingDeviceId = "local";
+      invalidatePairing({ reload: state.view === "pairing" });
+      showToast(`已移除 ${device.name}`, "success", 2400);
+    } catch (error) {
+      showToast(`移除设备失败：${error?.message || error}`, "error");
+    } finally {
+      state.deviceBusy = false;
+    }
+  }
+
+  async function detectBridge() {
+    if (state.deviceBusy) return;
+    state.deviceBusy = true;
+    const hint = $("#extra-device-hint");
+    try {
+      const result = await api.detectBridge();
+      if (hint) {
+        hint.hidden = false;
+        hint.className = `device-hint ${result?.ready ? "ok" : ""}`;
+        hint.textContent = result?.facade
+          ? `检测到 PI-Desktop 门面：${result.home}；8799 ${result.listening ? "在监听" : "未监听"}；IPC 管道 ${result.pipeReady ? "已就绪" : "未就绪（PI 插件未加载）"}。`
+          : "未检测到 PI-Desktop 桥（缺少 ~/.pidesktop-turnloom/state_5.sqlite）。";
+      }
+      if (result?.facade) {
+        const nameInput = $("#extra-device-name");
+        const urlInput = $("#extra-device-url");
+        if (nameInput && !nameInput.value.trim()) nameInput.value = result.name || "PI-Desktop";
+        if (urlInput && !urlInput.value.trim()) urlInput.value = result.url || "";
+      }
+    } catch (error) {
+      if (hint) {
+        hint.hidden = false;
+        hint.className = "device-hint err";
+        hint.textContent = `检测失败：${error?.message || error}`;
+      }
+    } finally {
+      state.deviceBusy = false;
+    }
+  }
+
+  function bindDevicesCard() {
+    $("#btn-add-extra-device")?.addEventListener("click", addExtraDevice);
+    $("#btn-detect-bridge")?.addEventListener("click", detectBridge);
+    ["#extra-device-name", "#extra-device-url", "#extra-device-code"].forEach((selector) => {
+      $(selector)?.addEventListener("keydown", (event) => {
+        if (event.key !== "Enter") return;
+        event.preventDefault();
+        addExtraDevice();
+      });
+    });
   }
 
   function configToSettingsValues(config) {
@@ -1430,6 +1650,7 @@
       port: String(config.port ?? ""),
       host: config.host || "",
       codexHome: config.codexHome || "",
+      ipcSocket: config.ipcSocket || "",
       readonly: Boolean(config.readonly),
       publicUrl: config.publicUrl || "",
       tunnel: {
@@ -1459,6 +1680,7 @@
       port: value("set-port"),
       host: value("set-host"),
       codexHome: value("set-codex-home"),
+      ipcSocket: value("set-ipc-socket"),
       readonly: isToggleOn($("#set-readonly")),
       publicUrl: value("set-public-url"),
       tunnel: {
@@ -1484,6 +1706,7 @@
       port: values.port,
       host: values.host,
       codexHome: values.codexHome,
+      ipcSocket: values.ipcSocket,
       readonly: String(values.readonly),
       publicUrl: values.publicUrl,
       "tunnel.enabled": String(values.tunnel.enabled),
@@ -1545,6 +1768,9 @@
     }
     if (!values.host) errors.push({ field: "host", message: "监听地址不能为空。" });
     if (!values.codexHome) errors.push({ field: "codexHome", message: "请选择 Codex 数据目录。" });
+    if (values.ipcSocket && !/^\\\\\.\\pipe\\[^\\]+$/i.test(values.ipcSocket)) {
+      errors.push({ field: "ipcSocket", message: "IPC 管道需写成 \\\\.\\pipe\\名称 的形式。" });
+    }
     if (values.publicUrl && !/^https?:\/\/\S+$/i.test(values.publicUrl)) {
       errors.push({ field: "publicUrl", message: "公网地址需以 http:// 或 https:// 开头。" });
     }
@@ -1575,6 +1801,7 @@
       host: values.host,
       port: Number(values.port),
       codexHome: values.codexHome,
+      ipcSocket: values.ipcSocket,
       readonly: values.readonly,
       publicUrl: values.publicUrl,
       logDir: values.logDir,

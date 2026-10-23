@@ -8,6 +8,7 @@ function healthSummary(data) {
   return {
     ok: Boolean(data.ok),
     codexHome: data.codexHome || "",
+    ipcSocket: data.codexIpcSocket || "",
     allowWrite: Boolean(data.allowWrite),
     authRequired: Boolean(data.authRequired),
     sqliteDriver: data.sqliteDriver || null,
@@ -175,6 +176,7 @@ class ServiceController extends EventEmitter {
       "--password", this.config.accessCode,
       "--codex-home", this.config.codexHome
     ];
+    if (this.config.ipcSocket) args.push("--ipc-socket", this.config.ipcSocket);
     if (this.config.publicUrl) args.push("--public-url", this.config.publicUrl);
     if (this.config.readonly) args.push("--readonly");
 

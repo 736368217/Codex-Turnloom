@@ -20,12 +20,15 @@ const {
   logDirFor,
   urlsFor,
   maskAccessCode,
+  normalizeExtraDevices,
+  slugifyDeviceId,
+  lanAddress,
   APP_DIR
 } = require("./service/config.cjs");
 const { LogBuffer } = require("./service/logger.cjs");
 const { RuntimeManager } = require("./service/runtime.cjs");
-const { generatePairing, savePairingPng } = require("./service/pairing.cjs");
-const { checkDebugEvents, checkThreads } = require("./service/health.cjs");
+const { generatePairing, savePairingPng, listPairingTargets } = require("./service/pairing.cjs");
+const { checkDebugEvents, checkThreads, requestJson } = require("./service/health.cjs");
 const { stopLegacySupervisor } = require("./service/legacy.cjs");
 
 const APP_ID = "com.codex.turnloom.console";
@@ -629,7 +632,7 @@ function registerIpc() {
     try {
       next = saveConfig(next);
       configState.config = next;
-      logger.setSecrets([next.accessCode]);
+      logger.setSecrets([next.accessCode, ...(next.extraDevices || []).map((device) => device.accessCode)]);
       runtime.setConfig(next);
       applyTheme(next.console?.theme || "system");
       applyLoginItem(next);
@@ -644,27 +647,146 @@ function registerIpc() {
 
   ipcMain.handle("config:autoStart", async (_event, enabled) => setAutoStart(Boolean(enabled)));
 
-  ipcMain.handle("pairing:get", async () => {
+  ipcMain.handle("pairing:get", async (_event, deviceId = "local") => {
     if (!currentConfig()) return { ok: false, error: "尚未完成初始设置。" };
     try {
-      const pairing = await generatePairing(currentConfig());
-      return { ok: true, ...pairing, accessCodeMasked: maskAccessCode(currentConfig().accessCode) };
+      const config = currentConfig();
+      const pairing = await generatePairing(config, deviceId);
+      return { ok: true, ...pairing, accessCodeMasked: maskAccessCode(config.accessCode) };
     } catch (error) {
       return { ok: false, error: error.message };
     }
   });
 
-  ipcMain.handle("pairing:save", async () => {
+  ipcMain.handle("pairing:save", async (_event, deviceId = "local") => {
     if (!currentConfig()) return { ok: false };
     const win = mainWindow && !mainWindow.isDestroyed() ? mainWindow : null;
+    const config = currentConfig();
+    const target = listPairingTargets(config).find((item) => item.id === deviceId);
+    const safeName = String(target?.name || config.machineName || "device").replace(/[\\/:*?"<>|]/g, "-");
     const result = await dialog.showSaveDialog(win, {
       title: "保存配对二维码",
-      defaultPath: `Codex-Turnloom-${currentConfig().machineName || "device"}.png`,
+      defaultPath: `Codex-Turnloom-${safeName}.png`,
       filters: [{ name: "PNG 图片", extensions: ["png"] }]
     });
     if (result.canceled || !result.filePath) return { ok: false, canceled: true };
-    await savePairingPng(currentConfig(), result.filePath);
+    await savePairingPng(config, result.filePath, deviceId);
     return { ok: true, filePath: result.filePath };
+  });
+
+  ipcMain.handle("devices:list", async () => {
+    const config = currentConfig();
+    return {
+      ok: Boolean(config),
+      devices: listPairingTargets(config || {}),
+      extraDevices: publicConfig(config)?.extraDevices || []
+    };
+  });
+
+  ipcMain.handle("devices:add", async (_event, input = {}) => {
+    const config = currentConfig();
+    if (!config) return { ok: false, error: "尚未完成初始设置。" };
+    const name = String(input.name || "").trim();
+    const url = String(input.url || "").trim().replace(/\/+$/, "");
+    const accessCode = String(input.accessCode || "").trim();
+    if (!name || !url || !accessCode) return { ok: false, error: "名称、地址和访问码都要填写。" };
+    if (!/^https?:\/\/\S+$/i.test(url)) return { ok: false, error: "地址需以 http:// 或 https:// 开头。" };
+    const next = mergeConfig(config, {
+      extraDevices: [
+        ...(config.extraDevices || []),
+        {
+          id: slugifyDeviceId(input.id || name, `device-${(config.extraDevices || []).length + 1}`),
+          name,
+          url,
+          accessCode,
+          kind: String(input.kind || "turnloom")
+        }
+      ]
+    });
+    const errors = validateConfig(next);
+    if (errors.length) return { ok: false, errors, error: errors[0].message };
+    try {
+      const saved = saveConfig(next);
+      configState.config = saved;
+      logger?.setSecrets([saved.accessCode, ...(saved.extraDevices || []).map((device) => device.accessCode)]);
+      sendState();
+      return { ok: true, config: publicConfig(saved) };
+    } catch (error) {
+      return { ok: false, error: error.message };
+    }
+  });
+
+  ipcMain.handle("devices:remove", async (_event, id) => {
+    const config = currentConfig();
+    if (!config) return { ok: false, error: "尚未完成初始设置。" };
+    const targetId = String(id || "");
+    const next = mergeConfig(config, {
+      extraDevices: (config.extraDevices || []).filter((device) => device.id !== targetId)
+    });
+    try {
+      const saved = saveConfig(next);
+      configState.config = saved;
+      sendState();
+      return { ok: true, config: publicConfig(saved) };
+    } catch (error) {
+      return { ok: false, error: error.message };
+    }
+  });
+
+  ipcMain.handle("devices:probe", async () => {
+    const config = currentConfig();
+    if (!config) return { ok: false, devices: [] };
+    const targets = listPairingTargets(config);
+    const results = await Promise.all(targets.map(async (target) => {
+      const device = target.isLocal ? null : (config.extraDevices || []).find((item) => item.id === target.id);
+      const token = target.isLocal ? config.accessCode : device?.accessCode || "";
+      const base = target.isLocal ? `http://127.0.0.1:${Number(config.port) || 8787}` : target.url;
+      const health = await requestJson(`${base}/api/health`, { token, timeoutMs: 2500 });
+      let threadCount = null;
+      if (health.ok) {
+        const threads = await requestJson(`${base}/api/threads?limit=1`, { token, timeoutMs: 4000 });
+        if (threads.ok && threads.data) {
+          threadCount = Number.isFinite(Number(threads.data.total))
+            ? Number(threads.data.total)
+            : Array.isArray(threads.data.threads) ? threads.data.threads.length : null;
+        }
+      }
+      return {
+        id: target.id,
+        name: target.name,
+        isLocal: target.isLocal,
+        online: Boolean(health.ok && health.data?.ok !== false),
+        status: health.status || 0,
+        latencyMs: health.latencyMs || 0,
+        version: health.data?.appVersionName || "",
+        threadCount,
+        error: health.ok ? "" : health.error || `HTTP ${health.status || 0}`
+      };
+    }));
+    return { ok: true, devices: results, at: Date.now() };
+  });
+
+  ipcMain.handle("devices:detect", async () => {
+    const home = path.join(os.homedir(), ".pidesktop-turnloom");
+    const stateDb = path.join(home, "state_5.sqlite");
+    const pipePath = "\\\\.\\pipe\\pidesktop-codex-ipc";
+    const facade = fs.existsSync(stateDb);
+    const pipeReady = process.platform === "win32" ? fs.existsSync(pipePath) : false;
+    const port = 8799;
+    const probe = await requestJson(`http://127.0.0.1:${port}/api/health`, { timeoutMs: 1500 });
+    const listening = probe.status > 0;
+    return {
+      ok: true,
+      name: "PI-Desktop",
+      home,
+      ipcSocket: pipePath,
+      port,
+      url: `http://${lanAddress()}:${port}`,
+      facade,
+      pipeReady,
+      listening,
+      ready: facade && listening && pipeReady
+    };
   });
 
   ipcMain.handle("logs:export", async () => {
@@ -740,6 +862,7 @@ function registerIpc() {
         port: Number(input.port) || 8787,
         accessCode: input.accessCode || generateAccessCode(),
         publicUrl: input.publicUrl || "",
+        extraDevices: Array.isArray(input.extraDevices) ? input.extraDevices : [],
         console: {
           autoStart: Boolean(input.autoStart),
           startMinimized: Boolean(input.startMinimized),
