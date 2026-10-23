@@ -3,6 +3,17 @@
 const path = require("node:path");
 const { spawn } = require("node:child_process");
 const { EventEmitter } = require("node:events");
+function healthSummary(data) {
+  if (!data) return null;
+  return {
+    ok: Boolean(data.ok),
+    codexHome: data.codexHome || "",
+    allowWrite: Boolean(data.allowWrite),
+    authRequired: Boolean(data.authRequired),
+    sqliteDriver: data.sqliteDriver || null,
+    appVersionName: data.appVersionName || ""
+  };
+}
 const { splitLines } = require("./logger.cjs");
 const { checkHealth, checkPortAvailable, findPortOwner, getProcessMetrics, execFileAsync } = require("./health.cjs");
 
@@ -127,7 +138,7 @@ class ServiceController extends EventEmitter {
         latencyMs: healthy.latencyMs || 0,
         ipcConnected: this.health.ipcConnected || false,
         ipcCheckedAt: this.health.ipcCheckedAt || null,
-        info: healthy.data || null
+        info: healthSummary(healthy.data)
       };
       this.restartAttempt = 0;
       this.healthFailures = 0;
@@ -235,7 +246,7 @@ class ServiceController extends EventEmitter {
     const result = await checkHealth(this.config, { timeoutMs: 2500 });
     this.health.lastCheckAt = Date.now();
     this.health.latencyMs = result.latencyMs || 0;
-    this.health.info = result.data || this.health.info;
+    this.health.info = healthSummary(result.data) || this.health.info;
     if (result.ok) {
       this.healthFailures = 0;
       this.health.ok = true;

@@ -10,7 +10,13 @@
   <body>
     <div id="authGate" class="auth-gate" hidden>
       <form id="authForm" class="auth-card">
-        <img class="auth-mark" src="/assets/companion-mark.svg" alt="" />
+        <div class="auth-head">
+          <img class="auth-mark" src="/assets/companion-mark.svg" alt="" />
+          <span id="authHostPill" class="status-pill online">
+            <span class="status-pill-dot" aria-hidden="true"></span>
+            <span id="authHostPillLabel">这台电脑 · 在线</span>
+          </span>
+        </div>
         <span class="auth-eyebrow">PRIVATE MOBILE WORKSPACE</span>
         <h2>Codex-Turnloom</h2>
         <p>连接这台电脑，继续查看和控制正在运行的 Codex。</p>
@@ -97,7 +103,7 @@
           <div class="conversation-actions">
             <label class="toggle">
               <input id="toolToggle" type="checkbox" />
-              <span id="toolToggleLabel" aria-hidden="true">🔧</span>
+              <span id="toolToggleLabel"><svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true" focusable="false" stroke="currentColor" stroke-width="1.9" fill="none" stroke-linecap="round" stroke-linejoin="round"><path d="m14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"></path></svg></span>
             </label>
             <button id="refreshButton" class="icon-button refresh-button" type="button" title="刷新" aria-label="刷新">
               <svg viewBox="0 0 24 24" aria-hidden="true">
@@ -155,6 +161,14 @@
             </div>
             <div id="queueStatusList" class="queue-status-list"></div>
           </div>
+          <div id="followUpMode" class="follow-up-mode" role="group" aria-label="运行中发送方式" hidden>
+            <span id="followUpLabel" class="follow-up-label">发送方式</span>
+            <div class="follow-up-mode-buttons">
+              <button class="follow-up-mode-button active" type="button" data-follow-up-mode="queue">排队（完成后发）</button>
+              <button class="follow-up-mode-button" type="button" data-follow-up-mode="steer">插入（立即打断）</button>
+            </div>
+          </div>
+          <div class="composer-pod">
           <textarea
             id="composerInput"
             class="composer-input"
@@ -230,10 +244,6 @@
                   <span class="plugin-picker-label">技能</span>
                 </button>
               </div>
-              <div id="followUpMode" class="follow-up-mode" role="group" aria-label="运行中发送方式" hidden>
-                <button class="follow-up-mode-button" type="button" data-follow-up-mode="queue">排队</button>
-                <button class="follow-up-mode-button" type="button" data-follow-up-mode="steer">插入</button>
-              </div>
             </div>
             <div class="composer-buttons">
               <button id="attachButton" class="icon-button attach-button" type="button" title="添加图片" aria-label="添加图片">+</button>
@@ -252,6 +262,7 @@
                 <span aria-hidden="true"></span>
               </button>
             </div>
+          </div>
           </div>
           <span id="sendStatus" class="send-status" aria-live="polite"></span>
         </form>

@@ -13,8 +13,8 @@ $escapedRoot = [regex]::Escape($repoRoot)
 Get-CimInstance Win32_Process -Filter "Name = 'electron.exe'" -ErrorAction SilentlyContinue | ForEach-Object {
   $commandLine = [string]$_.CommandLine
   if ($commandLine -match $escapedRoot -and $commandLine -match "--hidden") {
-    Stop-Process -Id ([int]$_.ProcessId) -Force -ErrorAction SilentlyContinue
-    Write-Output ("Stopped console process: " + $_.ProcessId)
+    & taskkill.exe /PID ([int]$_.ProcessId) /T /F 2>$null | Out-Null
+    Write-Output ("Stopped console process tree: " + $_.ProcessId)
   }
 }
 

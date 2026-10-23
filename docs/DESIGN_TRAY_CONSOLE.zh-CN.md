@@ -231,7 +231,7 @@ Codex-Turnloom 控制台
 
 1. **全局状态区**：状态点 + 文案 + 运行时长 + 内存 + PID；“显示配对二维码 / 在浏览器中预览 / 复制访问地址”三个高频动作。
 2. **连接信息**：局域网地址、公网地址、访问码（默认掩码）、Codex 数据目录；每个都可一键复制或打开。
-3. **手机配对**：常驻一个小二维码和访问码，方便临时给新手机配对；“保存二维码/复制配对信息”不必先打开大图。
+3. **手机配对**：按需加载的小二维码和访问码，首次点开需要一次生成请求；避免访问码长期停留在渲染进程里。
 4. **最近活动**：读取 `/api/threads?limit=4` 的最近任务，显示运行中、等待处理、已结束、状态未知；点击可在浏览器预览中打开对应任务（协议不支持深链时复制任务 ID）。
 5. **侧边栏**：概览 / 手机配对 / 运行日志 / 设置 / 关于；底部常驻“开机自动启动”开关和版本号。
 
@@ -448,8 +448,8 @@ Codex-Turnloom 控制台（Electron 主进程，单实例）
 - 开始菜单快捷方式；桌面快捷方式可选。
 - 开机自启用 `app.setLoginItemSettings({ openAtLogin: true, args: ['--hidden'] })`；失败时回退到 HKCU `Run` 键。
 - 卸载默认保留配置和日志；卸载向导提供“同时删除本地配置和日志”复选框。
-- 安装包内附带图标 `build/icon.ico`（由现有 `turnloom-logo.png` / `companion-mark.svg` 生成多尺寸 ICO）。
-- **运行负载打包（需在 M1 验证）**：安装包内置 `server.js`、`public/` 和生产依赖，放在 `resources/server/`；`config.repoRoot` 默认指向该目录。开发模式仍可指向 git checkout。若 Electron 内置 Node 无法直接运行 `server.js`（项目使用 `node:sqlite`，需确认 Electron 版本支持），安装包附带精简 `node.exe` 到 `resources/runtime/`，约增加 25–35 MB。
+- 安装包内附带图标 `desktop/assets/app.ico`（由现有 `turnloom-logo.png` / `companion-mark.svg` 生成多尺寸 ICO）。
+- **运行负载打包**：`electron-builder` 使用 `asar: false`，`server.js`、`public/` 和生产依赖随 `resources/app` 一起安装，`config.repoRoot` 默认指向该目录。当前 v1 复用系统 `node.exe`（与现有安装一致）；如果目标电脑没有 Node，需要把精简版 `node.exe` 放到 `resources/runtime/` 并在启动逻辑中指向它。
 - **代码签名**：未签名安装包首次运行会触发 SmartScreen；内部使用可接受，正式分发前建议配置代码签名证书。
 
 ### 7.5 从现有安装迁移

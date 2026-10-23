@@ -1,5 +1,17 @@
 # Changelog
 
+## 1.16.0
+
+- Ship the Loom Studio V2 mobile redesign: cool-slate surfaces (`#F4F5F8`), white cards and a single action blue (`#0066CC`) replace every legacy teal and warm-gray token.
+- Put a semantic status pill in front of the conversation header (`思考中 · 01:18` / `待确认权限` / `已结束`) and show the same pill plus elapsed time on every conversation row.
+- Replace the solid-blue wrench emoji toggle with a 40dp line-icon button; the enabled state is a soft blue tile with a 6px accent dot, so the send button keeps the only solid-blue focus.
+- Rebuild the composer as one 16dp unified pod, move the running send mode to its own full-width strip with explicit `排队（完成后发）` / `插入（立即打断）` labels, and keep the model, plugin and skill capsules on one line from 360dp to 430dp.
+- Turn permission requests into a security decision card: white body, 4px red top bar, monospace path sandbox and three 44dp anti-mispress buttons (允许本次 / 始终允许 / 拒绝) with bilingual sub-labels.
+- Restyle the queued-message panel to a light-blue card with white queue rows and an accent `⚡ 插入` action, and trim message metadata to one lightweight eyebrow line that hides the redundant “已发送” status.
+- Give tool records a compact single-line step card, and refine the access gate (22dp card, 24px single-line brand title, online host pill) plus a 338dp drawer with 12dp conversation rows.
+- Upgrade the Android computer picker to standalone 16dp device cards with 44dp icon tiles, online/offline/detecting status pills and monospace host addresses.
+- Bump the mobile app to `1.16.0` (`versionCode` 20) and archive the V2 design package under `docs/mobile-design-v2/`.
+
 ## Unreleased
 
 - Keep the mobile model and reasoning picker visible above the composer instead of clipping it inside the narrow-screen toolbar.

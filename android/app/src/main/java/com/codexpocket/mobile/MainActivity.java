@@ -20,6 +20,7 @@ import android.os.Environment;
 import android.security.keystore.KeyGenParameterSpec;
 import android.security.keystore.KeyProperties;
 import android.text.InputType;
+import android.text.TextUtils;
 import android.util.Base64;
 import android.view.Gravity;
 import android.view.View;
@@ -73,8 +74,8 @@ import javax.crypto.SecretKey;
 import javax.crypto.spec.GCMParameterSpec;
 
 public class MainActivity extends ComponentActivity {
-    private static final int APP_VERSION_CODE = 19;
-    private static final String APP_VERSION_NAME = "1.15.0";
+    private static final int APP_VERSION_CODE = 20;
+    private static final String APP_VERSION_NAME = "1.16.0";
     private static final String PREFS = "codex_pocket";
     private static final String DEVICES_KEY = "devices";
     private static final String KEY_ALIAS = "codex-pocket-device-store";
@@ -84,14 +85,23 @@ public class MainActivity extends ComponentActivity {
     private static final String ONBOARDING_KEY = "turnloom_onboarding_seen_v1";
     private static final int NOTIFICATION_PERMISSION_REQUEST = 7102;
 
-    private static final int INK = Color.rgb(29, 29, 31);
-    private static final int MUTED = Color.rgb(110, 110, 115);
-    private static final int PAPER = Color.rgb(245, 245, 247);
-    private static final int LINE = Color.rgb(224, 224, 229);
+    private static final int INK = Color.rgb(17, 24, 39);
+    private static final int MUTED = Color.rgb(107, 114, 128);
+    private static final int TEXT_SECONDARY = Color.rgb(75, 85, 99);
+    private static final int PAPER = Color.rgb(244, 245, 248);
+    private static final int LINE = Color.rgb(226, 229, 236);
     private static final int ACCENT = Color.rgb(0, 102, 204);
     private static final int ACCENT_SOFT = Color.rgb(232, 242, 255);
-    private static final int ONLINE = Color.rgb(34, 139, 84);
-    private static final int OFFLINE = Color.rgb(181, 55, 55);
+    private static final int ACCENT_BORDER = Color.rgb(194, 220, 255);
+    private static final int ONLINE = Color.rgb(22, 163, 74);
+    private static final int ONLINE_SOFT = Color.rgb(220, 252, 231);
+    private static final int ONLINE_TEXT = Color.rgb(21, 128, 61);
+    private static final int OFFLINE = Color.rgb(220, 38, 38);
+    private static final int OFFLINE_SOFT = Color.rgb(254, 226, 226);
+    private static final int OFFLINE_TEXT = Color.rgb(185, 28, 28);
+    private static final int PENDING = Color.rgb(100, 116, 139);
+    private static final int PENDING_SOFT = Color.rgb(241, 245, 249);
+    private static final int PENDING_TEXT = Color.rgb(71, 85, 105);
 
     private final List<Device> devices = new ArrayList<>();
     private final Map<String, Boolean> deviceStatus = new HashMap<>();
@@ -249,7 +259,7 @@ public class MainActivity extends ComponentActivity {
         appBar.setGravity(Gravity.CENTER_VERTICAL);
         appBar.setPadding(dp(18), dp(8), dp(10), dp(8));
         appBar.setBackgroundColor(Color.WHITE);
-        TextView title = label("Codex-Turnloom", 19, INK);
+        TextView title = label("Codex-Turnloom", 18, INK);
         title.setTypeface(Typeface.DEFAULT, Typeface.BOLD);
         appBar.addView(title, new LinearLayout.LayoutParams(0, dp(48), 1));
         appBar.addView(headerButton("?", "打开使用指引", v -> showWelcomeGuide(false)), new LinearLayout.LayoutParams(dp(44), dp(44)));
@@ -264,10 +274,10 @@ public class MainActivity extends ComponentActivity {
         page.setPadding(dp(18), dp(24), dp(18), dp(28));
         scroll.addView(page, new ScrollView.LayoutParams(-1, -2));
 
-        TextView heading = label(devices.isEmpty() ? "连接你的电脑" : "选择电脑", 28, INK);
+        TextView heading = label(devices.isEmpty() ? "连接你的第一台电脑" : "选择工作台电脑", 25, INK);
         heading.setTypeface(Typeface.DEFAULT, Typeface.BOLD);
         page.addView(heading);
-        TextView subtitle = label(devices.isEmpty() ? "扫描电脑上显示的设备码，即可把正在运行的 Codex 延续到手机。" : "选择一台电脑，继续它上面的 Codex 会话。", 15, MUTED);
+        TextView subtitle = label(devices.isEmpty() ? "扫描电脑上显示的设备码，即可把正在运行的 Codex 延续到手机。" : "选择一台电脑，继续它上面的 Codex 会话。", 14, MUTED);
         subtitle.setLineSpacing(0, 1.15f);
         subtitle.setPadding(0, dp(6), 0, dp(22));
         page.addView(subtitle);
@@ -277,7 +287,7 @@ public class MainActivity extends ComponentActivity {
         if (devices.isEmpty()) {
             list.setGravity(Gravity.CENTER_HORIZONTAL);
             list.setPadding(dp(22), dp(26), dp(22), dp(24));
-            list.setBackground(rounded(Color.WHITE, 1, LINE, 12));
+            list.setBackground(rounded(Color.WHITE, 1, LINE, 22));
             TextView mark = label("◎", 40, ACCENT);
             mark.setGravity(Gravity.CENTER);
             list.addView(mark, new LinearLayout.LayoutParams(-1, dp(54)));
@@ -297,13 +307,13 @@ public class MainActivity extends ComponentActivity {
             manualParams.setMargins(0, dp(10), 0, 0);
             list.addView(manual, manualParams);
         } else {
-            list.setBackground(rounded(Color.WHITE, 1, LINE, 12));
+            list.setBackgroundColor(Color.TRANSPARENT);
             for (int i = 0; i < devices.size(); i++) addDeviceRow(list, devices.get(i), i, i == devices.size() - 1);
         }
         page.addView(list, new LinearLayout.LayoutParams(-1, -2));
 
         if (!devices.isEmpty()) {
-            TextView sectionTitle = label("添加另一台电脑", 14, INK);
+            TextView sectionTitle = label("添加另一台电脑", 13, INK);
             sectionTitle.setTypeface(Typeface.DEFAULT, Typeface.BOLD);
             sectionTitle.setPadding(dp(2), dp(24), 0, dp(10));
             page.addView(sectionTitle);
@@ -319,7 +329,7 @@ public class MainActivity extends ComponentActivity {
             page.addView(actions);
         }
 
-        TextView localNote = label("电脑信息与访问码只保存在这台手机上。", 12, MUTED);
+        TextView localNote = label("🔒 无需云端账号 · 电脑信息与访问码只保存在这台手机上", 11, MUTED);
         localNote.setGravity(Gravity.CENTER);
         localNote.setPadding(dp(2), dp(22), dp(2), 0);
         page.addView(localNote);
@@ -330,54 +340,79 @@ public class MainActivity extends ComponentActivity {
     }
 
     private void addDeviceRow(LinearLayout list, Device device, int index, boolean last) {
-        LinearLayout row = new LinearLayout(this);
-        row.setGravity(Gravity.CENTER_VERTICAL);
-        row.setPadding(dp(16), dp(12), dp(8), dp(12));
-        int rowHeight = device.note.isEmpty() ? 82 : 98;
-        row.setMinimumHeight(dp(rowHeight));
-        row.setClickable(true);
-        row.setFocusable(true);
-        row.setBackgroundColor(Color.TRANSPARENT);
-        row.setOnClickListener(v -> openDevice(device));
+        Boolean state = deviceStatus.get(device.url);
+        boolean online = Boolean.TRUE.equals(state);
+        boolean pending = state == null;
 
-        TextView dot = label("●", 12, statusColor(device));
-        dot.setTag("status:" + device.url);
-        dot.setGravity(Gravity.TOP);
-        row.addView(dot, new LinearLayout.LayoutParams(dp(22), dp(48)));
+        LinearLayout card = new LinearLayout(this);
+        card.setOrientation(LinearLayout.VERTICAL);
+        card.setPadding(dp(14), dp(12), dp(10), dp(12));
+        card.setBackground(rounded(Color.WHITE, online ? 2 : 1, online ? ACCENT_BORDER : LINE, 16));
+        card.setClickable(true);
+        card.setFocusable(true);
+        card.setOnClickListener(v -> openDevice(device));
+
+        LinearLayout header = new LinearLayout(this);
+        header.setGravity(Gravity.CENTER_VERTICAL);
+
+        TextView icon = label("▣", 18, online ? ACCENT : pending ? PENDING_TEXT : MUTED);
+        icon.setGravity(Gravity.CENTER);
+        icon.setBackground(rounded(online ? ACCENT_SOFT : PENDING_SOFT, 0, 0, 12));
+        header.addView(icon, new LinearLayout.LayoutParams(dp(44), dp(44)));
 
         LinearLayout copy = new LinearLayout(this);
         copy.setOrientation(LinearLayout.VERTICAL);
-        TextView name = label(device.name, 17, INK);
+        TextView name = label(device.name, 16, INK);
         name.setTypeface(Typeface.DEFAULT, Typeface.BOLD);
         name.setMaxLines(1);
+        name.setEllipsize(TextUtils.TruncateAt.END);
         copy.addView(name);
         if (!device.note.isEmpty()) {
-            TextView note = label(device.note, 13, INK);
+            TextView note = label(device.note, 12, TEXT_SECONDARY);
             note.setMaxLines(1);
+            note.setEllipsize(TextUtils.TruncateAt.END);
             copy.addView(note);
         }
-        String status = deviceStatus.get(device.url) == null ? "正在检测" : Boolean.TRUE.equals(deviceStatus.get(device.url)) ? "在线" : "离线";
-        TextView address = label(status + " · " + displayAddress(device.url), 12, MUTED);
-        address.setTag("status-copy:" + device.url);
+        TextView address = label(displayAddress(device.url), 11, MUTED);
+        address.setTypeface(Typeface.MONOSPACE);
         address.setMaxLines(1);
+        address.setEllipsize(TextUtils.TruncateAt.END);
         copy.addView(address);
-        row.addView(copy, new LinearLayout.LayoutParams(0, -2, 1));
+        LinearLayout.LayoutParams copyParams = new LinearLayout.LayoutParams(0, -2, 1);
+        copyParams.setMargins(dp(11), 0, dp(8), 0);
+        header.addView(copy, copyParams);
 
-        TextView arrow = label("›", 26, MUTED);
-        arrow.setGravity(Gravity.CENTER);
-        row.addView(arrow, new LinearLayout.LayoutParams(dp(32), dp(48)));
+        TextView pill = label(statusLabel(state), 10, statusTextColor(state));
+        pill.setTag("status-pill:" + device.url);
+        pill.setGravity(Gravity.CENTER);
+        pill.setSingleLine(true);
+        pill.setBackground(rounded(statusSoftColor(state), 0, 0, 24));
+        pill.setPadding(dp(9), dp(2), dp(9), dp(2));
+        header.addView(pill, new LinearLayout.LayoutParams(-2, -2));
+
         Button menu = iconButton("⋮", "管理这台电脑", v -> showDeviceMenu(v, index));
         menu.setTextColor(MUTED);
-        row.addView(menu, new LinearLayout.LayoutParams(dp(44), dp(48)));
-        list.addView(row, new LinearLayout.LayoutParams(-1, dp(rowHeight)));
+        header.addView(menu, new LinearLayout.LayoutParams(dp(40), dp(40)));
+        card.addView(header, new LinearLayout.LayoutParams(-1, -2));
 
-        if (!last) {
-            View divider = new View(this);
-            divider.setBackgroundColor(LINE);
-            LinearLayout.LayoutParams line = new LinearLayout.LayoutParams(-1, dp(1));
-            line.setMargins(dp(54), 0, 0, 0);
-            list.addView(divider, line);
-        }
+        LinearLayout.LayoutParams cardParams = new LinearLayout.LayoutParams(-1, -2);
+        cardParams.setMargins(0, 0, 0, last ? 0 : dp(11));
+        list.addView(card, cardParams);
+    }
+
+    private String statusLabel(Boolean online) {
+        if (online == null) return "● 正在检测";
+        return online ? "● 在线" : "● 离线";
+    }
+
+    private int statusTextColor(Boolean online) {
+        if (online == null) return PENDING_TEXT;
+        return online ? ONLINE_TEXT : OFFLINE_TEXT;
+    }
+
+    private int statusSoftColor(Boolean online) {
+        if (online == null) return PENDING_SOFT;
+        return online ? ONLINE_SOFT : OFFLINE_SOFT;
     }
 
     private void showDeviceMenu(View anchor, int index) {
@@ -643,11 +678,12 @@ public class MainActivity extends ComponentActivity {
             runOnUiThread(() -> {
                 if (activeDevice != null || root.getChildCount() == 0) return;
                 deviceStatus.put(device.url, value);
-                View dot = currentList.findViewWithTag("status:" + device.url);
-                if (dot instanceof TextView) ((TextView) dot).setTextColor(value ? ONLINE : OFFLINE);
-                View copy = currentList.findViewWithTag("status-copy:" + device.url);
-                if (copy instanceof TextView) {
-                    ((TextView) copy).setText((value ? "在线" : "离线") + " · " + displayAddress(device.url));
+                View pill = currentList.findViewWithTag("status-pill:" + device.url);
+                if (pill instanceof TextView) {
+                    TextView statusView = (TextView) pill;
+                    statusView.setText(statusLabel(value));
+                    statusView.setTextColor(statusTextColor(value));
+                    statusView.setBackground(rounded(statusSoftColor(value), 0, 0, 24));
                 }
                 if (value && healthResult != null) maybeOfferUpdate(device, healthResult);
             });
@@ -867,11 +903,6 @@ public class MainActivity extends ComponentActivity {
         drawable.setCornerRadius(dp(radiusDp));
         if (strokeWidth > 0) drawable.setStroke(dp(strokeWidth), stroke);
         return drawable;
-    }
-
-    private int statusColor(Device device) {
-        Boolean online = deviceStatus.get(device.url);
-        return online == null ? Color.rgb(170, 178, 186) : online ? ONLINE : OFFLINE;
     }
 
     private String displayAddress(String value) {

@@ -1,0 +1,490 @@
+/* ==========================================================================
+   Codex-Turnloom Mobile Workspace · V2 Stylesheet (Loom Studio)
+   Version: 2.0.0 (2026-10-23)
+   Compatible with existing DOM IDs & classes in public/index.html
+   ========================================================================== */
+
+:root {
+  color-scheme: light;
+  /* Base surfaces & text */
+  --bg: #F4F5F8;
+  --panel: #FFFFFF;
+  --panel-soft: #EEF0F5;
+  --panel-muted: #E6E9F0;
+  --border: #E2E5EC;
+  --border-subtle: rgba(15, 23, 42, 0.07);
+  --text: #111827;
+  --text-secondary: #4B5563;
+  --muted: #6B7280;
+  --placeholder: #9CA3AF;
+
+  /* Single Action Accent (Electric Blue) */
+  --accent: #0066CC;
+  --accent-pressed: #0052A3;
+  --accent-soft: #E8F2FF;
+  --accent-border: #C2DCFF;
+  --focus-ring: rgba(0, 102, 204, 0.14);
+
+  /* Message & Semantic Surfaces */
+  --user: #E8F2FF;
+  --user-border: #D0E4FF;
+  --assistant: #FFFFFF;
+  --tool: #FFFFFF;
+  --notice: #FFFBEB;
+  --notice-border: #FDE68A;
+  --interaction: #FFFFFF;
+  --interaction-border: #FCA5A5;
+
+  /* Semantic Status Colors */
+  --online: #16A34A;
+  --online-soft: #DCFCE7;
+  --online-text: #15803D;
+  --offline: #DC2626;
+  --offline-soft: #FEE2E2;
+  --offline-text: #B91C1C;
+  --running: #D97706;
+  --running-soft: #FEF3C7;
+  --running-text: #B45309;
+  --waiting: #DC2626;
+  --waiting-soft: #FEE2E2;
+  --waiting-text: #B91C1C;
+
+  /* 4-Tier Radii */
+  --radius-sm: 8px;
+  --radius-md: 12px;
+  --radius-lg: 16px;
+  --radius-pill: 999px;
+
+  /* Shadows */
+  --shadow-sm: 0 2px 8px rgba(15, 23, 42, 0.04);
+  --shadow: 0 6px 20px rgba(15, 23, 42, 0.06);
+  --shadow-pod: 0 4px 14px rgba(15, 23, 42, 0.05);
+  --shadow-dialog: 0 20px 48px rgba(15, 23, 42, 0.16);
+  --shadow-drawer: 16px 0 40px rgba(15, 23, 42, 0.18);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root.theme-auto {
+    color-scheme: dark;
+    --bg: #0B0F17;
+    --panel: #161C28;
+    --panel-soft: #1E2636;
+    --border: #2A3447;
+    --text: #F3F4F6;
+    --text-secondary: #D1D5DB;
+    --muted: #9CA3AF;
+    --accent: #3B82F6;
+    --accent-soft: rgba(59, 130, 246, 0.18);
+    --accent-border: rgba(59, 130, 246, 0.35);
+    --user: #172B4D;
+    --assistant: #161C28;
+  }
+}
+
+* {
+  box-sizing: border-box;
+  -webkit-tap-highlight-color: transparent;
+}
+
+body {
+  margin: 0;
+  min-height: 100dvh;
+  overflow: hidden;
+  background: var(--bg);
+  color: var(--text);
+  font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont,
+               "Segoe UI", "PingFang SC", "Noto Sans CJK SC", "Microsoft YaHei", sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+button, input, textarea, select {
+  font: inherit;
+}
+
+/* 1. Auth Gate (S06) */
+.auth-gate {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  display: grid;
+  place-items: center;
+  background: radial-gradient(circle at 50% 20%, #E8F2FF 0%, #F4F5F8 65%);
+  padding: 20px;
+}
+.auth-gate[hidden] { display: none; }
+
+.auth-card {
+  display: grid;
+  width: min(100%, 360px);
+  gap: 14px;
+  border: 1px solid var(--border);
+  border-radius: 22px;
+  background: var(--panel);
+  box-shadow: var(--shadow-dialog);
+  padding: 26px 24px 24px;
+}
+.auth-mark {
+  width: 48px;
+  height: 48px;
+  border-radius: 12px;
+}
+.auth-eyebrow {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  color: var(--accent);
+}
+.auth-card h2 {
+  margin: 0;
+  font-size: 24px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  white-space: nowrap;
+  color: var(--text);
+}
+.auth-card p {
+  margin: 0;
+  color: var(--text-secondary);
+  font-size: 13.5px;
+  line-height: 1.5;
+}
+.auth-input-wrap { position: relative; }
+.auth-input {
+  width: 100%;
+  height: 50px;
+  border: 1.5px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--panel);
+  color: var(--text);
+  padding: 0 46px 0 14px;
+  font-size: 15px;
+  outline: none;
+  transition: border-color 140ms ease, box-shadow 140ms ease;
+}
+.auth-input:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--focus-ring);
+}
+.auth-button {
+  height: 48px;
+  border: 0;
+  border-radius: var(--radius-pill);
+  background: var(--accent);
+  color: #FFFFFF;
+  font-size: 15px;
+  font-weight: 700;
+  cursor: pointer;
+  box-shadow: 0 6px 16px rgba(0, 102, 204, 0.24);
+}
+.auth-button:active { background: var(--accent-pressed); }
+
+/* 2. Conversation Header & Status Pill (S08) */
+.conversation-header {
+  position: sticky;
+  top: 0;
+  z-index: 15;
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 8px 14px 10px 58px;
+  background: rgba(255, 255, 255, 0.94);
+  backdrop-filter: saturate(180%) blur(16px);
+  border-bottom: 1px solid var(--border);
+}
+.drawer-tab {
+  position: fixed;
+  top: 8px;
+  left: 10px;
+  z-index: 16;
+  width: 40px;
+  height: 40px;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border-subtle);
+  background: var(--panel-soft);
+  color: var(--text);
+  display: grid;
+  place-items: center;
+}
+.conversation-title h2 {
+  margin: 0;
+  font-size: 16.5px;
+  font-weight: 700;
+  color: var(--text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+#threadMeta {
+  margin: 3px 0 0;
+  font-size: 11.5px;
+  color: var(--muted);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  white-space: nowrap;
+}
+.status-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 22px;
+  padding: 0 8px;
+  border-radius: var(--radius-pill);
+  font-size: 11px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+.status-pill.running { background: var(--running-soft); color: var(--running-text); }
+.status-pill.waiting { background: var(--waiting-soft); color: var(--waiting-text); }
+.status-pill.online  { background: var(--online-soft);  color: var(--online-text); }
+
+/* Tool Toggle & Refresh Button (De-emphasized so Send button stays primary) */
+.conversation-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.toggle input { display: none; }
+.toggle span, .icon-button.refresh-button {
+  width: 40px;
+  height: 40px;
+  border-radius: var(--radius-md);
+  background: var(--panel-soft);
+  border: 1px solid var(--border-subtle);
+  color: var(--text-secondary);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  position: relative;
+}
+.toggle input:checked + span {
+  background: var(--accent-soft);
+  border-color: var(--accent-border);
+  color: var(--accent);
+}
+.toggle input:checked + span::after {
+  content: "";
+  position: absolute;
+  top: 7px;
+  right: 7px;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--accent);
+}
+
+/* Goal Bar V2 */
+.goal-panel {
+  margin-top: 8px;
+  background: #F8FAFC;
+  border: 1px solid #E2E8F0;
+  border-left: 3px solid var(--accent);
+  border-radius: var(--radius-sm);
+  padding: 5px 10px;
+}
+.goal-heading {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12.5px;
+  white-space: nowrap;
+  overflow: hidden;
+}
+#goalLabel {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--accent);
+  background: var(--accent-soft);
+  padding: 1px 6px;
+  border-radius: 4px;
+}
+.goal-status {
+  margin-left: auto;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--accent);
+}
+
+/* 3. Message Stream & Bubbles (S08 / S09) */
+.message-list {
+  padding: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.bubble {
+  padding: 12px 14px;
+  border-radius: var(--radius-lg);
+  font-size: 15px;
+  line-height: 1.5;
+  color: var(--text);
+}
+.bubble.user {
+  background: var(--user);
+  border: 1px solid var(--user-border);
+  border-bottom-right-radius: 6px;
+}
+.bubble.assistant {
+  background: var(--assistant);
+  border: 1px solid var(--border);
+  border-bottom-left-radius: 6px;
+  box-shadow: var(--shadow-sm);
+}
+.bubble.tool {
+  background: var(--tool);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: 10px 12px;
+  font-size: 13.5px;
+}
+
+/* Permission Approval Card V2 (S09) */
+.bubble.interaction {
+  background: #FFFFFF;
+  border: 1.5px solid #FCA5A5;
+  border-top: 4px solid #DC2626;
+  border-radius: var(--radius-lg);
+  padding: 14px 16px;
+  box-shadow: 0 8px 24px rgba(220, 38, 38, 0.08);
+}
+.approval-actions {
+  display: grid;
+  grid-template-columns: 1.2fr 1.2fr 0.9fr;
+  gap: 8px;
+  margin-top: 12px;
+}
+.approval-actions button {
+  height: 44px;
+  border-radius: var(--radius-md);
+  font-size: 13.5px;
+  font-weight: 700;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.approval-actions button.approve-once {
+  background: var(--accent);
+  border: 0;
+  color: #FFFFFF;
+  box-shadow: 0 3px 10px rgba(0, 102, 204, 0.22);
+}
+.approval-actions button.approve-always {
+  background: var(--accent-soft);
+  border: 1px solid var(--accent-border);
+  color: var(--accent);
+}
+.approval-actions button.approve-deny {
+  background: var(--panel-soft);
+  border: 1px solid var(--border);
+  color: #B91C1C;
+}
+
+/* 4. Queue Status Bar & Unified Composer Pod (S10) */
+.composer {
+  padding: 8px 12px max(14px, env(safe-area-inset-bottom));
+  background: rgba(255, 255, 255, 0.94);
+  backdrop-filter: saturate(180%) blur(16px);
+  border-top: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.queue-status-bar {
+  background: #F8FAFC;
+  border: 1px solid var(--accent-border);
+  border-radius: var(--radius-lg);
+  padding: 10px 12px;
+}
+.follow-up-mode {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background: #F8FAFC;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: 5px 8px 5px 10px;
+}
+.follow-up-mode-button {
+  height: 28px;
+  padding: 0 10px;
+  border-radius: 6px;
+  border: 0;
+  background: transparent;
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  white-space: nowrap;
+}
+.follow-up-mode-button[aria-pressed="true"],
+.follow-up-mode-button.active {
+  background: var(--accent);
+  color: #FFFFFF;
+}
+
+.composer-input {
+  width: 100%;
+  min-height: 48px;
+  max-height: 160px;
+  border: 1.5px solid #D1D5DB;
+  border-radius: var(--radius-lg);
+  background: #FFFFFF;
+  padding: 10px 12px;
+  font-size: 14.5px;
+  line-height: 1.45;
+  color: var(--text);
+  outline: none;
+  box-shadow: var(--shadow-pod);
+}
+.composer-input:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--focus-ring);
+}
+.composer-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.model-summary,
+.plugin-picker-button {
+  height: 32px;
+  padding: 0 10px;
+  border-radius: var(--radius-pill);
+  background: var(--panel-soft);
+  border: 1px solid var(--border);
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  white-space: nowrap;
+}
+.send-button,
+.stop-button,
+.attach-button {
+  width: 38px;
+  height: 38px;
+  border-radius: 50%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+.send-button {
+  background: var(--accent);
+  border: 0;
+  color: #FFFFFF;
+  box-shadow: 0 4px 10px rgba(0, 102, 204, 0.25);
+}
+.stop-button {
+  background: #FFF1F2;
+  border: 1.5px solid #FECDD3;
+  color: #E11D48;
+}
+.attach-button {
+  background: var(--panel-soft);
+  border: 1px solid var(--border);
+  color: var(--text-secondary);
+}
