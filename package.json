@@ -4,6 +4,8 @@
   "private": true,
   "main": "desktop/main.cjs",
   "description": "Private, self-hosted mobile control desk for Codex Desktop.",
+  "author": "736368217",
+  "homepage": "https://github.com/736368217/Codex-Turnloom#readme",
   "type": "module",
   "bin": {
     "codex-turnloom": "./server.js",

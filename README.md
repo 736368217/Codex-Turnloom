@@ -157,7 +157,7 @@ npm run desktop:dev
 
 首次启动会打开设置向导，自动检测 Codex 数据目录，设置端口和访问码，并显示手机配对二维码。之后登录 Windows 时控制台会静默驻留托盘；关闭窗口只是最小化，托盘菜单可以启动、停止、重启服务和退出。已有 `install-windows.ps1` 安装的电脑会复用现有配置，不需要重新配对。
 
-桌面端的开发说明、打包和退出语义见 [desktop/README.md](desktop/README.md)。
+桌面端的开发说明、打包和退出语义见 [desktop/README.md](desktop/README.md)。当前版本 `1.16.0` 的发布说明与安装包入口见 [发布说明](docs/RELEASE_NOTES_1.16.0.zh-CN.md) / [GitHub Releases](https://github.com/736368217/Codex-Turnloom/releases/tag/v1.16.0)。
 
 完整步骤见 [Windows 多电脑部署](docs/WINDOWS_MULTI_COMPUTER.zh-CN.md)，当前部署约定和故障记录见 [运维说明](docs/OPERATIONS.md)。
 
