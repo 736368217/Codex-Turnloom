@@ -2,6 +2,7 @@
   "name": "codex-turnloom",
   "version": "1.0.0",
   "private": true,
+  "main": "desktop/main.cjs",
   "description": "Private, self-hosted mobile control desk for Codex Desktop.",
   "type": "module",
   "bin": {
@@ -33,7 +34,14 @@
     "android:test": "cd android && gradlew.bat testDebugUnitTest",
     "android:build": "cd android && gradlew.bat assembleDebug && node ../scripts/stage-apk.js",
     "service:install": "node scripts/install-service.js",
-    "service:uninstall": "node scripts/uninstall-service.js"
+    "service:uninstall": "node scripts/uninstall-service.js",
+    "desktop:dev": "electron .",
+    "desktop:start": "electron .",
+    "desktop:build": "electron-builder --win nsis",
+    "desktop:pack": "electron-builder --dir",
+    "desktop:check": "node --check desktop/main.cjs && node --check desktop/preload.cjs && node --check desktop/service/config.cjs && node --check desktop/service/controller.cjs && node --check desktop/service/tunnel.cjs && node --check desktop/service/runtime.cjs && node --check desktop/service/logger.cjs && node --check desktop/service/health.cjs && node --check desktop/service/pairing.cjs && node --check desktop/service/legacy.cjs && node --check desktop/renderer/app.js && node --check desktop/renderer/setup.js",
+    "desktop:install": "powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts/install-console.ps1",
+    "desktop:uninstall": "powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts/uninstall-console.ps1"
   },
   "keywords": [
     "codex",
@@ -56,9 +64,43 @@
   "dependencies": {
     "dompurify": "^3.4.14",
     "marked": "^18.0.11",
+    "qrcode": "^1.5.4",
     "qrcode-terminal": "^0.12.0"
   },
   "devDependencies": {
+    "electron": "^45.0.0",
+    "electron-builder": "^26.15.3",
     "jsdom": "^30.0.1"
+  },
+  "build": {
+    "appId": "com.codex.turnloom.console",
+    "productName": "Codex-Turnloom Console",
+    "asar": false,
+    "directories": {
+      "output": "dist-desktop",
+      "buildResources": "desktop/assets"
+    },
+    "files": [
+      "desktop/**/*",
+      "server.js",
+      "public/**/*",
+      "scripts/**/*",
+      "package.json"
+    ],
+    "win": {
+      "target": [
+        "nsis"
+      ],
+      "icon": "desktop/assets/app.ico",
+      "artifactName": "Codex-Turnloom-Console-${version}-${arch}.${ext}"
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "Codex-Turnloom 控制台"
+    }
   }
 }
