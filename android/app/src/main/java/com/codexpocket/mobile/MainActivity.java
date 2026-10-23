@@ -167,7 +167,7 @@ public class MainActivity extends ComponentActivity {
                     Toast.makeText(this, "这不是可识别的 Codex-Turnloom 设备码", Toast.LENGTH_LONG).show();
                     return;
                 }
-                int existing = findDeviceByUrl(imported.url);
+                int existing = findDevice(imported);
                 if (existing >= 0) {
                     Device previous = devices.get(existing);
                     devices.set(existing, imported.withNote(imported.note.isEmpty() ? previous.note : imported.note));
@@ -925,8 +925,11 @@ public class MainActivity extends ComponentActivity {
         return result.toString();
     }
 
-    private int findDeviceByUrl(String url) {
-        for (int i = 0; i < devices.size(); i++) if (devices.get(i).url.equalsIgnoreCase(url)) return i;
+    private int findDevice(Device imported) {
+        for (int i = 0; i < devices.size(); i++) {
+            Device existing = devices.get(i);
+            if (DeviceOrigin.matches(existing.url, imported.url) && existing.token.equals(imported.token)) return i;
+        }
         return -1;
     }
 

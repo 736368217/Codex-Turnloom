@@ -19,6 +19,7 @@ import path from "node:path";
 import readline from "node:readline";
 import { fileURLToPath } from "node:url";
 import qrcode from "qrcode-terminal";
+import { createHttpBackend } from "./backends/http-backend.js";
 
 const modulePath = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(modulePath);
@@ -90,6 +91,10 @@ function parseCliArgs(argv) {
     else if (flag === "--active-turn-stale-minutes") options.activeTurnStaleMinutes = nextValue();
     else if (flag === "--status-max-age-minutes") options.statusMaxAgeMinutes = nextValue();
     else if (flag === "--sqlite-driver") options.sqliteDriver = String(nextValue() || "").toLowerCase();
+    else if (flag === "--profiles") options.profiles = nextValue();
+    else if (flag === "--backend") options.backend = String(nextValue() || "").toLowerCase();
+    else if (flag === "--backend-url") options.backendUrl = nextValue();
+    else if (flag === "--backend-token") options.backendToken = nextValue();
     else if (flag === "--readonly") options.readonly = true;
     else if (flag === "--no-auth") options.noAuth = true;
     else if (arg) {
@@ -125,6 +130,10 @@ Options:
                          (default 60; also CODEX_LAN_STATUS_MAX_AGE_MINUTES).
   --sqlite-driver <auto|node|cli>
                          SQLite driver preference. Default: auto (node:sqlite first).
+  --backend <codex|http> Backend reader. Default: codex (filesystem + IPC).
+  --backend-url <url>    HTTP backend base URL, used with --backend http.
+  --backend-token <str>  Token sent to the HTTP backend.
+  --profiles <path>      JSON profile list (per-device token; codex or http backend).
   -h, --help             Show this help
 
 Examples:
@@ -287,7 +296,7 @@ const CODEX_HOME_FIXED = Boolean(cli.codexHome || process.env.CODEX_LAN_FIXED_CO
 const HOST = cli.host || process.env.HOST || "0.0.0.0";
 const PORT = Number(cli.port || process.env.PORT || 8787);
 let AUTH_REQUIRED = !cli.noAuth && process.env.CODEX_LAN_NO_AUTH !== "1";
-const ACCESS_TOKEN = cli.password || cli.token || process.env.CODEX_LAN_PASSWORD || process.env.CODEX_LAN_TOKEN || String(randomInt(100000, 1000000));
+let ACCESS_TOKEN = cli.password || cli.token || process.env.CODEX_LAN_PASSWORD || process.env.CODEX_LAN_TOKEN || String(randomInt(100000, 1000000));
 const ALLOW_WRITE = !cli.readonly && process.env.CODEX_LAN_READONLY !== "1";
 const CODEX_IPC_SOCKET =
   cli.ipcSocket ||
@@ -358,6 +367,23 @@ const THREADS_STATUS_CACHE_MS = 15_000;
 const THREADS_STATUS_PARALLELISM = 12;
 const MAX_THREADS_LIMIT = 500;
 const SQLITE_DRIVER_PREFERENCE = String(cli.sqliteDriver || process.env.CODEX_LAN_SQLITE_DRIVER || "auto").toLowerCase();
+const BACKEND_KIND = String(cli.backend || process.env.CODEX_LAN_BACKEND || "codex").toLowerCase();
+const BACKEND_URL = String(cli.backendUrl || process.env.CODEX_LAN_BACKEND_URL || "").trim();
+const BACKEND_TOKEN = String(cli.backendToken || process.env.CODEX_LAN_BACKEND_TOKEN || "");
+let HTTP_BACKEND = null;
+if (BACKEND_KIND === "http") {
+  if (!BACKEND_URL) {
+    if (IS_MAIN) {
+      console.error("--backend http requires --backend-url (or CODEX_LAN_BACKEND_URL)");
+      process.exit(1);
+    }
+  } else {
+    HTTP_BACKEND = createHttpBackend({ baseUrl: BACKEND_URL, token: BACKEND_TOKEN });
+  }
+} else if (BACKEND_KIND !== "codex" && IS_MAIN) {
+  console.error(`Unknown backend: ${BACKEND_KIND}. Supported backends: codex, http.`);
+  process.exit(1);
+}
 const ACTIVE_STATUS_CACHE_MS = 5000;
 const QUEUE_IDLE_SETTLE_MS = 3500;
 const QUEUE_CONFIRMATION_POLL_MS = 350;
@@ -418,6 +444,77 @@ let codexHomeState = {
   candidateCheckedAt: 0,
   changedAt: new Date().toISOString()
 };
+
+const PROFILES_FILE = String(cli.profiles || process.env.CODEX_LAN_PROFILES || "").trim();
+let PROFILES = [];
+if (PROFILES_FILE) {
+  try {
+    const rawProfiles = JSON.parse(readFileSync(path.resolve(PROFILES_FILE), "utf8"));
+    const rows = Array.isArray(rawProfiles) ? rawProfiles : Array.isArray(rawProfiles?.profiles) ? rawProfiles.profiles : [];
+    PROFILES = rows.map((row, index) => {
+      const token = String(row?.token || "").trim();
+      if (!token) throw new Error(`profile ${index + 1} is missing a token`);
+      const backend = String(row.backend || "codex").toLowerCase();
+      if (!["codex", "http"].includes(backend)) throw new Error(`profile ${row.id || index + 1} has an unknown backend: ${backend}`);
+      return {
+        id: String(row.id || `profile-${index + 1}`),
+        label: String(row.label || row.id || `Profile ${index + 1}`),
+        token,
+        backend,
+        home: row.home ? path.resolve(String(row.home)) : null,
+        backendUrl: String(row.backendUrl || row.url || "").trim(),
+        backendToken: String(row.backendToken || row.backend_token || "")
+      };
+    });
+  } catch (error) {
+    if (IS_MAIN) {
+      console.error(`Cannot load profiles from ${PROFILES_FILE}: ${error?.message || error}`);
+      process.exit(1);
+    }
+  }
+}
+const PROFILE_MODE = PROFILES.length > 0;
+if (PROFILE_MODE) {
+  const tokens = new Set();
+  for (const profile of PROFILES) {
+    if (tokens.has(profile.token)) {
+      if (IS_MAIN) {
+        console.error(`Duplicate profile token for ${profile.id}`);
+        process.exit(1);
+      }
+    }
+    tokens.add(profile.token);
+    if (profile.backend === "http") {
+      if (!profile.backendUrl) {
+        if (IS_MAIN) {
+          console.error(`Profile ${profile.id} needs backendUrl`);
+          process.exit(1);
+        }
+      } else {
+        profile.client = createHttpBackend({ baseUrl: profile.backendUrl, token: profile.backendToken });
+      }
+    }
+  }
+  const codexProfiles = PROFILES.filter((profile) => profile.backend === "codex");
+  const codexHomes = new Set(codexProfiles.map((profile) => profile.home || path.resolve(INITIAL_CODEX_HOME)));
+  if (codexHomes.size > 1 && IS_MAIN) {
+    console.error("Multiple codex homes in one profiles file are not supported yet; use one codex profile.");
+    process.exit(1);
+  }
+  if (codexProfiles[0]?.home && !cli.codexHome) {
+    codexHomeState = { ...codexHomeState, home: codexProfiles[0].home, fixed: true, source: "profile" };
+  }
+  if (!cli.password && !cli.token && !process.env.CODEX_LAN_PASSWORD && !process.env.CODEX_LAN_TOKEN) {
+    ACCESS_TOKEN = PROFILES[0].token;
+  }
+}
+
+function profileForRequest(req, url) {
+  if (!PROFILE_MODE) return null;
+  if (!AUTH_REQUIRED) return PROFILES[0] || null;
+  const token = requestToken(req, url);
+  return PROFILES.find((profile) => profile.token === token) || null;
+}
 
 function rawDebugEventsLimit(value = 80) {
   const limit = Number(value);
@@ -480,6 +577,7 @@ function requestToken(req, url) {
 function isAuthorized(req, url) {
   if (!AUTH_REQUIRED) return true;
   const token = requestToken(req, url);
+  if (PROFILE_MODE) return PROFILES.some((profile) => profile.token === token);
   return token === ACCESS_TOKEN;
 }
 
@@ -6188,6 +6286,186 @@ async function serveApk(res) {
   }
 }
 
+async function handleHttpBackendApi(req, res, url, profile = null) {
+  const backend = profile?.backend === "http" ? profile.client : HTTP_BACKEND;
+  if (!backend) return false;
+  const { pathname, searchParams } = url;
+  if (!pathname.startsWith("/api/")) return false;
+  if (!requireAuthorized(req, res, url)) return true;
+
+  const messagesMatch = pathname.match(/^\/api\/threads\/([^/]+)\/messages$/);
+  const changesMatch = pathname.match(/^\/api\/threads\/([^/]+)\/changes$/);
+  try {
+    if (req.method === "GET" && pathname === "/api/health") {
+      sendJson(res, 200, {
+        ok: true,
+        backend: { kind: "http", url: backend.baseUrl, profile: profile?.id || null },
+        profile: profile ? { id: profile.id, label: profile.label, backend: profile.backend } : null,
+        codexHome: null,
+        codexHomeVersion: null,
+        codexHomeSource: "http",
+        codexHomeFixed: false,
+        codexHomeChangedAt: null,
+        codexIpcSocket: null,
+        authRequired: AUTH_REQUIRED,
+        allowWrite: ALLOW_WRITE,
+        models: FALLBACK_CODEX_MODELS,
+        defaultModel: DEFAULT_CODEX_MODEL,
+        defaultEffort: DEFAULT_CODEX_EFFORT,
+        now: new Date().toISOString(),
+        apkAvailable: existsSync(APK_PATH),
+        apkUrl: "/api/apk",
+        appVersionCode: APP_VERSION_CODE,
+        appVersionName: APP_VERSION_NAME
+      });
+      return true;
+    }
+
+    if (req.method === "GET" && pathname === "/api/threads") {
+      let threads = await backend.listThreads();
+      const selectedId = String(searchParams.get("selectedId") || "").trim();
+      if (selectedId && !threads.some((thread) => thread.id === selectedId)) {
+        const selected = await backend.findThread(selectedId).catch(() => null);
+        if (selected) threads = [selected, ...threads];
+      }
+      threads = threads.map((thread) => {
+        const override = adapterStatusOverrideFor(thread.id);
+        return override
+          ? { ...thread, status: { ...thread.status, ...statusFieldsFromOverride(override) } }
+          : thread;
+      });
+      const limit = normalizeThreadsLimit(searchParams.get("limit"));
+      const page = threadsPage(threads, { limit, cursor: searchParams.get("cursor") });
+      const body = {
+        threads: page.threads,
+        ...(limit ? { total: page.total, nextCursor: page.nextCursor } : {}),
+        backend: { kind: "http", url: backend.baseUrl, profile: profile?.id || null }
+      };
+      const etag = weakEtagFor(JSON.stringify(body));
+      if (ifNoneMatchMatches(req.headers["if-none-match"], etag)) {
+        res.writeHead(304, { etag, "cache-control": "private, no-cache" });
+        res.end();
+        return true;
+      }
+      sendJson(res, 200, body, { etag, "cache-control": "private, no-cache" });
+      return true;
+    }
+
+    if (req.method === "GET" && messagesMatch) {
+      const threadId = decodeURIComponent(messagesMatch[1]);
+      const fullHistory = searchParams.get("history") === "full";
+      const data = await backend.getMessages(threadId, {
+        limit: fullHistory ? MAX_MESSAGE_LIMIT : Number(searchParams.get("limit")) || DEFAULT_MESSAGE_LIMIT,
+        before: searchParams.get("before") || ""
+      });
+      const override = adapterStatusOverrideFor(threadId);
+      if (override) data.status = { ...data.status, ...statusFieldsFromOverride(override) };
+      sendJson(res, 200, data);
+      return true;
+    }
+
+    if (req.method === "GET" && changesMatch) {
+      const threadId = decodeURIComponent(changesMatch[1]);
+      const cursor = String(searchParams.get("cursor") || "");
+      const deadline = Date.now() + Math.min(30_000, Math.max(250, Number(searchParams.get("timeout")) || 25_000));
+      let current = await backend.changeSignature(threadId);
+      while (current === cursor && Date.now() < deadline) {
+        await sleep(Math.min(750, Math.max(50, deadline - Date.now())));
+      current = await backend.changeSignature(threadId);
+      }
+      sendJson(res, 200, { cursor: current, changed: current !== cursor });
+      return true;
+    }
+
+    if (req.method === "POST" && pathname === "/api/send") {
+      const body = await readJsonBody(req, MAX_SEND_BODY_BYTES);
+      if (body.newThread) {
+        const result = await backend.createThread(body.message, body.images);
+        const threadId = result?.threadId || result?.thread?.id || null;
+        sendJson(res, 200, { ok: true, newThread: true, threadId, ...result });
+        return true;
+      }
+      const threadId = String(body.threadId || "").trim();
+      if (!threadId) {
+        sendJson(res, 400, { error: "threadId is required" });
+        return true;
+      }
+      const result = await backend.sendMessage(threadId, body.message, body.images);
+      sendJson(res, 200, { ok: true, threadId, ...result });
+      return true;
+    }
+
+    if (req.method === "POST" && pathname === "/api/interrupt") {
+      const body = await readJsonBody(req);
+      const threadId = String(body.threadId || "").trim();
+      if (!threadId) {
+        sendJson(res, 400, { error: "threadId is required" });
+        return true;
+      }
+      sendJson(res, 200, { ok: true, threadId, ...(await backend.interrupt(threadId)) });
+      return true;
+    }
+
+    if (pathname === "/api/adapters/status") {
+      if (req.method === "GET") {
+        sendJson(res, 200, { ok: true, overrides: activeAdapterStatusOverrides() });
+        return true;
+      }
+      if (req.method === "POST") {
+        const body = await readJsonBody(req);
+        const threadId = body.threadId || body.id || "";
+        if (body.clear === true || String(body.state || "").toLowerCase() === "clear") {
+          sendJson(res, 200, { ok: true, cleared: clearAdapterStatusOverride(threadId) });
+          return true;
+        }
+        const record = setAdapterStatusOverride(threadId, {
+          state: body.state,
+          turnId: body.turnId,
+          startedAtMs: body.startedAtMs,
+          ttlMs: body.ttlMs
+        });
+        sendJson(res, 200, { ok: true, status: { ...record, expiresInMs: Math.max(0, record.expiresAtMs - Date.now()) } });
+        return true;
+      }
+      if (req.method === "DELETE") {
+        sendJson(res, 200, { ok: true, cleared: clearAdapterStatusOverride(searchParams.get("threadId") || "") });
+        return true;
+      }
+      sendJson(res, 405, { error: "Method not allowed" });
+      return true;
+    }
+
+    if (req.method === "GET" && pathname === "/api/admin/diagnostics") {
+      const threads = await backend.listThreads();
+      sendJson(res, 200, {
+        ok: true,
+        backend: { kind: "http", url: backend.baseUrl, profile: profile?.id || null },
+        threads: { total: threads.length, archived: threads.filter((thread) => thread.archived).length, statusColumns: [] },
+        rolloutIssues: { missingCount: 0, outsideHomeCount: 0, missing: [], outsideHome: [], truncated: false },
+        adapterStatus: { count: activeAdapterStatusOverrides().length, overrides: activeAdapterStatusOverrides() },
+        sqlite: { preference: "n/a", active: "n/a", nodeSqliteError: null, cliError: null, nodeQueries: 0, cliQueries: 0 },
+        settings: { activeTurnStaleMinutes: ACTIVE_TURN_STALE_MS / 60_000, statusMaxAgeMinutes: STATUS_OVERRIDE_MAX_AGE_MS / 60_000 }
+      });
+      return true;
+    }
+
+    if (req.method === "GET" && pathname === "/api/apk") return false;
+
+    sendJson(res, 501, {
+      error: "This endpoint is not supported by the HTTP backend",
+      backend: { kind: "http", url: backend.baseUrl, profile: profile?.id || null }
+    });
+    return true;
+  } catch (error) {
+    logError(`[http-backend] ${req.method} ${pathname}: ${error?.stack || error?.message || String(error)}`);
+    sendJson(res, error?.status || 502, {
+      error: error?.message || "HTTP backend request failed",
+      backend: { kind: "http", url: backend.baseUrl, profile: profile?.id || null }
+    });
+    return true;
+  }
+}
+
 const server = http.createServer(async (req, res) => {
   const url = new URL(req.url || "/", `http://${req.headers.host || "localhost"}`);
   const requestStartedAt = performance.now();
@@ -6205,6 +6483,8 @@ const server = http.createServer(async (req, res) => {
     }
   });
   try {
+    req.turnloomProfile = profileForRequest(req, url);
+    if (await handleHttpBackendApi(req, res, url, req.turnloomProfile)) return;
     if (req.method === "GET" && url.pathname === "/api/local-image") {
       if (!requireAuthorized(req, res, url)) return;
       await serveLocalImage(res, url.searchParams.get("path"), url.searchParams.get("threadId"));
@@ -6235,6 +6515,12 @@ const server = http.createServer(async (req, res) => {
         codexIpcSocket: CODEX_IPC_SOCKET,
         authRequired: AUTH_REQUIRED,
         allowWrite: ALLOW_WRITE,
+        profile: req.turnloomProfile ? {
+          id: req.turnloomProfile.id,
+          label: req.turnloomProfile.label,
+          backend: req.turnloomProfile.backend
+        } : null,
+        backend: { kind: "codex" },
         activeTurnStaleMinutes: ACTIVE_TURN_STALE_MS / 60_000,
         statusMaxAgeMinutes: STATUS_OVERRIDE_MAX_AGE_MS / 60_000,
         sqliteDriver: sqliteDriverInfo(),
