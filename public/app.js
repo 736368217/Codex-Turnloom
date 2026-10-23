@@ -804,6 +804,16 @@ function initAuthToken() {
     nativeToken
   });
   els.rememberDevice.checked = Boolean(safeStorageGet(localStorage, rememberedTokenKey()));
+  exchangeAuthSession(state.authToken);
+}
+
+function exchangeAuthSession(token) {
+  if (!token) return;
+  fetch("/api/auth/session", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ token })
+  }).catch(() => {});
 }
 
 function authHeaders(extra = {}) {

@@ -88,6 +88,7 @@ function defaultConfig(overrides = {}) {
     repoRoot: APP_DIR,
     nodePath: findNodePath(),
     codexHome: home,
+    ipcSocket: "",
     host: "0.0.0.0",
     port: 8787,
     accessCode: generateAccessCode(),
@@ -102,7 +103,8 @@ function defaultConfig(overrides = {}) {
       keyPath: path.join(os.homedir(), ".ssh", "codex_pocket_ed25519"),
       knownHostsPath: path.join(os.homedir(), ".ssh", "known_hosts")
     },
-    console: { ...DEFAULT_CONSOLE }
+    console: { ...DEFAULT_CONSOLE },
+    extraDevices: [],
   };
   return mergeConfig(base, overrides);
 }
@@ -112,6 +114,42 @@ function mergeConfig(base, patch) {
   result.tunnel = { ...(base.tunnel || {}), ...((patch && patch.tunnel) || {}) };
   result.console = { ...DEFAULT_CONSOLE, ...(base.console || {}), ...((patch && patch.console) || {}) };
   return result;
+}
+
+function slugifyDeviceId(value, fallback = "device") {
+  const slug = String(value || "")
+    .toLowerCase()
+    .replace(/[^a-z0-9_-]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 40);
+  return slug || fallback;
+}
+
+/**
+ * 额外设备：本机之外的另一个 Turnloom 实例（例如 PI-Desktop 桥）。
+ * 只保存名称、地址与访问码；访问码不会出现在 publicConfig 里。
+ */
+function normalizeExtraDevices(list) {
+  if (!Array.isArray(list)) return [];
+  const used = new Set();
+  const result = [];
+  for (const [index, row] of list.entries()) {
+    if (!row || typeof row !== "object") continue;
+    const name = String(row.name || "").trim();
+    const url = String(row.url || "").trim().replace(/\/+$/, "");
+    if (!name || !url) continue;
+    let id = slugifyDeviceId(row.id || name, `device-${index + 1}`);
+    if (used.has(id)) id = `${id}-${index + 1}`;
+    used.add(id);
+    result.push({
+      id,
+      name: name.slice(0, 60),
+      url,
+      accessCode: String(row.accessCode || "").trim(),
+      kind: String(row.kind || "turnloom").trim() || "turnloom"
+    });
+  }
+  return result.slice(0, 12);
 }
 
 function normalizeConfig(raw) {
@@ -124,6 +162,8 @@ function normalizeConfig(raw) {
   merged.host = String(merged.host || "0.0.0.0");
   merged.machineName = String(merged.machineName || os.hostname());
   merged.logDir = merged.logDir || DEFAULT_LOG_DIR;
+  merged.ipcSocket = String(merged.ipcSocket || "").trim();
+  merged.extraDevices = normalizeExtraDevices(merged.extraDevices);
   return merged;
 }
 
@@ -175,6 +215,25 @@ function validateConfig(config) {
   if (!config.nodePath || !fs.existsSync(config.nodePath)) {
     errors.push({ field: "nodePath", message: "找不到 node.exe，请安装 Node.js 或指定路径。" });
   }
+  if (config.ipcSocket) {
+    const socket = String(config.ipcSocket);
+    const looksLikePipe = process.platform === "win32"
+      ? socket.startsWith("\\\\.\\pipe\\") && socket.length > "\\\\.\\pipe\\".length
+      : path.isAbsolute(socket);
+    if (!looksLikePipe) {
+      errors.push({ field: "ipcSocket", message: "IPC 管道需写成 \\\\.\\pipe\\名称 的形式。" });
+    }
+  }
+  for (const device of config.extraDevices || []) {
+    const field = `extraDevices.${device.id}`;
+    if (!device.name) errors.push({ field, message: "设备名称不能为空。" });
+    if (!/^https?:\/\/\S+$/i.test(device.url || "")) {
+      errors.push({ field, message: `设备「${device.name || device.id}」的地址需以 http:// 或 https:// 开头。` });
+    }
+    if (!device.accessCode) {
+      errors.push({ field, message: `设备「${device.name || device.id}」还没有填写访问码，配对前需要补全。` });
+    }
+  }
   if (config.tunnel && config.tunnel.enabled) {
     if (!config.tunnel.host) errors.push({ field: "tunnel.host", message: "启用隧道时必须填写服务器地址。" });
     if (!config.tunnel.user) errors.push({ field: "tunnel.user", message: "启用隧道时必须填写 SSH 用户名。" });
@@ -199,6 +258,7 @@ function publicConfig(config) {
     repoRoot: config.repoRoot,
     nodePath: config.nodePath,
     codexHome: config.codexHome,
+    ipcSocket: config.ipcSocket || "",
     host: config.host,
     port: config.port,
     readonly: Boolean(config.readonly),
@@ -213,6 +273,15 @@ function publicConfig(config) {
       knownHostsPath: config.tunnel?.knownHostsPath || ""
     },
     console: { ...DEFAULT_CONSOLE, ...(config.console || {}) },
+    extraDevices: (config.extraDevices || []).map((device) => ({
+      id: device.id,
+      name: device.name,
+      url: device.url,
+      kind: device.kind || "turnloom",
+      hasAccessCode: Boolean(device.accessCode),
+      accessCodeMasked: maskAccessCode(device.accessCode)
+    })),
+    extraDeviceCount: (config.extraDevices || []).length,
     hasAccessCode: Boolean(config.accessCode),
     accessCodeMasked: maskAccessCode(config.accessCode)
   };
@@ -246,10 +315,16 @@ function urlsFor(config) {
   return { lan, publicUrl, browser: publicUrl || lan, preview: lan };
 }
 
-function pairingPayload(config) {
+function pairingPayload(config, device = null) {
   const urls = urlsFor(config);
-  const url = urls.publicUrl || urls.lan;
   const target = new URL("codexpocket://add");
+  if (device) {
+    target.searchParams.set("name", device.name || "设备");
+    target.searchParams.set("url", String(device.url || "").replace(/\/+$/, ""));
+    target.searchParams.set("token", device.accessCode || "");
+    return target.toString();
+  }
+  const url = urls.publicUrl || urls.lan;
   target.searchParams.set("name", config.machineName || os.hostname());
   target.searchParams.set("url", url);
   target.searchParams.set("token", config.accessCode || "");
@@ -282,5 +357,7 @@ module.exports = {
   lanAddress,
   urlsFor,
   pairingPayload,
-  maskAccessCode
+  maskAccessCode,
+  normalizeExtraDevices,
+  slugifyDeviceId
 };

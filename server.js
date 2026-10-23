@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 import { execFile, spawn } from "node:child_process";
+import { AsyncLocalStorage } from "node:async_hooks";
 import { createHash, randomInt, randomUUID } from "node:crypto";
 import {
   createReadStream,
@@ -23,6 +24,7 @@ import { createHttpBackend } from "./backends/http-backend.js";
 
 const modulePath = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(modulePath);
+const requestContext = new AsyncLocalStorage();
 
 function sameFilePath(left, right) {
   if (!left || !right) return false;
@@ -337,8 +339,8 @@ const PUBLIC_DIR = path.join(__dirname, "public");
 const APK_PATH = process.env.CODEX_POCKET_APK_PATH
   ? path.resolve(process.env.CODEX_POCKET_APK_PATH)
   : path.join(PUBLIC_DIR, "downloads", "Codex-Turnloom.apk");
-const APP_VERSION_CODE = 20;
-const APP_VERSION_NAME = "1.16.0";
+const APP_VERSION_CODE = 21;
+const APP_VERSION_NAME = "1.17.0";
 const GENERATED_IMAGES_DIR = path.join(os.homedir(), ".codex", "generated_images");
 const CODEX_POCKET_DATA_DIR =
   process.env.LOCALAPPDATA || path.join(os.homedir(), process.platform === "win32" ? "AppData" : ".local", process.platform === "win32" ? "Local" : "share");
@@ -496,11 +498,6 @@ if (PROFILE_MODE) {
     }
   }
   const codexProfiles = PROFILES.filter((profile) => profile.backend === "codex");
-  const codexHomes = new Set(codexProfiles.map((profile) => profile.home || path.resolve(INITIAL_CODEX_HOME)));
-  if (codexHomes.size > 1 && IS_MAIN) {
-    console.error("Multiple codex homes in one profiles file are not supported yet; use one codex profile.");
-    process.exit(1);
-  }
   if (codexProfiles[0]?.home && !cli.codexHome) {
     codexHomeState = { ...codexHomeState, home: codexProfiles[0].home, fixed: true, source: "profile" };
   }
@@ -509,11 +506,90 @@ if (PROFILE_MODE) {
   }
 }
 
+const SESSION_COOKIE_NAME = "turnloom_session";
+const SESSION_TTL_MS = 8 * 60 * 60 * 1000;
+const authSessions = new Map();
+
+function cookieValue(req, name) {
+  const header = String(req.headers.cookie || "");
+  for (const part of header.split(";")) {
+    const [key, ...rest] = part.trim().split("=");
+    if (key === name) {
+      try {
+        return decodeURIComponent(rest.join("="));
+      } catch {
+        return rest.join("=");
+      }
+    }
+  }
+  return "";
+}
+
+function findAuthProfileByToken(token) {
+  const value = String(token || "");
+  if (!value) return null;
+  if (PROFILE_MODE) return PROFILES.find((profile) => profile.token === value) || null;
+  return value === ACCESS_TOKEN
+    ? { id: null, label: "Codex", backend: BACKEND_KIND, token: value }
+    : null;
+}
+
+function sessionForRequest(req) {
+  const sessionId = cookieValue(req, SESSION_COOKIE_NAME);
+  if (!sessionId) return null;
+  const session = authSessions.get(sessionId);
+  if (!session) return null;
+  if (session.expiresAtMs <= Date.now()) {
+    authSessions.delete(sessionId);
+    return null;
+  }
+  if (PROFILE_MODE && session.profileId && !PROFILES.some((profile) => profile.id === session.profileId)) {
+    authSessions.delete(sessionId);
+    return null;
+  }
+  return session;
+}
+
+function issueAuthSession(profile) {
+  const sessionId = randomUUID();
+  const now = Date.now();
+  const session = {
+    sessionId,
+    profileId: profile?.id || null,
+    createdAtMs: now,
+    expiresAtMs: now + SESSION_TTL_MS
+  };
+  authSessions.set(sessionId, session);
+  return session;
+}
+
+function authSessionCookie(req, session) {
+  const secure = req.socket?.encrypted || String(req.headers["x-forwarded-proto"] || "").toLowerCase() === "https";
+  const maxAge = Math.max(1, Math.floor((session.expiresAtMs - Date.now()) / 1000));
+  return `${SESSION_COOKIE_NAME}=${encodeURIComponent(session.sessionId)}; HttpOnly; SameSite=Lax; Path=/; Max-Age=${maxAge}${secure ? "; Secure" : ""}`;
+}
+
+function clearAuthSessionCookie(req) {
+  const secure = req.socket?.encrypted || String(req.headers["x-forwarded-proto"] || "").toLowerCase() === "https";
+  return `${SESSION_COOKIE_NAME}=; HttpOnly; SameSite=Lax; Path=/; Max-Age=0${secure ? "; Secure" : ""}`;
+}
+
 function profileForRequest(req, url) {
   if (!PROFILE_MODE) return null;
   if (!AUTH_REQUIRED) return PROFILES[0] || null;
-  const token = requestToken(req, url);
-  return PROFILES.find((profile) => profile.token === token) || null;
+  const profile = findAuthProfileByToken(requestToken(req, url));
+  if (profile) return profile;
+  const session = sessionForRequest(req);
+  return session ? PROFILES.find((entry) => entry.id === session.profileId) || null : null;
+}
+
+function currentRequestProfile() {
+  return requestContext.getStore() || null;
+}
+
+function activeCodexHome() {
+  const profile = currentRequestProfile();
+  return profile?.backend === "codex" && profile.home ? path.resolve(profile.home) : codexHomeState.home;
 }
 
 function rawDebugEventsLimit(value = 80) {
@@ -577,8 +653,8 @@ function requestToken(req, url) {
 function isAuthorized(req, url) {
   if (!AUTH_REQUIRED) return true;
   const token = requestToken(req, url);
-  if (PROFILE_MODE) return PROFILES.some((profile) => profile.token === token);
-  return token === ACCESS_TOKEN;
+  if (PROFILE_MODE ? PROFILES.some((profile) => profile.token === token) : token === ACCESS_TOKEN) return true;
+  return Boolean(sessionForRequest(req));
 }
 
 function requireAuthorized(req, res, url) {
@@ -596,7 +672,9 @@ function loginUrlFor(baseUrl) {
 }
 
 function loginUrlForProfile(baseUrl, profile) {
-  const url = new URL(loginUrlFor(baseUrl));
+  if (!AUTH_REQUIRED) return baseUrl;
+  const url = new URL("/login", baseUrl);
+  url.searchParams.set("token", profile?.token || ACCESS_TOKEN);
   if (profile) url.searchParams.set("device", profile.id);
   return url.toString();
 }
@@ -621,7 +699,7 @@ function isSqliteResourceTransient(error) {
   return /\b(eagain|emfile|enfile)\b/.test(message);
 }
 
-function codexPaths(home = codexHomeState.home) {
+function codexPaths(home = activeCodexHome()) {
   const root = path.resolve(home || INITIAL_CODEX_HOME);
   return {
     home: root,
@@ -1051,6 +1129,19 @@ async function codexHomeSignature(home = codexHomeState.home) {
 }
 
 async function refreshCodexHomeContext({ force = false, source = "poll" } = {}) {
+  const requestProfile = currentRequestProfile();
+  if (requestProfile?.backend === "codex" && requestProfile.home) {
+    return {
+      home: path.resolve(requestProfile.home),
+      version: 1,
+      source: "profile",
+      fixed: true,
+      signature: "",
+      checkedAt: Date.now(),
+      candidateCheckedAt: Date.now(),
+      changedAt: new Date(0).toISOString()
+    };
+  }
   maybeUpdateCodexHomeFromMessage(codexIpcClient?.events?.at(-1)?.message);
   const now = Date.now();
   await maybeDiscoverNewCodexHome(now);
@@ -2645,11 +2736,12 @@ function isArchivedThread(row) {
 }
 
 async function getAccountInfo() {
+  const home = activeCodexHome();
   const now = Date.now();
-  if (accountCache && now - accountCache.cachedAt < ACCOUNT_CACHE_MS) return accountCache.value;
-  if (accountInfoInFlight) return accountInfoInFlight;
+  if (accountCache?.home === home && now - accountCache.cachedAt < ACCOUNT_CACHE_MS) return accountCache.value;
+  if (accountInfoInFlight?.home === home) return accountInfoInFlight.promise;
 
-  accountInfoInFlight = (async () => {
+  const promise = (async () => {
     try {
       const profile = await readAuthProfile();
       const usage = await readLatestRateLimits();
@@ -2666,29 +2758,31 @@ async function getAccountInfo() {
         },
         usage
       };
-      accountCache = { cachedAt: Date.now(), value };
+      accountCache = { home, cachedAt: Date.now(), value };
       return value;
     } catch (error) {
-      if (accountCache && Date.now() - accountCache.cachedAt < ACCOUNT_STALE_CACHE_MS) {
+      if (accountCache?.home === home && Date.now() - accountCache.cachedAt < ACCOUNT_STALE_CACHE_MS) {
         logError(`[cache:stale] GET /api/account using cached account after refresh failed: ${error?.message || error}`);
         return accountCache.value;
       }
       throw error;
     } finally {
-      accountInfoInFlight = null;
+      if (accountInfoInFlight?.promise === promise) accountInfoInFlight = null;
     }
   })();
-  return accountInfoInFlight;
+  accountInfoInFlight = { home, promise };
+  return promise;
 }
 
 async function getThreads({ preserveIds = [] } = {}) {
   const preserveKey = [...new Set(preserveIds.map((id) => String(id || "").trim()).filter(Boolean))].sort().join(",");
+  const cacheKey = `${activeCodexHome()}|${preserveKey}`;
   const now = Date.now();
-  if (threadsCache?.key === preserveKey && now - threadsCache.cachedAt < THREADS_CACHE_MS) return threadsCache.value;
-  if (threadsInFlight?.key === preserveKey) return threadsInFlight.promise;
+  if (threadsCache?.key === cacheKey && now - threadsCache.cachedAt < THREADS_CACHE_MS) return threadsCache.value;
+  if (threadsInFlight?.key === cacheKey) return threadsInFlight.promise;
 
-  const promise = loadThreadsUncached({ preserveIds, preserveKey });
-  threadsInFlight = { key: preserveKey, promise };
+  const promise = loadThreadsUncached({ preserveIds, preserveKey: cacheKey });
+  threadsInFlight = { key: cacheKey, promise };
   try {
     return await promise;
   } finally {
@@ -6293,6 +6387,60 @@ async function serveApk(res) {
   }
 }
 
+async function handleAuthSessionExchange(req, res) {
+  try {
+    const body = await readJsonBody(req);
+    const profile = findAuthProfileByToken(body.token);
+    if (!profile) {
+      sendJson(res, 401, { error: "Unauthorized", authRequired: true });
+      return;
+    }
+    const session = issueAuthSession(profile);
+    sendJson(res, 200, {
+      ok: true,
+      profile: profile.id ? { id: profile.id, label: profile.label, backend: profile.backend } : null,
+      expiresAtMs: session.expiresAtMs
+    }, {
+      "set-cookie": authSessionCookie(req, session),
+      "cache-control": "no-store"
+    });
+  } catch (error) {
+    sendJson(res, error?.status || 400, { error: error?.message || "Invalid session request" });
+  }
+}
+
+function handleAuthLogout(req, res) {
+  const sessionId = cookieValue(req, SESSION_COOKIE_NAME);
+  if (sessionId) authSessions.delete(sessionId);
+  sendJson(res, 200, { ok: true }, {
+    "set-cookie": clearAuthSessionCookie(req),
+    "cache-control": "no-store"
+  });
+}
+
+function handleLoginRedirect(req, res, url) {
+  const token = url.searchParams.get("login") || url.searchParams.get("token") || "";
+  const profile = findAuthProfileByToken(token);
+  if (!profile) {
+    res.writeHead(302, { location: "/", "cache-control": "no-store", "referrer-policy": "no-referrer" });
+    res.end();
+    return;
+  }
+  const session = issueAuthSession(profile);
+  const target = new URL(url.pathname === "/login" ? "/" : url.pathname, `http://${req.headers.host || "localhost"}`);
+  for (const [key, value] of url.searchParams) {
+    if (key !== "login" && key !== "token") target.searchParams.append(key, value);
+  }
+  res.writeHead(302, {
+    location: `${target.pathname}${target.search}${target.hash}`,
+    "set-cookie": authSessionCookie(req, session),
+    "cache-control": "no-store",
+    "referrer-policy": "no-referrer"
+  });
+  res.end();
+}
+
+
 async function handleHttpBackendApi(req, res, url, profile = null) {
   const backend = profile?.backend === "http" ? profile.client : HTTP_BACKEND;
   if (!backend) return false;
@@ -6302,6 +6450,10 @@ async function handleHttpBackendApi(req, res, url, profile = null) {
 
   const messagesMatch = pathname.match(/^\/api\/threads\/([^/]+)\/messages$/);
   const changesMatch = pathname.match(/^\/api\/threads\/([^/]+)\/changes$/);
+  const pinMatch = pathname.match(/^\/api\/threads\/([^/]+)\/pin$/);
+  const goalMatch = pathname.match(/^\/api\/threads\/([^/]+)\/goal$/);
+  const compactMatch = pathname.match(/^\/api\/threads\/([^/]+)\/compact$/);
+  const branchMatch = pathname.match(/^\/api\/threads\/([^/]+)\/branch$/);
   try {
     if (req.method === "GET" && pathname === "/api/health") {
       sendJson(res, 200, {
@@ -6381,6 +6533,95 @@ async function handleHttpBackendApi(req, res, url, profile = null) {
       current = await backend.changeSignature(threadId);
       }
       sendJson(res, 200, { cursor: current, changed: current !== cursor });
+      return true;
+    }
+    if (req.method === "POST" && pinMatch) {
+      const body = await readJsonBody(req);
+      const threadId = decodeURIComponent(pinMatch[1]);
+      sendJson(res, 200, { ok: true, threadId, ...(await backend.setPinned(threadId, body.pinned)) });
+      return true;
+    }
+
+    if (goalMatch) {
+      const threadId = decodeURIComponent(goalMatch[1]);
+      if (req.method === "GET") {
+        const result = await backend.getGoal(threadId);
+        sendJson(res, 200, { goal: result?.goal ?? result ?? null });
+        return true;
+      }
+      if (req.method === "PUT") {
+        const result = await backend.setGoal(threadId, await readJsonBody(req));
+        sendJson(res, 200, { goal: result?.goal ?? result ?? null });
+        return true;
+      }
+      if (req.method === "DELETE") {
+        sendJson(res, 200, { ok: true, ...(await backend.clearGoal(threadId)) });
+        return true;
+      }
+    }
+
+    if (req.method === "POST" && compactMatch) {
+      sendJson(res, 200, { ok: true, ...(await backend.compactThread(decodeURIComponent(compactMatch[1]))) });
+      return true;
+    }
+
+    if (req.method === "POST" && branchMatch) {
+      const result = await backend.branchThread(decodeURIComponent(branchMatch[1]), await readJsonBody(req));
+      const thread = result?.thread || result?.result?.thread || null;
+      sendJson(res, 200, { ok: true, thread, threadId: thread?.id || result?.threadId || null, ...result });
+      return true;
+    }
+
+    if (req.method === "POST" && pathname === "/api/approval") {
+      sendJson(res, 200, { ok: true, ...(await backend.respondToApproval(await readJsonBody(req))) });
+      return true;
+    }
+
+    if (req.method === "POST" && pathname === "/api/queue/cancel") {
+      sendJson(res, 200, { ok: true, ...(await backend.cancelQueuedSend(await readJsonBody(req))) });
+      return true;
+    }
+
+    if (req.method === "POST" && pathname === "/api/queue/steer") {
+      sendJson(res, 200, { ok: true, ...(await backend.steerQueuedSend(await readJsonBody(req))) });
+      return true;
+    }
+
+    if (req.method === "POST" && pathname === "/api/new-thread") {
+      const body = await readJsonBody(req);
+      const result = await backend.createThread(body.message || body.text || "", body.images);
+      const threadId = result?.threadId || result?.thread?.id || null;
+      sendJson(res, 200, { ok: true, threadId, ...result });
+      return true;
+    }
+
+    if (req.method === "GET" && pathname === "/api/account") {
+      sendJson(res, 200, {
+        user: { name: "HTTP Backend", email: "", label: "HTTP Backend" },
+        plan: { type: "local", label: "Local" },
+        usage: null,
+        backend: { kind: "http", url: backend.baseUrl }
+      });
+      return true;
+    }
+
+    if (req.method === "GET" && pathname === "/api/plugins") {
+      sendJson(res, 200, { plugins: [], codexHome: null, codexHomeVersion: null });
+      return true;
+    }
+
+    if (req.method === "GET" && pathname === "/api/skills") {
+      sendJson(res, 200, { skills: [], codexHome: null, codexHomeVersion: null });
+      return true;
+    }
+
+    if (req.method === "GET" && pathname === "/api/debug/events") {
+      sendJson(res, 200, { ok: true, backend: { kind: "http", url: backend.baseUrl }, events: [] });
+      return true;
+    }
+
+    if (req.method === "GET" && pathname === "/api/queue/image") {
+      sendJson(res, 404, { error: "Queued image not available from HTTP backend" });
       return true;
     }
 
@@ -6490,7 +6731,25 @@ const server = http.createServer(async (req, res) => {
       else logInfo(`${message}${suppressed}`);
     }
   });
+  const requestProfile = profileForRequest(req, url);
+  req.turnloomProfile = requestProfile;
+  return requestContext.run(requestProfile, async () => {
   try {
+    if (req.method === "POST" && url.pathname === "/api/auth/session") {
+      await handleAuthSessionExchange(req, res);
+      return;
+    }
+    if (req.method === "POST" && url.pathname === "/api/auth/logout") {
+      handleAuthLogout(req, res);
+      return;
+    }
+    if (
+      req.method === "GET" &&
+      (url.pathname === "/login" || (url.pathname === "/" && (url.searchParams.has("login") || url.searchParams.has("token"))))
+    ) {
+      handleLoginRedirect(req, res, url);
+      return;
+    }
     req.turnloomProfile = profileForRequest(req, url);
     if (await handleHttpBackendApi(req, res, url, req.turnloomProfile)) return;
     if (req.method === "GET" && url.pathname === "/api/local-image") {
@@ -6770,6 +7029,7 @@ const server = http.createServer(async (req, res) => {
     logError(`[http:error] ${requestMethod} ${url.pathname}: ${error?.stack || error?.message || String(error)}`);
     sendJson(res, error.status || 500, { error: error.message || "Internal server error" });
   }
+  });
 });
 
 let shuttingDown = false;
@@ -6951,6 +7211,7 @@ export {
   threadListMetadata,
   visibleThreadRows,
   loginUrlFor,
+  loginUrlForProfile,
   staticSecurityHeaders,
   buildThreadDiagnostics,
   ifNoneMatchMatches,

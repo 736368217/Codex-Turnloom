@@ -77,3 +77,34 @@ test("HTTP backend rejects threads outside the adapter inventory", async () => {
   const backend = new HttpBackendClient({ baseUrl: "http://backend.test", fetchImpl });
   await assert.rejects(() => backend.getMessages("unknown"), (error) => error.status === 404);
 });
+
+test("HTTP backend extended operations use the documented routes", async () => {
+  const calls = [];
+  const fetchImpl = async (url, options) => {
+    calls.push({ url: String(url), method: options.method || "GET", body: options.body });
+    return new Response(JSON.stringify({ ok: true }), { status: 200 });
+  };
+  const backend = new HttpBackendClient({ baseUrl: "http://backend.test", fetchImpl });
+  await backend.setPinned("a", true);
+  await backend.getGoal("a");
+  await backend.setGoal("a", { objective: "x" });
+  await backend.clearGoal("a");
+  await backend.compactThread("a");
+  await backend.branchThread("a", { lastTurnId: "t" });
+  await backend.respondToApproval({ threadId: "a" });
+  await backend.cancelQueuedSend({ threadId: "a" });
+  await backend.steerQueuedSend({ threadId: "a" });
+  assert.deepEqual(calls.map((call) => `${call.method} ${call.url.replace("http://backend.test", "")}`), [
+    "POST /threads/a/pin",
+    "GET /threads/a/goal",
+    "PUT /threads/a/goal",
+    "DELETE /threads/a/goal",
+    "POST /threads/a/compact",
+    "POST /threads/a/branch",
+    "POST /approval",
+    "POST /queue/cancel",
+    "POST /queue/steer"
+  ]);
+  assert.equal(JSON.parse(calls[0].body).pinned, true);
+  assert.equal(JSON.parse(calls[5].body).lastTurnId, "t");
+});

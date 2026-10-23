@@ -38,6 +38,6 @@ HTTP 契约见 [HTTP 后端适配器](HTTP_BACKEND.zh-CN.md)。
 
 ## 当前边界
 
-- HTTP 模式暂不支持插件、技能、goal、置顶、compact、branch、审批和发送队列；这些接口返回 501。
-- 同一 profiles 文件目前只允许一个 Codex home；多个 HTTP profile 不受限制。
-- P3-1 已实现并提交：记住设备的 localStorage key 支持 `?device=` / `#d=` 设备后缀，profile 二维码也会带 profile id，同源两台设备不再互相覆盖访问码。P3-3（访问码换短期会话）待下一轮。
+- HTTP 模式的 pin/goal/compact/branch/approval/queue 已透传到扩展契约；插件/技能/账号返回安全空值，不访问本地 Codex 数据。
+- 同一个 profiles 文件支持多个 Codex home 与多个 HTTP profile，线程列表缓存按 home 隔离。
+- P3-1 已实现：localStorage key 支持 `?device=` / `#d=` 设备后缀，profile 二维码带 profile id。P3-3 已实现：token 可换 8 小时 HttpOnly session cookie，`/login` 302 去除 query，并支持 `/api/auth/logout` 吊销。

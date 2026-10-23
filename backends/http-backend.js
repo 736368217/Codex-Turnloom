@@ -172,6 +172,42 @@ export class HttpBackendClient {
     return this.request(`/threads/${encodeURIComponent(threadId)}/interrupt`, { method: "POST", body: {} });
   }
 
+  async setPinned(threadId, pinned) {
+    return this.request(`/threads/${encodeURIComponent(threadId)}/pin`, { method: "POST", body: { pinned: Boolean(pinned) } });
+  }
+
+  async getGoal(threadId) {
+    return this.request(`/threads/${encodeURIComponent(threadId)}/goal`);
+  }
+
+  async setGoal(threadId, goal) {
+    return this.request(`/threads/${encodeURIComponent(threadId)}/goal`, { method: "PUT", body: goal || {} });
+  }
+
+  async clearGoal(threadId) {
+    return this.request(`/threads/${encodeURIComponent(threadId)}/goal`, { method: "DELETE" });
+  }
+
+  async compactThread(threadId) {
+    return this.request(`/threads/${encodeURIComponent(threadId)}/compact`, { method: "POST", body: {} });
+  }
+
+  async branchThread(threadId, options = {}) {
+    return this.request(`/threads/${encodeURIComponent(threadId)}/branch`, { method: "POST", body: options });
+  }
+
+  async respondToApproval(payload) {
+    return this.request("/approval", { method: "POST", body: payload || {} });
+  }
+
+  async cancelQueuedSend(payload) {
+    return this.request("/queue/cancel", { method: "POST", body: payload || {} });
+  }
+
+  async steerQueuedSend(payload) {
+    return this.request("/queue/steer", { method: "POST", body: payload || {} });
+  }
+
   async changeSignature(threadId) {
     const data = await this.getMessages(threadId, { limit: 1 });
     const lastMessage = data.messages.at(-1) || {};

@@ -13,6 +13,7 @@ import {
   canExposeLocalFilesForMessage,
   contentDispositionForDownload,
   loginUrlFor,
+  loginUrlForProfile,
   modelConfigurationFromCatalog,
   normalizeTurnSettings,
   parseCodexModelConfig,
@@ -1153,6 +1154,14 @@ test("login QR URLs keep access codes in the fragment", () => {
   const url = new URL(loginUrlFor("https://office.example.com/"));
   assert.equal(url.search, "");
   assert.match(url.hash, /^#login=/);
+});
+
+test("profile login URLs use the short-lived session exchange route", () => {
+  const url = new URL(loginUrlForProfile("https://office.example.com/", { id: "p1" }));
+  assert.equal(url.pathname, "/login");
+  assert.equal(url.searchParams.get("device"), "p1");
+  assert.ok(url.searchParams.get("token"));
+  assert.equal(url.hash, "");
 });
 
 test("mobile composer does not clip the model picker overlay", () => {

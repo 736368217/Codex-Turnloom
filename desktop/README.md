@@ -21,9 +21,22 @@ npm run desktop:dev
 一个 Codex 数据目录，不再出现两个看起来重复的选项。
 
 PI-Desktop 的 `D:\pi-data\data\pi.sqlite` 不能被托盘控制台直接导入：它是另一套 schema，
-不是 Codex 的 `state_5.sqlite`。如果要把 PI 会话显示在手机端，需要使用
-`turnloom-pidesktop` 的 Codex 门面（或 HTTP 后端适配器）把 PI 数据转换成 Turnloom 可读的
-格式，然后把控制台的 Codex 目录指向该门面目录。
+不是 Codex 的 `state_5.sqlite`。要在手机端同时和 Codex、PI-Desktop 对话，走
+`turnloom-pidesktop` 插件提供的桥：它把 PI 会话镜像成 Codex 门面，并在
+`\\.\pipe\pidesktop-codex-ipc` 上扮演 Codex Desktop。
+
+## 同时连接 Codex 与 PI-Desktop
+
+两种接法都支持：
+
+1. **两台设备（推荐）**：控制台继续托管本机 Codex（默认 8787），PI-Desktop 桥由插件托管在 8799。
+   在「设置 → 其他设备」点「检测 PI-Desktop 桥」，填入 PI 侧访问码后保存；配对页会出现
+   「本机」和「PI-Desktop」两个标签，各生成一张二维码，手机应用里就是两台设备。
+2. **单设备合并（高级）**：把「Codex 数据目录」指向门面目录（`%USERPROFILE%\.pidesktop-turnloom`），
+   并在「Codex IPC 管道」填写 `\\.\pipe\pidesktop-codex-ipc`。门面里有多少会话就显示多少；
+   若插件开启 `TURNLOOM_MIRROR_CODEX=1`，Codex 会话也会合并进同一个列表。
+
+「其他设备」只接受 http/https 地址；访问码只保存在本机 `config.json`，不会写入日志或导出。
 
 已经用 `scripts/install-windows.ps1` 安装过的电脑，控制台会读取现有配置并尝试停止旧计划任务 `Codex Pocket Supervisor`，不需要重新配对。旧脚本保留，供无桌面环境或回滚使用，不能和托盘控制台同时运行。
 
