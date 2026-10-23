@@ -204,9 +204,19 @@ const I18N = {
     collapseNotice: "收起",
     interactionRequired: "需要处理",
     interactionDesktopAction: "等待确认",
-    approvalYes: "是",
-    approvalNo: "否",
-    approvalAlways: "一直是",
+    approvalYes: "允许本次",
+    approvalNo: "拒绝",
+    approvalAlways: "始终允许",
+    approvalYesSub: "是",
+    approvalAlwaysSub: "一直是",
+    approvalNoSub: "否",
+    approvalQuestionCommand: "允许 Codex 执行以下命令吗？",
+    approvalQuestionFile: "允许 Codex 访问以下路径吗？",
+    approvalQuestionGeneric: "允许 Codex 继续这次操作吗？",
+    approvalCommandLabel: "目标命令",
+    approvalPathLabel: "目标路径",
+    approvalWorkdirLabel: "工作目录",
+    authHostPill: "这台电脑 · 在线",
     approvalSending: "正在提交审批...",
     approvalDone: "审批已提交",
     approvalFailed: "审批提交失败：{message}",
@@ -215,20 +225,21 @@ const I18N = {
     send: "发送",
     stop: "停止",
     stopCurrentTask: "停止当前任务",
-    queue: "排队",
-    steer: "插入",
+    queue: "排队（完成后发）",
+    steer: "插入（立即打断）",
     followUpMode: "运行中发送方式",
+    followUpLabel: "发送方式",
     queueFollowUp: "当前任务完成后发送",
     steerFollowUp: "立即插入当前任务",
-    queuedCount: "已排队 {count} 条",
+    queuedCount: "⏳ 候发队列（{count} 条）· 任务完成后自动发送",
     queuedWithPreview: "已排队 {count} 条 · {preview}",
     queueAccepted: "已加入队列，当前任务完成后发送。",
     steerAccepted: "已插入当前任务。",
     clearQueue: "取消全部排队消息",
     queueCleared: "已取消 {count} 条排队消息。",
     queueClearFailed: "取消队列失败：{message}",
-    queuedItem: "排队消息",
-    insertQueued: "转为插入",
+    queuedItem: "排队中",
+    insertQueued: "⚡ 插入",
     editQueued: "编辑",
     cancelQueued: "取消",
     steerBecameNewTurn: "原任务刚好完成，这条消息已作为下一步发送。",
@@ -265,7 +276,7 @@ const I18N = {
     thinking: "思考中...",
     processing: "正在处理",
     sent: "已发送",
-    processed: "已处理",
+    processed: "耗时",
     primaryUsage: "主要用量",
     longTermUsage: "长期用量",
     credit: "额度",
@@ -277,6 +288,7 @@ const I18N = {
     noUsage: "还没有读取到本地套餐用量记录。",
     conversationsCount: "{count} 个对话",
     statusRunning: "运行中",
+    statusThinking: "思考中",
     statusWaiting: "等待处理",
     statusEnded: "已结束",
     statusUnknown: "状态未知",
@@ -380,9 +392,19 @@ const I18N = {
     collapseNotice: "Collapse",
     interactionRequired: "Action required",
     interactionDesktopAction: "Approval pending",
-    approvalYes: "Yes",
-    approvalNo: "No",
-    approvalAlways: "Always",
+    approvalYes: "Allow once",
+    approvalNo: "Deny",
+    approvalAlways: "Always allow",
+    approvalYesSub: "Yes",
+    approvalAlwaysSub: "Always",
+    approvalNoSub: "No",
+    approvalQuestionCommand: "Allow Codex to run this command?",
+    approvalQuestionFile: "Allow Codex to access this path?",
+    approvalQuestionGeneric: "Allow Codex to continue?",
+    approvalCommandLabel: "Command",
+    approvalPathLabel: "Target path",
+    approvalWorkdirLabel: "Working directory",
+    authHostPill: "This computer · Online",
     approvalSending: "Submitting approval...",
     approvalDone: "Approval submitted",
     approvalFailed: "Approval failed: {message}",
@@ -391,20 +413,21 @@ const I18N = {
     send: "Send",
     stop: "Stop",
     stopCurrentTask: "Stop current task",
-    queue: "Queue",
-    steer: "Insert",
+    queue: "Queue (send after)",
+    steer: "Insert (interrupt now)",
     followUpMode: "Send while running",
+    followUpLabel: "Send mode",
     queueFollowUp: "Send after the current task",
     steerFollowUp: "Insert into the current task",
-    queuedCount: "{count} queued",
+    queuedCount: "⏳ Queue ({count}) · sends when this task finishes",
     queuedWithPreview: "{count} queued · {preview}",
     queueAccepted: "Queued for after the current task.",
     steerAccepted: "Inserted into the current task.",
     clearQueue: "Cancel all queued messages",
     queueCleared: "Cancelled {count} queued messages.",
     queueClearFailed: "Could not cancel queue: {message}",
-    queuedItem: "Queued message",
-    insertQueued: "Insert now",
+    queuedItem: "Queued",
+    insertQueued: "⚡ Insert",
     editQueued: "Edit",
     cancelQueued: "Cancel",
     steerBecameNewTurn: "The previous task finished, so this message was sent as the next step.",
@@ -441,7 +464,7 @@ const I18N = {
     thinking: "Thinking...",
     processing: "Processing",
     sent: "Sent",
-    processed: "Processed",
+    processed: "Took",
     primaryUsage: "Primary usage",
     longTermUsage: "Long-term usage",
     credit: "Credit",
@@ -453,6 +476,7 @@ const I18N = {
     noUsage: "No local plan usage record found yet.",
     conversationsCount: "{count} conversations",
     statusRunning: "Running",
+    statusThinking: "Thinking",
     statusWaiting: "Waiting",
     statusEnded: "Ended",
     statusUnknown: "Unknown",
@@ -587,7 +611,6 @@ function applyStaticText() {
   els.threadMeta.textContent = t("syncEvery");
   els.goalDetailBackButton.textContent = t("goalBack");
   els.goalEditButton.textContent = t("goalEdit");
-  document.querySelector("#toolToggleLabel").textContent = "🔧";
   document.querySelector(".toggle").setAttribute("title", t("tool"));
   document.querySelector(".toggle").setAttribute("aria-label", t("tool"));
   els.toolToggle.checked = state.showTools;
@@ -613,6 +636,10 @@ function applyStaticText() {
   els.followUpMode.querySelector('[data-follow-up-mode="queue"]').setAttribute("title", t("queueFollowUp"));
   els.followUpMode.querySelector('[data-follow-up-mode="steer"]').textContent = t("steer");
   els.followUpMode.querySelector('[data-follow-up-mode="steer"]').setAttribute("title", t("steerFollowUp"));
+  const followUpLabel = document.querySelector("#followUpLabel");
+  if (followUpLabel) followUpLabel.textContent = t("followUpLabel");
+  const authHostPillLabel = document.querySelector("#authHostPillLabel");
+  if (authHostPillLabel) authHostPillLabel.textContent = t("authHostPill");
   els.clearQueueButton.setAttribute("title", t("clearQueue"));
   els.clearQueueButton.setAttribute("aria-label", t("clearQueue"));
   els.composerInput.placeholder = t("sendToCodex");
@@ -745,6 +772,13 @@ function adoptSelectedThreadModel() {
   normalizeModelSettings(preference?.model || thread?.model || state.model);
 }
 
+
+function rememberedTokenKey() {
+  const url = new URL(window.location.href);
+  const hashParams = new URLSearchParams(url.hash.startsWith("#") ? url.hash.slice(1) : "");
+  const device = url.searchParams.get("device") || hashParams.get("d") || hashParams.get("device") || "";
+  return device ? `codexLanToken:${encodeURIComponent(device)}` : "codexLanToken";
+}
 function initAuthToken() {
   const url = new URL(window.location.href);
   const hashParams = new URLSearchParams(url.hash.startsWith("#") ? url.hash.slice(1) : "");
@@ -766,10 +800,10 @@ function initAuthToken() {
   }
   state.authToken = resolveAuthToken({
     urlToken,
-    rememberedToken: safeStorageGet(localStorage, "codexLanToken"),
+    rememberedToken: safeStorageGet(localStorage, rememberedTokenKey()),
     nativeToken
   });
-  els.rememberDevice.checked = Boolean(safeStorageGet(localStorage, "codexLanToken"));
+  els.rememberDevice.checked = Boolean(safeStorageGet(localStorage, rememberedTokenKey()));
 }
 
 function authHeaders(extra = {}) {
@@ -794,7 +828,7 @@ function lockApp(message = "") {
     return;
   }
   safeStorageRemove(sessionStorage, "codexLanToken");
-  safeStorageRemove(localStorage, "codexLanToken");
+  safeStorageRemove(localStorage, rememberedTokenKey());
   state.authToken = "";
   state.authLocked = true;
   state.config = null;
@@ -856,16 +890,16 @@ function renderApprovalActions(message) {
   const requestId = escapeHtml(String(message.requestId));
   const approvalKind = escapeHtml(String(message.approvalKind || "command"));
   const buttons = [
-    ["accept", "approvalYes", "primary"],
-    ["decline", "approvalNo", "secondary"],
-    ["acceptForSession", "approvalAlways", "primary"]
+    ["accept", "approvalYes", "approvalYesSub", "approve-once"],
+    ["acceptForSession", "approvalAlways", "approvalAlwaysSub", "approve-always"],
+    ["decline", "approvalNo", "approvalNoSub", "approve-deny"]
   ];
   return `
     <div class="approval-actions" data-request-id="${requestId}" data-approval-kind="${approvalKind}">
       ${buttons
         .map(
-          ([decision, labelKey, tone]) =>
-            `<button class="approval-action ${tone}" type="button" data-decision="${escapeHtml(decision)}">${escapeHtml(t(labelKey))}</button>`
+          ([decision, labelKey, subKey, tone]) =>
+            `<button class="approval-action ${tone}" type="button" data-decision="${escapeHtml(decision)}" aria-label="${escapeHtml(`${t(labelKey)} · ${t(subKey)}`)}"><span class="approval-action-label">${escapeHtml(t(labelKey))}</span><span class="approval-action-sub">${escapeHtml(t(subKey))}</span></button>`
         )
         .join("")}
     </div>
@@ -874,6 +908,41 @@ function renderApprovalActions(message) {
 
 function approvalSubmissionKey(threadId, requestId) {
   return `${threadId || ""}:${requestId || ""}`;
+}
+
+function interactionFields(message) {
+  const fields = {};
+  const pattern = /^(Prompt|Command|Path|Workdir|Options):\s*(.+)$/gim;
+  const text = String(message?.content || "");
+  let match;
+  while ((match = pattern.exec(text))) {
+    const key = match[1].toLowerCase();
+    if (!fields[key]) fields[key] = match[2].trim();
+  }
+  return fields;
+}
+
+function approvalQuestion(message) {
+  const kind = String(message?.approvalKind || "").toLowerCase();
+  if (kind === "file" || kind === "patch") return t("approvalQuestionFile");
+  if (kind === "command" || kind === "exec" || kind === "shell") return t("approvalQuestionCommand");
+  return t("approvalQuestionGeneric");
+}
+
+function approvalSandbox(labelKey, value) {
+  return `<div class="sandbox-box"><span class="sandbox-label">${escapeHtml(t(labelKey))}</span><span class="sandbox-value">${escapeHtml(value)}</span></div>`;
+}
+
+function renderInteractionBody(message) {
+  if (!message?.canApprove) return renderMessageMarkdown(message.content);
+  const fields = interactionFields(message);
+  if (!fields.command && !fields.path && !fields.prompt) return renderMessageMarkdown(message.content);
+  const parts = [];
+  if (fields.prompt) parts.push(`<p class="approval-prompt">${escapeHtml(fields.prompt)}</p>`);
+  if (fields.command) parts.push(approvalSandbox("approvalCommandLabel", fields.command));
+  if (fields.path) parts.push(approvalSandbox("approvalPathLabel", fields.path));
+  if (fields.workdir) parts.push(`<p class="approval-workdir">${escapeHtml(t("approvalWorkdirLabel"))} <code>${escapeHtml(fields.workdir)}</code></p>`);
+  return parts.join("");
 }
 
 function isImportantNotice(message) {
@@ -1313,6 +1382,32 @@ function threadStatusLabel(status) {
   return t("statusUnknown");
 }
 
+function compactElapsed(status, now = Date.now()) {
+  const start = Number(status?.startedAtMs || 0);
+  if (!status?.thinking || !Number.isFinite(start) || start <= 0) return "";
+  const totalSeconds = Math.max(0, Math.floor((now - start) / 1000));
+  const minutes = Math.floor(totalSeconds / 60);
+  const seconds = totalSeconds % 60;
+  return `${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`;
+}
+
+function threadStatusPill(status) {
+  if (!status) return "";
+  if (status.interactionRequired) {
+    return `<span class="status-pill waiting"><span class="status-pill-dot" aria-hidden="true"></span>${escapeHtml(t("statusWaiting"))}</span>`;
+  }
+  if (status.thinking) {
+    const elapsed = compactElapsed(status);
+    return `<span class="status-pill running"><span class="status-pill-dot" aria-hidden="true"></span>${escapeHtml(t("statusThinking"))}${
+      elapsed ? ` · <span id="threadMetaTime">${escapeHtml(elapsed)}</span>` : ""
+    }</span>`;
+  }
+  if (status.state === "ended") {
+    return `<span class="status-pill online"><span class="status-pill-dot" aria-hidden="true"></span>${escapeHtml(t("statusEnded"))}</span>`;
+  }
+  return "";
+}
+
 function renderThreads() {
   els.threadCount.textContent = t("conversationsCount", { count: state.threads.length });
   const renderThread = (thread) => {
@@ -1320,14 +1415,27 @@ function renderThreads() {
       const title = escapeHtml(thread.title || t("untitled"));
       const status = thread.status || {};
       const reminder = reminderEnabled(thread.id);
+      const statusClass = status.interactionRequired
+        ? "waiting"
+        : status.thinking
+          ? "running"
+          : status.state === "ended"
+            ? "ended"
+            : "unknown";
+      const elapsed = compactElapsed(status);
+      const showStatus = statusClass !== "unknown" || reminder;
       return `
         <button class="thread-item${active}${thread.id === DRAFT_THREAD_ID ? " draft" : ""}" data-id="${thread.id}" ${thread.id === DRAFT_THREAD_ID ? "" : 'aria-haspopup="menu"'}>
           <span class="thread-copy">
             <span class="thread-title">${title}</span>
-            <span class="thread-status thread-status-${escapeHtml(status.state || "unknown")}" title="${escapeHtml(threadStatusLabel(status))}">
-              <span class="thread-status-dot" aria-hidden="true"></span>${escapeHtml(threadStatusLabel(status))}
-              ${reminder ? `<span class="thread-reminder-state">${escapeHtml(t("reminderEnabledLabel"))}</span>` : ""}
-            </span>
+            ${
+              showStatus
+                ? `<span class="thread-status thread-status-${statusClass}" title="${escapeHtml(threadStatusLabel(status))}">
+              <span class="thread-status-dot" aria-hidden="true"></span>${escapeHtml(threadStatusLabel(status))}${elapsed ? ` · ${escapeHtml(elapsed)}` : ""}
+              ${reminder ? `<span class="thread-reminder-state">🔔 ${escapeHtml(t("reminderEnabledLabel"))}</span>` : ""}
+            </span>`
+                : ""
+            }
           </span>
         </button>
       `;
@@ -1446,7 +1554,7 @@ function roleBadge(message) {
 }
 
 function messageMetaTop(message, previousUserMessage) {
-  if (message.role === "user") return t("sent");
+  if (message.role === "user") return "";
   if (message.role === "assistant") {
     const inferredDuration =
       message.durationMs ||
@@ -1724,14 +1832,14 @@ function renderMessages(data) {
   state.goal = data.goal || null;
   renderGoal(state.goal);
   const displayMessages = mergePendingMessages(data);
-  const statusText = data.status?.interactionRequired
-    ? `${t("separator")}${t("interactionRequired")}`
-    : data.status?.thinking
-        ? `${t("separator")}${t("thinking")}`
-        : data.status?.possibleDesktopAttention
-          ? `${t("separator")}${t("desktopMayNeedAttention")}`
-          : "";
-  els.threadMeta.textContent = `${t("contents", { count: displayMessages.length })}${statusText}`;
+  const statusPill = threadStatusPill(data.status);
+  const attentionNote =
+    !data.status?.thinking && !data.status?.interactionRequired && data.status?.possibleDesktopAttention
+      ? `<span class="thread-meta-note">${escapeHtml(t("desktopMayNeedAttention"))}</span>`
+      : "";
+  els.threadMeta.innerHTML = `${statusPill}<span class="thread-meta-count">${escapeHtml(
+    t("contents", { count: displayMessages.length })
+  )}</span>${attentionNote}`;
 
   if (!displayMessages.length && !data.status?.thinking) {
     els.messageList.innerHTML = `<div class="empty-state">${escapeHtml(state.selectedId === DRAFT_THREAD_ID ? t("newConversationReady") : t("emptyThread"))}</div>`;
@@ -1748,33 +1856,47 @@ function renderMessages(data) {
       const noticeKey = isNotice ? noticeCollapseKey(message) : "";
       const noticeCollapsed = isNotice && !isImportantNotice(message) && !state.expandedNotices[noticeKey];
       const hidden = isTool && !state.showTools ? " hidden" : "";
-      const title =
-        isNotice
-          ? renderNoticeTitle(message, noticeCollapsed, noticeKey)
-          : isTool || isInteraction
-            ? `<div class="${isInteraction ? "interaction-title" : "tool-title"}">${escapeHtml(
-                isInteraction ? t("interactionDesktopAction") : message.kind
-              )}${isTool ? `${t("separator")}${escapeHtml(message.title || "")}` : ""}</div>`
-          : "";
+      const toolTitle = `<div class="tool-title"><span class="tool-kind-chip">${escapeHtml(message.kind || t("tool"))}</span>${
+        message.title ? `<span class="tool-path">${escapeHtml(message.title)}</span>` : ""
+      }</div>`;
+      const interactionTitle = message.canApprove
+        ? `<div class="approval-head"><span class="status-pill waiting"><span class="status-pill-dot" aria-hidden="true"></span>${escapeHtml(
+            t("interactionRequired")
+          )} · ${escapeHtml(t("interactionDesktopAction"))}</span></div><p class="approval-question">${escapeHtml(
+            approvalQuestion(message)
+          )}</p>`
+        : `<div class="interaction-title">${escapeHtml(t("interactionDesktopAction"))}</div>`;
+      const title = isNotice
+        ? renderNoticeTitle(message, noticeCollapsed, noticeKey)
+        : isTool
+          ? toolTitle
+          : isInteraction
+            ? interactionTitle
+            : "";
       const metaTop = messageMetaTop(message, previousUserMessage);
       const metaBottom = formatMessageDate(message.completedAtMs || message.timestamp);
+      const metaLine = [metaTop, metaBottom].filter(Boolean).join(" · ");
       if (message.role === "user") previousUserMessage = message;
       const pendingClass = message.deliveryStatus && message.deliveryStatus !== "sent" ? " pending" : "";
       const pendingId = message.deliveryStatus ? ` data-pending-id="${escapeHtml(message.id || "")}"` : "";
       const branchAction = renderBranchAction(message);
       const messageArticle = `
         <article class="message ${escapeHtml(message.role)}${pendingClass}${hidden}"${pendingId} data-message-id="${escapeHtml(message.id || "")}" data-turn-id="${escapeHtml(message.turnId || "")}">
-          <div class="role">${roleBadge(message)}</div>
+          <div class="role">${roleBadge(message)}${metaLine ? `<span class="role-meta">${escapeHtml(metaLine)}</span>` : ""}</div>
           <div class="bubble">
-            ${metaTop ? `<div class="message-meta message-meta-top">${escapeHtml(metaTop)}</div>` : ""}
             ${title}
-            ${message.content && !noticeCollapsed ? renderMessageMarkdown(message.content) : ""}
+            ${
+              !noticeCollapsed && message.content
+                ? isInteraction
+                  ? renderInteractionBody(message)
+                  : renderMessageMarkdown(message.content)
+                : ""
+            }
             ${!noticeCollapsed ? renderMessageImages(message) : ""}
             ${!noticeCollapsed ? renderMessageFiles(message) : ""}
             ${renderApprovalActions(message)}
             ${branchAction}
             ${pendingDeliveryHtml(message)}
-            ${metaBottom ? `<div class="message-meta message-meta-bottom">${escapeHtml(metaBottom)}</div>` : ""}
           </div>
         </article>
       `;
@@ -1804,11 +1926,16 @@ function renderBranchAction(message) {
 window.setInterval(() => {
   if (document.hidden) return;
   const label = els.messageList.querySelector(".running-time");
-  if (!label) return;
-  const text = runningTimeLabel(state.threadStatus, Date.now(), state.locale) || t("processing");
-  if (label.textContent !== text) label.textContent = text;
+  if (label) {
+    const text = runningTimeLabel(state.threadStatus, Date.now(), state.locale) || t("processing");
+    if (label.textContent !== text) label.textContent = text;
+  }
+  const metaTime = document.querySelector("#threadMetaTime");
+  if (metaTime) {
+    const compact = compactElapsed(state.threadStatus, Date.now());
+    if (compact && metaTime.textContent !== compact) metaTime.textContent = compact;
+  }
 }, 1000);
-
 async function fetchJson(url, options = {}) {
   const response = await fetch(url, {
     cache: "no-store",
@@ -2380,19 +2507,18 @@ function renderQueueStatus(status = state.threadStatus) {
     els.queueStatusList.innerHTML = "";
     return;
   }
-  const preview = compactPreview(queuedMessages.at(-1)?.preview);
-  els.queueStatusText.textContent = preview ? t("queuedWithPreview", { count, preview }) : t("queuedCount", { count });
+  els.queueStatusText.textContent = t("queuedCount", { count });
   els.queueStatusList.innerHTML = queuedMessages
     .map(
       (item, index) => `
         <div class="queue-status-item" data-queue-item-id="${escapeHtml(item.id || "")}">
           <div class="queue-status-copy">
-            <span class="queue-status-label">${escapeHtml(item.deliveryState === "failed" ? t("messageFailed") : item.deliveryState === "awaitingConfirmation" || item.deliveryState === "sending" ? t("messageSending") : t("queuedItem"))} ${index + 1}</span>
+            <span class="queue-status-label">#${index + 1} · ${escapeHtml(item.deliveryState === "failed" ? t("messageFailed") : item.deliveryState === "awaitingConfirmation" || item.deliveryState === "sending" ? t("messageSending") : t("queuedItem"))}</span>
             <span class="queue-status-preview">${escapeHtml(compactPreview(item.preview || item.text))}</span>
             ${Array.isArray(item.images) && item.images.length ? `<div class="queue-status-images">${item.images.map((image) => `<img src="${escapeHtml(withAuthToken(image.url))}" alt="${escapeHtml(image.name || t("addImage"))}" loading="lazy" />`).join("")}</div>` : ""}
           </div>
           <div class="queue-status-actions">
-            ${item.deliveryState === "queued" ? `<button type="button" data-queue-action="steer">${escapeHtml(t("insertQueued"))}</button>` : ""}
+            ${item.deliveryState === "queued" ? `<button class="queue-steer-button" type="button" data-queue-action="steer">${escapeHtml(t("insertQueued"))}</button>` : ""}
             <button type="button" data-queue-action="edit">${escapeHtml(t("editQueued"))}</button>
             <button type="button" data-queue-action="cancel">${escapeHtml(t("cancelQueued"))}</button>
           </div>
@@ -3138,8 +3264,8 @@ els.authForm.addEventListener("submit", async (event) => {
   }
   state.authToken = token;
   safeStorageRemove(sessionStorage, "codexLanToken");
-  if (els.rememberDevice.checked) safeStorageSet(localStorage, "codexLanToken", token);
-  else safeStorageRemove(localStorage, "codexLanToken");
+  if (els.rememberDevice.checked) safeStorageSet(localStorage, rememberedTokenKey(), token);
+  else safeStorageRemove(localStorage, rememberedTokenKey());
   els.authError.textContent = "";
   els.authButton.disabled = true;
   els.authButton.textContent = t("verifying");
