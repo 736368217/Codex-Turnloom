@@ -69,3 +69,11 @@ test("HTTP backend client follows the documented wire contract", async () => {
   assert.equal(sent.ok, true);
   assert.equal(JSON.parse(calls.at(-1).options.body).text, "hello");
 });
+
+test("HTTP backend rejects threads outside the adapter inventory", async () => {
+  const fetchImpl = async (url) => new Response(JSON.stringify(
+    String(url).endsWith("/threads") ? [{ id: "known" }] : { ok: true }
+  ), { status: 200 });
+  const backend = new HttpBackendClient({ baseUrl: "http://backend.test", fetchImpl });
+  await assert.rejects(() => backend.getMessages("unknown"), (error) => error.status === 404);
+});
