@@ -10,6 +10,8 @@
 - Support `?limit=&cursor=` and `ETag`/`304` on `/api/threads`; the web client revalidates cached thread lists instead of downloading them again unchanged.
 - Rate-limit the `[models] Using fallback model list` log so a missing `config.toml` cannot flood the service log.
 - Route every `execFile`/`spawn` call through Windows-hidden helpers, keeping the child-process guard on the SQLite CLI and app-server fallback in one place.
+- Add a dependency-free HTTP backend (`--backend http`) and token-routed profiles (`--profiles`) so Turnloom can serve Codex and third-party agents on one port without mirroring `CODEX_HOME`.
+- Deduplicate Android scanned devices by origin plus token instead of the full URL, so two same-origin devices with different access codes can coexist.
 - Restore mobile sending with Codex Desktop 26.901 by discovering the open conversation owner and routing start/stop retries directly to that Desktop client; keep local follower requests on the local protocol envelope.
 - Open conversations at the latest message even when hydrating from the offline cache, load only the latest 40 messages initially, and fetch older history in bounded pages while preserving the reading position.
 - Redesign the Android computer picker and connected web workspace with a restrained Apple-influenced visual system, clearer computer identity and live connection states, first-use guidance, and a persistent quick-guide entry.
