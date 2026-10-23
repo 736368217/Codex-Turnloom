@@ -7,6 +7,7 @@
 - Add short-lived HttpOnly session cookies: `/login?token=...` exchanges an access code for an 8-hour session, redirects to a query-free URL, and `/api/auth/logout` revokes it; `/api/auth/session` supports explicit exchange from the web client.
 - Support multiple Codex homes in one `--profiles` file, with request-scoped `realpath`-aware home selection and per-home thread/account/rollout caches.
 - Extend the HTTP backend contract with pin, goal, compact, branch, approval, queue cancel/steer and changes; account/plugins/skills return safe empty values without reading local Codex data.
+- Add extra-device pairing to the tray console: register another Turnloom instance (for example the PI-Desktop bridge), probe its `/api/health`, and generate per-device pairing QRs; optional `ipcSocket` supports a single merged facade.
 - Deduplicate junctioned Codex homes in the desktop setup wizard and document directory selection / PI-Desktop import boundaries.
 
 ## 1.16.0 - 2026-10-23
