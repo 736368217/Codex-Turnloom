@@ -3,6 +3,7 @@
 - 发布日期：2026-10-23
 - 版本：`1.17.0`（Android `versionCode` 21）
 - 桌面安装包：`Codex-Turnloom-Console-1.17.0-x64.exe`
+- Android 调试包：`Codex-Turnloom-1.17.0-debug.apk`
 - 校验值：SHA-512 见 `dist-desktop/latest.yml`；SHA-256 `97458B051CCC4395B4BDBDE9DA8C7D2C025E6AF89295AB25E5376F014C67A823`
 
 ## 重点更新
@@ -11,6 +12,7 @@
 - **单端口多 Codex home**：`--profiles` 现在支持多个 Codex home 和多个 HTTP 后端，请求级隔离缓存，跨 profile thread id 返回 404。
 - **HTTP 后端能力补全**：pin、goal、compact、branch、approval、queue cancel/steer、changes 全部透传；account/plugins/skills 返回安全空值，不读取本地 Codex 数据。
 - **桌面安装向导**：按 `realpath` 去重 junction 目录，`C:\Users\<user>\.codex` 与 `D:\codex\.codex` 只显示一个选项；补充目录选择与 PI-Desktop 导入边界说明。
+- **桌面控制台多设备**：设置页可添加其他 Turnloom 设备（如 PI-Desktop 桥）并一键检测；配对页按设备切换、各生成二维码。高级模式支持 `--ipc-socket` 指向门面管道，用于单设备合并显示。
 - **保留 1.16.0 的移动端 V2、托盘控制台、P0/P2 可靠性改进**。
 
 ## 升级说明
