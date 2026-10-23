@@ -6459,7 +6459,8 @@ async function handleHttpBackendApi(req, res, url, profile = null) {
     return true;
   } catch (error) {
     logError(`[http-backend] ${req.method} ${pathname}: ${error?.stack || error?.message || String(error)}`);
-    sendJson(res, error?.status || 502, {
+    const status = error?.status && ![401, 403].includes(error.status) ? error.status : 502;
+    sendJson(res, status, {
       error: error?.message || "HTTP backend request failed",
       backend: { kind: "http", url: backend.baseUrl, profile: profile?.id || null }
     });
