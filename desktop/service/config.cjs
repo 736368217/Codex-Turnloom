@@ -64,12 +64,18 @@ function detectCodexHomes() {
     add(path.join(`${drive}:\\`, "codex", ".codex"), `${drive}: 盘`);
   }
   const found = [];
+  const seenReal = new Set();
   for (const item of candidates) {
     const db = path.join(item.path, "state_5.sqlite");
     if (!fs.existsSync(db)) continue;
+    let realPath = item.path;
+    try { realPath = fs.realpathSync.native(item.path); } catch {}
+    const key = process.platform === "win32" ? realPath.toLowerCase() : realPath;
+    if (seenReal.has(key)) continue;
+    seenReal.add(key);
     let modified = 0;
     try { modified = fs.statSync(db).mtimeMs; } catch {}
-    found.push({ ...item, modified, stateDb: db });
+    found.push({ ...item, path: item.path, realPath, modified, stateDb: db });
   }
   return found.sort((a, b) => b.modified - a.modified);
 }

@@ -11,6 +11,7 @@
 - **HTTP 后端适配器**：`--backend http` 可直接接入任意 agent，不读写 `CODEX_HOME`；浏览、读取消息、发送、中断全部可用。
 - **多设备 profile**：`--profiles` 支持同一端口按 token 路由到 Codex 或 HTTP 后端，各设备访问码独立，跨 profile thread id 返回 404。
 - **可靠性**：单条坏 rollout 不再拖垮 `/api/threads`；新增 `/api/admin/diagnostics`；支持可选 `status_*` 状态列和 `/api/adapters/status`。
+- **目录选择**：安装向导按真实路径去重 junction，`C:\Users\<user>\.codex` 与 `D:\codex\.codex` 只显示一个 Codex 数据目录。
 - **性能**：优先 `node:sqlite`（无子进程），rollout 状态按文件签名缓存，线程列表支持分页/ETag/304。
 - **移动端**：Loom Studio V2 视觉刷新、语义状态胶囊、权限决策卡、队列消息面板、Android 设备选择器升级；访问码按设备隔离，扫码设备按 `(origin, token)` 去重。
 
