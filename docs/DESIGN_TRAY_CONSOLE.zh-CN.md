@@ -321,11 +321,13 @@ Codex-Turnloom 控制台
 
 三步：
 
-1. **检测 Codex Desktop**：自动扫描 `%USERPROFILE%\.codex`、`%CODEX_HOME%` 和其他盘符下的 `codex\.codex`，校验 `state_5.sqlite`。
+1. **检测 Codex Desktop**：自动扫描 `%USERPROFILE%\.codex`、`%CODEX_HOME%` 和其他盘符下的 `codex\.codex`，校验 `state_5.sqlite`；对 junction / 符号链接做 `realpath` 去重，只显示一个规范路径（例如 `C:\Users\...\.codex` 指向 `D:\codex\.codex` 时只显示后者）。
 2. **设置本机服务**：端口（默认 8787）、访问码（自动生成 6 位）、开机自启、启动时最小化。
 3. **启动并配对**：启动服务 → 健康检查 → 显示二维码 → 完成。
 
 已有配置的用户不会看到这个向导，直接进入概览。
+
+> 向导只识别 Codex Desktop 的 `state_5.sqlite`。PI-Desktop 的 `pi.sqlite` 是另一套 `sessions/messages` schema，不能通过“选择目录”导入；如果以后要接入 PI，需要单独做数据适配器。
 
 ### 6.9 退出确认
 

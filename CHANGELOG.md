@@ -20,6 +20,7 @@
 - Scope remembered access codes by device and dedupe Android scanned devices by origin plus token.
 
 ### Additional fixes in 1.16.0
+- Deduplicate junctioned Codex homes in the setup wizard by canonical real path, so `C:\Users\<user>\.codex` and its `D:\codex\.codex` target appear as one choice.
 
 - Keep the mobile model and reasoning picker visible above the composer instead of clipping it inside the narrow-screen toolbar.
 - Isolate rollout-path failures per thread: one bad or missing rollout now leaves that thread at `unknown` instead of failing the whole `/api/threads` response, and the new authenticated `/api/admin/diagnostics` endpoint lists every missing or out-of-home rollout for repair.

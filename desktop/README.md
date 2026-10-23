@@ -11,7 +11,19 @@ npm ci
 npm run desktop:dev
 ```
 
-首次运行没有 `%LOCALAPPDATA%\CodexPocket\config.json` 时会打开三步设置向导：检测 Codex 数据目录、设置端口/访问码、启动并显示配对二维码。
+首次运行没有 `%LOCALAPPDATA%\CodexPocket\config.json` 时会打开三步设置向导：检测 Codex 数据目录、设置端口/访问码、启动并显示配对二维码。向导只识别 Codex Desktop 的 `state_5.sqlite`；PI-Desktop 的 `D:\pi-data\data\pi.sqlite` 是另一套 schema，不能通过选择目录导入。
+
+## 选择哪个 Codex 数据目录
+
+`C:\Users\<user>\.codex` 常是到 `D:\codex\.codex` 的 junction。两者指向同一份
+`state_5.sqlite`，选择任意一个都能工作；推荐选择 `D:\codex\.codex`（`CODEX_HOME` 环境变量
+通常也指向这里，路径更直接）。当前版本会按 `realpathSync` 的真实路径去重，因此向导只会显示
+一个 Codex 数据目录，不再出现两个看起来重复的选项。
+
+PI-Desktop 的 `D:\pi-data\data\pi.sqlite` 不能被托盘控制台直接导入：它是另一套 schema，
+不是 Codex 的 `state_5.sqlite`。如果要把 PI 会话显示在手机端，需要使用
+`turnloom-pidesktop` 的 Codex 门面（或 HTTP 后端适配器）把 PI 数据转换成 Turnloom 可读的
+格式，然后把控制台的 Codex 目录指向该门面目录。
 
 已经用 `scripts/install-windows.ps1` 安装过的电脑，控制台会读取现有配置并尝试停止旧计划任务 `Codex Pocket Supervisor`，不需要重新配对。旧脚本保留，供无桌面环境或回滚使用，不能和托盘控制台同时运行。
 
