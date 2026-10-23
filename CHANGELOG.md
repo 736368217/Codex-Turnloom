@@ -1,6 +1,8 @@
 # Changelog
 
-## 1.16.0
+## Unreleased
+
+## 1.16.0 - 2026-10-23
 
 - Ship the Loom Studio V2 mobile redesign: cool-slate surfaces (`#F4F5F8`), white cards and a single action blue (`#0066CC`) replace every legacy teal and warm-gray token.
 - Put a semantic status pill in front of the conversation header (`思考中 · 01:18` / `待确认权限` / `已结束`) and show the same pill plus elapsed time on every conversation row.
@@ -10,9 +12,14 @@
 - Restyle the queued-message panel to a light-blue card with white queue rows and an accent `⚡ 插入` action, and trim message metadata to one lightweight eyebrow line that hides the redundant “已发送” status.
 - Give tool records a compact single-line step card, and refine the access gate (22dp card, 24px single-line brand title, online host pill) plus a 338dp drawer with 12dp conversation rows.
 - Upgrade the Android computer picker to standalone 16dp device cards with 44dp icon tiles, online/offline/detecting status pills and monospace host addresses.
-- Bump the mobile app to `1.16.0` (`versionCode` 20) and archive the V2 design package under `docs/mobile-design-v2/`.
+- Bump the mobile app to `1.16.0` (`versionCode` 20) and archive the V2 design package under `docs/design/mobile-v2/`.
+- Ship the Windows tray console: silent tray startup, service/tunnel supervision, onboarding, settings, logs, pairing QR, restart/stop controls, and an NSIS installer.
+- Add the dependency-free HTTP backend (`--backend http`) and token-routed profiles (`--profiles`) so Codex and third-party agents can share one port without mirroring `CODEX_HOME`.
+- Harden thread loading with per-thread rollout isolation and `/api/admin/diagnostics`, and add optional adapter `status_*` columns plus `/api/adapters/status` for exact running/waiting/ended states.
+- Prefer `node:sqlite`, cache rollout status, add thread-list pagination/ETag, and rate-limit model fallback logs.
+- Scope remembered access codes by device and dedupe Android scanned devices by origin plus token.
 
-## Unreleased
+### Additional fixes in 1.16.0
 
 - Keep the mobile model and reasoning picker visible above the composer instead of clipping it inside the narrow-screen toolbar.
 - Isolate rollout-path failures per thread: one bad or missing rollout now leaves that thread at `unknown` instead of failing the whole `/api/threads` response, and the new authenticated `/api/admin/diagnostics` endpoint lists every missing or out-of-home rollout for repair.
