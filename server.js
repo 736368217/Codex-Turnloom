@@ -449,7 +449,7 @@ const PROFILES_FILE = String(cli.profiles || process.env.CODEX_LAN_PROFILES || "
 let PROFILES = [];
 if (PROFILES_FILE) {
   try {
-    const rawProfiles = JSON.parse(readFileSync(path.resolve(PROFILES_FILE), "utf8"));
+    const rawProfiles = JSON.parse(readFileSync(path.resolve(PROFILES_FILE), "utf8").replace(/^\uFEFF/, ""));
     const rows = Array.isArray(rawProfiles) ? rawProfiles : Array.isArray(rawProfiles?.profiles) ? rawProfiles.profiles : [];
     PROFILES = rows.map((row, index) => {
       const token = String(row?.token || "").trim();
@@ -2598,6 +2598,7 @@ async function buildThreadDiagnostics() {
   const cachedAt = threadsCache?.cachedAt || 0;
   return {
     ok: true,
+    backend: { kind: BACKEND_KIND },
     codexHome: home,
     codexHomeVersion: homeState.version,
     threads: {
