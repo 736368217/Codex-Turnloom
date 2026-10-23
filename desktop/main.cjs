@@ -1,6 +1,7 @@
 "use strict";
 
 const fs = require("node:fs");
+const { execFileSync } = require("node:child_process");
 const os = require("node:os");
 const path = require("node:path");
 const { app, BrowserWindow, Tray, Menu, nativeImage, ipcMain, shell, clipboard, dialog, Notification, powerMonitor, nativeTheme } = require("electron");
@@ -31,8 +32,9 @@ const APP_ID = "com.codex.turnloom.console";
 const APP_NAME = "Codex-Turnloom 控制台";
 const APP_VERSION = require("../package.json").version;
 const isDev = !app.isPackaged;
-const cli = new Set(process.argv.slice(2));
-const startHidden = cli.has("--hidden") || process.argv.includes("--start-minimized");
+const cliArgs = process.argv.slice(app.isPackaged ? 1 : 2);
+const cli = new Set(cliArgs);
+const startHidden = cli.has("--hidden") || cli.has("--start-minimized");
 const smokeTest = cli.has("--smoke-test");
 
 let mainWindow = null;
@@ -323,7 +325,8 @@ function createTray() {
   const image = nativeImage.createFromPath(iconPath("tray-stopped"));
   tray = new Tray(image.isEmpty() ? nativeImage.createEmpty() : image);
   tray.setToolTip(`${APP_NAME} · 已停止`);
-  tray.on("click", () => {
+  tray.on("click", (event) => {
+    if (event && event.button === "right") return;
     if (Date.now() - lastRightClickAt < 350) return;
     toggleWindow();
   });
@@ -359,7 +362,7 @@ function buildTrayMenu() {
     { type: "separator" },
     { label: "打开控制台", click: () => showWindow("overview") },
     { label: "在浏览器中预览手机端", enabled: running, click: () => openPreview() },
-    { label: "显示配对二维码", enabled: running, click: () => { showWindow("overview"); setTimeout(() => sendToRenderer("app:open-pairing"), 180); } },
+    { label: "显示配对二维码", enabled: running, click: () => showWindow("pairing") },
     { type: "separator" },
     running
       ? { label: "重启服务", enabled: !busy, click: () => guardServiceAction(() => runtime.restart()) }
@@ -457,8 +460,25 @@ function applyTheme(theme) {
   } catch {}
 }
 
+function consoleTaskExists() {
+  try {
+    execFileSync("schtasks.exe", ["/Query", "/TN", "Codex-Turnloom Console"], { stdio: "ignore", windowsHide: true });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 function applyLoginItem(config) {
   if (process.env.TURNLOOM_SKIP_LOGIN_ITEM === "1") return;
+  if (consoleTaskExists()) {
+    if (!config?.console?.autoStart) {
+      try {
+        execFileSync("schtasks.exe", ["/Delete", "/TN", "Codex-Turnloom Console", "/F"], { stdio: "ignore", windowsHide: true });
+      } catch {}
+    }
+    return;
+  }
   try {
     const enabled = Boolean(config?.console?.autoStart);
     const args = app.isPackaged ? ["--hidden"] : [app.getAppPath(), "--hidden"];

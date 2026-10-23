@@ -1,0 +1,164 @@
+{
+  "$schema": "https://design-tokens.github.io/community-group/format/",
+  "meta": {
+    "name": "Codex-Turnloom Mobile V2 (Loom Studio)",
+    "version": "2.0.0",
+    "date": "2026-10-23",
+    "platform": "Android (Native Shell + WebView Workspace)",
+    "baseViewport": "390x844",
+    "description": "Upgraded V2 design tokens eliminating legacy green/warm-gray remnants, unifying single-accent Electric Blue (#0066CC) over Cool Slate (#F4F5F8), standardizing 4-tier radii (8/12/16/999), and enforcing >=44dp ergonomic touch targets."
+  },
+  "color": {
+    "base": {
+      "bg": "#F4F5F8",
+      "panel": "#FFFFFF",
+      "panelSoft": "#EEF0F5",
+      "panelMuted": "#E6E9F0",
+      "border": "#E2E5EC",
+      "borderSubtle": "rgba(15, 23, 42, 0.07)",
+      "text": "#111827",
+      "textSecondary": "#4B5563",
+      "muted": "#6B7280",
+      "placeholder": "#9CA3AF"
+    },
+    "action": {
+      "accent": "#0066CC",
+      "accentPressed": "#0052A3",
+      "accentSoft": "#E8F2FF",
+      "accentBorder": "#C2DCFF",
+      "focusRing": "rgba(0, 102, 204, 0.14)"
+    },
+    "surface": {
+      "userBubble": "#E8F2FF",
+      "userBorder": "#D0E4FF",
+      "assistantBubble": "#FFFFFF",
+      "toolBubble": "#FFFFFF",
+      "toolHeaderBg": "#F1F5F9",
+      "noticeBubble": "#FFFBEB",
+      "noticeBorder": "#FDE68A",
+      "interactionBubble": "#FFFFFF",
+      "interactionBorder": "#FCA5A5",
+      "interactionTopAccent": "#DC2626",
+      "sandboxBg": "#F8FAFC",
+      "sandboxBorder": "#CBD5E1",
+      "selectedRow": "#E8F2FF",
+      "hoverRow": "#EEF0F5",
+      "codeBlock": "#0F172A",
+      "inlineCode": "#EEF2F6"
+    },
+    "semantic": {
+      "online": "#16A34A",
+      "onlineSoft": "#DCFCE7",
+      "onlineText": "#15803D",
+      "offline": "#DC2626",
+      "offlineSoft": "#FEE2E2",
+      "offlineText": "#B91C1C",
+      "running": "#D97706",
+      "runningSoft": "#FEF3C7",
+      "runningText": "#B45309",
+      "waiting": "#DC2626",
+      "waitingSoft": "#FEE2E2",
+      "waitingText": "#B91C1C",
+      "ended": "#16A34A",
+      "checking": "#64748B",
+      "checkingSoft": "#F1F5F9",
+      "link": "#0066CC",
+      "dangerText": "#B91C1C",
+      "dangerSoft": "#FFF1F2",
+      "dangerBorder": "#FECDD3",
+      "noticeText": "#92400E"
+    },
+    "dark": {
+      "bg": "#0B0F17",
+      "panel": "#161C28",
+      "panelSoft": "#1E2636",
+      "border": "#2A3447",
+      "text": "#F3F4F6",
+      "textSecondary": "#D1D5DB",
+      "muted": "#9CA3AF",
+      "accent": "#3B82F6",
+      "accentSoft": "rgba(59, 130, 246, 0.18)",
+      "userBubble": "#172B4D",
+      "assistantBubble": "#161C28"
+    },
+    "brand": {
+      "blue": "#2563EB",
+      "mint": "#56D9B5",
+      "coral": "#FF6B4A",
+      "white": "#FFFFFF"
+    }
+  },
+  "typography": {
+    "family": {
+      "sans": "ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, \"Segoe UI\", \"PingFang SC\", \"Noto Sans CJK SC\", \"Microsoft YaHei\", sans-serif",
+      "mono": "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, \"Liberation Mono\", monospace"
+    },
+    "size": {
+      "display": "25px",
+      "authTitle": "24px",
+      "pageTitle": "20px",
+      "mobileTitle": "16.5px",
+      "section": "15px",
+      "body": "15px",
+      "compact": "13.5px",
+      "meta": "11.5px",
+      "micro": "11px"
+    },
+    "weight": {
+      "regular": 400,
+      "medium": 500,
+      "semibold": 600,
+      "bold": 700
+    },
+    "lineHeight": {
+      "tight": 1.25,
+      "snug": 1.38,
+      "normal": 1.5,
+      "relaxed": 1.58
+    },
+    "letterSpacing": {
+      "tight": "-0.02em",
+      "normal": "0",
+      "eyebrow": "0.08em"
+    }
+  },
+  "spacing": {
+    "1": "4px",
+    "2": "6px",
+    "3": "8px",
+    "4": "10px",
+    "5": "12px",
+    "6": "14px",
+    "7": "16px",
+    "8": "18px",
+    "9": "20px",
+    "10": "24px",
+    "11": "28px",
+    "12": "32px"
+  },
+  "radius": {
+    "sm": "8px",
+    "md": "12px",
+    "lg": "16px",
+    "pill": "999px"
+  },
+  "shadow": {
+    "sm": "0 2px 8px rgba(15, 23, 42, 0.04)",
+    "card": "0 6px 20px rgba(15, 23, 42, 0.06)",
+    "pod": "0 4px 14px rgba(15, 23, 42, 0.05)",
+    "dialog": "0 20px 48px rgba(15, 23, 42, 0.16)",
+    "drawer": "16px 0 40px rgba(15, 23, 42, 0.18)"
+  },
+  "size": {
+    "touchMin": "44px",
+    "navButton": "40px",
+    "primaryButtonHeight": "48px",
+    "secondaryButtonHeight": "46px",
+    "approvalButtonHeight": "44px",
+    "inputHeight": "50px",
+    "composerPodRadius": "16px",
+    "appBarHeight": "56px",
+    "drawerWidth": "min(86vw, 340px)",
+    "statusPillHeight": "22px"
+  }
+}

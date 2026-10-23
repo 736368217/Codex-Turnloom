@@ -13,6 +13,8 @@ coverage/
 dist/
 tmp/
 temp/
+dist-desktop/
+desktop/assets/runtime/
 *.tgz
 
 # Android build and machine-local configuration.

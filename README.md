@@ -16,6 +16,18 @@ Codex-Turnloom 提供任务列表、消息同步、思考状态、工具记录�
 
 发布版本只使用脱敏的品牌素材；包含真实对话、文件路径或设备信息的界面截图不会进入仓库。
 
+## 手机端界面（V2 · Loom Studio）
+
+手机端采用 V2「极简织机」视觉系统：冷灰底 `#F4F5F8`、纯白卡片与唯一操作蓝 `#0066CC`，所有青绿与暖灰旧色已清除。核心界面约定：
+
+- **状态先于内容**：对话顶栏前置语义状态胶囊（`思考中 · 01:18` / `待确认权限` / `已结束`），对话列表同步显示状态与运行时长。
+- **一体式输入工作舱**：模型、插件、技能胶囊与附件、发送按钮收进 16dp 白色输入舱；任务运行中在输入框上方独立展开 `排队（完成后发）` / `插入（立即打断）` 控制条。
+- **安全决策卡**：权限请求使用白底 + 4px 红色顶边 + 等宽路径沙盒框，三个 44dp 防误触按钮（允许本次 / 始终允许 / 拒绝）。
+- **轻量消息流**：角色、耗时与时间合并为单行眉标，工具记录收敛为紧凑步骤卡，冗余的“已发送”状态不再显示。
+- **原生电脑选择页**：独立 16dp 圆角设备卡、44dp 设备图标与在线/离线/正在检测状态胶囊。
+
+完整设计规范、页面规格、设计令牌与高保真示意图位于 [docs/design/mobile-v2](docs/design/mobile-v2/README.md)。
+
 ## 实机演示
 
 以下截图来自实际手机端运行，用于展示主要交互流程。截图中的内容为测试数据，不包含访问码或私人对话。
@@ -172,6 +184,30 @@ $installArgs = @{
 非 Codex 后端可通过 `state_5.sqlite` 的状态列或 `POST /api/adapters/status` 直接上报会话状态；
 接口、字段和诊断方式见 [后端状态上报](docs/ADAPTER_STATUS.zh-CN.md)。
 
+### HTTP 后端与多设备 profile
+
+不读写 `CODEX_HOME` 的后端可以用 HTTP 适配器接入：
+
+```powershell
+node server.js --port 8790 --password desk-code `
+  --backend http --backend-url http://127.0.0.1:9000 --backend-token adapter-secret
+```
+
+同一端口要同时服务 Codex 和 HTTP 后端时，使用 profile 文件：
+
+```json
+[
+  { "id": "codex", "label": "Codex", "token": "codex-code", "backend": "codex", "home": "D:\\codex\\.codex" },
+  { "id": "pidesk", "label": "PI-Desktop", "token": "pidesk-code", "backend": "http", "backendUrl": "http://127.0.0.1:9000", "backendToken": "adapter-secret" }
+]
+```
+
+```powershell
+node server.js --port 8790 --profiles profiles.json
+```
+
+不同 token 只能看到各自后端的会话；HTTP 端契约见 [HTTP 后端适配器](docs/HTTP_BACKEND.zh-CN.md)。
+
 ## Android APP
 
 ~~~powershell
@@ -204,9 +240,10 @@ npm run android:build
 server.js       本机 HTTP 服务、Codex 数据读取与 Desktop IPC
 public/         手机端界面、对话缓存和交互逻辑
 android/        Android APP 源码
-scripts/        Windows 安装、静默守护、隧道和二维码工具
+desktop/        Windows 托盘控制台（Electron）
+scripts/        Windows 安装、静默守护、隧道、托盘启动和二维码工具
 test/           自动化回归测试
-docs/           多电脑部署、安全和运维记录
+docs/           多电脑部署、安全、设计稿和运维记录
 ~~~
 
 ## 安全与隐私

@@ -20,16 +20,16 @@ npm run desktop:dev
 ```powershell
 npm run desktop:dev      # 开发模式启动
 npm run desktop:start    # 以当前仓库启动（隐藏窗口用 --hidden）
-  
-不打开控制台、只注册登录托盘启动项：
+npm run desktop:pack     # 生成未安装的目录包
+npm run desktop:build    # 生成 NSIS 安装包
+npm test                 # 服务端 + 桌面控制台测试
+```
+
+只注册登录托盘启动项、不打开控制台：
 
 ```powershell
 npm run desktop:install
 npm run desktop:uninstall
-```
-npm run desktop:pack     # 生成未安装的目录包
-npm run desktop:build    # 生成 NSIS 安装包
-npm test                 # 服务端 + 桌面控制台测试
 ```
 
 ## 退出与关闭语义
