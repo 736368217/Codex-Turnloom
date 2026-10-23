@@ -31,10 +31,10 @@ HTTP 契约见 [HTTP 后端适配器](HTTP_BACKEND.zh-CN.md)。
 ## 验证
 
 - `npm run check` 通过。
-- `npm test`：87 项全部通过。
+- `npm test`：92 项全部通过。
 - 用临时 mock HTTP 适配器验证：`/api/threads`、`/api/threads/:id/messages`、`/api/send`、`/api/interrupt` 全部走通。
-- Profile 验证：`codex-token` 看到 76 个 Codex 会话，`http-token` 看到 2 个 HTTP 会话；双向跨 profile thread id 均返回 404。
-- HTTP 后端模式下 `/api/account` 等未支持接口返回 501，不会误读本地 Codex 数据。
+- Profile 验证：两个 Codex home token 分别看到 66 / 80 个会话，双向跨 profile thread id 均返回 404。
+- HTTP 模式下 account/plugins/skills 返回安全空值；pin/goal/compact/branch/approval/queue 按扩展契约透传。
 
 ## 当前边界
 

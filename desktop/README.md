@@ -37,6 +37,8 @@ PI-Desktop 的 `D:\pi-data\data\pi.sqlite` 不能被托盘控制台直接导入�
    若插件开启 `TURNLOOM_MIRROR_CODEX=1`，Codex 会话也会合并进同一个列表。
 
 「其他设备」只接受 http/https 地址；访问码只保存在本机 `config.json`，不会写入日志或导出。
+完整契约（门面目录、管道名、插件可选改进）见 `docs/PI_BRIDGE_CONTRACT.zh-CN.md`。
+桥状态自检：`powershell -NoProfile -ExecutionPolicy Bypass -File scripts/check-pidesk-bridge.ps1`。
 
 已经用 `scripts/install-windows.ps1` 安装过的电脑，控制台会读取现有配置并尝试停止旧计划任务 `Codex Pocket Supervisor`，不需要重新配对。旧脚本保留，供无桌面环境或回滚使用，不能和托盘控制台同时运行。
 
