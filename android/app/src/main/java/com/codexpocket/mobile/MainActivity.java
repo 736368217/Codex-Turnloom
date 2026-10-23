@@ -958,6 +958,7 @@ public class MainActivity extends ComponentActivity {
 
     private int findDevice(Device imported) {
         for (int i = 0; i < devices.size(); i++) {
+            Device existing = devices.get(i);
             String existingToken = existing.token == null ? "" : existing.token;
             String importedToken = imported.token == null ? "" : imported.token;
             if (DeviceOrigin.matches(existing.url, imported.url) && existingToken.equals(importedToken)) return i;
