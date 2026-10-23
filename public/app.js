@@ -27,6 +27,7 @@ const state = {
   config: null,
   codexHome: "",
   codexHomeVersion: null,
+  threadListCache: null,
   draftStartedAt: 0,
   authToken: "",
   authLocked: false,
@@ -797,6 +798,7 @@ function lockApp(message = "") {
   state.authToken = "";
   state.authLocked = true;
   state.config = null;
+  state.threadListCache = null;
   state.messagesSignature = "";
   state.pendingMessages = [];
   state.lastMessagesData = null;
@@ -1823,6 +1825,22 @@ async function fetchJson(url, options = {}) {
   return data;
 }
 
+async function fetchThreads(url) {
+  const cached = state.threadListCache?.url === url ? state.threadListCache : null;
+  const headers = authHeaders(cached?.etag ? { "if-none-match": cached.etag } : {});
+  const response = await fetch(url, { cache: "no-store", headers });
+  if (response.status === 304 && cached) return cached.data;
+  const data = await response.json();
+  if (!response.ok) {
+    const error = new Error(data.error || response.statusText);
+    error.status = response.status;
+    handleUnauthorized(error);
+    throw error;
+  }
+  state.threadListCache = { url, etag: response.headers.get("etag") || "", data };
+  return data;
+}
+
 function syncDelay(baseMs, backoffMs = 0) {
   const hiddenMultiplier = document.hidden ? 4 : 1;
   return Math.max(baseMs * hiddenMultiplier, baseMs + backoffMs);
@@ -2432,7 +2450,7 @@ function applyHomeContext(data) {
 async function loadThreads() {
   const previousSelectedId = state.selectedId;
   const query = state.selectedId ? `?selectedId=${encodeURIComponent(state.selectedId)}` : "";
-  const data = await fetchJson(`/api/threads${query}`);
+  const data = await fetchThreads(`/api/threads${query}`);
   const homeChanged = applyHomeContext(data);
   state.threads = data.threads || [];
   const isDraftSelected = hasActiveDraft();
