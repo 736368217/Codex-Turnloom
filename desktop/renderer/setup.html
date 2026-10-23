@@ -1,0 +1,132 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>Codex-Turnloom 控制台 · 初始设置</title>
+<link rel="stylesheet" href="setup.css">
+</head>
+<body>
+<div class="setup-win">
+  <header class="titlebar">
+    <div class="brand">
+      <span class="logo" aria-hidden="true">
+        <svg viewBox="0 0 64 64"><rect x="3" y="3" width="58" height="58" rx="16" fill="#2563eb"/><path d="M18 34c0-8.8 7.2-16 16-16 4.3 0 8.2 1.7 11.1 4.5" fill="none" stroke="#fff" stroke-linecap="round" stroke-width="6"/><path d="M46 30c0 8.8-7.2 16-16 16-4.3 0-8.2-1.7-11.1-4.5" fill="none" stroke="#fff" stroke-linecap="round" stroke-width="6"/><circle cx="45" cy="22.5" r="5.5" fill="#56d9b5"/><circle cx="19" cy="41.5" r="5.5" fill="#ff6b4a"/></svg>
+      </span>
+      <b>Codex-Turnloom</b><span>控制台 · 初始设置</span>
+    </div>
+    <div class="window-actions">
+      <span class="status-chip" id="setupStatus"><i></i>服务未启动</span>
+      <button class="winbtn" id="minBtn" title="最小化" aria-label="最小化"><svg viewBox="0 0 12 12"><line x1="2" y1="6" x2="10" y2="6"/></svg></button>
+      <button class="winbtn close" id="closeBtn" title="关闭" aria-label="关闭"><svg viewBox="0 0 12 12"><line x1="2" y1="2" x2="10" y2="10"/><line x1="10" y1="2" x2="2" y2="10"/></svg></button>
+    </div>
+  </header>
+
+  <div class="setup-body">
+    <aside class="steps">
+      <div class="kicker">设置向导</div>
+      <div class="step done" data-step-dot="1"><span class="num">1</span><div><b>检测 Codex Desktop</b><small id="step1Sub">正在查找数据目录…</small></div></div>
+      <div class="step active" data-step-dot="2"><span class="num">2</span><div><b>设置本机服务</b><small>端口、访问码和启动方式</small></div></div>
+      <div class="step" data-step-dot="3"><span class="num">3</span><div><b>启动并配对手机</b><small>显示二维码，完成连接</small></div></div>
+      <div class="privacy-note">所有配置只保存在本机，不会上传到任何服务器。</div>
+    </aside>
+
+    <main class="setup-main">
+      <section class="page active" id="page1">
+        <h1>检测 Codex Desktop</h1>
+        <p class="lead">控制台需要读取本机的 Codex 会话数据，才能把任务同步到手机。请选择检测到的数据目录。</p>
+        <div class="home-list" id="homeList"></div>
+        <div class="empty-hint" id="noHome" hidden>
+          <b>没有自动找到 Codex 数据目录</b>
+          <span>通常位于 <code>%USERPROFILE%\.codex</code>，或者你设置的 <code>CODEX_HOME</code>。也可以手动选择包含 <code>state_5.sqlite</code> 的目录。</span>
+        </div>
+        <button class="btn ghost small" id="browseHomeBtn">手动选择目录…</button>
+        <div class="page-foot">
+          <span class="foot-note">检测依据：目录中存在 <code>state_5.sqlite</code></span>
+          <div class="foot-actions">
+            <button class="btn primary" id="next1" disabled>下一步</button>
+          </div>
+        </div>
+      </section>
+
+      <section class="page" id="page2">
+        <h1>设置本机服务</h1>
+        <p class="lead">确认端口和访问码后即可启动。之后可以在「设置」里随时修改。</p>
+        <div class="form">
+          <div class="field">
+            <label for="machineName">电脑名称</label>
+            <input id="machineName" type="text" maxlength="40" autocomplete="off">
+            <small>显示在手机 APP 的设备列表里。</small>
+          </div>
+          <div class="field">
+            <label for="codexHome">Codex 数据目录</label>
+            <div class="inline">
+              <input id="codexHome" type="text" readonly>
+              <button class="btn small" id="browseHome2">更换…</button>
+            </div>
+          </div>
+          <div class="two-col">
+            <div class="field">
+              <label for="port">监听端口</label>
+              <input id="port" type="number" min="1" max="65535" value="8787">
+              <small id="portHint">手机通过本机局域网地址访问。</small>
+            </div>
+            <div class="field">
+              <label for="accessCode">访问码</label>
+              <div class="inline">
+                <input id="accessCode" type="text" inputmode="numeric" maxlength="6" value="">
+                <button class="btn small" id="regenCode">重新生成</button>
+              </div>
+              <small>手机首次连接时输入，6 位数字。</small>
+            </div>
+          </div>
+          <div class="field">
+            <label>启动选项</label>
+            <label class="check"><input id="autoStart" type="checkbox" checked> 登录 Windows 后自动启动</label>
+            <label class="check"><input id="startMinimized" type="checkbox" checked> 启动时最小化到托盘</label>
+          </div>
+        </div>
+        <div class="error-box" id="setupError" hidden></div>
+        <div class="page-foot">
+          <button class="btn ghost" id="back2">上一步</button>
+          <div class="foot-actions">
+            <button class="btn primary" id="next2">下一步：启动服务</button>
+          </div>
+        </div>
+      </section>
+
+      <section class="page" id="page3">
+        <div id="startingState">
+          <div class="spinner"></div>
+          <h1>正在启动本机服务…</h1>
+          <p class="lead">首次启动需要几秒钟。控制台会等待健康检查通过，再显示配对二维码。</p>
+          <div class="error-box" id="startError" hidden></div>
+          <div class="page-foot">
+            <button class="btn ghost" id="back3">返回修改</button>
+            <div class="foot-actions"><button class="btn" id="retryStart" hidden>重试</button></div>
+          </div>
+        </div>
+        <div id="pairingState" hidden>
+          <h1>扫码连接手机</h1>
+          <p class="lead">打开手机上的 Codex-Turnloom APP，点击「扫码」，扫描下方二维码。扫码后会自动填入地址和访问码。</p>
+          <div class="pairing">
+            <div class="qr-wrap"><img id="setupQr" alt="手机配对二维码"></div>
+            <div class="pairing-copy">
+              <b id="pairMachine">本机</b>
+              <span id="pairUrl"></span>
+              <span class="code-label">访问码</span>
+              <strong id="pairCode">••••••</strong>
+              <span class="hint">二维码包含访问码，请勿截图分享。</span>
+            </div>
+          </div>
+          <div class="page-foot">
+            <span class="foot-note">服务已启动，控制台会驻留在系统托盘。</span>
+            <div class="foot-actions"><button class="btn primary" id="openConsole">进入控制台</button></div>
+          </div>
+        </div>
+      </section>
+    </main>
+  </div>
+</div>
+<script src="setup.js"></script>
+</body>
+</html>
