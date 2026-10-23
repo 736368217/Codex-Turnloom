@@ -73,6 +73,25 @@ node server.js --port 8790 --password desk-code `
 
 响应：`{ "ok": true }`。
 
+### 扩展能力（可选）
+
+以下接口按需实现，未实现时对应操作会返回后端错误，不影响浏览/发送/中断：
+
+```text
+POST   /threads/:id/pin              { pinned }
+GET    /threads/:id/goal             -> { goal }
+PUT    /threads/:id/goal             { objective, status }
+DELETE /threads/:id/goal
+POST   /threads/:id/compact          -> { ok }
+POST   /threads/:id/branch           { lastTurnId, beforeTurnId } -> { thread }
+POST   /approval                     { threadId, requestId, decision, approvalKind }
+POST   /queue/cancel                 { threadId, itemId, edit }
+POST   /queue/steer                  { threadId, itemId }
+GET    /threads/:id/changes?cursor=  -> { cursor, changed }
+```
+
+`/api/account`、`/api/plugins`、`/api/skills` 在 HTTP 模式下返回安全的空值，不访问本地 Codex 数据。
+
 ## Profile（单端口多设备）
 
 `--profiles profiles.json` 可以同时提供多个后端和独立访问码：
@@ -86,4 +105,4 @@ node server.js --port 8790 --password desk-code `
 
 - 每个 token 只路由到自己的后端；跨 profile 的 thread id 返回 404。
 - `/api/health` 回显 `profile`（id/label/backend）与 `backend.kind`。
-- 目前同一 profiles 文件只支持一个 Codex home；多个 HTTP 后端不受限制。
+- 同一个 profiles 文件可以包含多个 Codex home 和多个 HTTP 后端；每个 profile 的缓存与 thread 列表相互隔离。

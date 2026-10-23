@@ -293,6 +293,8 @@
             </div>
           </div>
 
+          <div class="device-tabs" id="pairing-devices" role="tablist" aria-label="选择要配对的设备" hidden></div>
+
           <div class="pairing-layout">
             <section class="card pairing-main" id="pairing-card" aria-busy="false">
               <div class="card-h">
@@ -593,6 +595,16 @@
                 </div>
                 <div class="field">
                   <div class="field-info">
+                    <label class="field-label" for="set-ipc-socket">Codex IPC 管道</label>
+                    <div class="desc">留空使用默认管道；指向 PI-Desktop 门面等自定义来源时填写</div>
+                  </div>
+                  <div class="field-control">
+                    <input class="input path mono" type="text" id="set-ipc-socket" data-setting="ipcSocket" spellcheck="false" autocomplete="off" placeholder="\\.\pipe\codex-ipc">
+                    <div class="field-error" id="err-ipcSocket" data-error-for="ipcSocket" hidden></div>
+                  </div>
+                </div>
+                <div class="field">
+                  <div class="field-info">
                     <span class="field-label" id="label-readonly">只读模式</span>
                     <div class="desc">开启后手机网页只能查看，不能发送消息</div>
                   </div>
@@ -766,6 +778,23 @@
               </div>
             </div>
           </form>
+
+          <section class="card settings-card extra-devices-card" aria-labelledby="extra-devices-title">
+            <div class="card-h">
+              <h3 id="extra-devices-title">其他设备</h3>
+              <span class="hint">可选 · 例如 PI-Desktop 桥</span>
+            </div>
+            <p class="extra-devices-desc">同一个手机应用可以同时保存多台电脑。这里添加的设备会出现在配对页，并可单独生成二维码。访问码只保存在本机。</p>
+            <div class="device-list" id="extra-devices-list"></div>
+            <div class="device-add">
+              <input class="input" type="text" id="extra-device-name" placeholder="名称，如 PI-Desktop" autocomplete="off" maxlength="60">
+              <input class="input" type="text" id="extra-device-url" placeholder="http://192.168.1.10:8799" autocomplete="off" spellcheck="false">
+              <input class="input" type="password" id="extra-device-code" placeholder="访问码" autocomplete="off">
+              <button class="btn sm primary" type="button" id="btn-add-extra-device">添加设备</button>
+              <button class="btn sm" type="button" id="btn-detect-bridge">检测 PI-Desktop 桥</button>
+            </div>
+            <div class="device-hint" id="extra-device-hint" hidden></div>
+          </section>
         </section>
 
         <!-- ================= 关于 ================= -->

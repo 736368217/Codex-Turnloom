@@ -7,7 +7,7 @@ const path = require("node:path");
 const { overallState, stateLabel } = require(path.join(__dirname, "..", "desktop", "service", "runtime.cjs"));
 const { backoffDelay } = require(path.join(__dirname, "..", "desktop", "service", "controller.cjs"));
 const { tunnelBackoff } = require(path.join(__dirname, "..", "desktop", "service", "tunnel.cjs"));
-const { mergeConfig, normalizeConfig, publicConfig, defaultConfig } = require(path.join(__dirname, "..", "desktop", "service", "config.cjs"));
+const { mergeConfig, normalizeConfig, publicConfig, defaultConfig, normalizeExtraDevices, pairingPayload, validateConfig } = require(path.join(__dirname, "..", "desktop", "service", "config.cjs"));
 
 test("runtime state combines service and tunnel", () => {
   assert.equal(overallState({ state: "stopped" }, { enabled: false, state: "disabled" }), "stopped");
@@ -47,4 +47,49 @@ test("public config never exposes the access code", () => {
   assert.equal(safe.hasAccessCode, true);
   assert.equal(safe.accessCode, undefined);
   assert.match(safe.accessCodeMasked, /^•+$/);
+});
+
+test("extra devices are normalized, deduped and never expose their access codes", () => {
+  const devices = normalizeExtraDevices([
+    { id: "PI Desktop", name: "PI-Desktop", url: "http://127.0.0.1:8799/", accessCode: "111111" },
+    { id: "PI Desktop", name: "PI-Desktop 2", url: "http://127.0.0.1:8799", accessCode: "222222" },
+    { name: "", url: "http://x", accessCode: "333333" },
+    { name: "Broken", url: "", accessCode: "444444" }
+  ]);
+  assert.equal(devices.length, 2);
+  assert.equal(devices[0].id, "pi-desktop");
+  assert.equal(devices[0].url, "http://127.0.0.1:8799");
+  assert.notEqual(devices[0].id, devices[1].id);
+
+  const config = defaultConfig({ accessCode: "654321", codexHome: "D:\\codex\\.codex", extraDevices: devices });
+  const safe = publicConfig(config);
+  assert.equal(safe.extraDeviceCount, 2);
+  assert.equal(safe.extraDevices[0].accessCode, undefined);
+  assert.equal(safe.extraDevices[0].hasAccessCode, true);
+  assert.match(safe.extraDevices[0].accessCodeMasked, /^•+$/);
+});
+
+test("pairing payload targets the selected extra device", () => {
+  const config = defaultConfig({
+    accessCode: "654321",
+    codexHome: "D:\\codex\\.codex",
+    extraDevices: [{ id: "pidesk", name: "PI-Desktop", url: "http://192.168.1.10:8799", accessCode: "pidesk-code" }]
+  });
+  const payload = new URL(pairingPayload(config, config.extraDevices[0]));
+  assert.equal(payload.protocol, "codexpocket:");
+  assert.equal(payload.searchParams.get("name"), "PI-Desktop");
+  assert.equal(payload.searchParams.get("url"), "http://192.168.1.10:8799");
+  assert.equal(payload.searchParams.get("token"), "pidesk-code");
+});
+
+test("validateConfig rejects malformed ipc sockets and device addresses", () => {
+  const base = defaultConfig({ accessCode: "654321", codexHome: "D:\\codex\\.codex" });
+  assert.deepEqual(validateConfig(base), []);
+  const badSocket = validateConfig({ ...base, ipcSocket: "codex-ipc" });
+  assert.ok(badSocket.some((error) => error.field === "ipcSocket"));
+  const badDevice = validateConfig({
+    ...base,
+    extraDevices: [{ id: "x", name: "X", url: "ftp://nope", accessCode: "1" }]
+  });
+  assert.ok(badDevice.some((error) => error.field === "extraDevices.x"));
 });
