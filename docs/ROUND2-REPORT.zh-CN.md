@@ -40,4 +40,4 @@ HTTP 契约见 [HTTP 后端适配器](HTTP_BACKEND.zh-CN.md)。
 
 - HTTP 模式暂不支持插件、技能、goal、置顶、compact、branch、审批和发送队列；这些接口返回 501。
 - 同一 profiles 文件目前只允许一个 Codex home；多个 HTTP profile 不受限制。
-- P3-1（同源双设备 localStorage key）与 P3-3（访问码换短期会话）待下一轮；P3-1 需要与 Web 端并行的 UI 改动合并后再做。
+- P3-1 已在工作区实现：记住设备的 localStorage key 支持 `?device=` / `#d=` 设备后缀，profile 二维码也会带 profile id；等待与并行 Web UI 改动合并提交。P3-3（访问码换短期会话）待下一轮。
