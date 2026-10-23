@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>Codex-Turnloom 托盘控制台 · 设计稿总览</title>
+<link rel="stylesheet" href="base.css">
+<style>
+  body { width: 2200px; height: 1700px; overflow: hidden; background: #e9eef7; }
+  .sheet {
+    width: 2200px; height: 1700px; padding: 52px 56px 48px;
+    background:
+      radial-gradient(900px 500px at 10% 0%, rgba(180, 205, 255, .55), transparent 60%),
+      radial-gradient(800px 500px at 90% 5%, rgba(215, 200, 255, .45), transparent 60%),
+      #eef3fa;
+  }
+  .sheet-head { display: flex; align-items: center; gap: 16px; margin-bottom: 26px; }
+  .sheet-head .logo { width: 40px; height: 40px; }
+  .sheet-head h1 { margin: 0; font-size: 28px; letter-spacing: -.5px; }
+  .sheet-head p { margin: 5px 0 0; font-size: 12px; color: #64748b; }
+  .sheet-head .meta { margin-left: auto; display: flex; gap: 8px; }
+  .sheet-head .meta span { height: 26px; padding: 0 10px; border-radius: 999px; background: rgba(255,255,255,.8); border: 1px solid #dbe5f1; font-size: 10px; color: #475569; display: inline-flex; align-items: center; font-weight: 600; }
+  .grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px 20px; }
+  .tile { min-width: 0; }
+  .tile .cap { display: flex; align-items: baseline; gap: 7px; margin: 0 2px 7px; }
+  .tile .no { font-family: var(--mono); font-size: 9px; color: #94a3b8; font-weight: 700; }
+  .tile .name { font-size: 11.5px; font-weight: 650; color: #334155; }
+  .tile .note { margin-left: auto; font-size: 9px; color: #94a3b8; }
+  .tile .shot { background: #fff; border: 1px solid #dce6f2; border-radius: 10px; overflow: hidden; box-shadow: 0 8px 24px rgba(15,23,42,.10), 0 1px 3px rgba(15,23,42,.06); }
+  .tile .shot img { width: 100%; height: 435px; object-fit: contain; display: block; background: #fff; }
+  .tile.wide .shot img { object-fit: contain; }
+</style>
+</head>
+<body>
+<div class="sheet">
+  <div class="sheet-head">
+    <span class="logo" data-logo></span>
+    <div>
+      <h1>Codex-Turnloom 托盘控制台</h1>
+      <p>Windows 桌面端 · 设计稿 v0.1 · 从“后台脚本”变成一个看得见、管得住的服务</p>
+    </div>
+    <div class="meta"><span>9 个界面</span><span>浅色 + 深色</span><span>待评审</span></div>
+  </div>
+  <div class="grid">
+    <div class="tile"><div class="cap"><span class="no">01</span><span class="name">概览</span><span class="note">服务状态 / 连接 / 最近任务</span></div><div class="shot"><img src="../../assets/tray-console/01-overview.png" alt="概览"></div></div>
+    <div class="tile"><div class="cap"><span class="no">02</span><span class="name">托盘菜单</span><span class="note">不打开窗口也能启停</span></div><div class="shot"><img src="../../assets/tray-console/02-tray-menu.png" alt="托盘菜单"></div></div>
+    <div class="tile"><div class="cap"><span class="no">03</span><span class="name">手机配对</span><span class="note">二维码 / 访问码</span></div><div class="shot"><img src="../../assets/tray-console/03-pairing.png" alt="手机配对"></div></div>
+    <div class="tile"><div class="cap"><span class="no">04</span><span class="name">运行日志</span><span class="note">实时 / 过滤 / 导出</span></div><div class="shot"><img src="../../assets/tray-console/04-logs.png" alt="运行日志"></div></div>
+    <div class="tile"><div class="cap"><span class="no">05</span><span class="name">设置</span><span class="note">服务 / 隧道 / 日志</span></div><div class="shot"><img src="../../assets/tray-console/05-settings.png" alt="设置"></div></div>
+    <div class="tile"><div class="cap"><span class="no">06</span><span class="name">深色模式</span><span class="note">跟随系统</span></div><div class="shot"><img src="../../assets/tray-console/06-overview-dark.png" alt="深色模式"></div></div>
+    <div class="tile wide"><div class="cap"><span class="no">07</span><span class="name">状态与托盘图标</span><span class="note">启动 / 运行 / 降级 / 停止 / 错误</span></div><div class="shot"><img src="../../assets/tray-console/07-states.png" alt="状态矩阵"></div></div>
+    <div class="tile"><div class="cap"><span class="no">08</span><span class="name">首次配置</span><span class="note">没有配置文件时</span></div><div class="shot"><img src="../../assets/tray-console/08-onboarding.png" alt="首次配置"></div></div>
+    <div class="tile"><div class="cap"><span class="no">09</span><span class="name">退出确认</span><span class="note">明确会停止服务</span></div><div class="shot"><img src="../../assets/tray-console/09-exit.png" alt="退出确认"></div></div>
+  </div>
+</div>
+<script src="mock.js"></script>
+</body>
+</html>

@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>退出确认</title>
+<link rel="stylesheet" href="base.css">
+<style>
+  body.shot { position: relative; }
+  iframe.screen { width: 1120px; height: 760px; border: 0; display: block; }
+  .status-box { border: 1px solid var(--line); border-radius: 9px; background: #f8fbff; padding: 11px 13px; display: flex; align-items: center; gap: 10px; margin-top: 14px; }
+  .status-box .dot { width: 8px; height: 8px; border-radius: 50%; background: #22c55e; box-shadow: 0 0 0 3px rgba(34,197,94,.14); }
+  .status-box .t { font-size: 11px; color: var(--text-2); font-weight: 600; }
+  .status-box .m { margin-left: auto; font-size: 10px; color: var(--muted); }
+  .btn.danger-solid { background: #dc2626; border-color: #dc2626; color: #fff; box-shadow: 0 3px 8px rgba(220, 38, 38, .25); }
+</style>
+</head>
+<body class="shot">
+<iframe class="screen" src="overview.html" title="概览背景"></iframe>
+<div class="overlay">
+  <div class="dialog" style="width:464px">
+    <div class="dialog-h">
+      <div class="ic" style="background:#fef2f2;color:#dc2626"><i data-icon="power"></i></div>
+      <div>
+        <h2>退出 Codex-Turnloom 控制台？</h2>
+        <p>退出控制台会同时停止它管理的本机服务。</p>
+      </div>
+      <div class="x"><i data-icon="x"></i></div>
+    </div>
+    <div class="dialog-body">
+      <div class="status-box">
+        <span class="dot"></span>
+        <span class="t">本机服务正在运行</span>
+        <span class="m">已运行 2 小时 14 分 · 局域网访问已开启</span>
+      </div>
+      <div class="note" style="margin-top:14px"><i data-icon="alert"></i><span>退出后手机端会立即断开，SSH 隧道也会关闭。Codex Desktop 和正在执行的任务不受影响。</span></div>
+      <div class="checkline" style="margin-top:10px;padding:0"><span class="checkbox"></span>以后关闭窗口时直接退出，不再最小化到托盘</div>
+    </div>
+    <div class="dialog-foot">
+      <button class="btn">取消</button>
+      <button class="btn danger-solid"><i data-icon="power"></i>退出并停止服务</button>
+    </div>
+  </div>
+</div>
+<script src="mock.js"></script>
+</body>
+</html>

@@ -1,0 +1,145 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>服务状态与托盘图标</title>
+<link rel="stylesheet" href="base.css">
+<style>
+  body { width: 1600px; }
+  .state-card { min-height: 336px; }
+  .state-card .status { display: flex; align-items: center; gap: 8px; margin-top: 16px; font-size: 11px; color: #64748b; }
+  .state-card .status .pulse { width: 8px; height: 8px; }
+  .state-card .status b { color: #0f172a; font-size: 11.5px; }
+  .state-card .detail { margin-top: 11px; border-radius: 8px; padding: 8px 10px; font-size: 9.5px; line-height: 1.5; color: #64748b; background: #f8fafc; border: 1px solid #eef2f8; }
+  .state-card .detail code { font-family: var(--mono); font-size: 9px; color: #475569; }
+  .state-card .actions { flex-direction: column; }
+  .state-card .actions .btn { width: 100%; flex: none; }
+  .state-card .actions .row2 { display: flex; gap: 7px; width: 100%; }
+  .state-card .actions .row2 .btn { flex: 1; }
+  .tray-row { margin-top: 24px; }
+  .legend { margin-left: auto; display: flex; gap: 16px; font-size: 10px; color: #64748b; }
+  .legend span { display: inline-flex; align-items: center; gap: 5px; }
+  .legend i { width: 7px; height: 7px; border-radius: 50%; display: inline-block; }
+  body .board { height: 900px; min-height: 900px; }
+  .rules { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; margin-top: 24px; }
+  .rule-card { background: #fff; border: 1px solid #dfe8f4; border-radius: 14px; padding: 17px 19px; box-shadow: 0 2px 5px rgba(15,23,42,.04); }
+  .rule-k { font-size: 9.5px; letter-spacing: 1.2px; color: #94a3b8; font-weight: 700; text-transform: uppercase; }
+  .rule-card h4 { font-size: 13px; margin: 6px 0 10px; }
+  .rule-card ol { margin: 0; padding-left: 16px; font-size: 10px; color: #64748b; line-height: 1.85; }
+  .rule-card code { font-family: var(--mono); font-size: 9px; color: #475569; }
+  .errow { display: flex; align-items: center; gap: 8px; padding: 4px 0; border-bottom: 1px solid #f1f5f9; font-size: 9.5px; color: #64748b; }
+  .errow:last-child { border-bottom: 0; }
+  .errow b, .errow code { width: 106px; flex: 0 0 106px; font-weight: 600; color: #334155; }
+</style>
+</head>
+<body>
+<div class="board">
+  <div class="board-head">
+    <span class="logo" data-logo></span>
+    <div>
+      <h1>服务状态与托盘图标</h1>
+      <p>控制台在任何状态下都要给出明确反馈，并保留一个可以继续操作的动作。</p>
+    </div>
+    <span class="tag">设计稿 · 状态矩阵</span>
+  </div>
+
+  <div class="state-grid">
+    <section class="state-card">
+      <div class="kicker">State 01 · Starting</div>
+      <div class="icon ic-amber"><i data-icon="loader"></i></div>
+      <h3>启动中</h3>
+      <div class="status"><span class="pulse amber"></span><b>正在启动</b><span>· 等待健康检查</span></div>
+      <p>已拉起 Node 服务进程，正在等待 /api/health 返回。通常持续 1–3 秒。</p>
+      <div class="detail">托盘图标：琥珀色 + 旋转角标<br>菜单：显示「取消启动」</div>
+      <div class="actions"><div class="row2"><button class="btn">取消启动</button><button class="btn">查看日志</button></div></div>
+    </section>
+
+    <section class="state-card">
+      <div class="kicker">State 02 · Running</div>
+      <div class="icon ic-green"><i data-icon="check"></i></div>
+      <h3>运行中</h3>
+      <div class="status"><span class="pulse"></span><b>服务正常</b><span>· 隧道已连接</span></div>
+      <p>本机服务与 SSH 隧道均正常，手机端可以访问。托盘图标为品牌蓝并带绿色角标。</p>
+      <div class="detail">菜单：打开控制台 / 重启 / 停止<br>窗口：显示完整概览与配对信息</div>
+      <div class="actions"><button class="btn primary">打开控制台</button><div class="row2"><button class="btn">重启</button><button class="btn danger">停止</button></div></div>
+    </section>
+
+    <section class="state-card">
+      <div class="kicker">State 03 · Degraded</div>
+      <div class="icon ic-amber"><i data-icon="alert"></i></div>
+      <h3>部分可用</h3>
+      <div class="status"><span class="pulse amber"></span><b>隧道断开</b><span>· 第 2 次重试</span></div>
+      <p>本机服务正常，局域网仍可访问；公网 SSH 隧道中断，正在按退避策略自动重连。</p>
+      <div class="detail">建议：检查服务器与网络<br>下一次重试：<code>8 秒后</code></div>
+      <div class="actions"><button class="btn primary">立即重试</button><button class="btn">查看隧道日志</button></div>
+    </section>
+
+    <section class="state-card">
+      <div class="kicker">State 04 · Stopped</div>
+      <div class="icon ic-gray"><i data-icon="power"></i></div>
+      <h3>已停止</h3>
+      <div class="status"><span class="pulse gray"></span><b>服务未运行</b><span>· 手机端不可访问</span></div>
+      <p>服务由用户手动停止，或控制台退出后保持停止状态。数据与配置不会丢失。</p>
+      <div class="detail">托盘图标：灰色无角标<br>菜单：启动服务 / 打开上次日志</div>
+      <div class="actions"><button class="btn primary">启动服务</button><button class="btn">查看上次日志</button></div>
+    </section>
+
+    <section class="state-card">
+      <div class="kicker">State 05 · Error</div>
+      <div class="icon ic-red"><i data-icon="x"></i></div>
+      <h3>启动失败</h3>
+      <div class="status"><span class="pulse red"></span><b>端口被占用</b><span>· 未启动</span></div>
+      <p>端口 8787 已被其他程序监听，服务无法绑定。控制台给出原因和可执行的修复动作。</p>
+      <div class="detail">错误码：<code>EADDRINUSE</code><br>占用进程：<code>node.exe · PID 10492</code></div>
+      <div class="actions"><div class="row2"><button class="btn primary">更换端口</button><button class="btn">结束占用进程</button></div><button class="btn">查看完整日志</button></div>
+    </section>
+  </div>
+
+  <div class="tray-row">
+    <span class="label">托盘图标状态</span>
+    <div class="tray-samples">
+      <div class="tray-sample"><span class="tray-ico"><span data-logo></span><span class="badge"></span></span>运行中</div>
+      <div class="tray-sample"><span class="tray-ico amber"><span data-logo></span><span class="badge"></span></span>启动中 / 降级</div>
+      <div class="tray-sample"><span class="tray-ico gray"><span data-logo></span><span class="badge"></span></span>已停止</div>
+      <div class="tray-sample"><span class="tray-ico red"><span data-logo></span><span class="badge"></span></span>启动失败</div>
+    </div>
+    <div class="legend">
+      <span><i style="background:#22c55e"></i>正常</span>
+      <span><i style="background:#f59e0b"></i>过渡 / 降级</span>
+      <span><i style="background:#94a3b8"></i>停止</span>
+      <span><i style="background:#ef4444"></i>错误</span>
+    </div>
+  </div>
+  <div class="rules">
+    <section class="rule-card">
+      <div class="rule-k">判定顺序</div>
+      <h4>状态以事实为准</h4>
+      <ol>
+        <li>进程是否存活（PID 可查）</li>
+        <li>端口是否监听（8787）</li>
+        <li><code>/api/health</code> 是否返回 200</li>
+        <li><code>/api/debug/events</code> 的 IPC 连接</li>
+        <li>SSH 隧道进程是否存活</li>
+      </ol>
+    </section>
+    <section class="rule-card">
+      <div class="rule-k">错误处理</div>
+      <h4>给原因，也给下一步</h4>
+      <div class="errow"><code>EADDRINUSE</code><span>更换端口 / 结束占用进程</span></div>
+      <div class="errow"><code>CODEX_HOME</code><span>重新选择 Codex 数据目录</span></div>
+      <div class="errow"><code>SSH key</code><span>重新选择密钥 / known_hosts</span></div>
+      <div class="errow"><code>node</code><span>指定 node.exe 路径</span></div>
+    </section>
+    <section class="rule-card">
+      <div class="rule-k">托盘交互</div>
+      <h4>不打开窗口也能完成大部分操作</h4>
+      <div class="errow"><b>左键单击</b><span>打开 / 收起主窗口</span></div>
+      <div class="errow"><b>右键单击</b><span>状态菜单（启停 / 配对 / 设置）</span></div>
+      <div class="errow"><b>鼠标悬停</b><span>机器名 + 当前状态 + 运行时长</span></div>
+      <div class="errow"><b>双击</b><span>与左键单击一致</span></div>
+    </section>
+  </div>
+</div>
+<script src="mock.js"></script>
+</body>
+</html>

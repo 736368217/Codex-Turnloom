@@ -1,0 +1,176 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>设置</title>
+<link rel="stylesheet" href="base.css">
+<style>
+  .settings-grid { flex: 1; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+  .settings-grid .card { padding: 13px 16px; }
+  .settings-grid .field { padding: 6px 0; }
+  .settings-grid .field > div:first-child { min-width: 0; padding-right: 10px; }
+  .settings-grid .field .label { font-size: 11.5px; }
+  .settings-grid .field .desc { font-size: 9.5px; }
+  .settings-grid .input { height: 28px; font-size: 10.5px; }
+  .settings-grid .input.path { width: 168px; }
+  .settings-grid .input.short { width: 84px; min-width: 84px; }
+  .settings-grid .seg span { height: 22px; font-size: 10px; }
+  .settings-grid .toggle { width: 32px; height: 18px; }
+  .settings-grid .toggle::after { width: 12px; height: 12px; }
+  .settings-grid .toggle.on::after { left: 17px; }
+</style>
+</head>
+<body class="shot">
+<div class="win">
+  <div class="titlebar">
+    <div class="brand"><span class="logo" data-logo></span><b>Codex-Turnloom</b><span>控制台</span></div>
+    <div class="tb-right">
+      <span class="status-chip"><span class="dot"></span>运行中</span>
+      <div class="winbtn"><svg viewBox="0 0 12 12"><line x1="2" y1="6" x2="10" y2="6"/></svg></div>
+      <div class="winbtn"><svg viewBox="0 0 12 12"><rect x="2.5" y="2.5" width="7" height="7"/></svg></div>
+      <div class="winbtn close"><svg viewBox="0 0 12 12"><line x1="2" y1="2" x2="10" y2="10"/><line x1="10" y1="2" x2="2" y2="10"/></svg></div>
+    </div>
+  </div>
+  <div class="shell">
+    <aside class="sidebar">
+      <div class="section-label">管理</div>
+      <nav class="nav">
+        <a class="nav-item"><i data-icon="grid"></i>概览</a>
+        <a class="nav-item"><i data-icon="qr"></i>手机配对</a>
+        <a class="nav-item"><i data-icon="terminal"></i>运行日志<span class="badge">3</span></a>
+        <a class="nav-item active"><i data-icon="settings"></i>设置</a>
+      </nav>
+      <div class="section-label" style="margin-top:18px">帮助</div>
+      <nav class="nav"><a class="nav-item"><i data-icon="info"></i>关于与控制台</a></nav>
+      <div class="side-foot">
+        <div class="side-card">
+          <div class="t"><i data-icon="shield" style="width:12px;height:12px"></i>配置目录</div>
+          <div class="v" style="font-family:var(--mono);font-size:9.5px;word-break:break-all">%LOCALAPPDATA%\CodexPocket</div>
+        </div>
+        <div class="side-version"><span>版本 1.0.0</span><span>Windows</span></div>
+      </div>
+    </aside>
+    <main class="main">
+      <div class="pagehead">
+        <div><h1>设置</h1><p>修改服务、配对和启动行为。保存后会自动重启本机服务。</p></div>
+        <div class="head-actions">
+          <button class="btn"><i data-icon="folder"></i>打开配置目录</button>
+        </div>
+      </div>
+
+      <div class="settings-grid">
+        <section class="card">
+          <div class="card-h"><h3>常规</h3><span class="hint">控制台行为</span></div>
+          <div class="field">
+            <div><div class="label">开机自动启动</div><div class="desc">登录 Windows 后自动在托盘运行</div></div>
+            <span class="toggle on"></span>
+          </div>
+          <div class="field">
+            <div><div class="label">启动时最小化到托盘</div><div class="desc">不显示主窗口，只保留托盘图标</div></div>
+            <span class="toggle on"></span>
+          </div>
+          <div class="field">
+            <div><div class="label">关闭窗口时</div><div class="desc">点击标题栏关闭按钮后的行为</div></div>
+            <div class="seg"><span class="on">最小化到托盘</span><span>退出程序</span></div>
+          </div>
+          <div class="field">
+            <div><div class="label">外观</div><div class="desc">跟随 Windows 主题或手动指定</div></div>
+            <div class="seg"><span class="on">跟随系统</span><span>浅色</span><span>深色</span></div>
+          </div>
+        </section>
+
+        <section class="card">
+          <div class="card-h"><h3>本机服务</h3><span class="hint">修改后需要重启</span></div>
+          <div class="field">
+            <div><div class="label">监听端口</div><div class="desc">手机通过 192.168.1.23:8787 访问</div></div>
+            <input class="input short" value="8787">
+          </div>
+          <div class="field">
+            <div><div class="label">监听地址</div><div class="desc">0.0.0.0 允许局域网访问</div></div>
+            <input class="input short" value="0.0.0.0" style="width:110px">
+          </div>
+          <div class="field">
+            <div><div class="label">访问码</div><div class="desc">手机连接时需要，建议定期更换</div></div>
+            <div style="display:flex;align-items:center;gap:6px">
+              <input class="input short" value="••••••" style="width:96px;letter-spacing:2px">
+              <span class="ico-btn" title="重新生成"><i data-icon="refresh"></i></span>
+            </div>
+          </div>
+          <div class="field">
+            <div><div class="label">Codex 数据目录</div><div class="desc">包含 state_5.sqlite 的目录</div></div>
+            <div style="display:flex;align-items:center;gap:6px">
+              <input class="input path" value="C:\Users\Lin\.codex">
+              <span class="ico-btn"><i data-icon="folder"></i></span>
+            </div>
+          </div>
+          <div class="field">
+            <div><div class="label">只读模式</div><div class="desc">开启后手机端只能查看，不能发送消息</div></div>
+            <span class="toggle"></span>
+          </div>
+        </section>
+
+        <section class="card">
+          <div class="card-h"><h3>公网隧道</h3><span class="tag ok">已连接</span></div>
+          <div class="field">
+            <div><div class="label">启用 SSH 反向隧道</div><div class="desc">让手机在外网也能访问这台电脑</div></div>
+            <span class="toggle on"></span>
+          </div>
+          <div class="field">
+            <div><div class="label">服务器地址</div><div class="desc">中转服务器的域名或 IP</div></div>
+            <input class="input" value="office.example.com" style="width:168px">
+          </div>
+          <div class="field">
+            <div><div class="label">用户名</div><div class="desc">用于建立 SSH 连接</div></div>
+            <input class="input short" value="codextunnel" style="width:104px">
+          </div>
+          <div class="field">
+            <div><div class="label">远端端口</div><div class="desc">服务器上映射到本机的端口</div></div>
+            <input class="input short" value="29002">
+          </div>
+          <div class="field">
+            <div><div class="label">SSH 密钥</div><div class="desc">仅保存在本机，不会上传</div></div>
+            <div style="display:flex;align-items:center;gap:6px">
+              <input class="input path" value="C:\Users\Lin\.ssh\codex_turnloom_office_ed25519">
+              <span class="ico-btn"><i data-icon="folder"></i></span>
+            </div>
+          </div>
+        </section>
+
+        <section class="card">
+          <div class="card-h"><h3>日志与诊断</h3><span class="hint">用于排查问题</span></div>
+          <div class="field">
+            <div><div class="label">日志级别</div><div class="desc">默认记录启动、连接和错误信息</div></div>
+            <div class="seg"><span>精简</span><span class="on">标准</span><span>详细</span></div>
+          </div>
+          <div class="field">
+            <div><div class="label">日志保留</div><div class="desc">超期日志会自动清理</div></div>
+            <div class="input short" style="justify-content:flex-start">7 天</div>
+          </div>
+          <div class="field">
+            <div><div class="label">日志目录</div><div class="desc">服务、隧道和守护进程日志</div></div>
+            <div style="display:flex;align-items:center;gap:6px">
+              <input class="input path" value="%LOCALAPPDATA%\CodexPocket\logs">
+              <span class="ico-btn"><i data-icon="folder"></i></span>
+            </div>
+          </div>
+          <div class="field">
+            <div><div class="label">诊断包</div><div class="desc">导出配置脱敏信息和最近 7 天日志</div></div>
+            <button class="btn sm"><i data-icon="download"></i>导出诊断包</button>
+          </div>
+        </section>
+      </div>
+
+      <div class="savebar">
+        <span class="txt"><span class="dot"></span>有 2 项未保存的更改</span>
+        <span style="font-size:10px;color:#64748b">保存后将重启本机服务，手机端会短暂断开约 2 秒。</span>
+        <div class="actions">
+          <button class="btn">放弃</button>
+          <button class="btn primary"><i data-icon="check"></i>保存并重启服务</button>
+        </div>
+      </div>
+    </main>
+  </div>
+</div>
+<script src="mock.js"></script>
+</body>
+</html>

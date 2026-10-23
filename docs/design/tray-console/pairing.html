@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>手机配对</title>
+<link rel="stylesheet" href="base.css">
+<style>
+  body.shot { position: relative; }
+  iframe.screen { width: 1120px; height: 760px; border: 0; display: block; }
+</style>
+</head>
+<body class="shot">
+<iframe class="screen" src="overview.html" title="概览背景"></iframe>
+<div class="overlay">
+  <div class="dialog">
+    <div class="dialog-h">
+      <div class="ic"><i data-icon="qr"></i></div>
+      <div>
+        <h2>手机配对</h2>
+        <p>用手机 APP 扫描二维码，把这台电脑加入设备列表。</p>
+      </div>
+      <div class="x"><i data-icon="x"></i></div>
+    </div>
+    <div class="dialog-body">
+      <div class="qr-hero">
+        <div class="qr-box" data-qr="29" data-seed="21"></div>
+        <div>
+          <div class="t">办公室电脑</div>
+          <div class="d">扫码后会自动填入访问地址与访问码，无需手动输入。</div>
+          <div class="machine">局域网　<b>192.168.1.23:8787</b></div>
+          <div class="machine">公网　　<b>https://office.example.com</b></div>
+        </div>
+      </div>
+      <div class="code-row">
+        <span class="k">访问码</span>
+        <span class="v">284 917</span>
+        <span class="grow"></span>
+        <span class="ico-btn"><i data-icon="copy"></i></span>
+      </div>
+      <div class="note"><i data-icon="shield"></i><span>二维码包含访问码，请勿截图分享。若怀疑泄露，可在「设置 → 服务」中重新生成访问码。</span></div>
+    </div>
+    <div class="dialog-foot">
+      <button class="btn ghost" style="margin-right:auto"><i data-icon="download"></i>保存为图片</button>
+      <button class="btn">关闭</button>
+      <button class="btn primary"><i data-icon="copy"></i>复制配对信息</button>
+    </div>
+  </div>
+</div>
+<script src="mock.js"></script>
+</body>
+</html>

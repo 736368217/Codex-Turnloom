@@ -1,0 +1,137 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>托盘菜单</title>
+<link rel="stylesheet" href="base.css">
+<style>
+  body.desktop {
+    width: 1280px; height: 800px; overflow: hidden; position: relative;
+    font-family: var(--font); background: #dfe9f7;
+  }
+  .wall { position: absolute; inset: 0; background:
+    radial-gradient(920px 640px at 16% 4%, rgba(116, 166, 255, .95) 0%, rgba(116, 166, 255, 0) 62%),
+    radial-gradient(780px 560px at 82% 16%, rgba(199, 171, 255, .92) 0%, rgba(199, 171, 255, 0) 64%),
+    radial-gradient(700px 540px at 58% 96%, rgba(151, 233, 214, .88) 0%, rgba(151, 233, 214, 0) 62%),
+    linear-gradient(142deg, #eaf1fb 0%, #dfe9f8 52%, #e8eef9 100%);
+  }
+  .wall::before {
+    content: ""; position: absolute; width: 640px; height: 640px; left: 47%; top: 50%;
+    transform: translate(-50%, -50%) rotate(-16deg);
+    background: conic-gradient(from 200deg, rgba(255,255,255,0) 0deg, rgba(255,255,255,.62) 90deg, rgba(255,255,255,0) 210deg, rgba(255,255,255,.35) 320deg, rgba(255,255,255,0) 360deg);
+    filter: blur(46px); border-radius: 48% 52% 46% 54%;
+  }
+  .wall::after {
+    content: ""; position: absolute; inset: 0;
+    background: radial-gradient(1200px 700px at 50% 120%, rgba(255,255,255,.35), transparent 60%);
+  }
+  .taskbar {
+    position: absolute; left: 0; right: 0; bottom: 0; height: 48px; z-index: 10;
+    background: rgba(247, 250, 255, .78); backdrop-filter: blur(30px) saturate(1.35);
+    border-top: 1px solid rgba(255, 255, 255, .65);
+    box-shadow: 0 -1px 0 rgba(15, 23, 42, .06);
+    display: flex; align-items: center;
+  }
+  .tb-center {
+    position: absolute; left: 50%; transform: translateX(-50%);
+    display: flex; align-items: center; gap: 4px;
+  }
+  .tb-icon { width: 40px; height: 40px; border-radius: 6px; display: grid; place-items: center; color: #1e293b; }
+  .tb-icon:hover { background: rgba(15, 23, 42, .06); }
+  .tb-icon svg { width: 20px; height: 20px; }
+  .tb-sep { width: 1px; height: 22px; background: rgba(15, 23, 42, .12); margin: 0 4px; }
+  .start { display: grid; grid-template-columns: 9px 9px; grid-template-rows: 9px 9px; gap: 2px; }
+  .start i { background: #0078d4; border-radius: 1.5px; display: block; }
+  .edge { width: 26px; height: 26px; border-radius: 50%; background: conic-gradient(from 210deg, #0ea5e9, #2563eb, #7c3aed, #06b6d4, #0ea5e9); box-shadow: inset 0 0 0 2px rgba(255,255,255,.25); }
+  .folder-app { width: 24px; height: 18px; border-radius: 3px; background: linear-gradient(180deg, #ffd66b, #f6b93b); position: relative; box-shadow: 0 1px 2px rgba(15,23,42,.18); }
+  .folder-app::before { content: ""; position: absolute; left: 2px; top: -4px; width: 10px; height: 5px; border-radius: 2px 2px 0 0; background: #ffcf5c; }
+  .term-app { width: 25px; height: 22px; border-radius: 4px; background: #0f172a; color: #7dd3fc; font: 700 10px/22px var(--mono); text-align: center; }
+  .tb-right { margin-left: auto; height: 100%; display: flex; align-items: center; gap: 11px; padding-right: 12px; }
+  .tb-glyph { color: #334155; display: grid; place-items: center; }
+  .tb-glyph svg { width: 15px; height: 15px; stroke-width: 1.8; }
+  .clock { text-align: right; font-size: 10.5px; line-height: 1.35; color: #1e293b; font-variant-numeric: tabular-nums; padding: 0 6px 0 2px; }
+  .clock b { display: block; font-weight: 550; }
+  .tray-app {
+    width: 34px; height: 36px; border-radius: 7px; display: grid; place-items: center;
+    background: rgba(37, 99, 235, .12); box-shadow: inset 0 0 0 1px rgba(37, 99, 235, .18);
+    position: relative;
+  }
+  .tray-app svg { width: 23px; height: 23px; }
+  .tray-app .badge {
+    position: absolute; right: 3px; bottom: 3px; width: 9px; height: 9px; border-radius: 50%;
+    background: #22c55e; border: 1.5px solid #f7faff;
+  }
+  .menu {
+    position: absolute; right: 10px; bottom: 58px; width: 308px; z-index: 30;
+    background: rgba(251, 253, 255, .93); backdrop-filter: blur(38px) saturate(1.5);
+    border: 1px solid rgba(15, 23, 42, .11); border-radius: 10px;
+    box-shadow: 0 22px 60px rgba(15, 23, 42, .30), 0 3px 10px rgba(15, 23, 42, .12);
+    padding: 6px; color: #1e293b;
+  }
+  .menu-head { display: flex; align-items: center; gap: 9px; padding: 8px 9px 9px; }
+  .menu-head .logo { width: 28px; height: 28px; display: block; }
+  .menu-head .name { font-size: 12.5px; font-weight: 650; line-height: 1.25; }
+  .menu-head .state { font-size: 10px; color: #64748b; display: flex; align-items: center; gap: 5px; margin-top: 2px; }
+  .menu-head .state .dot { width: 6px; height: 6px; border-radius: 50%; background: #22c55e; }
+  .menu-head .state b { color: #047857; font-weight: 650; }
+  .menu-sep { height: 1px; background: rgba(15, 23, 42, .085); margin: 4px 8px; }
+  .mi { height: 33px; border-radius: 6px; display: flex; align-items: center; gap: 10px; padding: 0 9px; font-size: 12.5px; color: #1e293b; }
+  .mi .i { width: 16px; height: 16px; color: #4b5b70; }
+  .mi:hover, .mi.hover { background: rgba(37, 99, 235, .09); }
+  .mi .right { margin-left: auto; color: #94a3b8; font-size: 9.5px; }
+  .mi .check { margin-left: auto; color: #2563eb; }
+  .mi .check .i { width: 14px; height: 14px; }
+  .mi.warn { color: #b45309; }
+  .mi.warn .i { color: #d97706; }
+  .mi.exit { color: #b91c1c; }
+  .mi.exit .i { color: #dc2626; }
+  .menu-foot { padding: 7px 9px 4px; font-size: 9.5px; color: #94a3b8; display: flex; justify-content: space-between; }
+</style>
+</head>
+<body class="desktop">
+  <div class="wall"></div>
+
+  <div class="taskbar">
+    <div class="tb-center">
+      <div class="tb-icon"><span class="start"><i></i><i></i><i></i><i></i></span></div>
+      <div class="tb-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="11" cy="11" r="6.5"/><line x1="20" y1="20" x2="16" y2="16"/></svg></div>
+      <div class="tb-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="3" y="5" width="12" height="9" rx="1.5"/><rect x="16.5" y="9" width="4.5" height="10" rx="1"/></svg></div>
+      <div class="tb-sep"></div>
+      <div class="tb-icon"><span class="edge"></span></div>
+      <div class="tb-icon"><span class="folder-app"></span></div>
+      <div class="tb-icon"><span class="term-app">&gt;_</span></div>
+    </div>
+    <div class="tb-right">
+      <span class="tb-glyph"><i data-icon="wifi"></i></span>
+      <span class="tb-glyph"><i data-icon="volume"></i></span>
+      <span class="tb-glyph"><i data-icon="battery"></i></span>
+      <div class="clock"><b>10:24</b><span>2025/6/12</span></div>
+      <div class="tray-app"><span data-logo></span><span class="badge"></span></div>
+    </div>
+  </div>
+
+  <div class="menu">
+    <div class="menu-head">
+      <span class="logo" data-logo></span>
+      <div>
+        <div class="name">Codex-Turnloom 控制台</div>
+        <div class="state"><span class="dot"></span><b>运行中</b><span>· 办公室电脑 · 2 小时 14 分</span></div>
+      </div>
+    </div>
+    <div class="menu-sep"></div>
+    <div class="mi hover"><i data-icon="monitor"></i>打开控制台<span class="right">左键单击</span></div>
+    <div class="mi"><i data-icon="external"></i>在浏览器中预览手机端</div>
+    <div class="mi"><i data-icon="qr"></i>显示配对二维码</div>
+    <div class="menu-sep"></div>
+    <div class="mi"><i data-icon="refresh"></i>重启服务</div>
+    <div class="mi warn"><i data-icon="square"></i>停止服务</div>
+    <div class="menu-sep"></div>
+    <div class="mi"><i data-icon="power"></i>开机自动启动<span class="check"><i data-icon="check"></i></span></div>
+    <div class="mi"><i data-icon="settings"></i>设置…</div>
+    <div class="menu-sep"></div>
+    <div class="mi exit"><i data-icon="power"></i>退出控制台<span class="right">将停止服务</span></div>
+    <div class="menu-foot"><span>Codex-Turnloom 1.0.0</span><span>查看帮助</span></div>
+  </div>
+<script src="mock.js"></script>
+</body>
+</html>

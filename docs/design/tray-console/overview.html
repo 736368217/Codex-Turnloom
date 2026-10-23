@@ -1,0 +1,162 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>Codex-Turnloom 控制台 · 概览</title>
+<script>if (location.search.includes('dark')) document.documentElement.classList.add('dark');</script>
+<link rel="stylesheet" href="base.css">
+</head>
+<body class="shot">
+<div class="win">
+  <div class="titlebar">
+    <div class="brand"><span class="logo" data-logo></span><b>Codex-Turnloom</b><span>控制台</span></div>
+    <div class="tb-right">
+      <span class="status-chip"><span class="dot"></span>运行中</span>
+      <div class="winbtn"><svg viewBox="0 0 12 12"><line x1="2" y1="6" x2="10" y2="6"/></svg></div>
+      <div class="winbtn"><svg viewBox="0 0 12 12"><rect x="2.5" y="2.5" width="7" height="7"/></svg></div>
+      <div class="winbtn close"><svg viewBox="0 0 12 12"><line x1="2" y1="2" x2="10" y2="10"/><line x1="10" y1="2" x2="2" y2="10"/></svg></div>
+    </div>
+  </div>
+  <div class="shell">
+    <aside class="sidebar">
+      <div class="section-label">管理</div>
+      <nav class="nav">
+        <a class="nav-item active"><i data-icon="grid"></i>概览</a>
+        <a class="nav-item"><i data-icon="qr"></i>手机配对</a>
+        <a class="nav-item"><i data-icon="terminal"></i>运行日志<span class="badge">3</span></a>
+        <a class="nav-item"><i data-icon="settings"></i>设置</a>
+      </nav>
+      <div class="section-label" style="margin-top:18px">帮助</div>
+      <nav class="nav">
+        <a class="nav-item"><i data-icon="info"></i>关于与控制台</a>
+      </nav>
+      <div class="side-foot">
+        <div class="side-card">
+          <div class="t"><i data-icon="shield" style="width:12px;height:12px"></i>服务守护</div>
+          <div class="v" style="display:flex;align-items:center;justify-content:space-between">开机自动启动<span class="toggle on"></span></div>
+        </div>
+        <div class="side-version"><span>版本 1.0.0</span><span>Windows</span></div>
+      </div>
+    </aside>
+    <main class="main">
+      <div class="pagehead">
+        <div>
+          <h1>概览</h1>
+          <p><b>办公室电脑</b> · Windows 11 · 服务启动于今天 09:42</p>
+        </div>
+        <div class="head-actions">
+          <button class="btn icon ghost" title="刷新"><i data-icon="refresh"></i></button>
+          <button class="btn"><i data-icon="refresh"></i>重启服务</button>
+          <button class="btn danger"><i data-icon="square"></i>停止服务</button>
+        </div>
+      </div>
+
+      <section class="hero">
+        <div class="hero-main">
+          <div class="status-line"><span class="pulse"></span><h2>服务运行中</h2><span class="tag ok">手机端可访问</span></div>
+          <p class="hero-sub">局域网 <b>192.168.1.23:8787</b><span class="sep">·</span>公网隧道 <b>office.example.com</b><span class="sep">·</span>已运行 2 小时 14 分</p>
+          <div class="hero-actions">
+            <button class="btn primary"><i data-icon="qr"></i>显示配对二维码</button>
+            <button class="btn"><i data-icon="external"></i>在浏览器中预览</button>
+            <button class="btn ghost"><i data-icon="copy"></i>复制访问地址</button>
+          </div>
+        </div>
+        <div class="hero-metrics">
+          <div class="hm"><div class="k">运行时长</div><div class="v">2<small>时</small> 14<small>分</small></div></div>
+          <div class="hm"><div class="k">内存占用</div><div class="v">86<small>MB</small></div></div>
+          <div class="hm"><div class="k">进程 PID</div><div class="v">21844</div></div>
+        </div>
+      </section>
+
+      <div class="grid2">
+        <section class="card">
+          <div class="card-h"><h3>连接信息</h3><a class="link">网络诊断<i data-icon="chevron"></i></a></div>
+          <div class="rows">
+            <div class="row">
+              <span class="k">局域网地址</span>
+              <span class="v mono grow">192.168.1.23:8787</span>
+              <span class="ico-btn" title="复制"><i data-icon="copy"></i></span>
+            </div>
+            <div class="row">
+              <span class="k">公网地址</span>
+              <span class="v mono grow">https://office.example.com</span>
+              <span class="ico-btn" title="在浏览器打开"><i data-icon="external"></i></span>
+            </div>
+            <div class="row">
+              <span class="k">访问码</span>
+              <span class="v code grow">••••••</span>
+              <span class="ico-btn" title="显示"><i data-icon="eye"></i></span>
+              <span class="ico-btn" title="复制"><i data-icon="copy"></i></span>
+            </div>
+            <div class="row">
+              <span class="k">Codex 数据</span>
+              <span class="v mono grow">C:\Users\Lin\.codex</span>
+              <span class="ico-btn" title="打开文件夹"><i data-icon="folder"></i></span>
+            </div>
+          </div>
+        </section>
+
+        <section class="card">
+          <div class="card-h"><h3>手机配对<span class="sub">上次配对 3 天前</span></h3><a class="link">配对记录<i data-icon="chevron"></i></a></div>
+          <div class="pair-body">
+            <div class="qr-box" data-qr="25" data-seed="12"></div>
+            <div class="pair-copy">
+              <div class="t">扫码添加这台电脑</div>
+              <div class="d">打开手机 APP 点击「扫码」，二维码包含访问地址与访问码，仅在本机显示。</div>
+              <div class="code"><span>访问码</span>284 917</div>
+            </div>
+          </div>
+          <div class="pair-actions">
+            <button class="btn sm"><i data-icon="download"></i>保存二维码</button>
+            <button class="btn sm primary"><i data-icon="copy"></i>复制配对信息</button>
+          </div>
+        </section>
+      </div>
+
+      <section class="card activity">
+        <div class="card-h" style="margin-bottom:4px">
+          <div style="display:flex;align-items:center;gap:10px">
+            <h3>最近活动</h3>
+            <div class="tabs"><span class="tab active">最近任务</span><span class="tab">运行日志</span></div>
+          </div>
+          <a class="link">在手机端查看全部<i data-icon="external"></i></a>
+        </div>
+        <div class="task">
+          <span class="pulse" style="width:7px;height:7px;box-shadow:none"></span>
+          <span class="name">修复登录超时问题</span>
+          <span class="state tag ok">运行中</span>
+          <span class="meta">正在执行 <b>npm test</b> · 1 个工具调用</span>
+          <span class="time">2 分钟前</span>
+          <span class="chev"><i data-icon="chevron"></i></span>
+        </div>
+        <div class="task">
+          <span class="pulse amber" style="width:7px;height:7px;box-shadow:none"></span>
+          <span class="name">重构导出模块</span>
+          <span class="state tag warn">等待审批</span>
+          <span class="meta">请求写入 <b>src/export.ts</b></span>
+          <span class="time">6 分钟前</span>
+          <span class="chev"><i data-icon="chevron"></i></span>
+        </div>
+        <div class="task">
+          <span class="pulse gray" style="width:7px;height:7px;box-shadow:none"></span>
+          <span class="name">整理本周工作周报</span>
+          <span class="state tag muted">已完成</span>
+          <span class="meta">12 条消息 · 用时 8 分钟</span>
+          <span class="time">今天 10:24</span>
+          <span class="chev"><i data-icon="chevron"></i></span>
+        </div>
+        <div class="task">
+          <span class="pulse gray" style="width:7px;height:7px;box-shadow:none"></span>
+          <span class="name">检查 Android 构建</span>
+          <span class="state tag muted">已结束</span>
+          <span class="meta">构建通过 · 用时 3 分钟</span>
+          <span class="time">昨天 18:40</span>
+          <span class="chev"><i data-icon="chevron"></i></span>
+        </div>
+      </section>
+    </main>
+  </div>
+</div>
+<script src="mock.js"></script>
+</body>
+</html>

@@ -1,0 +1,83 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>初始设置</title>
+<link rel="stylesheet" href="base.css">
+</head>
+<body>
+<div class="stage">
+  <div class="wizard">
+    <div class="titlebar">
+      <div class="brand"><span class="logo" data-logo></span><b>Codex-Turnloom</b><span>控制台 · 初始设置</span></div>
+      <div class="tb-right">
+        <span class="status-chip off"><span class="dot"></span>服务未启动</span>
+        <div class="winbtn"><svg viewBox="0 0 12 12"><line x1="2" y1="6" x2="10" y2="6"/></svg></div>
+        <div class="winbtn close"><svg viewBox="0 0 12 12"><line x1="2" y1="2" x2="10" y2="10"/><line x1="10" y1="2" x2="2" y2="10"/></svg></div>
+      </div>
+    </div>
+    <div class="body">
+      <aside class="steps">
+        <div class="kicker">设置向导</div>
+        <div class="step done">
+          <div class="num"><i data-icon="check" style="width:12px;height:12px"></i></div>
+          <div><div class="t">检测 Codex Desktop</div><div class="d">已找到本机数据目录</div></div>
+        </div>
+        <div class="step active">
+          <div class="num">2</div>
+          <div><div class="t">设置本机服务</div><div class="d">端口、访问码和启动方式</div></div>
+        </div>
+        <div class="step">
+          <div class="num">3</div>
+          <div><div class="t">启动并配对手机</div><div class="d">显示二维码，完成连接</div></div>
+        </div>
+        <div class="infobox" style="margin-top:30px">
+          <i data-icon="shield"></i>
+          <span>所有配置只保存在本机，不会上传到任何服务器。</span>
+        </div>
+      </aside>
+      <main class="wizard-main">
+        <h2>设置本机服务</h2>
+        <p class="lead">已检测到 Codex Desktop 的数据目录。确认端口和访问码后即可启动服务。</p>
+        <div class="wform">
+          <div class="wfield">
+            <div class="lab">监听端口</div>
+            <div class="inline">
+              <div class="input short" style="justify-content:flex-start">8787</div>
+              <span class="hint" style="margin:0;font-size:10px;color:#94a3b8">手机将通过 192.168.1.23:8787 访问</span>
+            </div>
+            <div class="hint">如果端口被占用，控制台会提示并允许更换。</div>
+          </div>
+          <div class="wfield">
+            <div class="lab">访问码</div>
+            <div class="inline">
+              <div class="input" style="width:170px;font-family:var(--mono);letter-spacing:3px;font-weight:650">284917</div>
+              <button class="btn sm"><i data-icon="refresh"></i>重新生成</button>
+            </div>
+            <div class="hint">手机首次连接时需要输入，之后会安全保存在手机中。</div>
+          </div>
+          <div class="wfield" style="border-bottom:0;padding-bottom:6px">
+            <div class="lab">启动选项</div>
+            <div class="checkline"><span class="checkbox on"></span>登录 Windows 后自动启动</div>
+            <div class="checkline"><span class="checkbox on"></span>启动时最小化到托盘，不打扰当前工作</div>
+            <div class="checkline"><span class="checkbox"></span>同时配置公网 SSH 隧道<span style="color:#a3b0c2;font-size:10px">（可稍后在设置中完成）</span></div>
+          </div>
+        </div>
+        <div class="infobox">
+          <i data-icon="folder"></i>
+          <span>配置将保存到 <code>%LOCALAPPDATA%\CodexPocket\config.json</code>，并兼容现有命令行安装方式。</span>
+        </div>
+        <div class="wizard-foot">
+          <span class="skip">退出后可以再次从开始菜单打开</span>
+          <div class="actions">
+            <button class="btn"><i data-icon="arrowleft"></i>上一步</button>
+            <button class="btn primary">下一步：启动服务<i data-icon="chevron"></i></button>
+          </div>
+        </div>
+      </main>
+    </div>
+  </div>
+</div>
+<script src="mock.js"></script>
+</body>
+</html>

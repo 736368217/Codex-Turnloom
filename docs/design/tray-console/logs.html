@@ -1,0 +1,111 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>运行日志</title>
+<link rel="stylesheet" href="base.css">
+<style>
+  .stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; flex: 0 0 64px; }
+  .stat { background: #fff; border: 1px solid var(--line); border-radius: 10px; padding: 9px 13px; display: flex; align-items: center; gap: 10px; }
+  .stat .si { width: 28px; height: 28px; border-radius: 8px; background: #f2f7ff; color: #2563eb; display: grid; place-items: center; flex: 0 0 28px; }
+  .stat .si .i { width: 15px; height: 15px; }
+  .stat .k { font-size: 9.5px; color: var(--muted); }
+  .stat .v { font-size: 14px; font-weight: 650; font-variant-numeric: tabular-nums; margin-top: 1px; }
+  .stat .v small { font-size: 9px; font-weight: 500; color: var(--muted); margin-left: 2px; }
+  .stat.green .si { background: #ecfdf5; color: #059669; }
+  .stat.amber .si { background: #fff7ed; color: #d97706; }
+  .stat.gray .si { background: #f1f5f9; color: #64748b; }
+</style>
+</head>
+<body class="shot">
+<div class="win">
+  <div class="titlebar">
+    <div class="brand"><span class="logo" data-logo></span><b>Codex-Turnloom</b><span>控制台</span></div>
+    <div class="tb-right">
+      <span class="status-chip"><span class="dot"></span>运行中</span>
+      <div class="winbtn"><svg viewBox="0 0 12 12"><line x1="2" y1="6" x2="10" y2="6"/></svg></div>
+      <div class="winbtn"><svg viewBox="0 0 12 12"><rect x="2.5" y="2.5" width="7" height="7"/></svg></div>
+      <div class="winbtn close"><svg viewBox="0 0 12 12"><line x1="2" y1="2" x2="10" y2="10"/><line x1="10" y1="2" x2="2" y2="10"/></svg></div>
+    </div>
+  </div>
+  <div class="shell">
+    <aside class="sidebar">
+      <div class="section-label">管理</div>
+      <nav class="nav">
+        <a class="nav-item"><i data-icon="grid"></i>概览</a>
+        <a class="nav-item"><i data-icon="qr"></i>手机配对</a>
+        <a class="nav-item active"><i data-icon="terminal"></i>运行日志<span class="badge">3</span></a>
+        <a class="nav-item"><i data-icon="settings"></i>设置</a>
+      </nav>
+      <div class="section-label" style="margin-top:18px">帮助</div>
+      <nav class="nav"><a class="nav-item"><i data-icon="info"></i>关于与控制台</a></nav>
+      <div class="side-foot">
+        <div class="side-card">
+          <div class="t"><i data-icon="shield" style="width:12px;height:12px"></i>服务守护</div>
+          <div class="v" style="display:flex;align-items:center;justify-content:space-between">开机自动启动<span class="toggle on"></span></div>
+        </div>
+        <div class="side-version"><span>版本 1.0.0</span><span>Windows</span></div>
+      </div>
+    </aside>
+    <main class="main">
+      <div class="pagehead">
+        <div><h1>运行日志</h1><p>实时查看服务、Codex 连接和 SSH 隧道的输出 · 每 500 ms 刷新</p></div>
+        <div class="head-actions">
+          <button class="btn"><i data-icon="pause"></i>暂停滚动</button>
+          <button class="btn"><i data-icon="folder"></i>打开日志目录</button>
+          <button class="btn primary"><i data-icon="download"></i>导出日志</button>
+        </div>
+      </div>
+
+      <div class="stats">
+        <div class="stat"><div class="si"><i data-icon="clock"></i></div><div><div class="k">本次运行</div><div class="v">2<small>时</small> 14<small>分</small></div></div></div>
+        <div class="stat gray"><div class="si"><i data-icon="refresh"></i></div><div><div class="k">自动重启</div><div class="v">0<small>次</small></div></div></div>
+        <div class="stat green"><div class="si"><i data-icon="check"></i></div><div><div class="k">24 小时错误</div><div class="v">0</div></div></div>
+        <div class="stat amber"><div class="si"><i data-icon="alert"></i></div><div><div class="k">24 小时警告</div><div class="v">3</div></div></div>
+      </div>
+
+      <div class="log-toolbar">
+        <span class="filter on">全部</span>
+        <span class="filter">服务</span>
+        <span class="filter">Codex IPC</span>
+        <span class="filter">SSH 隧道</span>
+        <span class="filter">HTTP</span>
+        <div class="search"><i data-icon="search"></i>搜索关键字或请求路径</div>
+      </div>
+
+      <div class="console">
+        <div class="console-h">
+          <span class="cdot r"></span><span class="cdot y"></span><span class="cdot g"></span>
+          <span class="t">Codex-Turnloom · 实时日志</span>
+          <span class="live"><span class="dot"></span>实时</span>
+        </div>
+        <div class="console-body">
+          <div class="logline"><span class="t">09:42:01</span><span class="lv info">INFO</span><span class="src">[service]</span><span class="msg">正在启动 Codex-Turnloom v1.0.0</span></div>
+          <div class="logline"><span class="t">09:42:01</span><span class="lv info">INFO</span><span class="src">[config]</span><span class="msg">配置加载完成：C:\Users\Lin\AppData\Local\CodexPocket\config.json</span></div>
+          <div class="logline"><span class="t">09:42:01</span><span class="lv info">INFO</span><span class="src">[service]</span><span class="msg">监听 0.0.0.0:8787（访问模式：读写）</span></div>
+          <div class="logline"><span class="t">09:42:02</span><span class="lv ok">OK</span><span class="src">[ipc]</span><span class="msg">已连接 Codex Desktop（clientId: desktop-7f3a…）</span></div>
+          <div class="logline"><span class="t">09:42:02</span><span class="lv info">INFO</span><span class="src">[health]</span><span class="msg">健康检查通过；Codex 数据目录：C:\Users\Lin\.codex</span></div>
+          <div class="logline"><span class="t">09:42:03</span><span class="lv ok">OK</span><span class="src">[tunnel]</span><span class="msg">SSH 反向隧道已建立：office.example.com:29002 → 127.0.0.1:8787</span></div>
+          <div class="logline"><span class="t">09:47:18</span><span class="lv info">INFO</span><span class="src">[http]</span><span class="msg">GET /api/threads 200 · 84 ms</span></div>
+          <div class="logline"><span class="t">09:52:30</span><span class="lv warn">WARN</span><span class="src">[http]</span><span class="msg">GET /api/threads 200 · 842 ms（慢请求）</span></div>
+          <div class="logline"><span class="t">09:58:44</span><span class="lv info">INFO</span><span class="src">[ipc]</span><span class="msg">收到 turn.completed 事件，任务状态已更新</span></div>
+          <div class="logline errline"><span class="t">10:02:11</span><span class="lv error">ERROR</span><span class="src">[tunnel]</span><span class="msg">SSH 连接中断（exit code 255），5 秒后重试</span></div>
+          <div class="logline"><span class="t">10:02:16</span><span class="lv ok">OK</span><span class="src">[tunnel]</span><span class="msg">隧道已恢复，远端端口 29002</span></div>
+          <div class="logline"><span class="t">10:08:03</span><span class="lv info">INFO</span><span class="src">[http]</span><span class="msg">手机端建立连接：192.168.1.56（GET /）</span></div>
+          <div class="logline"><span class="t">10:14:27</span><span class="lv warn">WARN</span><span class="src">[health]</span><span class="msg">/api/health 响应 2.1 s，已自动重试</span></div>
+          <div class="logline"><span class="t">10:14:28</span><span class="lv ok">OK</span><span class="src">[health]</span><span class="msg">健康检查通过</span></div>
+          <div class="logline"><span class="t">10:21:09</span><span class="lv info">INFO</span><span class="src">[http]</span><span class="msg">POST /api/send 200 · 36 ms</span></div>
+          <div class="logline"><span class="t">10:24:00</span><span class="lv info">INFO</span><span class="src">[log]</span><span class="msg">已加载最近 500 行；自动滚动已开启</span></div>
+        </div>
+        <div class="console-f">
+          <span>日志文件：%LOCALAPPDATA%\CodexPocket\logs\server-out.log</span>
+          <span class="right"><span class="okdot"></span>自动滚动</span>
+          <span>最近 500 行</span>
+        </div>
+      </div>
+    </main>
+  </div>
+</div>
+<script src="mock.js"></script>
+</body>
+</html>
