@@ -3,7 +3,7 @@
 - 发布日期：2026-10-23
 - 版本：`1.16.0`（Android `versionCode` 20）
 - 桌面安装包：`Codex-Turnloom-Console-1.16.0-x64.exe`
-- 校验值：SHA-512 见 `dist-desktop/latest.yml`；SHA-256 `26FF0E88E82DACB19D2E7A5B97F721AA2BDFCDAADFE592C777926F82321834D1`
+- 校验值：SHA-512 见 `dist-desktop/latest.yml`；SHA-256 `DD04E8853BAF2DCA21697D5733E6AA88BB5E501007A92957260C8CA877C8072A`
 
 ## 亮点
 
