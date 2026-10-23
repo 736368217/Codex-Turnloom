@@ -337,8 +337,8 @@ const PUBLIC_DIR = path.join(__dirname, "public");
 const APK_PATH = process.env.CODEX_POCKET_APK_PATH
   ? path.resolve(process.env.CODEX_POCKET_APK_PATH)
   : path.join(PUBLIC_DIR, "downloads", "Codex-Turnloom.apk");
-const APP_VERSION_CODE = 19;
-const APP_VERSION_NAME = "1.15.0";
+const APP_VERSION_CODE = 20;
+const APP_VERSION_NAME = "1.16.0";
 const GENERATED_IMAGES_DIR = path.join(os.homedir(), ".codex", "generated_images");
 const CODEX_POCKET_DATA_DIR =
   process.env.LOCALAPPDATA || path.join(os.homedir(), process.platform === "win32" ? "AppData" : ".local", process.platform === "win32" ? "Local" : "share");
@@ -592,6 +592,12 @@ function loginUrlFor(baseUrl) {
   const url = new URL(baseUrl);
   // Keep the access code out of HTTP request logs and browser referrers.
   url.hash = `login=${encodeURIComponent(ACCESS_TOKEN)}`;
+  return url.toString();
+}
+
+function loginUrlForProfile(baseUrl, profile) {
+  const url = new URL(loginUrlFor(baseUrl));
+  if (profile) url.searchParams.set("device", profile.id);
   return url.toString();
 }
 
@@ -6840,7 +6846,7 @@ if (IS_MAIN) {
     console.log("");
     if (AUTH_REQUIRED) console.log("QR:     opens the LAN page and signs in automatically");
     else console.log("QR:     opens the LAN page");
-    qrcode.generate(loginUrlFor(primaryUrl), { small: true });
+    qrcode.generate(loginUrlForProfile(primaryUrl, PROFILE_MODE ? PROFILES[0] : null), { small: true });
   };
 
   logInfo("Codex-Turnloom is running");
