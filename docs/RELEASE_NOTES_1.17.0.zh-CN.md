@@ -4,7 +4,7 @@
 - 版本：`1.17.0`（Android `versionCode` 21）
 - 桌面安装包：`Codex-Turnloom-Console-1.17.0-x64.exe`
 - Android 调试包：`Codex-Turnloom-1.17.0-debug.apk`
-- 校验值：SHA-512 见 `dist-desktop/latest.yml`；SHA-256 `97458B051CCC4395B4BDBDE9DA8C7D2C025E6AF89295AB25E5376F014C67A823`
+- 校验值：SHA-512 见 `dist-desktop/latest.yml`；SHA-256 `9477E45126FB58F47FB28E1AD1E4D256F01A41B02DAC098189F83213EAA15F70`
 
 ## 重点更新
 
