@@ -133,3 +133,13 @@ Static web assets include baseline CSP, referrer, MIME-sniffing, and frame-isola
 - Added a single-session long-poll change endpoint at `/api/threads/:id/changes`. The mobile page now owns one abortable generation-scoped stream per selected conversation, replacing the 2s/6s message refresh loop. A change response triggers one authoritative message reload; stale sessions are aborted and cannot update the current conversation.
 - Added server-side reading of Codex Desktop `.codex-global-state.json` assignments. Explicit `thread-project-assignments` now win over SQLite project fields and cwd fallback, fixing projects such as “控制隔壁电脑” whose `threads.project_id` is empty.
 - Long-history loading now accepts a stable `before` message cursor and merges the returned older page into the current timeline while retaining the scroll anchor. The existing limit path remains as a compatibility fallback; rollout parsing remains cached by file signature and page limit, with split rollout merging already in place.
+
+## 2026-10-25 public entry restored after key loss
+
+- The public mobile entry is the self-hosted Alibaba Cloud path only: Nginx `18787` -> loopback `18786` -> reverse SSH tunnel -> Windows `8787`. Do not add Cloudflare/ngrok style tunnels; the user explicitly rejected them.
+- `8787` must run the dual-device dispatcher at `D:\pi11\11\turnloom-pidesktop\dual\server.js` (console `repoRoot` points there). Both backends are now the current `D:\pi11\11\Codex-Turnloom\server.js` build: Codex on `18788` for `D:\codex\.codex`, PI-Desktop on `8799` for `~/.pidesktop-turnloom` with the codex IPC facade.
+- The device table pins each device's access code. Regenerating the desktop console access code does not change routing, but it also must not be rotated casually: the phone stores the code as its routing key.
+- Because both devices share one public origin, the dispatcher issues its own `turnloom_dual` routing cookie and re-appends `?token=` upstream; per-backend `turnloom_session` cookies would otherwise collide and drop a device onto the default backend.
+- The Windows SSH private key for the tunnel had been lost with the `~/.ssh` directory. A new `codex_pocket_ed25519` key was authorized on the Alibaba host for the restricted `codextunnel` account with `permitlisten="127.0.0.1:18786"`. Keep `known_hosts` populated: `tunnel.cjs` uses `StrictHostKeyChecking=yes`.
+- The desktop console owns the local service and the tunnel, started by the logon task `Codex-Turnloom Console`. Tunnel retry backoff was fixed to seconds (the previous `2^n` milliseconds produced a 2 ms storm); see `desktop/service/tunnel.cjs`.
+- Recovery order and re-install steps live in `docs/PUBLIC_ACCESS.zh-CN.md`.

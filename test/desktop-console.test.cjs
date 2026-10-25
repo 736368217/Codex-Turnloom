@@ -23,10 +23,11 @@ test("service backoff follows the documented sequence", () => {
 });
 
 test("tunnel backoff starts at 2s and caps at 300s", () => {
-  assert.equal(tunnelBackoff(1), 2);
-  assert.equal(tunnelBackoff(2), 4);
-  assert.equal(tunnelBackoff(8), 128);
-  assert.equal(tunnelBackoff(20), 128);
+  assert.equal(tunnelBackoff(1), 2000);
+  assert.equal(tunnelBackoff(2), 4000);
+  assert.equal(tunnelBackoff(8), 128000);
+  assert.equal(tunnelBackoff(20), 128000);
+  assert.equal(tunnelBackoff(0), 2000);
 });
 
 test("config merge preserves unknown fields and console defaults", () => {
