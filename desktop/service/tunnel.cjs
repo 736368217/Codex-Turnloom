@@ -9,7 +9,8 @@ const { execFileAsync } = require("./health.cjs");
 const MAX_BACKOFF_MS = 300000;
 
 function tunnelBackoff(attempt) {
-  return Math.min(MAX_BACKOFF_MS, Math.pow(2, Math.min(7, attempt)));
+  const safeAttempt = Math.max(1, Math.min(7, Number(attempt) || 1));
+  return Math.min(MAX_BACKOFF_MS, Math.pow(2, safeAttempt) * 1000);
 }
 
 class TunnelController extends EventEmitter {
