@@ -120,7 +120,7 @@ public class MainActivity extends ComponentActivity {
 
     private final List<Device> devices = new ArrayList<>();
     private final Map<String, Boolean> deviceStatus = new HashMap<>();
-    private final Map<String, Boolean> updatePromptShown = new HashMap<>();
+    private boolean autoUpdatePrompted = false;
     private LinearLayout root;
     private WebView webView;
     private ProgressBar pageProgress;
@@ -620,14 +620,13 @@ public class MainActivity extends ComponentActivity {
             @Override
             public boolean shouldOverrideUrlLoading(WebView webView, WebResourceRequest request) {
                 Uri uri = request.getUrl();
-                String scheme = uri.getScheme();
-                if ("http".equalsIgnoreCase(scheme) || "https".equalsIgnoreCase(scheme)) {
-                    try {
-                        startActivity(new Intent(Intent.ACTION_VIEW, uri));
-                    } catch (Exception ignored) {
-                        Toast.makeText(MainActivity.this, "无法打开这个链接", Toast.LENGTH_SHORT).show();
-                    }
-                    return true;
+                String scheme = uri.getScheme() == null ? "" : uri.getScheme();
+                boolean isWeb = "http".equalsIgnoreCase(scheme) || "https".equalsIgnoreCase(scheme);
+                if (isWeb) {
+                    // Everything web stays inside this WebView: the workspace redirects
+                    // through /login, and handing that to the system browser drops the
+                    // session and strands the user outside the app.
+                    return false;
                 }
                 try {
                     startActivity(new Intent(Intent.ACTION_VIEW, uri));
@@ -737,21 +736,54 @@ public class MainActivity extends ComponentActivity {
         }).start();
     }
 
+    /** One dialog with current/latest/time; auto-offered at most once per app run. */
     private void maybeOfferUpdate(Device device, JSONObject health) {
-        if (Boolean.TRUE.equals(updatePromptShown.get(device.url))) return;
+        if (autoUpdatePrompted) return;
         int remoteCode = health.optInt("appVersionCode", 0);
         if (remoteCode <= appVersionCode() || !health.optBoolean("apkAvailable", false)) return;
-        updatePromptShown.put(device.url, true);
-        String remoteName = health.optString("appVersionName", "新版本");
-        new AlertDialog.Builder(this)
-                .setTitle("发现新版本")
-                .setMessage("Codex-Turnloom " + remoteName + " 已可用，下载后可从系统通知安装。")
-                .setNegativeButton("稍后", null)
-                .setPositiveButton("下载更新", (dialog, which) -> {
-                    String path = health.optString("apkUrl", "/api/apk");
-                    downloadUpdate(device, trimTrailingSlash(device.url) + path);
-                })
-                .show();
+        autoUpdatePrompted = true;
+        showUpdateDialog(device, health);
+    }
+
+    private String updateSummary(JSONObject health) {
+        int remoteCode = health.optInt("appVersionCode", 0);
+        String remoteName = health.optString("appVersionName", "未知");
+        String updatedAt = formatUpdateTime(health.optString("apkUpdatedAt", ""));
+        StringBuilder text = new StringBuilder();
+        text.append("当前版本：").append(appVersionName()).append("（").append(appVersionCode()).append("）\n");
+        text.append("最新版本：").append(remoteName).append("（").append(remoteCode).append("）\n");
+        text.append("安装包时间：").append(updatedAt.isEmpty() ? "未知" : updatedAt).append("\n");
+        boolean newer = remoteCode > appVersionCode() && health.optBoolean("apkAvailable", false);
+        text.append(newer ? "状态：有新版本可以更新" : "状态：已是最新版本");
+        return text.toString();
+    }
+
+    private String formatUpdateTime(String iso) {
+        if (iso == null || iso.isEmpty()) return "";
+        try {
+            java.text.SimpleDateFormat parser = new java.text.SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss", java.util.Locale.US);
+            java.util.Date date = parser.parse(iso.length() > 19 ? iso.substring(0, 19) : iso);
+            java.text.SimpleDateFormat printer = new java.text.SimpleDateFormat("yyyy-MM-dd HH:mm", java.util.Locale.CHINA);
+            return printer.format(date);
+        } catch (Exception ignored) {
+            return iso;
+        }
+    }
+
+    private void showUpdateDialog(Device device, JSONObject health) {
+        int remoteCode = health.optInt("appVersionCode", 0);
+        boolean newer = remoteCode > appVersionCode() && health.optBoolean("apkAvailable", false);
+        AlertDialog.Builder builder = new AlertDialog.Builder(this)
+                .setTitle("应用更新")
+                .setMessage(updateSummary(health))
+                .setNegativeButton(newer ? "稍后" : "关闭", null);
+        if (newer) {
+            builder.setPositiveButton("下载更新", (dialog, which) -> {
+                String path = health.optString("apkUrl", "/api/apk");
+                downloadUpdate(device, trimTrailingSlash(device.url) + path);
+            });
+        }
+        builder.show();
     }
 
     private void checkForUpdates() {
@@ -759,7 +791,38 @@ public class MainActivity extends ComponentActivity {
             Toast.makeText(this, "请先添加一台电脑", Toast.LENGTH_SHORT).show();
             return;
         }
-        for (Device device : new ArrayList<>(devices)) checkForUpdates(device);
+        Toast.makeText(this, "正在检查更新…", Toast.LENGTH_SHORT).show();
+        final List<Device> snapshot = new ArrayList<>(devices);
+        new Thread(() -> {
+            Device bestDevice = null;
+            JSONObject best = null;
+            int bestCode = -1;
+            boolean anyOk = false;
+            for (Device device : snapshot) {
+                try {
+                    JSONObject health = new JSONObject(httpGet(device, "/api/health"));
+                    anyOk = true;
+                    int code = health.optInt("appVersionCode", 0);
+                    if (code > bestCode) {
+                        bestCode = code;
+                        best = health;
+                        bestDevice = device;
+                    }
+                } catch (Exception ignored) {
+                }
+            }
+            final Device targetDevice = bestDevice;
+            final JSONObject targetHealth = best;
+            final boolean reachable = anyOk;
+            runOnUiThread(() -> {
+                if (!reachable || targetHealth == null || targetDevice == null) {
+                    Toast.makeText(this, "检查更新失败，请确认电脑在线", Toast.LENGTH_LONG).show();
+                    return;
+                }
+                autoUpdatePrompted = true;
+                showUpdateDialog(targetDevice, targetHealth);
+            });
+        }).start();
     }
 
     private void checkForUpdates(Device device) {
@@ -768,13 +831,8 @@ public class MainActivity extends ComponentActivity {
             try {
                 JSONObject health = new JSONObject(httpGet(device, "/api/health"));
                 runOnUiThread(() -> {
-                    updatePromptShown.remove(device.url);
-                    int remoteCode = health.optInt("appVersionCode", 0);
-                    if (remoteCode > appVersionCode() && health.optBoolean("apkAvailable", false)) {
-                        maybeOfferUpdate(device, health);
-                    } else {
-                        Toast.makeText(this, "当前已是最新版本", Toast.LENGTH_SHORT).show();
-                    }
+                    autoUpdatePrompted = true;
+                    showUpdateDialog(device, health);
                 });
             } catch (Exception error) {
                 runOnUiThread(() -> Toast.makeText(this, "检查更新失败，请确认电脑在线", Toast.LENGTH_LONG).show());

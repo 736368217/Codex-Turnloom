@@ -10,6 +10,7 @@ import {
   readFileSync,
   realpathSync,
   renameSync,
+  statSync,
   unlinkSync,
   writeFileSync
 } from "node:fs";
@@ -339,8 +340,17 @@ const PUBLIC_DIR = path.join(__dirname, "public");
 const APK_PATH = process.env.CODEX_POCKET_APK_PATH
   ? path.resolve(process.env.CODEX_POCKET_APK_PATH)
   : path.join(PUBLIC_DIR, "downloads", "Codex-Turnloom.apk");
-const APP_VERSION_CODE = 22;
-const APP_VERSION_NAME = "1.17.1";
+const APP_VERSION_CODE = 23;
+const APP_VERSION_NAME = "1.17.2";
+
+/** ISO timestamp of the staged APK, so the phone can show "安装包时间". */
+function apkUpdatedAtIso() {
+  try {
+    return new Date(statSync(APK_PATH).mtimeMs).toISOString();
+  } catch {
+    return "";
+  }
+}
 const GENERATED_IMAGES_DIR = path.join(os.homedir(), ".codex", "generated_images");
 const CODEX_POCKET_DATA_DIR =
   process.env.LOCALAPPDATA || path.join(os.homedir(), process.platform === "win32" ? "AppData" : ".local", process.platform === "win32" ? "Local" : "share");
@@ -6475,7 +6485,8 @@ async function handleHttpBackendApi(req, res, url, profile = null) {
         apkAvailable: existsSync(APK_PATH),
         apkUrl: "/api/apk",
         appVersionCode: APP_VERSION_CODE,
-        appVersionName: APP_VERSION_NAME
+        appVersionName: APP_VERSION_NAME,
+        apkUpdatedAt: apkUpdatedAtIso()
       });
       return true;
     }
@@ -6743,9 +6754,15 @@ const server = http.createServer(async (req, res) => {
       handleAuthLogout(req, res);
       return;
     }
+    // "/" with a token only needs the login hop when the request is not already
+    // authorized; redirecting an authorized request bounces between "/" and the
+    // reverse-proxy token injection and ends in ERR_TOO_MANY_REDIRECTS.
     if (
       req.method === "GET" &&
-      (url.pathname === "/login" || (url.pathname === "/" && (url.searchParams.has("login") || url.searchParams.has("token"))))
+      (url.pathname === "/login" ||
+        (url.pathname === "/" &&
+          (url.searchParams.has("login") || url.searchParams.has("token")) &&
+          !isAuthorized(req, url)))
     ) {
       handleLoginRedirect(req, res, url);
       return;
@@ -6798,7 +6815,8 @@ const server = http.createServer(async (req, res) => {
         apkAvailable: existsSync(APK_PATH),
         apkUrl: "/api/apk",
         appVersionCode: APP_VERSION_CODE,
-        appVersionName: APP_VERSION_NAME
+        appVersionName: APP_VERSION_NAME,
+        apkUpdatedAt: apkUpdatedAtIso()
       });
       return;
     }
