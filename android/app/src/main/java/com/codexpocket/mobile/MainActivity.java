@@ -74,8 +74,23 @@ import javax.crypto.SecretKey;
 import javax.crypto.spec.GCMParameterSpec;
 
 public class MainActivity extends ComponentActivity {
-    private static final int APP_VERSION_CODE = 20;
-    private static final String APP_VERSION_NAME = "1.16.0";
+    /** Installed package version code. Never hardcode it: a stale constant makes every device prompt for an update forever. */
+    private int appVersionCode() {
+        try {
+            android.content.pm.PackageInfo info = getPackageManager().getPackageInfo(getPackageName(), 0);
+            return android.os.Build.VERSION.SDK_INT >= 28 ? (int) info.getLongVersionCode() : info.versionCode;
+        } catch (Exception ignored) {
+            return 0;
+        }
+    }
+    private String appVersionName() {
+        try {
+            android.content.pm.PackageInfo info = getPackageManager().getPackageInfo(getPackageName(), 0);
+            return info.versionName == null ? "" : info.versionName;
+        } catch (Exception ignored) {
+            return "";
+        }
+    }
     private static final String PREFS = "codex_pocket";
     private static final String DEVICES_KEY = "devices";
     private static final String KEY_ALIAS = "codex-pocket-device-store";
@@ -437,7 +452,39 @@ public class MainActivity extends ComponentActivity {
         openDevice(device, null);
     }
 
+    /**
+     * A device without a saved access code would land on the web login page.
+     * Ask for the code in-app once, store it, then open the workspace directly.
+     */
+    private void reportMissingAccessCode(Device device, String threadId) {
+        EditText input = field("访问码", "", false);
+        input.setInputType(InputType.TYPE_CLASS_TEXT);
+        new AlertDialog.Builder(this)
+                .setTitle("输入访问码")
+                .setMessage("这台电脑开启了访问码校验。访问码在电脑端控制台的「手机配对」页可以看到，输入一次后会保存在这台手机上。")
+                .setView(input)
+                .setPositiveButton("连接", (dialog, which) -> {
+                    String value = input.getText().toString().trim();
+                    if (value.isEmpty()) return;
+                    Device updated = new Device(device.name, device.url, value, device.note);
+                    for (int i = 0; i < devices.size(); i += 1) {
+                        if (devices.get(i).url.equals(device.url) && devices.get(i).name.equals(device.name)) {
+                            devices.set(i, updated);
+                            break;
+                        }
+                    }
+                    saveDevices();
+                    openDevice(updated, threadId);
+                })
+                .setNegativeButton("取消", (dialog, which) -> showMachinePicker())
+                .show();
+    }
+
     private void openDevice(Device device, String threadId) {
+        if (device.token == null || device.token.isBlank()) {
+            reportMissingAccessCode(device, threadId);
+            return;
+        }
         activeDevice = device;
         root.removeAllViews();
         // The WebView is the primary workspace, so keep the native chrome quiet and light.
@@ -693,7 +740,7 @@ public class MainActivity extends ComponentActivity {
     private void maybeOfferUpdate(Device device, JSONObject health) {
         if (Boolean.TRUE.equals(updatePromptShown.get(device.url))) return;
         int remoteCode = health.optInt("appVersionCode", 0);
-        if (remoteCode <= APP_VERSION_CODE || !health.optBoolean("apkAvailable", false)) return;
+        if (remoteCode <= appVersionCode() || !health.optBoolean("apkAvailable", false)) return;
         updatePromptShown.put(device.url, true);
         String remoteName = health.optString("appVersionName", "新版本");
         new AlertDialog.Builder(this)
@@ -723,7 +770,7 @@ public class MainActivity extends ComponentActivity {
                 runOnUiThread(() -> {
                     updatePromptShown.remove(device.url);
                     int remoteCode = health.optInt("appVersionCode", 0);
-                    if (remoteCode > APP_VERSION_CODE && health.optBoolean("apkAvailable", false)) {
+                    if (remoteCode > appVersionCode() && health.optBoolean("apkAvailable", false)) {
                         maybeOfferUpdate(device, health);
                     } else {
                         Toast.makeText(this, "当前已是最新版本", Toast.LENGTH_SHORT).show();
@@ -738,7 +785,7 @@ public class MainActivity extends ComponentActivity {
     private void downloadUpdate(Device device, String url) {
         try {
             DownloadManager.Request request = new DownloadManager.Request(Uri.parse(url));
-            request.setTitle("Codex-Turnloom " + APP_VERSION_NAME + " 更新");
+            request.setTitle("Codex-Turnloom " + appVersionName() + " 更新");
             request.setDescription("正在下载应用更新");
             request.setMimeType("application/vnd.android.package-archive");
             request.setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED);
