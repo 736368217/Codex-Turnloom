@@ -2,6 +2,18 @@
 
 ## Unreleased
 
+## 1.17.2 - 2026-10-27
+
+- Fix `ERR_TOO_MANY_REDIRECTS` in the Android workspace: an already-authorized `/?token=...` request was bounced through the login redirect while the dual dispatcher re-appended the access code, looping forever. The login hop now only runs for unauthorized requests, and the dispatcher only injects `?token=` on `/api/*`.
+- Keep web navigation inside the app WebView. `shouldOverrideUrlLoading` handed every http/https URL to the system browser, which dropped the session and stranded the user outside the app.
+- Show a real update dialog (current version, latest version, APK timestamp, status) instead of a bare download prompt, and stop the per-device "正在检查更新…" toast storm: the manual check queries every computer once and reports a single result; the automatic prompt fires at most once per app run.
+- Serve `apkUpdatedAt` in `/api/health` so the phone can display when the installer was published.
+
+## 1.17.1 - 2026-10-27
+
+- The Android update check compared a hardcoded `APP_VERSION_CODE = 20` against the server version, so an up-to-date install prompted for an update forever. It now reads the installed package version, and download notification titles come from the same source.
+- A saved computer without an access code opened the web login page. The app now asks for the code in a native dialog, stores it on the device, and opens the workspace directly.
+
 ## 1.17.0 - 2026-10-23
 
 - Add short-lived HttpOnly session cookies: `/login?token=...` exchanges an access code for an 8-hour session, redirects to a query-free URL, and `/api/auth/logout` revokes it; `/api/auth/session` supports explicit exchange from the web client.
