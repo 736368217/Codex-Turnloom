@@ -3,6 +3,8 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
 const path = require("node:path");
+const os = require("node:os");
+const fs = require("node:fs");
 
 const { overallState, stateLabel } = require(path.join(__dirname, "..", "desktop", "service", "runtime.cjs"));
 const { backoffDelay } = require(path.join(__dirname, "..", "desktop", "service", "controller.cjs"));
@@ -84,13 +86,21 @@ test("pairing payload targets the selected extra device", () => {
 });
 
 test("validateConfig rejects malformed ipc sockets and device addresses", () => {
-  const base = defaultConfig({ accessCode: "654321", codexHome: "D:\\codex\\.codex" });
-  assert.deepEqual(validateConfig(base), []);
-  const badSocket = validateConfig({ ...base, ipcSocket: "codex-ipc" });
-  assert.ok(badSocket.some((error) => error.field === "ipcSocket"));
-  const badDevice = validateConfig({
-    ...base,
-    extraDevices: [{ id: "x", name: "X", url: "ftp://nope", accessCode: "1" }]
-  });
-  assert.ok(badDevice.some((error) => error.field === "extraDevices.x"));
+  // validateConfig requires an existing codexHome with state_5.sqlite, so build a
+  // throwaway one: D:\codex\.codex does not exist on the CI runner.
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), "turnloom-home-"));
+  fs.writeFileSync(path.join(home, "state_5.sqlite"), "");
+  try {
+    const base = defaultConfig({ accessCode: "654321", codexHome: home });
+    assert.deepEqual(validateConfig(base), []);
+    const badSocket = validateConfig({ ...base, ipcSocket: "codex-ipc" });
+    assert.ok(badSocket.some((error) => error.field === "ipcSocket"));
+    const badDevice = validateConfig({
+      ...base,
+      extraDevices: [{ id: "x", name: "X", url: "ftp://nope", accessCode: "1" }]
+    });
+    assert.ok(badDevice.some((error) => error.field === "extraDevices.x"));
+  } finally {
+    fs.rmSync(home, { recursive: true, force: true });
+  }
 });
