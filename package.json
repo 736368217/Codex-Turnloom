@@ -1,6 +1,6 @@
 {
   "name": "codex-turnloom",
-  "version": "1.17.2",
+  "version": "1.17.3",
   "private": true,
   "main": "desktop/main.cjs",
   "description": "Private, self-hosted mobile control desk for Codex Desktop.",

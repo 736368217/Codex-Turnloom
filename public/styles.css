@@ -853,9 +853,9 @@ body.welcome-open {
   .attach-button,
   .send-button,
   .stop-button {
-    width: 40px;
-    height: 40px;
-    min-height: 40px;
+    width: 44px;
+    height: 44px;
+    min-height: 44px;
   }
 
   .welcome-card {
@@ -4783,4 +4783,47 @@ body.goal-dialog-open { overflow: hidden; }
   .approval-action-sub { font-size: 9px; }
 
   .sandbox-value { font-size: 11.5px; }
+}
+
+/* 系统深色模式下跟随，避免深夜使用被整屏白色刺眼。 */
+@media (prefers-color-scheme: dark) {
+  :root {
+    color-scheme: dark;
+    --bg: #0F1115;
+    --panel: #161A21;
+    --panel-soft: #1D222B;
+    --panel-muted: #232A34;
+    --border: #2A313C;
+    --border-subtle: rgba(255, 255, 255, 0.08);
+    --text: #E8EAED;
+    --text-secondary: #B6BCC6;
+    --muted: #8B929E;
+    --placeholder: #6B7280;
+    --accent: #4C9AFF;
+    --accent-pressed: #2F80ED;
+    --accent-soft: #16283F;
+    --accent-border: #274566;
+    --focus-ring: rgba(76, 154, 255, 0.25);
+    --user: #1B2B3F;
+    --user-border: #274566;
+    --assistant: #161A21;
+    --tool: #161A21;
+    --notice: #2A2418;
+    --notice-border: #6B5720;
+    --interaction: #161A21;
+    --interaction-border: #7F1D1D;
+    --online-soft: #14321F;
+    --online-text: #4ADE80;
+    --offline-soft: #3A1B1B;
+    --offline-text: #FCA5A5;
+    --running-soft: #352A12;
+    --running-text: #FBBF24;
+    --waiting-soft: #3A1B1B;
+    --waiting-text: #FCA5A5;
+    --shadow-sm: 0 2px 8px rgba(0, 0, 0, 0.4);
+    --shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
+    --shadow-pod: 0 4px 16px rgba(0, 0, 0, 0.4);
+    --shadow-dialog: 0 24px 56px rgba(0, 0, 0, 0.6);
+    --shadow-drawer: 16px 0 40px rgba(0, 0, 0, 0.55);
+  }
 }

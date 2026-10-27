@@ -123,6 +123,7 @@ public class MainActivity extends ComponentActivity {
     private boolean autoUpdatePrompted = false;
     private LinearLayout root;
     private WebView webView;
+    private FrameLayout webContainer;
     private ProgressBar pageProgress;
     private TextView connectionDot;
     private Device activeDevice;
@@ -407,7 +408,7 @@ public class MainActivity extends ComponentActivity {
 
         Button menu = iconButton("⋮", "管理这台电脑", v -> showDeviceMenu(v, index));
         menu.setTextColor(MUTED);
-        header.addView(menu, new LinearLayout.LayoutParams(dp(40), dp(40)));
+        header.addView(menu, new LinearLayout.LayoutParams(dp(48), dp(48)));
         card.addView(header, new LinearLayout.LayoutParams(-1, -2));
 
         LinearLayout.LayoutParams cardParams = new LinearLayout.LayoutParams(-1, -2);
@@ -531,7 +532,7 @@ public class MainActivity extends ComponentActivity {
         pageProgress.setProgressTintList(android.content.res.ColorStateList.valueOf(ACCENT));
         root.addView(pageProgress, new LinearLayout.LayoutParams(-1, dp(2)));
 
-        FrameLayout webContainer = new FrameLayout(this);
+        webContainer = new FrameLayout(this);
         webContainer.setBackgroundColor(Color.WHITE);
         webView = buildWebView();
         webContainer.addView(webView, new FrameLayout.LayoutParams(-1, -1));
@@ -614,7 +615,9 @@ public class MainActivity extends ComponentActivity {
 
             @Override
             public void onReceivedError(WebView webView, WebResourceRequest request, WebResourceError error) {
-                if (request.isForMainFrame()) setConnectionState(OFFLINE);
+                if (!request.isForMainFrame()) return;
+                setConnectionState(OFFLINE);
+                showLoadError(activeDevice == null ? "" : activeDevice.url);
             }
 
             @Override
@@ -637,6 +640,56 @@ public class MainActivity extends ComponentActivity {
             }
         });
         return view;
+    }
+
+    /** 加载失败给出人能看懂的说明和可操作的下一步，而不是浏览器原始报错。 */
+    private void showLoadError(String url) {
+        if (root == null) return;
+        View previous = root.findViewWithTag("load-error");
+        if (previous != null) root.removeView(previous);
+        if (webContainer != null) webContainer.setVisibility(View.GONE);
+
+        LinearLayout box = new LinearLayout(this);
+        box.setTag("load-error");
+        box.setOrientation(LinearLayout.VERTICAL);
+        box.setGravity(Gravity.CENTER);
+        box.setPadding(dp(28), dp(28), dp(28), dp(28));
+
+        TextView title = label("连不上这台电脑", 19, INK);
+        title.setTypeface(Typeface.DEFAULT, Typeface.BOLD);
+        title.setGravity(Gravity.CENTER);
+        box.addView(title);
+
+        TextView detail = label("请确认电脑端服务在运行、手机网络可用；如果用的是公网地址，也可能是电脑上的隧道断了。", 14, MUTED);
+        detail.setGravity(Gravity.CENTER);
+        detail.setPadding(0, dp(10), 0, dp(6));
+        box.addView(detail);
+
+        if (url != null && !url.isEmpty()) {
+            TextView addr = label(url, 12, MUTED);
+            addr.setGravity(Gravity.CENTER);
+            box.addView(addr);
+        }
+
+        Button retry = new Button(this);
+        retry.setText("重试");
+        retry.setAllCaps(false);
+        retry.setOnClickListener(v -> {
+            root.removeView(box);
+            if (webContainer != null) webContainer.setVisibility(View.VISIBLE);
+            if (webView != null) webView.reload();
+        });
+        LinearLayout.LayoutParams retryParams = new LinearLayout.LayoutParams(-1, dp(48));
+        retryParams.setMargins(0, dp(20), 0, dp(4));
+        box.addView(retry, retryParams);
+
+        Button back = new Button(this);
+        back.setText("返回电脑列表");
+        back.setAllCaps(false);
+        back.setOnClickListener(v -> showMachinePicker());
+        box.addView(back, new LinearLayout.LayoutParams(-1, dp(48)));
+
+        root.addView(box, 2, new LinearLayout.LayoutParams(-1, 0, 1));
     }
 
     private void downloadFile(String url, String userAgent, String contentDisposition, String mimeType) {
