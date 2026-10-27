@@ -375,7 +375,7 @@ const ACTIVE_TURN_STALE_MS =
   positiveMinutes(cli.activeTurnStaleMinutes ?? process.env.CODEX_LAN_ACTIVE_TURN_STALE_MINUTES, 10) * 60 * 1000;
 const STATUS_OVERRIDE_MAX_AGE_MS =
   positiveMinutes(cli.statusMaxAgeMinutes ?? process.env.CODEX_LAN_STATUS_MAX_AGE_MINUTES, 60) * 60 * 1000;
-const THREADS_STATUS_CACHE_MS = 15_000;
+const THREADS_STATUS_CACHE_MS = 5_000;
 const THREADS_STATUS_PARALLELISM = 12;
 const MAX_THREADS_LIMIT = 500;
 const SQLITE_DRIVER_PREFERENCE = String(cli.sqliteDriver || process.env.CODEX_LAN_SQLITE_DRIVER || "auto").toLowerCase();
