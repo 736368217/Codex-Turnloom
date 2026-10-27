@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- PI-Desktop devices now list the models configured in PI (providers × models, 173 entries) instead of the built-in Codex fallback list, and the default follows the most recently used PI session. A sidecar (`turnloom-pidesktop/pidesk-sidecar.mjs`, task `Turnloom PI Sidecar`) writes `model-catalogs/pidesk.json` + `config.toml` into the facade home.
+- Thread status for PI-Desktop devices is real again: running turns from `pi.sqlite` are mirrored into the facade `threads.status_*` columns, so the app can show 运行中 instead of everything as 已完成. The sidecar re-applies them every 3s because the bridge rebuilds the table; the status cache now refreshes every 5s.
+- The bridge plugin forwards the selected model/effort to PI (`provider/model` slug → `providerName`/`modelId`/`thinkingLevel`); effective after the next PI-Desktop restart.
+- New sidebar sort mode 按文件夹: Codex sessions carry only a working directory, so they can be bucketed by folder when no project is assigned.
+- CI: the `validateConfig` test now builds its own temp Codex home, so the Verify workflow stops failing (it had been red since v1.17.0).
+
 ## 1.17.2 - 2026-10-27
 
 - Fix `ERR_TOO_MANY_REDIRECTS` in the Android workspace: an already-authorized `/?token=...` request was bounced through the login redirect while the dual dispatcher re-appended the access code, looping forever. The login hop now only runs for unauthorized requests, and the dispatcher only injects `?token=` on `/api/*`.
