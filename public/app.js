@@ -14,7 +14,7 @@ const state = {
   showTools: false,
   expandedNotices: {},
   sidebarCollapsed: false,
-  threadSortMode: safeStorageGet(localStorage, "codex-thread-sort-mode") === "recent" ? "recent" : "project",
+    threadSortMode: (() => { const saved = safeStorageGet(localStorage, "codex-thread-sort-mode"); return saved === "recent" || saved === "folder" ? saved : "project"; })(),
   collapsedThreadGroups: JSON.parse(safeStorageGet(localStorage, "codex-collapsed-thread-groups") || "{}"),
   messageRequestSeq: 0,
   activeMessageRequest: null,
@@ -1470,7 +1470,7 @@ function renderThreads() {
 }
 
 els.threadSortMode?.addEventListener("change", () => {
-  state.threadSortMode = els.threadSortMode.value === "recent" ? "recent" : "project";
+  state.threadSortMode = ["recent", "folder"].includes(els.threadSortMode.value) ? els.threadSortMode.value : "project";
   safeStorageSet(localStorage, "codex-thread-sort-mode", state.threadSortMode);
   renderThreads();
 });
