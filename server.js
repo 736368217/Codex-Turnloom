@@ -340,8 +340,8 @@ const PUBLIC_DIR = path.join(__dirname, "public");
 const APK_PATH = process.env.CODEX_POCKET_APK_PATH
   ? path.resolve(process.env.CODEX_POCKET_APK_PATH)
   : path.join(PUBLIC_DIR, "downloads", "Codex-Turnloom.apk");
-const APP_VERSION_CODE = 23;
-const APP_VERSION_NAME = "1.17.2";
+const APP_VERSION_CODE = 24;
+const APP_VERSION_NAME = "1.17.3";
 
 /** ISO timestamp of the staged APK, so the phone can show "安装包时间". */
 function apkUpdatedAtIso() {
