@@ -34,6 +34,19 @@ Add-Result "IPC pipe" ([bool]$pipeOk) $(if ($pipeOk) { "\\.\pipe\pidesktop-codex
 # 2) models
 $health = $null
 try { $health = Invoke-RestMethod "$BaseUrl/api/health" -Headers $headers -TimeoutSec 20 } catch {}
+
+# 2b) app-server 握手（缺了它，新建对话会静默退化成 codex CLI）
+$nodeExe = 'C:\Users\WIN10\AppData\Local\Programs\nodejs-24.19.0\node.exe'
+if (-not (Test-Path $nodeExe)) { $nodeExe = 'node' }
+$handshakeRaw = ''
+try { $handshakeRaw = (& $nodeExe (Join-Path $PSScriptRoot 'ipc-handshake.mjs') 2>$null | Out-String) } catch {}
+$tmpHandshake = Join-Path $env:TEMP 'turnloom-handshake.json'
+$handshakeScript = Join-Path $PSScriptRoot 'ipc-handshake.mjs'
+& $nodeExe $handshakeScript *> $null
+$handshakeOk = ($LASTEXITCODE -eq 0)
+$handshakeDetail = if ($handshakeOk) { 'bridge answered initialize' } else { 'initialize rejected - restart PI-Desktop to load the bridge' }
+Add-Result 'IPC handshake' $handshakeOk $handshakeDetail
+
 $modelCount = if ($health) { @($health.models).Count } else { 0 }
 $defaultModel = if ($health) { $health.defaultModel } else { "" }
 Add-Result "PI models" ($modelCount -gt 10) "count=$modelCount default=$defaultModel"
