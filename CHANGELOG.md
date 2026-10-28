@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- PI-Desktop new conversations now go through the bridge instead of falling back to the Codex CLI: the plugin's `start-conversation` handler had been lost in an earlier edit (only `initialize` survived). `/api/send` with `newThread` returns `mode: "desktop-ipc"`, the session is created in `pi.sqlite`, and the model picked in the app lands in `sessions.model_id` (verified: `deepseek-v4.1-flash`).
+- The desktop console autostart task passes `--hidden`, so a login start goes straight to the tray with no window (verified `MainWindowHandle = 0`).
+
 - Fix the PI model catalog emitting the template's slug for every entry: `...template` was spread before the generated `slug`, so all 173 models collapsed onto one id and model selection was meaningless. Catalog now has 173 distinct slugs and the default follows the latest PI session.
 
 - The PI sidecar is started through `scripts/pidesk-sidecar-launcher.vbs` (wscript, window style 0) because a scheduled task that runs `node.exe` directly pops a visible console window. Every Turnloom background process must stay windowless.
