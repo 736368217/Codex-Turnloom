@@ -2594,11 +2594,9 @@ function renderComposerMode() {
     button.setAttribute("aria-pressed", String(selected));
   }
   els.composerInput.placeholder = allowWrite
-    ? state.selectedId === DRAFT_THREAD_ID
-      ? t("newConversationReady")
-      : thinking
-        ? t(state.followUpMode === "steer" ? "steerFollowUp" : "queueFollowUp")
-        : t("sendToCodex")
+    ? thinking && state.selectedId !== DRAFT_THREAD_ID
+      ? t(state.followUpMode === "steer" ? "steerFollowUp" : "queueFollowUp")
+      : t("sendToCodex")
     : t("readonlyPlaceholder");
   renderQueueStatus(state.threadStatus);
   if (!allowWrite) els.sendStatus.textContent = t("readonly");
