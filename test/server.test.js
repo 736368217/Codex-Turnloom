@@ -19,6 +19,9 @@ import {
   parseCodexModelConfig,
   staticSecurityHeaders,
   withAssetVersions,
+  startedThreadTitle,
+  rememberStartedThread,
+  recentStartedThreadRows,
   authProfileFromRaw,
   createRolloutParseState,
   contextCompactionMessage,
@@ -1230,4 +1233,30 @@ test("large model catalogues get a filter box instead of one flat list", () => {
   assert.match(app, /function filteredModels\(/, "expected the filter predicate to be shared");
   assert.match(app, /els\.modelFilter\.hidden = !showFilter/);
   assert.match(styles, /\.model-filter\s*\{/);
+});
+
+test("a conversation started from the phone stays visible until Desktop lists it", () => {
+  rememberStartedThread({
+    id: "started-1",
+    title: startedThreadTitle("line one\nline two"),
+    createdAtMs: 1,
+    updatedAtMs: 2,
+    rolloutPath: "",
+    source: "desktop-ipc"
+  });
+
+  const rows = recentStartedThreadRows();
+  const row = rows.find((entry) => entry.id === "started-1");
+  assert.ok(row, "expected the started thread to be remembered");
+  assert.equal(row.title, "line one", "title must come from the first non-empty line");
+  assert.equal(row.rolloutPath, "", "a new conversation has no rollout file yet");
+});
+
+test("started thread titles stay short and readable", () => {
+  assert.equal(startedThreadTitle(""), "新对话");
+  assert.equal(startedThreadTitle("   \n  \n"), "新对话");
+  assert.equal(startedThreadTitle("  hello   world  "), "hello world");
+  const long = startedThreadTitle("x".repeat(80));
+  assert.equal(long.length, 41, "long titles are cut to 40 characters plus an ellipsis");
+  assert.ok(long.endsWith("…"));
 });

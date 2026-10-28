@@ -446,6 +446,34 @@ const queuedSendDrainTimers = new Map();
 const queueIdleObservations = new Map();
 const recentSendRequests = new Map();
 const threadStartOperations = new Map();
+
+// Conversations started from the phone through desktop-ipc exist on the Desktop but
+// have no rollout file and no row in the Desktop state database yet, so a plain
+// GET /api/threads could not see them — the freshly created chat vanished from the
+// list and the app's next refresh dragged the user back to an older thread.
+// Remember them here until the Desktop starts reporting them itself.
+const startedThreads = new Map();
+const STARTED_THREAD_TTL_MS = 30 * 60 * 1000;
+
+function startedThreadTitle(text) {
+  const firstLine = String(text || "").split("\n").find((line) => line.trim()) || "";
+  const compact = firstLine.replace(/\s+/g, " ").trim();
+  if (!compact) return "新对话";
+  return compact.length > 40 ? `${compact.slice(0, 40)}…` : compact;
+}
+
+function rememberStartedThread(entry) {
+  if (!entry?.id) return;
+  startedThreads.set(String(entry.id), { ...entry, id: String(entry.id), rememberedAtMs: Date.now() });
+}
+
+function recentStartedThreadRows() {
+  const now = Date.now();
+  for (const [id, row] of startedThreads) {
+    if (now - (row.rememberedAtMs || 0) > STARTED_THREAD_TTL_MS) startedThreads.delete(id);
+  }
+  return [...startedThreads.values()];
+}
 let codexHomeState = {
   home: path.resolve(INITIAL_CODEX_HOME),
   version: 1,
@@ -2890,6 +2918,17 @@ async function loadThreadsUncached({ preserveIds = [], preserveKey = "" } = {}) 
         ...threadListMetadata(row, projectRootsByPath, globalProjects)
       }));
     }
+    // A conversation this server just started is real even though the Desktop state
+    // database and the session index do not list it yet (no rollout file, no row).
+    {
+      const seen = new Set(value.map((row) => String(row.id || "")));
+      const extra = recentStartedThreadRows().filter((row) => !seen.has(row.id));
+      if (extra.length) {
+        value = [...extra.map((row) => ({ ...row, ...threadListMetadata(row, projectRootsByPath, globalProjects) })), ...value].sort(
+          (a, b) => (Number(b.updatedAtMs) || 0) - (Number(a.updatedAtMs) || 0)
+        );
+      }
+    }
     const statusRows = await mapWithConcurrency(value.slice(0, 120), THREADS_STATUS_PARALLELISM, async (row) => ({
       id: row.id,
       status: await threadListStatus(row)
@@ -2930,7 +2969,8 @@ async function findThread(id) {
   if (!rows[0]) {
     const indexedThread = (await readSessionIndexRows()).find((row) => row.id === String(id));
     if (indexedThread) return indexedThread;
-    return recentIpcThread;
+    // A conversation this server started itself is authoritative over "not found".
+    return recentIpcThread || startedThreads.get(String(id)) || null;
   }
   const resolvedRolloutPath = rolloutPathForCurrentHome(rows[0], currentRolloutPaths);
   let rolloutUpdatedAtMs = Number(rows[0].updatedAtMs) || 0;
@@ -5054,8 +5094,8 @@ function completeQueuedSend(threadId, itemId) {
   if (!removeQueuedSendItem(threadId, itemId)) return false;
   recordNotice(threadId, {
     severity: "info",
-    title: "Queued message sent",
-    content: "The next queued message was confirmed in Codex after the previous task finished.",
+    title: "排队消息已发送",
+    content: "上一条任务完成后，排队中的消息已确认送达 Codex。",
     source: "queue"
   });
   return true;
@@ -5145,7 +5185,7 @@ async function drainQueuedSend(threadId) {
       });
       recordNotice(key, {
         severity: "error",
-        title: "Queued send failed",
+        title: "排队发送失败",
         content: failureMessage,
         source: "queue"
       });
@@ -5336,6 +5376,18 @@ async function sendToCodex(text, threadId, images = [], { newThread = false, mod
     const result = await startNewCodexThread(trimmed, turnSettings);
     if (result.threadId) {
       await notifyCodexDesktopThreadCreated(result.threadId);
+      rememberStartedThread({
+        id: result.threadId,
+        title: startedThreadTitle(trimmed),
+        createdAtMs: Date.now(),
+        updatedAtMs: Date.now(),
+        archived: false,
+        preview: trimmed.slice(0, 120),
+        cwd: "",
+        model: turnSettings.model || "",
+        rolloutPath: "",
+        source: "desktop-ipc"
+      });
     }
     return {
       ok: true,
@@ -5411,8 +5463,8 @@ async function sendToCodex(text, threadId, images = [], { newThread = false, mod
     if (repair.repaired) {
       recordNotice(targetThreadId, {
         severity: "warning",
-        title: "Conversation repaired",
-        content: `Repaired ${repair.repaired} invalid custom tool-call ID${repair.repaired === 1 ? "" : "s"} before sending. A backup was saved locally.`,
+        title: "对话已修复",
+        content: `发送前修复了 ${repair.repaired} 个无效的自定义工具调用 ID，并已在本地保存备份。`,
         source: "session-repair"
       });
     }
@@ -5437,7 +5489,7 @@ async function sendToCodex(text, threadId, images = [], { newThread = false, mod
         err.status = 409;
         recordNotice(targetThreadId, {
           severity: "error",
-          title: "Send failed",
+          title: "发送失败",
           content: err.message,
           source: "send"
         });
@@ -5445,8 +5497,8 @@ async function sendToCodex(text, threadId, images = [], { newThread = false, mod
       } else if (isIpcTimeoutError(error)) {
         recordNotice(targetThreadId, {
           severity: "warning",
-          title: "Send timed out",
-          content: "Codex Desktop did not confirm the send request in time. Companion will not send it a second time.",
+          title: "发送超时",
+          content: "桌面端未在预期时间内确认这次发送。为避免重复发送，本轮不会重试，你可以稍后在对话里核对。",
           source: "send"
         });
         return ambiguousSendResult(targetThreadId, trimmed, "start");
@@ -5762,7 +5814,12 @@ async function notifyCodexDesktopThreadCreated(threadId) {
   try {
     await client.setActiveConversation(id, true, "local");
   } catch (error) {
-    failures.push(`set active: ${error.message || error}`);
+    // A brand-new conversation has no rollout file yet, so some backends do not
+    // implement this method at all. "Unsupported" is not a failure the user can act
+    // on — surfacing it produced a scary English warning on every phone-started chat.
+    if (!/unsupported method/i.test(String(error?.message || error))) {
+      failures.push(`set active: ${error.message || error}`);
+    }
   }
   try {
     await openCodexUrl(`codex://threads/${encodeURIComponent(id)}`);
@@ -5772,8 +5829,8 @@ async function notifyCodexDesktopThreadCreated(threadId) {
   if (failures.length) {
     recordNotice(id, {
       severity: "warning",
-      title: "Desktop refresh delayed",
-      content: `The conversation was created, but Codex Desktop may need a moment to refresh.\n\n${failures.join("\n")}`,
+      title: "桌面端刷新稍有延迟",
+      content: ["对话已创建，但桌面端可能还需要一点时间刷新。", "", failures.join("；")].join("\n"),
       source: "new-thread"
     });
   }
@@ -6225,8 +6282,8 @@ async function respondToApproval({ threadId, requestId, decision, approvalKind }
   } catch (error) {
     recordNotice(targetThreadId, {
       severity: "error",
-      title: "Approval failed",
-      content: `${error.message || "Codex Desktop rejected the approval decision."}\n\nMethods: ${methodCandidates.map((item) => item.method).join(", ")}\n\nRequest: ${resolvedRequestId}\n\nTried: ${decisionCandidates.join(", ")}`,
+      title: "审批失败",
+      content: `审批未能完成：${error.message || "桌面端拒绝了该审批"}。请求 ${resolvedRequestId}，已尝试 ${decisionCandidates.join("、")}。`,
       source: "approval"
     });
     throw error;
@@ -7219,6 +7276,9 @@ export {
   attemptCodexDesktopRefresh,
   withAssetVersions,
   authProfileFromRaw,
+  startedThreadTitle,
+  rememberStartedThread,
+  recentStartedThreadRows,
   createDesktopRefreshQueue,
   DesktopCodexIpcClient,
   canExposeLocalFilesForMessage,
