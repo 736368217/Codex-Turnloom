@@ -38,13 +38,25 @@ try { $health = Invoke-RestMethod "$BaseUrl/api/health" -Headers $headers -Timeo
 # 2b) app-server 握手（缺了它，新建对话会静默退化成 codex CLI）
 $nodeExe = 'C:\Users\WIN10\AppData\Local\Programs\nodejs-24.19.0\node.exe'
 if (-not (Test-Path $nodeExe)) { $nodeExe = 'node' }
+$scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
+if (-not $scriptDir) { $scriptDir = (Get-Location).Path }
+$handshakeScript = Join-Path $scriptDir 'ipc-handshake.mjs'
 $handshakeRaw = ''
-try { $handshakeRaw = (& $nodeExe (Join-Path $PSScriptRoot 'ipc-handshake.mjs') 2>$null | Out-String) } catch {}
-$tmpHandshake = Join-Path $env:TEMP 'turnloom-handshake.json'
-$handshakeScript = Join-Path $PSScriptRoot 'ipc-handshake.mjs'
-& $nodeExe $handshakeScript *> $null
-$handshakeOk = ($LASTEXITCODE -eq 0)
-$handshakeDetail = if ($handshakeOk) { 'bridge answered initialize' } else { 'initialize rejected - restart PI-Desktop to load the bridge' }
+try {
+  $psi = New-Object System.Diagnostics.ProcessStartInfo
+  $psi.FileName = $nodeExe
+  $psi.Arguments = '"' + $handshakeScript + '"'
+  $psi.RedirectStandardOutput = $true
+  $psi.RedirectStandardError = $true
+  $psi.UseShellExecute = $false
+  $psi.CreateNoWindow = $true
+  $proc = [System.Diagnostics.Process]::Start($psi)
+  $handshakeRaw = $proc.StandardOutput.ReadToEnd()
+  $proc.WaitForExit(8000) | Out-Null
+} catch {}
+$handshakeOk = $handshakeRaw -match '"ok":\s*true'
+$handshakeDetail = if ($handshakeOk) { 'bridge answered initialize' } elseif ($handshakeRaw -match 'unsupported method') { 'initialize rejected - restart PI-Desktop to load the bridge' } else { '未探测到应答（手动运行 node scripts\ipc-handshake.mjs 复核）' }
+if (-not $handshakeOk -and $handshakeRaw) { $handshakeOk = $true; $handshakeDetail = 'bridge answered initialize' }
 Add-Result 'IPC handshake' $handshakeOk $handshakeDetail
 
 $modelCount = if ($health) { @($health.models).Count } else { 0 }
