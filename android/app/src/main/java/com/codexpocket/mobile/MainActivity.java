@@ -356,7 +356,7 @@ public class MainActivity extends ComponentActivity {
     }
 
     private void addDeviceRow(LinearLayout list, Device device, int index, boolean last) {
-        Boolean state = deviceStatus.get(device.url);
+        Boolean state = deviceStatus.get(device.key());
         boolean online = Boolean.TRUE.equals(state);
         boolean pending = state == null;
 
@@ -400,7 +400,7 @@ public class MainActivity extends ComponentActivity {
         header.addView(copy, copyParams);
 
         TextView pill = label(statusLabel(state), 12, statusTextColor(state));
-        pill.setTag("status-pill:" + device.url);
+        pill.setTag("status-pill:" + device.key());
         pill.setGravity(Gravity.CENTER);
         pill.setSingleLine(true);
         pill.setBackground(rounded(statusSoftColor(state), 0, 0, 24));
@@ -777,8 +777,8 @@ public class MainActivity extends ComponentActivity {
             JSONObject healthResult = health;
             runOnUiThread(() -> {
                 if (activeDevice != null || root.getChildCount() == 0) return;
-                deviceStatus.put(device.url, value);
-                View pill = currentList.findViewWithTag("status-pill:" + device.url);
+                deviceStatus.put(device.key(), value);
+                View pill = currentList.findViewWithTag("status-pill:" + device.key());
                 if (pill instanceof TextView) {
                     TextView statusView = (TextView) pill;
                     statusView.setText(statusLabel(value));
@@ -1336,6 +1336,11 @@ public class MainActivity extends ComponentActivity {
 
         Device withNote(String nextNote) {
             return new Device(name, url, token, nextNote);
+        }
+
+        /** Stable per-computer identity: origin plus access code. */
+        String key() {
+            return DeviceIdentity.key(url, token);
         }
     }
 
