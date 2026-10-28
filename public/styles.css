@@ -4881,3 +4881,21 @@ body.goal-dialog-open { overflow: hidden; }
     background: var(--border);
   }
 }
+
+/* Long catalogues (PI ships 170+) get a filter box inside the model picker. */
+.model-filter {
+  width: 100%;
+  min-height: 34px;
+  padding: 0 10px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--panel);
+  color: var(--text);
+  font-size: 14px;
+}
+.model-filter::placeholder { color: var(--placeholder); }
+.model-filter:focus-visible {
+  border-color: var(--accent);
+  outline: none;
+  box-shadow: 0 0 0 3px var(--focus-ring);
+}

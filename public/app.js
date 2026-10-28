@@ -14,6 +14,7 @@ const state = {
   showTools: false,
   expandedNotices: {},
   sidebarCollapsed: false,
+  modelFilter: "",
     threadSortMode: (() => { const saved = safeStorageGet(localStorage, "codex-thread-sort-mode"); return saved === "recent" || saved === "folder" ? saved : "project"; })(),
   collapsedThreadGroups: JSON.parse(safeStorageGet(localStorage, "codex-collapsed-thread-groups") || "{}"),
   messageRequestSeq: 0,
@@ -153,6 +154,7 @@ const els = {
   modelSelect: document.querySelector("#modelSelect"),
   effortSelect: document.querySelector("#effortSelect"),
   modelSelectLabel: document.querySelector("#modelSelectLabel"),
+  modelFilter: document.querySelector("#modelFilter"),
   effortSelectLabel: document.querySelector("#effortSelectLabel"),
   pluginPickerButton: document.querySelector("#pluginPickerButton"),
   skillPickerButton: document.querySelector("#skillPickerButton"),
@@ -245,6 +247,7 @@ const I18N = {
     steerBecameNewTurn: "原任务刚好完成，这条消息已作为下一步发送。",
     modelSettings: "选择模型和思考强度",
     modelLabel: "模型",
+    filterModels: "筛选模型",
     effortLabel: "思考强度",
     effortLow: "低",
     effortMedium: "中",
@@ -437,6 +440,7 @@ const I18N = {
     steerBecameNewTurn: "The previous task finished, so this message was sent as the next step.",
     modelSettings: "Choose model and reasoning effort",
     modelLabel: "Model",
+    filterModels: "Filter models",
     effortLabel: "Reasoning effort",
     effortLow: "Low",
     effortMedium: "Medium",
@@ -626,6 +630,7 @@ function applyStaticText() {
   els.modelSummary.setAttribute("title", t("modelSettings"));
   els.modelSummary.setAttribute("aria-label", t("modelSettings"));
   els.modelSelectLabel.textContent = t("modelLabel");
+  if (els.modelFilter) els.modelFilter.placeholder = t("filterModels");
   els.effortSelectLabel.textContent = t("effortLabel");
   els.pluginPickerButton.setAttribute("title", t("pluginPickerTitle"));
   els.pluginPickerButton.setAttribute("aria-label", t("pluginPickerTitle"));
@@ -707,6 +712,16 @@ function availableModels() {
   return Array.isArray(state.config?.models) ? state.config.models : [];
 }
 
+const MODEL_FILTER_THRESHOLD = 20;
+
+function filteredModels(models, term) {
+  const needle = String(term || "").trim().toLowerCase();
+  if (!needle) return models;
+  return models.filter((model) =>
+    `${model.label || ""} ${model.id || ""}`.toLowerCase().includes(needle)
+  );
+}
+
 function effortLabel(effort) {
   const normalized = String(effort || "");
   const key = `effort${normalized.charAt(0).toUpperCase()}${normalized.slice(1)}`;
@@ -744,7 +759,19 @@ function renderModelSettings() {
   const models = availableModels();
   if (!models.length) return;
   const selectedModel = models.find((model) => model.id === state.model) || models[0];
-  els.modelSelect.replaceChildren(...models.map((model) => {
+  // PI exposes 170+ models; a flat native select is unusable at that size, so
+  // long catalogues get a filter box above the list.
+  const filtered = filteredModels(models, state.modelFilter);
+  const showFilter = models.length > MODEL_FILTER_THRESHOLD;
+  if (els.modelFilter) {
+    els.modelFilter.hidden = !showFilter;
+    if (!showFilter && els.modelFilter.value) els.modelFilter.value = "";
+  }
+  // Keep the current model in the list even when the filter excludes it: the
+  // select must never display a model that is not the active one.
+  const optionRows =
+    filtered.length && !filtered.some((model) => model.id === selectedModel.id) ? [selectedModel, ...filtered] : filtered;
+  els.modelSelect.replaceChildren(...(optionRows.length ? optionRows : [selectedModel]).map((model) => {
     const option = document.createElement("option");
     option.value = model.id;
     option.textContent = model.label || model.id;
@@ -769,6 +796,8 @@ function renderModelSettings() {
 function closeModelPanel() {
   if (!state.modelPanelOpen) return;
   state.modelPanelOpen = false;
+  state.modelFilter = "";
+  if (els.modelFilter) els.modelFilter.value = "";
   renderModelSettings();
 }
 
@@ -3281,8 +3310,16 @@ els.toolToggle.addEventListener("change", (event) => {
 
 els.modelSummary.addEventListener("click", () => {
   state.modelPanelOpen = !state.modelPanelOpen;
+  state.modelFilter = "";
+  if (els.modelFilter) els.modelFilter.value = "";
   closePluginMentionMenu();
   closeSkillMentionMenu();
+  renderModelSettings();
+  renderModelSettings();
+});
+
+els.modelFilter?.addEventListener("input", () => {
+  state.modelFilter = els.modelFilter.value;
   renderModelSettings();
 });
 
