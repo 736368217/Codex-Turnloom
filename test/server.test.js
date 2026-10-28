@@ -1218,3 +1218,16 @@ test("an empty or truncated auth.json degrades to no account instead of a 500", 
   assert.equal(profile.sub, "u1");
   assert.equal(profile.authMode, "chatgpt");
 });
+
+test("large model catalogues get a filter box instead of one flat list", () => {
+  const root = fileURLToPath(new URL("..", import.meta.url));
+  const html = readFileSync(path.join(root, "public", "index.html"), "utf8");
+  const app = readFileSync(path.join(root, "public", "app.js"), "utf8");
+  const styles = readFileSync(path.join(root, "public", "styles.css"), "utf8");
+
+  assert.match(html, /id="modelFilter"/, "expected a filter input inside the model panel");
+  assert.match(app, /const MODEL_FILTER_THRESHOLD = 20;/);
+  assert.match(app, /function filteredModels\(/, "expected the filter predicate to be shared");
+  assert.match(app, /els\.modelFilter\.hidden = !showFilter/);
+  assert.match(styles, /\.model-filter\s*\{/);
+});

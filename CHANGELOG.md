@@ -9,6 +9,8 @@
   - `/index.html` is served with a `?v=<mtime-size>` stamp on every local CSS/JS reference, so an upgraded desktop can never hand a WebView a stale `app.js`;
   - `/api/threads` no longer 500s when `auth.json` is empty or half-written (the login rewrite used to take the whole conversation list down with `Unexpected end of JSON input`);
   - the device card is now at least 82dp tall with 12sp minimum text.
+  - the model picker gained a `筛选模型` box (shown above 20 entries): PI ships 173 models and a flat native select meant scrolling; the active model always stays pinned at the top so the control can never display a model that is not the current one, and the term resets on every open/close;
+  - the update dialog no longer prints a "最新版本" that is older than the installed one (it read `当前 1.17.4 / 最新 1.17.3 / 已是最新版本`), and `安装包时间` is parsed as the UTC instant it is instead of local time (was 8h behind).
 
 - PI-Desktop new conversations now go through the bridge instead of falling back to the Codex CLI: the plugin's `start-conversation` handler had been lost in an earlier edit (only `initialize` survived). `/api/send` with `newThread` returns `mode: "desktop-ipc"`, the session is created in `pi.sqlite`, and the model picked in the app lands in `sessions.model_id` (verified: `deepseek-v4.1-flash`).
 - The desktop console autostart task passes `--hidden`, so a login start goes straight to the tray with no window (verified `MainWindowHandle = 0`).
