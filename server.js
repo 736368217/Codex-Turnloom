@@ -2072,8 +2072,25 @@ function displayPlanName(plan) {
 async function readAuthProfile() {
   const { authFile } = codexPaths((await refreshCodexHomeContext()).home);
   if (!existsSync(authFile)) return {};
-  const raw = await fs.readFile(authFile, "utf8");
-  const auth = JSON.parse(raw);
+  let raw = "";
+  try {
+    raw = await fs.readFile(authFile, "utf8");
+  } catch {
+    return {};
+  }
+  return authProfileFromRaw(raw);
+}
+
+// Codex Desktop rewrites auth.json on login. A read that lands mid-write — or a
+// truncated/empty file — must not turn the whole conversation list into a 500.
+function authProfileFromRaw(raw) {
+  let auth = null;
+  try {
+    auth = JSON.parse(String(raw || ""));
+  } catch {
+    auth = null;
+  }
+  if (!auth || typeof auth !== "object" || Array.isArray(auth)) return {};
   const idClaims = decodeJwtPayload(auth.tokens?.id_token) || {};
   const accessClaims = decodeJwtPayload(auth.tokens?.access_token) || {};
   const planClaim =
@@ -6225,6 +6242,29 @@ async function respondToApproval({ threadId, requestId, decision, approvalKind }
   };
 }
 
+// Browsers and Android WebViews happily reuse a cached /app.js long after the desktop
+// upgraded, which shows the user stale UI. Stamp every local asset reference in the
+// HTML with a mtime+size fingerprint so each deploy produces new URLs.
+async function assetVersion(publicPath) {
+  try {
+    const stat = await fs.stat(path.join(PUBLIC_DIR, publicPath));
+    return `${Math.trunc(stat.mtimeMs).toString(36)}-${stat.size.toString(36)}`;
+  } catch {
+    return "";
+  }
+}
+
+async function withAssetVersions(html) {
+  const targets = new Set();
+  for (const match of html.matchAll(/(?:href|src)="(\/[^"?#]+\.(?:css|js))"/g)) targets.add(match[1]);
+  let out = html;
+  for (const target of targets) {
+    const version = await assetVersion(target.replace(/^\//, ""));
+    if (!version) continue;
+    out = out.split(`"${target}"`).join(`"${target}?v=${version}"`);
+  }
+  return out;
+}
 async function serveStatic(res, pathname) {
   const requested = pathname === "/" ? "/index.html" : pathname;
   const filePath = path.normalize(path.join(PUBLIC_DIR, requested));
@@ -6233,7 +6273,7 @@ async function serveStatic(res, pathname) {
     return;
   }
   try {
-    const data = await fs.readFile(filePath);
+    let data = await fs.readFile(filePath);
     const ext = path.extname(filePath);
     const types = {
       ".html": "text/html; charset=utf-8",
@@ -6247,6 +6287,7 @@ async function serveStatic(res, pathname) {
       "cache-control": "no-store, must-revalidate",
       ...staticSecurityHeaders
     });
+    if (ext === ".html") data = Buffer.from(await withAssetVersions(data.toString("utf8")), "utf8");
     res.end(data);
   } catch {
     sendText(res, 404, "Not found");
@@ -7176,6 +7217,8 @@ if (IS_MAIN) {
 
 export {
   attemptCodexDesktopRefresh,
+  withAssetVersions,
+  authProfileFromRaw,
   createDesktopRefreshQueue,
   DesktopCodexIpcClient,
   canExposeLocalFilesForMessage,

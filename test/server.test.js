@@ -18,6 +18,8 @@ import {
   normalizeTurnSettings,
   parseCodexModelConfig,
   staticSecurityHeaders,
+  withAssetVersions,
+  authProfileFromRaw,
   createRolloutParseState,
   contextCompactionMessage,
   planMessage,
@@ -1170,4 +1172,49 @@ test("mobile composer does not clip the model picker overlay", () => {
   assert.ok(composerLeftRules.length, "expected a composer-left rule");
   assert.ok(composerLeftRules.some((rule) => /overflow:\s*visible\s*;/.test(rule)));
   assert.ok(composerLeftRules.every((rule) => !/overflow:\s*hidden\s*;/.test(rule)));
+});
+
+test("served HTML references versioned local assets so upgrades cannot reuse stale JS/CSS", async () => {
+  const html = [
+    "<link rel=\"stylesheet\" href=\"/styles.css\" />",
+    "<script src=\"/vendor/marked.umd.js\"></script>",
+    "<script src=\"/app.js\" type=\"module\"></script>"
+  ].join("\n");
+
+  const stamped = await withAssetVersions(html);
+
+  assert.match(stamped, /href="\/styles\.css\?v=[0-9a-z-]+"/);
+  assert.match(stamped, /src="\/app\.js\?v=[0-9a-z-]+"/);
+  assert.match(stamped, /src="\/vendor\/marked\.umd\.js\?v=[0-9a-z-]+"/);
+  assert.equal(stamped.split('src="/app.js?v=').length, 2, "expected exactly one versioned app.js reference");
+});
+
+test("load failures offer an explicit retry affordance", () => {
+  const styles = readFileSync(path.join(fileURLToPath(new URL("..", import.meta.url)), "public", "styles.css"), "utf8");
+  const app = readFileSync(path.join(fileURLToPath(new URL("..", import.meta.url)), "public", "app.js"), "utf8");
+
+  assert.match(styles, /\.empty-state-retry\s*\{[^}]*min-height:\s*44px/);
+  assert.match(app, /data-load-retry/);
+  assert.match(app, /function friendlyErrorMessage/, "expected a shared formatter for transport errors");
+  assert.ok(!/empty-state">\$\{escapeHtml\(error\.message\)\}/.test(app), "raw error.message must not be rendered in the message list");
+});
+
+test("an empty or truncated auth.json degrades to no account instead of a 500", () => {
+  assert.deepEqual(authProfileFromRaw(""), {});
+  assert.deepEqual(authProfileFromRaw("   \n"), {});
+  assert.deepEqual(authProfileFromRaw('{"tokens":'), {});
+  assert.deepEqual(authProfileFromRaw("[]"), {});
+  assert.deepEqual(authProfileFromRaw("null"), {});
+
+  const jwt = (claims) =>
+    `x.${Buffer.from(JSON.stringify(claims)).toString("base64url")}.y`;
+  const profile = authProfileFromRaw(
+    JSON.stringify({
+      auth_mode: "chatgpt",
+      tokens: { id_token: jwt({ email: "pilot@example.com", sub: "u1" }) }
+    })
+  );
+  assert.equal(profile.email, "pilot@example.com");
+  assert.equal(profile.sub, "u1");
+  assert.equal(profile.authMode, "chatgpt");
 });
