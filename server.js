@@ -2727,6 +2727,27 @@ async function mapWithConcurrency(items, limit, mapper) {
   return results;
 }
 
+// Status costs one rollout parse per row, so it is computed for a window rather than
+// for every conversation. A row that is (or claims to be) running must always be
+// inside that window: otherwise the phone shows 状态未知 for exactly the turns the
+// user is waiting on once a device has more saved conversations than the window.
+function threadStatusCandidates(rows, limit = 120) {
+  const picked = [];
+  const seen = new Set();
+  const push = (row) => {
+    const id = String(row?.id || "");
+    if (!id || seen.has(id)) return;
+    seen.add(id);
+    picked.push(row);
+  };
+  rows.slice(0, limit).forEach(push);
+  rows.forEach((row) => {
+    const state = String(row?.statusState || "");
+    if (state === "running" || state === "waiting" || Number(row?.statusStartedMs) > 0) push(row);
+  });
+  return picked;
+}
+
 async function buildThreadDiagnostics() {
   const homeState = await refreshCodexHomeContext({ force: true, source: "diagnostics" });
   const { home, stateDb } = codexPaths(homeState.home);
@@ -2950,7 +2971,7 @@ async function loadThreadsUncached({ preserveIds = [], preserveKey = "" } = {}) 
         );
       }
     }
-    const statusRows = await mapWithConcurrency(value.slice(0, 120), THREADS_STATUS_PARALLELISM, async (row) => ({
+    const statusRows = await mapWithConcurrency(threadStatusCandidates(value), THREADS_STATUS_PARALLELISM, async (row) => ({
       id: row.id,
       status: await threadListStatus(row)
     }));
@@ -7306,6 +7327,7 @@ export {
   startedThreadTitle,
   rememberStartedThread,
   recentStartedThreadRows,
+  threadStatusCandidates,
   createDesktopRefreshQueue,
   DesktopCodexIpcClient,
   canExposeLocalFilesForMessage,

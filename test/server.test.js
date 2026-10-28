@@ -26,6 +26,7 @@ import {
   statusFieldsFromOverride,
   overrideNeedsRolloutCorroboration,
   overrideLacksCorroboration,
+  threadStatusCandidates,
   createRolloutParseState,
   contextCompactionMessage,
   planMessage,
@@ -1328,4 +1329,25 @@ test("a stale running turn is disclosed instead of shown as plainly live", () =>
   // Both locales must carry the wording.
   assert.equal((app.match(/statusStale:/g) || []).length, 2);
   assert.equal((app.match(/staleTurnHelp:/g) || []).length, 2);
+});
+
+test("a running conversation is inside the status window even when it is old", () => {
+  const rows = [];
+  for (let index = 0; index < 200; index += 1) {
+    rows.push({ id: `row-${index}`, statusState: index === 180 ? "running" : "ended", statusStartedMs: index === 180 ? 1 : null });
+  }
+
+  const picked = threadStatusCandidates(rows, 120);
+  const ids = picked.map((row) => row.id);
+
+  assert.equal(ids.length, 121, "window plus the one running row outside it");
+  assert.ok(ids.includes("row-180"), "a running row past the window must still get a real status");
+  assert.ok(ids.includes("row-0"), "the recency window is kept");
+  assert.equal(new Set(ids).size, ids.length, "no duplicates");
+});
+
+test("the status window stays bounded when nothing is running", () => {
+  const rows = Array.from({ length: 200 }, (_, index) => ({ id: `row-${index}`, statusState: "ended", statusStartedMs: null }));
+  assert.equal(threadStatusCandidates(rows, 120).length, 120);
+  assert.equal(threadStatusCandidates([], 120).length, 0);
 });
