@@ -4827,3 +4827,57 @@ body.goal-dialog-open { overflow: hidden; }
     --shadow-drawer: 16px 0 40px rgba(0, 0, 0, 0.55);
   }
 }
+
+/* Load-failure state: a readable sentence plus one explicit retry affordance. */
+.empty-state-error {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 16px;
+  text-align: center;
+  color: var(--text-secondary);
+}
+.empty-state-retry {
+  min-width: 96px;
+  min-height: 44px;
+  padding: 0 20px;
+  border: 1px solid var(--accent-border);
+  border-radius: 12px;
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-size: 15px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.empty-state-retry:hover { background: var(--panel-muted); }
+.empty-state-retry:active { background: var(--accent); color: #FFFFFF; }
+.empty-state-retry:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.empty-state-retry[disabled] { opacity: 0.6; cursor: default; }
+
+/* Phone portrait: the drawer toggle is moved inside the conversation header by
+   placeDrawerToggle(), so it must sit in the flow instead of floating over the
+   header — the floating version was not receiving taps. */
+@media (max-width: 760px) and (orientation: portrait) {
+  .conversation-header,
+  .shell.sidebar-collapsed .conversation-header {
+    padding-left: 10px;
+  }
+
+  .conversation-header > .drawer-tab {
+    position: static;
+    top: auto;
+    left: auto;
+    flex: 0 0 auto;
+    display: grid;
+    width: 40px;
+    height: 40px;
+    margin-right: 4px;
+    border-radius: 12px;
+    background: var(--panel-muted);
+    box-shadow: none;
+  }
+
+  .conversation-header > .drawer-tab:active {
+    background: var(--border);
+  }
+}

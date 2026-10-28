@@ -260,7 +260,7 @@ const I18N = {
     imageUnsupported: "不支持此图片格式，请换 JPEG、PNG、WebP、GIF、HEIC 或 BMP。",
     imageDimensionsInvalid: "图片尺寸不支持，宽高需在 {min}-{max}px 之间。",
     tooManyImages: "最多只能添加 {count} 张图片。",
-    sendToCodex: "发送到当前 Codex 窗口",
+    sendToCodex: "输入消息…",
     readonlyPlaceholder: "只读模式：重启时不要加 --readonly 才能发送",
     readonly: "只读模式",
     needAccessCode: "需要访问码",
@@ -357,6 +357,10 @@ const I18N = {
     welcomeStepThreeCopy: "工具记录默认收起，点击右上角工具按钮后显示。",
     welcomePrivacy: "所有内容仍保存在你的电脑上",
     welcomeStart: "开始使用",
+    networkUnreachable: "连不上这台电脑。请确认电脑上的 Codex 仍在运行、网络可达，然后重试。",
+    serverError: "电脑端返回了异常（HTTP {status}），请稍后重试。",
+    requestFailed: "读取失败：{message}",
+    retryLoad: "重试",
     untitled: "Untitled",
     separator: " · "
   },
@@ -448,7 +452,7 @@ const I18N = {
     imageUnsupported: "Unsupported image format. Use JPEG, PNG, WebP, GIF, HEIC, or BMP.",
     imageDimensionsInvalid: "Unsupported image dimensions. Width and height must be {min}-{max}px.",
     tooManyImages: "You can attach up to {count} images.",
-    sendToCodex: "Send to current Codex window",
+    sendToCodex: "Type a message…",
     readonlyPlaceholder: "Read-only: restart without --readonly to send",
     readonly: "Read-only",
     needAccessCode: "Access code required",
@@ -545,6 +549,10 @@ const I18N = {
     welcomeStepThreeCopy: "Tool records stay hidden until you enable them from the top-right control.",
     welcomePrivacy: "Your content remains on your computer",
     welcomeStart: "Get started",
+    networkUnreachable: "Can't reach this computer. Check that Codex is still running on it and the network is reachable, then try again.",
+    serverError: "The computer returned an error (HTTP {status}). Please try again shortly.",
+    requestFailed: "Could not load: {message}",
+    retryLoad: "Try again",
     untitled: "Untitled",
     separator: " · "
   }
@@ -1499,9 +1507,35 @@ function closeSidebarOnCompact() {
   renderSidebarState();
 }
 
+// On a phone the drawer toggle must live *inside* the conversation header: a
+// position:fixed button parked over the header gets its taps swallowed by the
+// header's own stacking context, so the thread list became unreachable.
+function placeDrawerToggle() {
+  const toggle = els.sidebarToggle;
+  const header = document.querySelector(".conversation-header");
+  if (!toggle || !header) return;
+  if (isCompactPortrait()) {
+    if (toggle.parentElement !== header) header.insertBefore(toggle, header.firstChild);
+  } else if (toggle.parentElement !== document.body) {
+    document.body.insertBefore(toggle, document.body.firstChild);
+  }
+}
+
 function initResponsiveSidebar() {
-  state.sidebarCollapsed = false;
+  // On a phone the thread list must start collapsed, otherwise it eats a third of
+  // the width and the conversation body is squeezed (QA D04).
+  state.sidebarCollapsed = isCompactPortrait();
+  placeDrawerToggle();
   renderSidebarState();
+  const query = window.matchMedia("(max-width: 760px) and (orientation: portrait)");
+  const onChange = (event) => {
+    if (event.matches) closeSidebarOnCompact();
+    else state.sidebarCollapsed = false;
+    placeDrawerToggle();
+    renderSidebarState();
+  };
+  if (typeof query.addEventListener === "function") query.addEventListener("change", onChange);
+  else if (typeof query.addListener === "function") query.addListener(onChange);
 }
 
 function roleLabel(message) {
@@ -1847,9 +1881,12 @@ function renderMessages(data) {
     !data.status?.thinking && !data.status?.interactionRequired && data.status?.possibleDesktopAttention
       ? `<span class="thread-meta-note">${escapeHtml(t("desktopMayNeedAttention"))}</span>`
       : "";
-  els.threadMeta.innerHTML = `${statusPill}<span class="thread-meta-count">${escapeHtml(
-    t("contents", { count: displayMessages.length })
-  )}</span>${attentionNote}`;
+  // An empty conversation already says so in the body; a "0 条内容" pill next to the
+  // title just repeats it (QA D05).
+  const countNote = displayMessages.length
+    ? `<span class="thread-meta-count">${escapeHtml(t("contents", { count: displayMessages.length }))}</span>`
+    : "";
+  els.threadMeta.innerHTML = `${statusPill}${countNote}${attentionNote}`;
 
   if (!displayMessages.length && !data.status?.thinking) {
     els.messageList.innerHTML = `<div class="empty-state">${escapeHtml(state.selectedId === DRAFT_THREAD_ID ? t("newConversationReady") : t("emptyThread"))}</div>`;
@@ -1946,13 +1983,55 @@ window.setInterval(() => {
     if (compact && metaTime.textContent !== compact) metaTime.textContent = compact;
   }
 }, 1000);
+function isNetworkFailure(error) {
+  if (!error || error.status) return false;
+  if (error instanceof TypeError) return true;
+  return /failed to fetch|load failed|fetch failed|network request failed|networkerror|err_internet|err_connection/i.test(
+    error.message || ""
+  );
+}
+
+// Turn low-level transport/HTTP failures into something a user can act on.
+function friendlyErrorMessage(error) {
+  if (error?.friendly) return error.friendly;
+  if (isNetworkFailure(error)) return t("networkUnreachable");
+  const status = Number(error?.status) || 0;
+  if (status === 401) return t("accessCodeWrong");
+  if (status >= 500) return t("serverError", { status });
+  const raw = (error?.message || "").trim();
+  if (!raw) return t("networkUnreachable");
+  // A bare HTTP reason phrase ("Not Found") tells the user nothing; anything the
+  // server phrased on purpose is already human-readable, so pass it through.
+  if (/^[A-Z][A-Za-z ]{3,40}$/.test(raw)) return t("requestFailed", { message: raw });
+  return raw;
+}
+
+async function appFetch(url, options = {}) {
+  try {
+    return await fetch(url, options);
+  } catch (error) {
+    if (isNetworkFailure(error) && error instanceof Error) error.friendly = t("networkUnreachable");
+    throw error;
+  }
+}
+
+async function readJsonBody(response) {
+  try {
+    return await response.json();
+  } catch (error) {
+    const wrapped = new Error("unreadable response");
+    wrapped.status = response.status || 502;
+    wrapped.friendly = t("serverError", { status: response.status || 502 });
+    throw wrapped;
+  }
+}
 async function fetchJson(url, options = {}) {
-  const response = await fetch(url, {
+  const response = await appFetch(url, {
     cache: "no-store",
     ...options,
     headers: { ...authHeaders(), ...(options.headers || {}) }
   });
-  const data = await response.json();
+  const data = await readJsonBody(response);
   if (!response.ok) {
     const error = new Error(data.error || response.statusText);
     error.status = response.status;
@@ -1965,9 +2044,9 @@ async function fetchJson(url, options = {}) {
 async function fetchThreads(url) {
   const cached = state.threadListCache?.url === url ? state.threadListCache : null;
   const headers = authHeaders(cached?.etag ? { "if-none-match": cached.etag } : {});
-  const response = await fetch(url, { cache: "no-store", headers });
+  const response = await appFetch(url, { cache: "no-store", headers });
   if (response.status === 304 && cached) return cached.data;
-  const data = await response.json();
+  const data = await readJsonBody(response);
   if (!response.ok) {
     const error = new Error(data.error || response.statusText);
     error.status = response.status;
@@ -2039,13 +2118,13 @@ async function loadSkills() {
 }
 
 async function postJson(url, body, options = {}) {
-  const response = await fetch(url, {
+  const response = await appFetch(url, {
     method: "POST",
     headers: authHeaders({ "content-type": "application/json" }),
     body: JSON.stringify(body),
     ...options
   });
-  const data = await response.json();
+  const data = await readJsonBody(response);
   if (!response.ok) {
     const error = new Error(data.error || response.statusText);
     error.status = response.status;
@@ -2612,7 +2691,15 @@ function renderTransientSyncError(error) {
   const selected = state.threads.find((thread) => thread.id === state.selectedId);
   const title = selected?.title || els.threadTitle.textContent || t("selectThread");
   els.threadTitle.textContent = title;
-  els.threadMeta.textContent = `${t("syncTemporaryFailed")}${t("separator")}${error.message}`;
+  els.threadMeta.textContent = `${t("syncTemporaryFailed")}${t("separator")}${friendlyErrorMessage(error)}`;
+}
+
+function renderLoadErrorState(error) {
+  const message = friendlyErrorMessage(error);
+  els.messageList.innerHTML = `<div class="empty-state empty-state-error" role="status">${escapeHtml(
+    message
+  )}<button type="button" class="empty-state-retry" data-load-retry>${escapeHtml(t("retryLoad"))}</button></div>`;
+  updateScrollToBottomButton();
 }
 
 async function loadMessages(force = false, threadId = state.selectedId, { preserveScrollPosition = null } = {}) {
@@ -2739,7 +2826,7 @@ async function loadMessages(force = false, threadId = state.selectedId, { preser
     if (state.messagesSignature || cachedShown) {
       renderTransientSyncError(error);
     } else {
-      els.messageList.innerHTML = `<div class="empty-state">${escapeHtml(error.message)}</div>`;
+    renderLoadErrorState(error);
     }
   } finally {
     if (state.activeMessageRequest === request) state.activeMessageRequest = null;
@@ -2791,7 +2878,7 @@ async function refresh(forceMessages = false, { preserveScrollPosition = false }
     if (state.threads.length || state.messagesSignature) {
       renderTransientSyncError(error);
     } else {
-      els.messageList.innerHTML = `<div class="empty-state">${escapeHtml(error.message)}</div>`;
+    renderLoadErrorState(error);
     }
   }
 }
@@ -3094,6 +3181,15 @@ els.scrollToBottomButton.addEventListener("click", () => {
 });
 
 els.messageList.addEventListener("click", async (event) => {
+  const loadRetry = event.target.closest("[data-load-retry]");
+  if (loadRetry) {
+    event.preventDefault();
+    event.stopPropagation();
+    loadRetry.disabled = true;
+    els.messageList.innerHTML = `<div class="empty-state">${escapeHtml(t("loading"))}</div>`;
+    void refresh(true);
+    return;
+  }
   const branchButton = event.target.closest("[data-branch-message-id]");
   if (branchButton) {
     event.preventDefault();
