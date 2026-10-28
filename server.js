@@ -5404,18 +5404,19 @@ async function sendToCodex(text, threadId, images = [], { newThread = false, mod
     throw err;
   }
   if (!trimmed && !normalizedImages.length) {
-    const err = new Error("Message is empty");
+    const err = new Error("消息内容为空，请输入文字后再发送。");
     err.status = 400;
     throw err;
   }
   if (trimmed.length > 12000) {
-    const err = new Error("Message is too long");
+    const err = new Error("消息过长，请拆分成多条发送（上限 12000 字）。");
     err.status = 400;
     throw err;
   }
   if (newThread) {
     if (normalizedImages.length) {
-      const err = new Error("Starting a new Codex conversation with images from the web is not supported yet. Create the conversation with text first, then send images in the new thread.");
+      const err = new Error("新对话还不能直接带图片：请先用文字创建对话，再在新会话里发送图片。");
+      err.status = 409;
       err.status = 409;
       throw err;
     }

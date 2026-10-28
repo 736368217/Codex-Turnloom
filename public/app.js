@@ -256,6 +256,7 @@ const I18N = {
     effortMax: "最大",
     effortUltra: "极致",
     addImage: "添加图片",
+    attachNeedsText: "新对话请先发送一条文字，之后就能添加图片",
     pickPhoto: "相册",
     pickFile: "文件浏览",
     removeImage: "移除图片",
@@ -451,6 +452,7 @@ const I18N = {
     effortMax: "Maximum",
     effortUltra: "Ultra",
     addImage: "Add image",
+    attachNeedsText: "Send a text message first — images can be added once the conversation exists",
     pickPhoto: "Photos",
     pickFile: "Files",
     removeImage: "Remove image",
@@ -2595,7 +2597,12 @@ function renderComposerMode() {
   const hasTarget = Boolean(state.selectedId);
   const canSend = allowWrite && hasTarget && !state.composerBusy && !state.uncertainSend && hasComposerPayload();
   els.composerInput.disabled = !allowWrite || state.composerBusy || !hasTarget;
-  els.attachButton.disabled = !allowWrite || state.composerBusy || !hasTarget;
+  // A brand-new conversation cannot carry images yet (the first message has to be
+  // text so the thread exists), so do not lead the user into a rejected send.
+  const draftThread = state.selectedId === DRAFT_THREAD_ID;
+  els.attachButton.disabled = !allowWrite || state.composerBusy || !hasTarget || draftThread;
+  els.attachButton.setAttribute("title", t(draftThread ? "attachNeedsText" : "addImage"));
+  els.attachButton.setAttribute("aria-label", t(draftThread ? "attachNeedsText" : "addImage"));
   els.pluginPickerButton.disabled = !allowWrite || state.composerBusy || !hasTarget;
   els.skillPickerButton.disabled = !allowWrite || state.composerBusy || !hasTarget;
   els.sendButton.disabled = !canSend;
