@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- The conversation status window no longer hides a running turn: status costs one rollout parse per row, so it is computed for the newest 120 conversations — a running conversation older than that reported `状态未知`. Rows that are (or claim to be) running are now always included, whatever their position.
+
 - Third pass (1.17.6): a turn that only the database claims is running is no longer presented as plainly live.
   - Codex Desktop bumps `status_updated_ms` on a timer even after the process behind a turn is gone, so the server's own max-age guard never fired and a dead session read `运行中` indefinitely (observed: a frozen row 191 minutes old). The phone then offered 排队/插入 for a task that could never drain.
   - A `db`-sourced running/waiting override now has to be corroborated by the transcript; when nothing corroborates it the state is kept (so the phone never double-sends into a turn that might still be alive) but the API carries `staleTurn` and the UI says `运行中 · 长时间无输出` in both the drawer and the header pill. Live adapters are unaffected.
