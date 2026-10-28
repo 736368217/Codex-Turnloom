@@ -1351,3 +1351,19 @@ test("the status window stays bounded when nothing is running", () => {
   assert.equal(threadStatusCandidates(rows, 120).length, 120);
   assert.equal(threadStatusCandidates([], 120).length, 0);
 });
+
+test("a new conversation does not offer image attachments", () => {
+  const root = fileURLToPath(new URL("..", import.meta.url));
+  const app = readFileSync(path.join(root, "public", "app.js"), "utf8");
+  const server = readFileSync(path.join(root, "server.js"), "utf8");
+
+  // The first message of a conversation has to be text, so the attach button must be
+  // disabled in a draft instead of letting the send come back as an error.
+  assert.match(app, /els\.attachButton\.disabled = !allowWrite \|\| state\.composerBusy \|\| !hasTarget \|\| draftThread;/);
+  assert.match(app, /t\(draftThread \? "attachNeedsText" : "addImage"\)/);
+  assert.equal((app.match(/attachNeedsText:/g) || []).length, 2, "both locales need the hint");
+  // And the server-side rejections a user can actually hit must not be English.
+  assert.match(server, /消息过长，请拆分成多条发送/);
+  assert.match(server, /新对话还不能直接带图片/);
+  assert.ok(!/new Error\("Message is too long"\)/.test(server));
+});

@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- A new conversation no longer offers the image picker: the first message of a conversation has to be text, so tapping `+` led straight to a rejected send with an English 409. The button is now disabled in a draft with a Chinese hint, and the send-side rejections a user can reach (`消息过长`, the new-conversation-with-images case) are Chinese too.
+
 - The conversation status window no longer hides a running turn: status costs one rollout parse per row, so it is computed for the newest 120 conversations — a running conversation older than that reported `状态未知`. Rows that are (or claim to be) running are now always included, whatever their position.
 
 - Third pass (1.17.6): a turn that only the database claims is running is no longer presented as plainly live.
