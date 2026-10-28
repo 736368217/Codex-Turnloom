@@ -4898,3 +4898,29 @@ body.goal-dialog-open { overflow: hidden; }
   outline: none;
   box-shadow: 0 0 0 3px var(--focus-ring);
 }
+
+/* A turn whose transcript has gone quiet: keep the running state (the phone must not
+   double-send) but say plainly that nothing has corroborated it recently. */
+.status-pill.stale {
+  border-color: var(--notice-border);
+  background: var(--notice);
+  color: var(--text-secondary);
+}
+.status-pill.stale .status-pill-dot {
+  background: var(--running-text);
+}
+.status-pill-note {
+  margin-left: 6px;
+  padding-left: 6px;
+  border-left: 1px solid var(--border);
+  font-weight: 500;
+  opacity: 0.9;
+}
+
+/* The drawer row for a turn whose transcript went quiet. */
+.thread-status-running.stale .thread-status-dot {
+  background: var(--running-text);
+}
+.thread-status-running.stale {
+  color: var(--muted);
+}
