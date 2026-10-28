@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- Third pass (1.17.6): a turn that only the database claims is running is no longer presented as plainly live.
+  - Codex Desktop bumps `status_updated_ms` on a timer even after the process behind a turn is gone, so the server's own max-age guard never fired and a dead session read `运行中` indefinitely (observed: a frozen row 191 minutes old). The phone then offered 排队/插入 for a task that could never drain.
+  - A `db`-sourced running/waiting override now has to be corroborated by the transcript; when nothing corroborates it the state is kept (so the phone never double-sends into a turn that might still be alive) but the API carries `staleTurn` and the UI says `运行中 · 长时间无输出` in both the drawer and the header pill. Live adapters are unaffected.
+  - Verified on device: genuinely running sessions still read `stale=false`, only the frozen one is flagged.
+
 - Second portrait pass (1.17.5), re-checked on the same 1080x1920 / 480dpi phone profile:
   - a conversation started from the phone never appeared in `GET /api/threads`: desktop-ipc conversations have no rollout file and no Desktop state row, so the chat vanished right after sending and the next refresh jumped back to an older thread. Such conversations are now remembered for 30 minutes and titled from the message;
   - two computers sharing one origin (the dual-dispatcher setup) shared a single status entry, so the second card stayed on `正在检测` forever; device state is now keyed by origin **and** access code (`DeviceIdentity`);

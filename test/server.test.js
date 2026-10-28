@@ -23,6 +23,9 @@ import {
   rememberStartedThread,
   recentStartedThreadRows,
   authProfileFromRaw,
+  statusFieldsFromOverride,
+  overrideNeedsRolloutCorroboration,
+  overrideLacksCorroboration,
   createRolloutParseState,
   contextCompactionMessage,
   planMessage,
@@ -1277,4 +1280,52 @@ test("styles.css never leaves a declaration outside a rule", () => {
     }
   });
   assert.deepEqual(offenders, []);
+});
+
+test("a database running flag needs transcript corroboration", () => {
+  const dbRunning = { state: "running", source: "db", turnId: "t1", startedAtMs: 1 };
+  assert.equal(overrideNeedsRolloutCorroboration(dbRunning), true);
+  assert.equal(overrideNeedsRolloutCorroboration({ state: "waiting", source: "db" }), true);
+  assert.equal(overrideNeedsRolloutCorroboration({ state: "ended", source: "db" }), false);
+  // A live adapter refreshes a short TTL, so it is trusted as-is.
+  assert.equal(overrideNeedsRolloutCorroboration({ state: "running", source: "adapter" }), false);
+  assert.equal(overrideNeedsRolloutCorroboration(null), false);
+});
+
+test("a database running flag is flagged when nothing corroborates it", () => {
+  const dbRunning = { state: "running", source: "db" };
+  assert.equal(overrideLacksCorroboration(dbRunning, null), true);
+  assert.equal(overrideLacksCorroboration(dbRunning, { thinking: false }), true);
+  assert.equal(overrideLacksCorroboration(dbRunning, { thinking: true }), false);
+  assert.equal(overrideLacksCorroboration(dbRunning, { interactionRequired: true }), false);
+  assert.equal(overrideLacksCorroboration({ state: "running", source: "adapter" }, null), false);
+  assert.equal(overrideLacksCorroboration({ state: "ended", source: "db" }, null), false);
+});
+
+test("the override status contract only gains staleTurn when contested", () => {
+  const record = { state: "running", source: "db", turnId: "t1", startedAtMs: 1234 };
+  assert.deepEqual(statusFieldsFromOverride(record), {
+    state: "running",
+    thinking: true,
+    interactionRequired: false,
+    turnId: "t1",
+    startedAtMs: 1234,
+    statusSource: "db"
+  });
+  assert.equal(statusFieldsFromOverride(record, true).staleTurn, true);
+});
+
+test("a stale running turn is disclosed instead of shown as plainly live", () => {
+  const root = fileURLToPath(new URL("..", import.meta.url));
+  const app = readFileSync(path.join(root, "public", "app.js"), "utf8");
+  const styles = readFileSync(path.join(root, "public", "styles.css"), "utf8");
+
+  assert.match(app, /status\.staleTurn \? `\$\{t\("statusRunning"\)\} · \$\{t\("statusStale"\)\}` : t\("statusRunning"\)/);
+  assert.match(app, /status-pill running\$\{status\.staleTurn \? " stale" : ""\}/);
+  assert.match(app, /data\.status\?\.thinking && data\.status\?\.staleTurn/);
+  assert.match(styles, /\.status-pill\.stale\s*\{/);
+  assert.match(styles, /\.thread-status-running\.stale\s*\{/);
+  // Both locales must carry the wording.
+  assert.equal((app.match(/statusStale:/g) || []).length, 2);
+  assert.equal((app.match(/staleTurnHelp:/g) || []).length, 2);
 });

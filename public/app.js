@@ -295,6 +295,8 @@ const I18N = {
     statusWaiting: "等待处理",
     statusEnded: "已结束",
     statusUnknown: "状态未知",
+    statusStale: "长时间无输出",
+    staleTurnHelp: "该任务已长时间没有新输出，桌面端可能已经中断；消息仍会按所选方式排队或插入。",
     reminderOn: "关闭完成提醒",
     reminderOff: "开启完成提醒",
     reminderEnabledLabel: "提醒已开",
@@ -488,6 +490,8 @@ const I18N = {
     statusWaiting: "Waiting",
     statusEnded: "Ended",
     statusUnknown: "Unknown",
+    statusStale: "No recent output",
+    staleTurnHelp: "This task has produced no new output for a long time, so Desktop may have dropped it. Messages will still be queued or inserted as chosen.",
     reminderOn: "Disable completion reminder",
     reminderOff: "Enable completion reminder",
     reminderEnabledLabel: "Reminder on",
@@ -1423,7 +1427,11 @@ function openThreadContextMenu(threadId, clientX, clientY) {
 }
 
 function threadStatusLabel(status) {
-  if (status?.thinking) return t("statusRunning");
+  if (status?.thinking) {
+    // The Desktop database keeps a running flag alive even after the process behind
+    // the turn is gone, so say how long it has been silent instead of a bare 运行中.
+    return status.staleTurn ? `${t("statusRunning")} · ${t("statusStale")}` : t("statusRunning");
+  }
   if (status?.interactionRequired) return t("statusWaiting");
   if (status?.state === "ended") return t("statusEnded");
   return t("statusUnknown");
@@ -1445,9 +1453,14 @@ function threadStatusPill(status) {
   }
   if (status.thinking) {
     const elapsed = compactElapsed(status);
-    return `<span class="status-pill running"><span class="status-pill-dot" aria-hidden="true"></span>${escapeHtml(t("statusThinking"))}${
+    // A database-sourced running flag can outlive the process behind the turn, so
+    // disclose the silence instead of showing a bare 思考中.
+    const stale = status.staleTurn
+      ? `<span class="status-pill-note" title="${escapeHtml(t("staleTurnHelp"))}">${escapeHtml(t("statusStale"))}</span>`
+      : "";
+    return `<span class="status-pill running${status.staleTurn ? " stale" : ""}"><span class="status-pill-dot" aria-hidden="true"></span>${escapeHtml(t("statusThinking"))}${
       elapsed ? ` · <span id="threadMetaTime">${escapeHtml(elapsed)}</span>` : ""
-    }</span>`;
+    }${stale}</span>`;
   }
   if (status.state === "ended") {
     return `<span class="status-pill online"><span class="status-pill-dot" aria-hidden="true"></span>${escapeHtml(t("statusEnded"))}</span>`;
@@ -1465,7 +1478,9 @@ function renderThreads() {
       const statusClass = status.interactionRequired
         ? "waiting"
         : status.thinking
-          ? "running"
+          ? status.staleTurn
+            ? "running stale"
+            : "running"
           : status.state === "ended"
             ? "ended"
             : "unknown";
@@ -1915,7 +1930,11 @@ function renderMessages(data) {
   const countNote = displayMessages.length
     ? `<span class="thread-meta-count">${escapeHtml(t("contents", { count: displayMessages.length }))}</span>`
     : "";
-  els.threadMeta.innerHTML = `${statusPill}${countNote}${attentionNote}`;
+  const staleNote =
+    data.status?.thinking && data.status?.staleTurn
+      ? `<span class="thread-meta-note" title="${escapeHtml(t("staleTurnHelp"))}">${escapeHtml(t("statusStale"))}</span>`
+      : "";
+  els.threadMeta.innerHTML = `${statusPill}${countNote}${staleNote}${attentionNote}`;
 
   if (!displayMessages.length && !data.status?.thinking) {
     els.messageList.innerHTML = `<div class="empty-state">${escapeHtml(state.selectedId === DRAFT_THREAD_ID ? t("newConversationReady") : t("emptyThread"))}</div>`;

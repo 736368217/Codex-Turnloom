@@ -1325,9 +1325,9 @@ function threadStatusSelectSql(columns) {
   ].join(", ");
 }
 
-function statusFieldsFromOverride(record) {
+function statusFieldsFromOverride(record, staleTurn = false) {
   const thinking = record.state === "running" || record.state === "waiting";
-  return {
+  const status = {
     state: record.state,
     thinking,
     interactionRequired: record.state === "waiting",
@@ -1335,6 +1335,25 @@ function statusFieldsFromOverride(record) {
     startedAtMs: Number.isFinite(record.startedAtMs) ? record.startedAtMs : null,
     statusSource: record.source
   };
+  // Present only when the transcript contradicts the database row, so the plain
+  // contract stays byte-identical for every healthy thread.
+  if (staleTurn) status.staleTurn = true;
+  return status;
+}
+
+// The Desktop state database refreshes status_updated_ms on a timer even after the
+// process behind a turn is gone, so its own max-age guard never fires and a row can
+// claim "running" for hours. Only a database row needs corroboration; a live adapter
+// refreshes a short TTL and is trusted as-is.
+function overrideNeedsRolloutCorroboration(override) {
+  if (!override || override.source !== "db") return false;
+  return override.state === "running" || override.state === "waiting";
+}
+
+function overrideLacksCorroboration(override, parsedStatus) {
+  if (!overrideNeedsRolloutCorroboration(override)) return false;
+  if (!parsedStatus) return true;
+  return !(parsedStatus.thinking || parsedStatus.interactionRequired);
 }
 
 function adapterStatusOverrideFor(threadId, now = Date.now()) {
@@ -2655,6 +2674,7 @@ async function parseThreadListStatus(rolloutPath, nowMs) {
     turnId: parsed.status?.turnId || null,
     startedAtMs: parsed.status?.startedAtMs || null
   };
+  if (parsed.status?.staleTurn) status.staleTurn = true;
   threadStatusParseCache.set(rolloutPath, {
     size: stat.size,
     mtimeMs: stat.mtimeMs,
@@ -2669,25 +2689,26 @@ async function parseThreadListStatus(rolloutPath, nowMs) {
   }
   return status;
 }
-
 async function threadListStatus(row) {
   const now = Date.now();
   const override = statusOverrideForThread(row?.id, row, now);
-  if (override) return statusFieldsFromOverride(override);
   const rolloutPath = safeResolveRolloutPath(row?.rolloutPath, row?.id);
-  if (!rolloutPath || !existsSync(rolloutPath)) {
-    return { state: "unknown", thinking: false, interactionRequired: false };
+  const hasRollout = Boolean(rolloutPath && existsSync(rolloutPath));
+  let parsed = null;
+  if (hasRollout) {
+    try {
+      parsed = await parseThreadListStatus(rolloutPath, now);
+    } catch (error) {
+      logRolloutIssue(row?.id, error?.message || String(error));
+    }
   }
-  try {
-    return (await parseThreadListStatus(rolloutPath, now)) || {
-      state: "unknown",
-      thinking: false,
-      interactionRequired: false
-    };
-  } catch (error) {
-    logRolloutIssue(row?.id, error?.message || String(error));
-    return { state: "unknown", thinking: false, interactionRequired: false };
+  if (override) {
+    // A database row keeps its "running" flag fresh forever, so cross-check it with
+    // the transcript and disclose when nothing corroborates it. The state is kept so
+    // the phone never double-sends into a turn that may still be alive.
+    return statusFieldsFromOverride(override, overrideLacksCorroboration(override, parsed));
   }
+  return parsed || { state: "unknown", thinking: false, interactionRequired: false };
 }
 
 async function mapWithConcurrency(items, limit, mapper) {
@@ -4226,7 +4247,9 @@ async function getMessages(id, { limit = DEFAULT_MESSAGE_LIMIT, fullHistory = fa
       interactionRequired: ipcInteractions.some((message) => message.requiresDesktopAction),
       possibleDesktopAttention: false
     };
-    const status = statusOverride ? { ...baseStatus, ...statusFieldsFromOverride(statusOverride) } : baseStatus;
+    const status = statusOverride
+      ? { ...baseStatus, ...statusFieldsFromOverride(statusOverride, overrideLacksCorroboration(statusOverride, null)) }
+      : baseStatus;
     const limited = limitMessagesForClient(messages, status, limit, before);
     return finalizeMessagesResponse(id, {
       thread,
@@ -4252,7 +4275,9 @@ async function getMessages(id, { limit = DEFAULT_MESSAGE_LIMIT, fullHistory = fa
     { messages: [], status: { thinking: false, turnId: null, startedAtMs: null } }
   );
   parsed.messages = Array.from(new Map(parsed.messages.map((message) => [clientMessageKey(message), message])).values()).sort(messageSortCompare);
-  const parsedStatus = statusOverride ? { ...parsed.status, ...statusFieldsFromOverride(statusOverride) } : parsed.status;
+  const parsedStatus = statusOverride
+    ? { ...parsed.status, ...statusFieldsFromOverride(statusOverride, overrideLacksCorroboration(statusOverride, parsed.status)) }
+    : parsed.status;
   if (!liveMessages.length) {
     const messages = await decorateMessageFiles(parsed.messages, id, thread);
     const limited = limitMessagesForClient(messages, parsedStatus, limit, before);
@@ -7276,6 +7301,8 @@ export {
   attemptCodexDesktopRefresh,
   withAssetVersions,
   authProfileFromRaw,
+  overrideNeedsRolloutCorroboration,
+  overrideLacksCorroboration,
   startedThreadTitle,
   rememberStartedThread,
   recentStartedThreadRows,
