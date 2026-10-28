@@ -1260,3 +1260,21 @@ test("started thread titles stay short and readable", () => {
   assert.equal(long.length, 41, "long titles are cut to 40 characters plus an ellipsis");
   assert.ok(long.endsWith("…"));
 });
+
+test("styles.css never leaves a declaration outside a rule", () => {
+  // A stray declaration at top level makes the CSS parser skip forward to the next
+  // closing brace, which silently kills the whole following @media block.
+  const styles = readFileSync(path.join(fileURLToPath(new URL("..", import.meta.url)), "public", "styles.css"), "utf8");
+  let depth = 0;
+  const offenders = [];
+  styles.split(/\r?\n/).forEach((raw, index) => {
+    const line = raw.trim();
+    if (!line) return;
+    if (depth === 0 && line.endsWith(";") && !line.startsWith("/*")) offenders.push(`${index + 1}: ${line}`);
+    for (const character of line) {
+      if (character === "{") depth += 1;
+      else if (character === "}") depth = Math.max(0, depth - 1);
+    }
+  });
+  assert.deepEqual(offenders, []);
+});
