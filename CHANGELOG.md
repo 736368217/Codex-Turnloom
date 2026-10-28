@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+- Second portrait pass (1.17.5), re-checked on the same 1080x1920 / 480dpi phone profile:
+  - a conversation started from the phone never appeared in `GET /api/threads`: desktop-ipc conversations have no rollout file and no Desktop state row, so the chat vanished right after sending and the next refresh jumped back to an older thread. Such conversations are now remembered for 30 minutes and titled from the message;
+  - two computers sharing one origin (the dual-dispatcher setup) shared a single status entry, so the second card stayed on `正在检测` forever; device state is now keyed by origin **and** access code (`DeviceIdentity`);
+  - `styles.css` had a stray top-level declaration that made the CSS parser discard the whole `@media (max-width: 360px)` block — that is why 排队/插入 was clipped on a 360dp phone. Removed, plus a test that rejects stray declarations;
+  - server-generated notices are Chinese now (they used to drop English blocks into a Chinese conversation), and an unsupported `set-active-conversation` is no longer reported as a warning on every phone-started chat;
+  - the new-conversation placeholder no longer repeats the empty-state sentence.
+
 - A phone-portrait pass, all of it verified on an emulator in portrait (1080x1920 @480dpi) instead of the forced-landscape car profile:
   - load/transport failures now render one Chinese sentence plus a `重试` button instead of a raw `Failed to fetch` / `HTTP 500` string (`friendlyErrorMessage` + `.empty-state-error`);
   - the thread list starts collapsed, and — the actual bug — the floating `☰` tab could not be tapped at all because the conversation header swallowed the hit; the toggle now lives inside the header, so the drawer is reachable again;

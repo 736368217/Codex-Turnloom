@@ -4758,7 +4758,6 @@ body.goal-dialog-open { overflow: hidden; }
 
   .welcome-body > h2 { font-size: 24px; }
 }
-    max-width: calc(100vw - 162px);
 @media (max-width: 360px) and (orientation: portrait) {
   .conversation-header h2 {
     max-width: calc(100vw - 142px);
