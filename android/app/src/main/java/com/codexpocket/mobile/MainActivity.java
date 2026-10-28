@@ -803,12 +803,22 @@ public class MainActivity extends ComponentActivity {
         int remoteCode = health.optInt("appVersionCode", 0);
         String remoteName = health.optString("appVersionName", "未知");
         String updatedAt = formatUpdateTime(health.optString("apkUpdatedAt", ""));
+        boolean newer = remoteCode > appVersionCode() && health.optBoolean("apkAvailable", false);
+        // Never print a "latest version" that is older than what is installed: that reads
+        // as a contradiction next to "已是最新版本".
+        String latestName = newer ? remoteName : appVersionName();
+        int latestCode = newer ? remoteCode : appVersionCode();
         StringBuilder text = new StringBuilder();
         text.append("当前版本：").append(appVersionName()).append("（").append(appVersionCode()).append("）\n");
-        text.append("最新版本：").append(remoteName).append("（").append(remoteCode).append("）\n");
+        text.append("最新版本：").append(latestName).append("（").append(latestCode).append("）\n");
         text.append("安装包时间：").append(updatedAt.isEmpty() ? "未知" : updatedAt).append("\n");
-        boolean newer = remoteCode > appVersionCode() && health.optBoolean("apkAvailable", false);
-        text.append(newer ? "状态：有新版本可以更新" : "状态：已是最新版本");
+        if (newer) {
+            text.append("状态：有新版本可以更新");
+        } else if (remoteCode > 0 && remoteCode < appVersionCode()) {
+            text.append("状态：已是最新版本（服务器上的 ").append(remoteName).append(" 比当前旧）");
+        } else {
+            text.append("状态：已是最新版本");
+        }
         return text.toString();
     }
 
@@ -816,6 +826,9 @@ public class MainActivity extends ComponentActivity {
         if (iso == null || iso.isEmpty()) return "";
         try {
             java.text.SimpleDateFormat parser = new java.text.SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss", java.util.Locale.US);
+            // health.apkUpdatedAt is an ISO-8601 UTC instant; parsing it as local time
+            // showed every timestamp shifted by the device's UTC offset.
+            parser.setTimeZone(java.util.TimeZone.getTimeZone("UTC"));
             java.util.Date date = parser.parse(iso.length() > 19 ? iso.substring(0, 19) : iso);
             java.text.SimpleDateFormat printer = new java.text.SimpleDateFormat("yyyy-MM-dd HH:mm", java.util.Locale.CHINA);
             return printer.format(date);
