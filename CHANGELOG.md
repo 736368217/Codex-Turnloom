@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+- A phone-portrait pass, all of it verified on an emulator in portrait (1080x1920 @480dpi) instead of the forced-landscape car profile:
+  - load/transport failures now render one Chinese sentence plus a `重试` button instead of a raw `Failed to fetch` / `HTTP 500` string (`friendlyErrorMessage` + `.empty-state-error`);
+  - the thread list starts collapsed, and — the actual bug — the floating `☰` tab could not be tapped at all because the conversation header swallowed the hit; the toggle now lives inside the header, so the drawer is reachable again;
+  - an empty conversation no longer repeats itself with a `0 条内容` pill next to the title;
+  - `/index.html` is served with a `?v=<mtime-size>` stamp on every local CSS/JS reference, so an upgraded desktop can never hand a WebView a stale `app.js`;
+  - `/api/threads` no longer 500s when `auth.json` is empty or half-written (the login rewrite used to take the whole conversation list down with `Unexpected end of JSON input`);
+  - the device card is now at least 82dp tall with 12sp minimum text.
+
 - PI-Desktop new conversations now go through the bridge instead of falling back to the Codex CLI: the plugin's `start-conversation` handler had been lost in an earlier edit (only `initialize` survived). `/api/send` with `newThread` returns `mode: "desktop-ipc"`, the session is created in `pi.sqlite`, and the model picked in the app lands in `sessions.model_id` (verified: `deepseek-v4.1-flash`).
 - The desktop console autostart task passes `--hidden`, so a login start goes straight to the tray with no window (verified `MainWindowHandle = 0`).
 

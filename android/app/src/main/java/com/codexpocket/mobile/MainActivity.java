@@ -362,7 +362,8 @@ public class MainActivity extends ComponentActivity {
 
         LinearLayout card = new LinearLayout(this);
         card.setOrientation(LinearLayout.VERTICAL);
-        card.setPadding(dp(14), dp(12), dp(10), dp(12));
+        card.setPadding(dp(14), dp(14), dp(10), dp(14));
+        card.setMinimumHeight(dp(82));
         card.setBackground(rounded(Color.WHITE, online ? 2 : 1, online ? ACCENT_BORDER : LINE, 16));
         card.setClickable(true);
         card.setFocusable(true);
@@ -389,7 +390,7 @@ public class MainActivity extends ComponentActivity {
             note.setEllipsize(TextUtils.TruncateAt.END);
             copy.addView(note);
         }
-        TextView address = label(displayAddress(device.url), 11, MUTED);
+        TextView address = label(displayAddress(device.url), 12, MUTED);
         address.setTypeface(Typeface.MONOSPACE);
         address.setMaxLines(1);
         address.setEllipsize(TextUtils.TruncateAt.END);
@@ -398,12 +399,12 @@ public class MainActivity extends ComponentActivity {
         copyParams.setMargins(dp(11), 0, dp(8), 0);
         header.addView(copy, copyParams);
 
-        TextView pill = label(statusLabel(state), 10, statusTextColor(state));
+        TextView pill = label(statusLabel(state), 12, statusTextColor(state));
         pill.setTag("status-pill:" + device.url);
         pill.setGravity(Gravity.CENTER);
         pill.setSingleLine(true);
         pill.setBackground(rounded(statusSoftColor(state), 0, 0, 24));
-        pill.setPadding(dp(9), dp(2), dp(9), dp(2));
+        pill.setPadding(dp(10), dp(4), dp(10), dp(4));
         header.addView(pill, new LinearLayout.LayoutParams(-2, -2));
 
         Button menu = iconButton("⋮", "管理这台电脑", v -> showDeviceMenu(v, index));
