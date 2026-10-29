@@ -1406,3 +1406,15 @@ test("a .jsonl.zst transcript is decompressed and parsed like a plain one", asyn
     rmSync(dir, { recursive: true, force: true });
   }
 });
+
+test("a stalled messages request cannot leave the list loading forever", () => {
+  const app = readFileSync(path.join(fileURLToPath(new URL("..", import.meta.url)), "public", "app.js"), "utf8");
+
+  // The messages fetch must be bounded, otherwise a stalled connection parks the UI on
+  // "加载中" with no error and no retry (observed once on the phone).
+  assert.match(app, /const MESSAGE_REQUEST_TIMEOUT_MS = \d+;/);
+  assert.match(app, /signal: AbortSignal\.timeout\(MESSAGE_REQUEST_TIMEOUT_MS\)/);
+  // A timeout must read as a timeout, not as "the computer is unreachable".
+  assert.match(app, /error\?\.name === "TimeoutError"/);
+  assert.equal((app.match(/requestTimedOut:/g) || []).length, 2, "both locales need the wording");
+});

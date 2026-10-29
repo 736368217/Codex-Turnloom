@@ -76,6 +76,7 @@ const state = {
 const THREAD_SYNC_INTERVAL_MS = 12000;
 const MESSAGE_SYNC_THINKING_MS = 2000;
 const MESSAGE_SYNC_IDLE_MS = 6000;
+const MESSAGE_REQUEST_TIMEOUT_MS = 25000;
 const ACCOUNT_SYNC_INTERVAL_MS = 30000;
 const THREAD_SYNC_BACKOFF_MAX_MS = 60000;
 const MESSAGE_SYNC_BACKOFF_MAX_MS = 30000;
@@ -367,6 +368,7 @@ const I18N = {
     serverError: "电脑端返回了异常（HTTP {status}），请稍后重试。",
     requestFailed: "读取失败：{message}",
     retryLoad: "重试",
+    requestTimedOut: "读取超时，请点重试。",
     untitled: "Untitled",
     separator: " · "
   },
@@ -563,6 +565,7 @@ const I18N = {
     serverError: "The computer returned an error (HTTP {status}). Please try again shortly.",
     requestFailed: "Could not load: {message}",
     retryLoad: "Try again",
+    requestTimedOut: "Loading timed out. Tap to retry.",
     untitled: "Untitled",
     separator: " · "
   }
@@ -2043,6 +2046,11 @@ function isNetworkFailure(error) {
 
 // Turn low-level transport/HTTP failures into something a user can act on.
 function friendlyErrorMessage(error) {
+  // AbortSignal.timeout() rejects with a TimeoutError DOMException; without this the
+  // user would read the raw "signal timed out" text.
+  if (error?.name === "TimeoutError" || /signal timed out|timeout/i.test(error?.message || "")) {
+    return t("requestTimedOut");
+  }
   if (error?.friendly) return error.friendly;
   if (isNetworkFailure(error)) return t("networkUnreachable");
   const status = Number(error?.status) || 0;
@@ -2783,7 +2791,13 @@ async function loadMessages(force = false, threadId = state.selectedId, { preser
   const historyParam = state.messageLimit > MESSAGE_PAGE_SIZE ? "&history=full" : "";
   const beforeParam = state.messageBeforeCursor ? `&before=${encodeURIComponent(state.messageBeforeCursor)}` : "";
   const requestedBefore = state.messageBeforeCursor;
-  const networkRequest = fetchJson("/api/threads/" + threadId + "/messages?limit=" + state.messageLimit + beforeParam + historyParam);
+  // A messages request with no timeout leaves the list on "加载中" forever when the
+  // connection stalls (observed once on the phone). Bound it so a stall surfaces as the
+  // retryable error state instead of an endless spinner.
+  const networkRequest = fetchJson(
+    "/api/threads/" + threadId + "/messages?limit=" + state.messageLimit + beforeParam + historyParam,
+    { signal: AbortSignal.timeout(MESSAGE_REQUEST_TIMEOUT_MS) }
+  );
   let cachedShown = false;
   const openingThread = !state.lastMessagesData || state.lastMessagesData.thread?.id !== threadId;
   const currentThread = state.threads.find((thread) => thread.id === threadId) || null;

@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Images sent from the phone now actually reach the model. The bridge's `textFromTurnInput()` kept only `text` parts and silently dropped `image` parts, so the phone showed "sent" while the model received plain text (verified: the transcript had no image block at all). The host also refuses inline base64 — `preparePromptAttachments()` resolves `attachment.path` inside `<dataRoot>/scratch/<sessionId>` and threw `Cannot access … 'trim'` for the first attempt — so images are now staged to disk first and passed by path. End-to-end proof on the phone: asked "图片里的大块颜色是什么" about a blue test square and the model answered 蓝色.
+- A stalled messages request can no longer leave the list on 加载中 forever: the fetch is bounded by `MESSAGE_REQUEST_TIMEOUT_MS` and a timeout surfaces as 「读取超时，请点重试。」 with a retry button.
+
 - Compressed transcripts are now readable. Codex rotates older sessions to `<name>.jsonl.zst`, and the server only looked for `.jsonl`, so on this machine just 7 of 301 sessions had a readable transcript — opening any other conversation failed. `resolveRolloutFile()` falls back to the `.zst` sibling, `readZstdRolloutLines()` decompresses it, and the byte-offset tail path is skipped for compressed files (seeking into a `.zst` produced a parse error on every line). Measured on the live database: rollout issues fell from 294 to 34, and a `.zst`-only conversation now returns 200 with 26 messages (3788 total) and zero parse errors. The remaining 34 are files Codex itself has deleted; no reader can recover them.
 
 - A new conversation no longer offers the image picker: the first message of a conversation has to be text, so tapping `+` led straight to a rejected send with an English 409. The button is now disabled in a draft with a Chinese hint, and the send-side rejections a user can reach (`消息过长`, the new-conversation-with-images case) are Chinese too.
