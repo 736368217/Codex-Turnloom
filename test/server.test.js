@@ -1200,6 +1200,21 @@ test("served HTML references versioned local assets so upgrades cannot reuse sta
   assert.equal(stamped.split('src="/app.js?v=').length, 2, "expected exactly one versioned app.js reference");
 });
 
+test("every local asset in index.html can be stamped with a cache-busting version", () => {
+  const html = readFileSync(path.join(fileURLToPath(new URL("..", import.meta.url)), "public", "index.html"), "utf8");
+  const refs = [...html.matchAll(/(?:href|src)="(\/[^"]+\.(?:css|js)[^"]*)"/g)].map((m) => m[1]);
+
+  assert.ok(refs.length >= 3, "expected the stylesheets and app.js to be referenced");
+  // withAssetVersions only matches refs with no query string, so a hand-written
+  // "?v=..." pins that file to one URL forever and silently defeats cache busting
+  // (a real regression: styles.v3.css was stuck on the version it shipped with).
+  assert.deepEqual(
+    refs.filter((ref) => ref.includes("?")),
+    [],
+    "local css/js refs must stay bare so the server can stamp them"
+  );
+});
+
 test("load failures offer an explicit retry affordance", () => {
   const styles = readFileSync(path.join(fileURLToPath(new URL("..", import.meta.url)), "public", "styles.css"), "utf8");
   const app = readFileSync(path.join(fileURLToPath(new URL("..", import.meta.url)), "public", "app.js"), "utf8");

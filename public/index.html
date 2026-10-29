@@ -6,8 +6,10 @@
     <title>Codex-Turnloom</title>
     <link rel="icon" type="image/svg+xml" href="/assets/companion-mark.svg" />
     <link rel="stylesheet" href="/styles.css" />
-    <!-- Shared mobile component styles, loaded after the base behavior rules. -->
-    <link rel="stylesheet" href="/styles.v3.css?v=1.17.10" />
+    <!-- Shared mobile component styles, loaded after the base behavior rules.
+         Leave the href bare: the server stamps every local css/js reference with a
+         mtime+size fingerprint, and it only matches refs with no query string. -->
+    <link rel="stylesheet" href="/styles.v3.css" />
   </head>
   <body>
     <div id="authGate" class="auth-gate" hidden>
