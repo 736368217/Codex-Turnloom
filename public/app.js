@@ -1547,7 +1547,7 @@ function renderSidebarState() {
 }
 
 function isCompactPortrait() {
-  return window.matchMedia("(max-width: 760px) and (orientation: portrait)").matches;
+  return window.matchMedia("(max-width: 760px)").matches;
 }
 
 function closeSidebarOnCompact() {
@@ -1576,7 +1576,7 @@ function initResponsiveSidebar() {
   state.sidebarCollapsed = isCompactPortrait();
   placeDrawerToggle();
   renderSidebarState();
-  const query = window.matchMedia("(max-width: 760px) and (orientation: portrait)");
+  const query = window.matchMedia("(max-width: 760px)");
   const onChange = (event) => {
     if (event.matches) closeSidebarOnCompact();
     else state.sidebarCollapsed = false;
@@ -1589,10 +1589,11 @@ function initResponsiveSidebar() {
 
 function roleLabel(message) {
   if (message.role === "assistant") return "Codex";
-  if (message.role === "user") return "User";
+  if (message.role === "user") return state.locale === "zh" ? "你" : "You";
   if (message.role === "tool") return t("roleTool");
   if (message.role === "interaction") return t("roleInteraction");
   if (message.role === "notice") return t("roleNotice");
+  if (state.locale === "zh") return message.role === "developer" ? "开发者指令" : "系统指令";
   return message.role || "System";
 }
 
@@ -1932,8 +1933,9 @@ function renderMessages(data) {
       : "";
   // An empty conversation already says so in the body; a "0 条内容" pill next to the
   // title just repeats it (QA D05).
-  const countNote = displayMessages.length
-    ? `<span class="thread-meta-count">${escapeHtml(t("contents", { count: displayMessages.length }))}</span>`
+  const visibleCount = displayMessages.filter((message) => state.showTools || !["tool", "system", "developer"].includes(message.role)).length;
+  const countNote = visibleCount
+    ? `<span class="thread-meta-count">${escapeHtml(t("contents", { count: visibleCount }))}</span>`
     : "";
   const staleNote =
     data.status?.thinking && data.status?.staleTurn
@@ -1955,7 +1957,8 @@ function renderMessages(data) {
       const isNotice = message.role === "notice";
       const noticeKey = isNotice ? noticeCollapseKey(message) : "";
       const noticeCollapsed = isNotice && !isImportantNotice(message) && !state.expandedNotices[noticeKey];
-      const hidden = isTool && !state.showTools ? " hidden" : "";
+      const isDetail = isTool || message.role === "system" || message.role === "developer";
+      const hidden = isDetail && !state.showTools ? " hidden" : "";
       const toolTitle = `<div class="tool-title"><span class="tool-kind-chip">${escapeHtml(message.kind || t("tool"))}</span>${
         message.title ? `<span class="tool-path">${escapeHtml(message.title)}</span>` : ""
       }</div>`;
