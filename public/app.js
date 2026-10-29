@@ -77,6 +77,10 @@ const THREAD_SYNC_INTERVAL_MS = 12000;
 const MESSAGE_SYNC_THINKING_MS = 2000;
 const MESSAGE_SYNC_IDLE_MS = 6000;
 const MESSAGE_REQUEST_TIMEOUT_MS = 25000;
+// The thread list and the health probe gate the very first paint. Unbounded, a stalled
+// connection left the drawer on 「加载中」 forever with no error and no retry affordance.
+const THREADS_REQUEST_TIMEOUT_MS = 20000;
+const HEALTH_REQUEST_TIMEOUT_MS = 15000;
 const ACCOUNT_SYNC_INTERVAL_MS = 30000;
 const THREAD_SYNC_BACKOFF_MAX_MS = 60000;
 const MESSAGE_SYNC_BACKOFF_MAX_MS = 30000;
@@ -795,7 +799,11 @@ function renderModelSettings() {
     return option;
   }));
   els.effortSelect.value = state.effort;
-  els.modelName.textContent = selectedModel.label || selectedModel.id;
+  // The trigger pill is narrow, so show the model alone and keep the provider in the
+  // tooltip. Clipping "model · provider" mid-word read like a rendering fault.
+  const modelLabel = selectedModel.label || selectedModel.id;
+  els.modelName.textContent = modelLabel.split(" · ")[0];
+  els.modelSummary.setAttribute("title", modelLabel);
   els.modelEffort.textContent = effortLabel(state.effort);
   els.modelSummary.setAttribute("aria-expanded", String(state.modelPanelOpen));
   els.modelSummary.classList.toggle("expanded", state.modelPanelOpen);
@@ -924,16 +932,18 @@ function formatMessageDate(value) {
   return dateFormatter.format(date);
 }
 
+// One duration vocabulary everywhere. The header pill, the drawer rows and the
+// per-answer caption used to spell the same span three ways (02:06 / 1分45秒 / 1m8s).
 function formatDuration(ms) {
   const totalSeconds = Math.max(0, Math.round(Number(ms || 0) / 1000));
   if (!Number.isFinite(totalSeconds) || totalSeconds <= 0) return "";
-  const minutes = Math.floor(totalSeconds / 60);
+  const hours = Math.floor(totalSeconds / 3600);
+  const minutes = Math.floor((totalSeconds % 3600) / 60);
   const seconds = totalSeconds % 60;
-  if (minutes <= 0) return `${seconds}s`;
-  if (seconds === 0) return `${minutes}m`;
-  return `${minutes}m${seconds}s`;
+  if (hours > 0) return state.locale === "zh" ? `${hours}小时${minutes}分` : `${hours}h ${minutes}m`;
+  if (minutes <= 0) return state.locale === "zh" ? `${seconds}秒` : `${seconds}s`;
+  return state.locale === "zh" ? `${minutes}分${seconds}秒` : `${minutes}m ${seconds}s`;
 }
-
 function renderApprovalActions(message) {
   if (message.role !== "interaction" || !message.canApprove || !message.requestId) return "";
   const submission = state.approvalSubmissions[approvalSubmissionKey(state.selectedId, message.requestId)];
@@ -1361,7 +1371,10 @@ function openWelcomeDialog() {
   if (!els.welcomeDialog) return;
   els.welcomeDialog.hidden = false;
   document.body.classList.add("welcome-open");
-  els.welcomeStart?.focus({ preventScroll: true });
+  // Focus the dialog itself, not the primary button. Focusing the button painted a
+  // focus ring around it on every touch open, which read as a stray double border;
+  // Tab still reaches the button and shows the ring when it is actually keyboard focus.
+  els.welcomeDialog.querySelector(".welcome-card")?.focus({ preventScroll: true });
 }
 
 function closeWelcomeDialog({ remember = true } = {}) {
@@ -1445,12 +1458,8 @@ function threadStatusLabel(status) {
 function compactElapsed(status, now = Date.now()) {
   const start = Number(status?.startedAtMs || 0);
   if (!status?.thinking || !Number.isFinite(start) || start <= 0) return "";
-  const totalSeconds = Math.max(0, Math.floor((now - start) / 1000));
-  const minutes = Math.floor(totalSeconds / 60);
-  const seconds = totalSeconds % 60;
-  return `${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`;
+  return formatDuration(now - start);
 }
-
 function threadStatusPill(status) {
   if (!status) return "";
   if (status.interactionRequired) {
@@ -1638,7 +1647,10 @@ function roleIcon(message) {
   return `<span class="role-icon-fallback" aria-hidden="true">${escapeHtml(fallbackLabel)}</span>`;
 }
 
-function roleBadge(message) {
+function roleBadge(message, repeated = false) {
+  // Grouped messages: only the first message of an uninterrupted run names its author.
+  // Repeating 「Codex」 above every answer added a line of noise above each reply.
+  if (repeated && (message.role === "assistant" || message.role === "tool")) return "";
   return `
     <div class="role-badge" aria-label="${escapeHtml(roleLabel(message))}">
       ${roleIcon(message)}
@@ -1656,7 +1668,9 @@ function messageMetaTop(message, previousUserMessage) {
         ? new Date(message.timestamp).getTime() - new Date(previousUserMessage.timestamp).getTime()
         : 0);
     const duration = formatDuration(inferredDuration);
-    return duration ? `${t("processed")} ${duration}` : t("processed");
+    // Without a measurable duration a bare 「耗时」 is a dangling label; the date alone
+    // reads better than "耗时 · 10/25 20:52".
+    return duration ? `${t("processed")} ${duration}` : "";
   }
   if (message.role === "tool") return message.kind || t("tool");
   if (message.role === "interaction") return message.requiresDesktopAction ? t("interactionRequired") : message.kind || t("roleInteraction");
@@ -1950,6 +1964,7 @@ function renderMessages(data) {
   }
 
   let previousUserMessage = null;
+  let previousRole = null;
   const messageHtml = displayMessages
     .map((message) => {
       const isTool = message.role === "tool";
@@ -1979,13 +1994,22 @@ function renderMessages(data) {
       const metaTop = messageMetaTop(message, previousUserMessage);
       const metaBottom = formatMessageDate(message.completedAtMs || message.timestamp);
       const metaLine = [metaTop, metaBottom].filter(Boolean).join(" · ");
+      // Group consecutive messages from the same author: repeat the name only when the
+      // author actually changes, otherwise a run of answers is four times taller than it
+      // needs to be. The time/duration caption stays on every message.
+      const badge = roleBadge(message, message.role === previousRole);
+      const roleRow =
+        badge || metaLine
+          ? `<div class="role">${badge}${metaLine ? `<span class="role-meta">${escapeHtml(metaLine)}</span>` : ""}</div>`
+          : "";
       if (message.role === "user") previousUserMessage = message;
+      previousRole = message.role;
       const pendingClass = message.deliveryStatus && message.deliveryStatus !== "sent" ? " pending" : "";
       const pendingId = message.deliveryStatus ? ` data-pending-id="${escapeHtml(message.id || "")}"` : "";
       const branchAction = renderBranchAction(message);
       const messageArticle = `
         <article class="message ${escapeHtml(message.role)}${pendingClass}${hidden}"${pendingId} data-message-id="${escapeHtml(message.id || "")}" data-turn-id="${escapeHtml(message.turnId || "")}">
-          <div class="role">${roleBadge(message)}${metaLine ? `<span class="role-meta">${escapeHtml(metaLine)}</span>` : ""}</div>
+          ${roleRow}
           <div class="bubble">
             ${title}
             ${
@@ -2009,9 +2033,10 @@ function renderMessages(data) {
   const thinkingHtml = data.status?.thinking
     ? `
       <article class="message assistant thinking-message">
-        <div class="role">${roleBadge({ role: "assistant" })}</div>
+        <div class="role">${roleBadge({ role: "assistant" })}<span class="role-meta running-time">${escapeHtml(
+          runningTimeLabel(data.status, Date.now(), state.locale) || t("processing")
+        )}</span></div>
         <div class="bubble thinking-bubble">
-          <div class="message-meta message-meta-top running-time">${escapeHtml(runningTimeLabel(data.status, Date.now(), state.locale) || t("processing"))}</div>
           <p>${escapeHtml(t("thinking").replace("...", ""))}<span class="thinking-dots" aria-hidden="true"></span></p>
         </div>
       </article>
@@ -2105,7 +2130,7 @@ async function fetchJson(url, options = {}) {
 async function fetchThreads(url) {
   const cached = state.threadListCache?.url === url ? state.threadListCache : null;
   const headers = authHeaders(cached?.etag ? { "if-none-match": cached.etag } : {});
-  const response = await appFetch(url, { cache: "no-store", headers });
+  const response = await appFetch(url, { cache: "no-store", headers, signal: AbortSignal.timeout(THREADS_REQUEST_TIMEOUT_MS) });
   if (response.status === 304 && cached) return cached.data;
   const data = await readJsonBody(response);
   if (!response.ok) {
@@ -2691,7 +2716,7 @@ function applyQueueStatusResult(result) {
 }
 
 async function loadConfig() {
-  state.config = await fetchJson("/api/health");
+  state.config = await fetchJson("/api/health", { signal: AbortSignal.timeout(HEALTH_REQUEST_TIMEOUT_MS) });
   applyHomeContext(state.config);
   normalizeModelSettings();
   hideAuthGate();
@@ -2701,8 +2726,16 @@ async function loadConfig() {
 function applyHomeContext(data) {
   if (!data || data.codexHomeVersion == null) return false;
   const version = Number(data.codexHomeVersion);
-  const changed = state.codexHomeVersion != null && Number.isFinite(version) && version !== state.codexHomeVersion;
-  state.codexHome = data.codexHome || state.codexHome;
+  const nextHome = data.codexHome || state.codexHome;
+  // Only a *different* Codex home invalidates the open conversation. codexHomeVersion
+  // also bumps on every write while a turn runs, and resetting on that blanked the
+  // visible conversation to 「加载中」 a few seconds into every sync — the periodic
+  // thread sync reloads the list but not the messages, so the blank never resolved
+  // (this is what left the phone stuck on 加载中). The conversation cache key already
+  // carries the version, so a bump still invalidates stale cached messages without
+  // disturbing what is on screen.
+  const changed = state.codexHomeVersion != null && nextHome != null && nextHome !== state.codexHome;
+  state.codexHome = nextHome;
   state.codexHomeVersion = Number.isFinite(version) ? version : state.codexHomeVersion;
   if (!changed) return false;
   if (!hasActiveDraft()) clearDraftThread();
@@ -2722,7 +2755,7 @@ function applyHomeContext(data) {
   clearSelectedSkills();
   closePluginMentionMenu();
   closeSkillMentionMenu();
-  els.messageList.innerHTML = `<div class="empty-state">${escapeHtml(t("loading"))}</div>`;
+  els.messageList.innerHTML = `<div class="empty-state empty-state-loading">${escapeHtml(t("loading"))}</div>`;
   return true;
 }
 
@@ -3011,6 +3044,10 @@ function scheduleThreadSync(delayMs = syncDelay(THREAD_SYNC_INTERVAL_MS, state.t
   setTimeout(async () => {
     try {
       if (shouldSync()) await loadThreads();
+      // Switching to a different Codex home clears the open conversation. The thread
+      // sync on its own would leave that blank until the user tapped something, so
+      // reload it here.
+      if (shouldSync() && state.selectedId && !state.lastMessagesData) await loadMessages(true);
     } catch (error) {
       if (error.status === 401) handleUnauthorized(error);
       else noteSyncFailure("thread", THREAD_SYNC_INTERVAL_MS, THREAD_SYNC_BACKOFF_MAX_MS);
@@ -3256,7 +3293,7 @@ els.messageList.addEventListener("click", async (event) => {
     event.preventDefault();
     event.stopPropagation();
     loadRetry.disabled = true;
-    els.messageList.innerHTML = `<div class="empty-state">${escapeHtml(t("loading"))}</div>`;
+    els.messageList.innerHTML = `<div class="empty-state empty-state-loading">${escapeHtml(t("loading"))}</div>`;
     void refresh(true);
     return;
   }

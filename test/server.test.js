@@ -1420,6 +1420,31 @@ test("a stalled messages request cannot leave the list loading forever", () => {
   assert.equal((app.match(/requestTimedOut:/g) || []).length, 2, "both locales need the wording");
 });
 
+test("a running turn cannot blank the open conversation", () => {
+  const app = readFileSync(path.join(fileURLToPath(new URL("..", import.meta.url)), "public", "app.js"), "utf8");
+
+  // codexHomeVersion bumps on every write while a turn runs, so resetting the view on a
+  // version change blanked the open conversation to 「加载中」 a few seconds into every
+  // sync — and the thread sync reloads the list but not the messages, so it never came
+  // back. This is what left the phone stuck; the reset must key on the home path.
+  assert.match(app, /const changed = state\.codexHomeVersion != null && nextHome != null && nextHome !== state\.codexHome;/);
+  assert.ok(!/version !== state\.codexHomeVersion/.test(app), "a version bump must not reset the view");
+  // And a genuine home switch has to reload the messages it just cleared.
+  assert.match(app, /!state\.lastMessagesData\) await loadMessages\(true\)/);
+});
+
+test("a stalled first paint cannot leave the drawer on 加载中", () => {
+  const app = readFileSync(path.join(fileURLToPath(new URL("..", import.meta.url)), "public", "app.js"), "utf8");
+
+  // /api/health and /api/threads both gate the first paint, and only /messages was
+  // bounded. On the phone a stalled connection therefore parked the drawer on
+  // 「加载中」 forever: no error, no retry, no recovery.
+  assert.match(app, /const THREADS_REQUEST_TIMEOUT_MS = \d+;/);
+  assert.match(app, /const HEALTH_REQUEST_TIMEOUT_MS = \d+;/);
+  assert.match(app, /signal: AbortSignal\.timeout\(THREADS_REQUEST_TIMEOUT_MS\)/);
+  assert.match(app, /signal: AbortSignal\.timeout\(HEALTH_REQUEST_TIMEOUT_MS\)/);
+});
+
 test("the advertised app version comes from the build files, not a stale constant", () => {
   const root = fileURLToPath(new URL("..", import.meta.url));
   const pkg = JSON.parse(readFileSync(path.join(root, "package.json"), "utf8"));
