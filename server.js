@@ -20,6 +20,7 @@ import os from "node:os";
 import path from "node:path";
 import readline from "node:readline";
 import { fileURLToPath } from "node:url";
+import { zstdDecompress } from "node:zlib";
 import qrcode from "qrcode-terminal";
 import { createHttpBackend } from "./backends/http-backend.js";
 
@@ -2355,8 +2356,11 @@ async function latestRolloutPaths(limit = 8) {
 async function readLatestRateLimits() {
   const rolloutPaths = await latestRolloutPaths();
   for (const rolloutPath of rolloutPaths) {
-    if (!existsSync(rolloutPath)) continue;
-    const content = await fs.readFile(rolloutPath, "utf8");
+    const resolvedFile = resolveRolloutFile(rolloutPath);
+    if (!resolvedFile || !existsSync(resolvedFile.path)) continue;
+    const content = resolvedFile.path.endsWith(".zst")
+      ? (await readZstdRolloutLines(resolvedFile.path)).join("\n")
+      : await fs.readFile(resolvedFile.path, "utf8");
     const lines = content.split(/\r?\n/);
     for (let index = lines.length - 1; index >= 0; index -= 1) {
       const line = lines[index]?.trim();
@@ -2689,15 +2693,24 @@ async function parseThreadListStatus(rolloutPath, nowMs) {
   }
   return status;
 }
+/** Safe wrapper: resolve the logical rollout path, then fall back to its .zst sibling. */
+function safeResolveRolloutFile(rolloutPath, threadId = "") {
+  try {
+    return resolveRolloutFile(rolloutPath);
+  } catch (error) {
+    logRolloutIssue(threadId, error?.message || String(error));
+    return null;
+  }
+}
+
 async function threadListStatus(row) {
   const now = Date.now();
   const override = statusOverrideForThread(row?.id, row, now);
-  const rolloutPath = safeResolveRolloutPath(row?.rolloutPath, row?.id);
-  const hasRollout = Boolean(rolloutPath && existsSync(rolloutPath));
+  const resolved = safeResolveRolloutFile(row?.rolloutPath, row?.id);
   let parsed = null;
-  if (hasRollout) {
+  if (resolved) {
     try {
-      parsed = await parseThreadListStatus(rolloutPath, now);
+      parsed = await parseThreadListStatus(resolved.path, now);
     } catch (error) {
       logRolloutIssue(row?.id, error?.message || String(error));
     }
@@ -2780,9 +2793,11 @@ async function buildThreadDiagnostics() {
       continue;
     }
     try {
-      const resolved = resolveRolloutPath(rolloutPath);
-      if (!resolved || !existsSync(resolved)) {
-        missing.push({ id, rolloutPath, resolvedPath: resolved || null, reason: "not-found" });
+      // A .zst sibling means the transcript is present, just compressed — reporting it
+      // as "not-found" made the diagnostics lie about hundreds of healthy sessions.
+      const resolvedFile = resolveRolloutFile(rolloutPath);
+      if (!resolvedFile || !existsSync(resolvedFile.path)) {
+        missing.push({ id, rolloutPath, resolvedPath: resolvedFile?.path || null, reason: "not-found" });
       }
     } catch (error) {
       outsideHome.push({ id, rolloutPath, reason: error?.message || String(error) });
@@ -3032,6 +3047,21 @@ async function findThread(id) {
   };
 }
 
+/**
+ * Codex 会把旧会话压缩成 <name>.jsonl.zst，并把 threads.rollout_path 里的
+ * 日期目录一并扁平化到 sessions/ 下。两个变化合起来让 Turnloom 只认 .jsonl：
+ * 301 个会话里只有 7 个还有明文文件，257 个只剩 .zst，于是"查看对话"必然失败。
+ * 这里统一成"给一个逻辑路径，返回真正能读的文件"，并回报是否压缩。
+ */
+function resolveRolloutFile(rolloutPath) {
+  const resolved = resolveRolloutPath(rolloutPath);
+  if (!resolved) return null;
+  if (existsSync(resolved)) return { path: resolved, compressed: false };
+  const zst = `${resolved}.zst`;
+  if (!resolved.endsWith(".zst") && existsSync(zst)) return { path: zst, compressed: true };
+  return { path: resolved, compressed: false };
+}
+
 function resolveRolloutPath(rolloutPath) {
   if (!rolloutPath) return null;
   const { home } = codexPaths();
@@ -3066,6 +3096,7 @@ function resolveRolloutPath(rolloutPath) {
     }
     throw new Error("Rollout path is outside CODEX_HOME");
   }
+  return normalized;
   return normalized;
 }
 
@@ -4223,24 +4254,40 @@ async function parseRollout(filePath, { limit = DEFAULT_MESSAGE_LIMIT, preferTai
   const cachedAgeMs = nowMs - (cached?.cachedAtMs || 0);
   if (cached?.signature === signature && (!cached.result?.status?.thinking || cachedAgeMs < ACTIVE_STATUS_CACHE_MS)) return cached.result;
 
-  if (preferTail && stat.size > TAIL_ROLLOUT_MAX_BYTES) {
+  // Never take the byte-offset tail path for a compressed transcript: seeking into a
+  // .jsonl.zst reads raw deflate bytes, which is why every line failed to parse.
+  if (!filePath.endsWith(".zst") && preferTail && stat.size > TAIL_ROLLOUT_MAX_BYTES) {
     const result = await parseRolloutTail(filePath, stat, limit, nowMs);
     messageCache.set(filePath, { signature, result, cachedAtMs: nowMs });
     return result;
   }
 
   const state = createRolloutParseState(stat, nowMs);
-  const stream = createReadStream(filePath, { encoding: "utf8" });
-  const rl = readline.createInterface({ input: stream, crlfDelay: Infinity });
-
-  for await (const line of rl) {
-    parseRolloutLine(line, state);
+  // Codex compresses older sessions to <name>.jsonl.zst. Decompress once and feed the
+  // same line parser, so a compressed transcript behaves exactly like a plain one.
+  const lines = filePath.endsWith(".zst") ? await readZstdRolloutLines(filePath) : null;
+  if (lines) {
+    for (const line of lines) parseRolloutLine(line, state);
+  } else {
+    const stream = createReadStream(filePath, { encoding: "utf8" });
+    const rl = readline.createInterface({ input: stream, crlfDelay: Infinity });
+    for await (const line of rl) {
+      parseRolloutLine(line, state);
+    }
   }
 
   const result = rolloutResultFromState({ filePath, stat, nowMs, state, partial: false });
 
   messageCache.set(filePath, { signature, result, cachedAtMs: nowMs });
   return result;
+}
+
+async function readZstdRolloutLines(filePath) {
+  const compressed = await fs.readFile(filePath);
+  const raw = await new Promise((resolve, reject) => {
+    zstdDecompress(compressed, (error, out) => (error ? reject(error) : resolve(out)));
+  });
+  return raw.toString("utf8").split(/\r?\n/).filter((line) => line.trim());
 }
 
 async function getMessages(id, { limit = DEFAULT_MESSAGE_LIMIT, fullHistory = false, before = "" } = {}) {
@@ -4257,9 +4304,18 @@ async function getMessages(id, { limit = DEFAULT_MESSAGE_LIMIT, fullHistory = fa
   const goal = await getThreadGoalSafe(id);
   const serverNotices = getRecentNoticeMessages(id);
   const liveMessages = [...ipcInteractions, ...ipcNotices, ...serverNotices];
-  const rolloutPaths = await readSessionRolloutPathsForThread(id);
-  const rolloutPath = rolloutPaths.at(-1) || safeResolveRolloutPath(thread.rolloutPath, id);
-  if (!rolloutPath || !existsSync(rolloutPath)) {
+  const rawRolloutPaths = await readSessionRolloutPathsForThread(id);
+  // A compressed sibling (.jsonl.zst) counts as an available transcript; Codex moves
+  // older sessions there, and treating it as "missing" is what made 详情 fail.
+  const rolloutFiles = [];
+  for (const candidate of rawRolloutPaths) {
+    const resolved = safeResolveRolloutFile(candidate, id);
+    if (resolved && existsSync(resolved.path)) rolloutFiles.push(resolved.path);
+  }
+  const primaryFile = safeResolveRolloutFile(thread.rolloutPath, id);
+  if (!rolloutFiles.length && primaryFile && existsSync(primaryFile.path)) rolloutFiles.push(primaryFile.path);
+  const rolloutPath = rolloutFiles.at(-1) || null;
+  if (!rolloutPath) {
     const messages = await decorateMessageFiles(dedupeInteractionMessages(liveMessages).sort(messageSortCompare), id, thread);
     const baseStatus = {
       thinking: false,
@@ -4284,7 +4340,7 @@ async function getMessages(id, { limit = DEFAULT_MESSAGE_LIMIT, fullHistory = fa
     });
   }
   const parsedResults = await Promise.all(
-    rolloutPaths.map((filePath) => parseRollout(filePath, { limit, preferTail: !fullHistory }))
+    rolloutFiles.map((filePath) => parseRollout(filePath, { limit, preferTail: !fullHistory }))
   );
   const parsed = parsedResults.reduce(
     (merged, current) => ({
@@ -7392,6 +7448,9 @@ export {
   statusFieldsFromOverride,
   statusOverrideFromRow,
   safeResolveRolloutPath,
+  resolveRolloutFile,
+  parseRollout,
+  readZstdRolloutLines,
   adapterStatusOverrideFor,
   clearAdapterStatusOverride,
   setAdapterStatusOverride,
