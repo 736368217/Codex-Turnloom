@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.17.10 - 2026-10-29
+
+- 手机界面重新设计：固定浅色，白底阅读区搭配淡蓝色用户消息；统一文字、间距、圆角和状态颜色，减少助手回复的卡片边框。
+- 重排输入工具栏：模型名称随空间截断，插件、技能、图片、发送和停止入口保持可达；主要触控按钮至少为 44px，修复运行中停止按钮被挤出屏幕的问题。
+- 对话列表重新整理搜索、排序、项目分组和当前会话选中态；模型选择面板以输入区为锚点，避免窄屏越界。
+- 普通阅读视图收起 system/developer 记录，可通过工具详情开关查看；内容计数随可见记录更新，用户角色显示为「你」。
+- 登录与引导页装饰文案中文化，补充输入聚焦、按钮按下、禁用与减少动态效果状态。
+- 窄屏导航改按窗口宽度切换，防止软键盘压低可用高度后跳成桌面双栏；在 360×300、360×400 和 640×360 视口下复核发送按钮可见性。
+
 ## Unreleased
 
 - Images sent from the phone now actually reach the model. The bridge's `textFromTurnInput()` kept only `text` parts and silently dropped `image` parts, so the phone showed "sent" while the model received plain text (verified: the transcript had no image block at all). The host also refuses inline base64 — `preparePromptAttachments()` resolves `attachment.path` inside `<dataRoot>/scratch/<sessionId>` and threw `Cannot access … 'trim'` for the first attempt — so images are now staged to disk first and passed by path. End-to-end proof on the phone: asked "图片里的大块颜色是什么" about a blue test square and the model answered 蓝色.
