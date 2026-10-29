@@ -1329,7 +1329,21 @@ html { color-scheme: light; }
 #shell .message-branch-button { min-height: 44px; padding: 0 var(--s-3); font-size: var(--t-12); border-radius: var(--r-sm); }
 #shell .scroll-to-bottom-button { width: 44px; height: 44px; }
 #shell .empty-state { width: 100%; color: var(--c-ink-3); }
-#shell .empty-state:not(.empty-state-error)::before { content: ""; display: block; width: 48px; height: 48px; margin: 0 auto var(--s-5); background: url('/assets/companion-mark.svg') center / contain no-repeat; }
+/* A transient load is not an empty conversation: no logo, just a quiet spinner. */
+#shell .empty-state-loading { display: flex; flex-direction: column; align-items: center; gap: var(--s-3); }
+#shell .empty-state-loading::before {
+  content: "";
+  width: 20px; height: 20px;
+  border: 2px solid var(--c-line-strong);
+  border-top-color: var(--c-accent);
+  border-radius: 50%;
+  animation: tl-spin 0.85s linear infinite;
+}
+@keyframes tl-spin { to { transform: rotate(360deg); } }
+/* The empty state is the only child of a scroll container, so centre it instead of
+   leaving it parked against the header with a screen of dead space underneath. */
+#shell .message-list:has(> .empty-state) { display: grid; place-items: center; }
+#shell .empty-state:not(.empty-state-error):not(.empty-state-loading)::before { content: ""; display: block; width: 48px; height: 48px; margin: 0 auto var(--s-5); background: url('/assets/companion-mark.svg') center / contain no-repeat; }
 
 /* Composer: flexible model name, fixed touch targets, one reliable toolbar row. */
 #shell .composer { border-top: 0; background: var(--c-surface); padding: var(--s-2) var(--s-3) max(var(--s-3), env(safe-area-inset-bottom)); }
@@ -1339,8 +1353,8 @@ html { color-scheme: light; }
 #shell .composer-actions { gap: var(--s-1); }
 #shell .composer-left { flex: 1 1 0; min-width: 0; gap: var(--s-1); }
 #shell .model-widget { flex: 1 1 0; min-width: 0; gap: 0; }
-#shell .model-summary { flex: 1 1 0; min-width: 44px; max-width: 240px; min-height: 44px; padding: 0 var(--s-2); border: 0; border-radius: var(--r-sm); background: transparent; gap: var(--s-1); }
-#shell .model-summary::after { content: ""; flex: 0 0 auto; width: 6px; height: 6px; border-right: 1.5px solid currentColor; border-bottom: 1.5px solid currentColor; transform: translateY(-2px) rotate(45deg); margin: 0 var(--s-1); }
+#shell .model-summary { flex: 1 1 0; min-width: 44px; max-width: 240px; min-height: 44px; padding: 0 var(--s-1); border: 0; border-radius: var(--r-sm); background: transparent; gap: 2px; }
+#shell .model-summary::after { content: ""; flex: 0 0 auto; width: 6px; height: 6px; border-right: 1.5px solid currentColor; border-bottom: 1.5px solid currentColor; transform: translateY(-2px) rotate(45deg); margin: 0 2px; }
 #shell .model-summary.expanded { color: var(--c-accent); background: var(--c-accent-soft); }
 #shell .model-name { font-size: var(--t-12); }
 #shell .model-effort { font-size: var(--t-11); border: 0; padding: 2px var(--s-1); }
@@ -1356,10 +1370,10 @@ html { color-scheme: light; }
 #shell .send-button:disabled { background: var(--c-line); color: var(--c-ink-3); }
 #shell .stop-button { background: var(--c-bad-soft); color: var(--c-bad); border: 0; }
 #shell .send-status { white-space: normal; line-height: 1.5; color: var(--c-bad); }
-#shell .follow-up-mode { height: auto; min-height: 48px; width: 100%; padding: 2px; gap: 2px; background: var(--c-surface-3); border: 0; border-radius: var(--r-md); }
+#shell .follow-up-mode { height: auto; min-height: 44px; width: auto; max-width: 100%; align-self: flex-start; padding: 3px; gap: 2px; background: var(--c-surface-3); border: 0; border-radius: var(--r-pill); }
 #shell .follow-up-label { padding: 0 var(--s-2); align-self: center; color: var(--c-ink-3); }
-#shell .follow-up-mode-buttons { display: flex; flex: 1; min-width: 0; gap: 2px; }
-#shell .follow-up-mode-button { flex: 1; min-height: 44px; height: auto; padding: 0 var(--s-2); font-size: var(--t-12); line-height: 1.4; border: 0; border-radius: var(--r-sm); }
+#shell .follow-up-mode-buttons { display: flex; flex: 0 1 auto; min-width: 0; gap: 2px; }
+#shell .follow-up-mode-button { flex: 0 1 auto; min-height: 38px; height: 38px; padding: 0 var(--s-3); font-size: var(--t-12); line-height: 1.4; border: 0; border-radius: var(--r-pill); }
 #shell .follow-up-mode-button.selected { background: var(--c-surface); color: var(--c-accent-press); box-shadow: var(--e-1); }
 #shell .queue-clear-button,
 #shell .queue-status-actions button { min-height: 44px; min-width: 44px; }
@@ -1429,4 +1443,29 @@ html { color-scheme: light; }
   #shell.sidebar-collapsed .drawer-overlay { opacity: 0; pointer-events: none; }
   #shell .conversation-header > .drawer-tab { display: grid; }
   #shell .composer-input { max-height: min(144px, 24dvh); }
+}
+
+/* The legacy sheet drew a washed-out 3px halo (rgba(0,102,204,0.28)) on the primary
+   dialog buttons. Around a solid blue button that read as a muddy double border, so
+   use the design system's ring instead. */
+.welcome-footer button:focus-visible,
+.auth-button:focus-visible,
+.empty-state-retry:focus-visible {
+  outline: 2px solid var(--c-accent);
+  outline-offset: 3px;
+}
+/* The guide dialog takes focus itself on open so the primary button does not paint a
+   ring before the user has done anything. */
+.welcome-card:focus { outline: none; }
+
+/* Narrow phones cannot show a full model name next to six 44px controls: at 360dp the
+   name had ~72px and "deepseek-v4.1-flash" needs ~121px, so it clipped mid-word to
+   "deepseek-v4.1-…". Below 420px put the left cluster on its own row and the action
+   buttons underneath, which gives the name room to breathe. */
+@media (max-width: 420px) {
+  #shell .composer-actions { flex-wrap: wrap; row-gap: var(--s-1); }
+  #shell .composer-left { flex: 1 1 100%; }
+  #shell .composer-buttons { flex: 1 1 auto; justify-content: flex-end; }
+  #shell .model-summary { max-width: none; }
+  #shell .composer-input { min-height: 40px; }
 }
