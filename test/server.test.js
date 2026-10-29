@@ -27,6 +27,7 @@ import {
   statusFieldsFromOverride,
   overrideNeedsRolloutCorroboration,
   overrideLacksCorroboration,
+  readPackagedAppVersion,
   threadStatusCandidates,
   readZstdRolloutLines,
   parseRollout,
@@ -1417,4 +1418,21 @@ test("a stalled messages request cannot leave the list loading forever", () => {
   // A timeout must read as a timeout, not as "the computer is unreachable".
   assert.match(app, /error\?\.name === "TimeoutError"/);
   assert.equal((app.match(/requestTimedOut:/g) || []).length, 2, "both locales need the wording");
+});
+
+test("the advertised app version comes from the build files, not a stale constant", () => {
+  const root = fileURLToPath(new URL("..", import.meta.url));
+  const pkg = JSON.parse(readFileSync(path.join(root, "package.json"), "utf8"));
+  const gradle = readFileSync(path.join(root, "android", "app", "build.gradle.kts"), "utf8");
+  const gradleCode = Number(/versionCode\s*=\s*(\d+)/.exec(gradle)?.[1]);
+
+  const version = readPackagedAppVersion();
+  assert.equal(version.name, pkg.version, "health must advertise the packaged version");
+  assert.equal(version.code, gradleCode, "versionCode must match the Android build file");
+  assert.ok(version.code > 0 && version.name.length > 0);
+
+  // The old hardcoded pair must be gone; a stale constant silently breaks the update dialog.
+  const server = readFileSync(path.join(root, "server.js"), "utf8");
+  assert.ok(!/const APP_VERSION_CODE = 24;/.test(server));
+  assert.ok(!/const APP_VERSION_NAME = "1\.17\.3";/.test(server));
 });

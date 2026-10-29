@@ -341,8 +341,36 @@ const PUBLIC_DIR = path.join(__dirname, "public");
 const APK_PATH = process.env.CODEX_POCKET_APK_PATH
   ? path.resolve(process.env.CODEX_POCKET_APK_PATH)
   : path.join(PUBLIC_DIR, "downloads", "Codex-Turnloom.apk");
-const APP_VERSION_CODE = 24;
-const APP_VERSION_NAME = "1.17.3";
+/**
+ * The packaged app's version, read from the real build files instead of being
+ * hardcoded here: a stale constant made /api/health advertise 1.17.3 (24) forever, so
+ * the phone's update dialog kept offering an "update" to a version that did not exist.
+ * Env overrides win for CI or an externally built APK.
+ */
+function readPackagedAppVersion() {
+  const fallback = { code: 0, name: "" };
+  let name = String(process.env.CODEX_POCKET_APP_VERSION_NAME || "").trim();
+  let code = Number(process.env.CODEX_POCKET_APP_VERSION_CODE) || 0;
+  if (!name) {
+    try {
+      name = String(JSON.parse(readFileSync(path.join(__dirname, "package.json"), "utf8")).version || "").trim();
+    } catch {
+      /* keep the fallback */
+    }
+  }
+  if (!code) {
+    try {
+      const gradle = readFileSync(path.join(__dirname, "android", "app", "build.gradle.kts"), "utf8");
+      code = Number(/versionCode\s*=\s*(\d+)/.exec(gradle)?.[1]) || 0;
+    } catch {
+      /* keep the fallback */
+    }
+  }
+  return name && code ? { code, name } : fallback;
+}
+const PACKAGED_APP_VERSION = readPackagedAppVersion();
+const APP_VERSION_CODE = PACKAGED_APP_VERSION.code;
+const APP_VERSION_NAME = PACKAGED_APP_VERSION.name || "0.0.0";
 
 /** ISO timestamp of the staged APK, so the phone can show "安装包时间". */
 function apkUpdatedAtIso() {
@@ -7436,6 +7464,7 @@ export {
   stripHiddenMessageLocalAssets,
   isSubagentThread,
   threadListMetadata,
+  readPackagedAppVersion,
   visibleThreadRows,
   loginUrlFor,
   loginUrlForProfile,
