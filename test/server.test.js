@@ -1419,6 +1419,21 @@ test("a .jsonl.zst transcript is decompressed and parsed like a plain one", asyn
       "a compressed transcript must not produce parse errors",
     );
   } finally {
+
+test("the design layer neutralises legacy chrome that broke the phone layout", () => {
+  const v3 = readFileSync(path.join(fileURLToPath(new URL("..", import.meta.url)), "public", "styles.v3.css"), "utf8");
+  const html = readFileSync(path.join(fileURLToPath(new URL("..", import.meta.url)), "public", "index.html"), "utf8");
+
+  // The legacy sheet painted a filled box behind the animated thinking dots, so the
+  // phone showed a solid amber rectangle after 「思考中」.
+  assert.match(v3, /\.thinking-dots::after\s*\{[^}]*background:\s*none/);
+  // .composer is a grid, so align-self never moved the queue control; auto margins
+  // centred it. justify-self plus margin:0 pins it to the composer's left edge.
+  assert.match(v3, /\.follow-up-mode\s*\{[^}]*justify-self:\s*start/);
+  assert.match(v3, /\.follow-up-mode\s*\{[^}]*margin:\s*0;/);
+  // An empty composer reserved two lines of height.
+  assert.match(html, /id="composerInput"[\s\S]{0,80}rows="1"/);
+});
     rmSync(dir, { recursive: true, force: true });
   }
 });
