@@ -1370,7 +1370,7 @@ html { color-scheme: light; }
 #shell .send-button:disabled { background: var(--c-line); color: var(--c-ink-3); }
 #shell .stop-button { background: var(--c-bad-soft); color: var(--c-bad); border: 0; }
 #shell .send-status { white-space: normal; line-height: 1.5; color: var(--c-bad); }
-#shell .follow-up-mode { height: auto; min-height: 44px; width: auto; max-width: 100%; align-self: flex-start; padding: 3px; gap: 2px; background: var(--c-surface-3); border: 0; border-radius: var(--r-pill); }
+#shell .follow-up-mode { height: auto; min-height: 44px; width: auto; max-width: 100%; justify-self: start; margin: 0; padding: 3px; gap: 2px; background: var(--c-surface-3); border: 0; border-radius: var(--r-pill); }
 #shell .follow-up-label { padding: 0 var(--s-2); align-self: center; color: var(--c-ink-3); }
 #shell .follow-up-mode-buttons { display: flex; flex: 0 1 auto; min-width: 0; gap: 2px; }
 #shell .follow-up-mode-button { flex: 0 1 auto; min-height: 38px; height: 38px; padding: 0 var(--s-3); font-size: var(--t-12); line-height: 1.4; border: 0; border-radius: var(--r-pill); }
@@ -1468,4 +1468,13 @@ html { color-scheme: light; }
   #shell .composer-buttons { flex: 1 1 auto; justify-content: flex-end; }
   #shell .model-summary { max-width: none; }
   #shell .composer-input { min-height: 40px; }
+}
+
+/* The legacy sheet painted a filled box behind the animated dots
+   (`.thinking-dots::after { background: var(--running) }`), so 「思考中」 was followed
+   by a solid amber rectangle instead of dots — the text colour inherited grey while
+   the background covered the whole 1.5em box. Keep the width animation, drop the fill. */
+#shell .thinking-dots::after {
+  background: none;
+  color: var(--c-ink-3);
 }
