@@ -1,9 +1,10 @@
 import assert from "node:assert/strict";
-import { mkdtempSync, readFileSync, rmSync, symlinkSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
+import { zstdCompressSync } from "node:zlib";
 
 import { messageScrollMode, nextMessageLimit, reconcilePendingMessages, retainedScrollTop, shouldHydrateConversationCache } from "../public/history.js";
 import { isConversationCacheFresh } from "../public/conversation-cache.js";
@@ -27,6 +28,8 @@ import {
   overrideNeedsRolloutCorroboration,
   overrideLacksCorroboration,
   threadStatusCandidates,
+  readZstdRolloutLines,
+  parseRollout,
   createRolloutParseState,
   contextCompactionMessage,
   planMessage,
@@ -1366,4 +1369,40 @@ test("a new conversation does not offer image attachments", () => {
   assert.match(server, /消息过长，请拆分成多条发送/);
   assert.match(server, /新对话还不能直接带图片/);
   assert.ok(!/new Error\("Message is too long"\)/.test(server));
+});
+
+test("a .jsonl.zst transcript is decompressed and parsed like a plain one", async () => {
+  const dir = mkdtempSync(path.join(os.tmpdir(), "turnloom-zst-"));
+  try {
+    const lines = [
+      JSON.stringify({ timestamp: "2026-07-28T00:00:00.000Z", type: "session_meta", payload: { id: "zst-thread", cwd: "" } }),
+      JSON.stringify({ timestamp: "2026-07-28T00:00:01.000Z", type: "event_msg", payload: { type: "user_message", message: "hello from a compressed transcript" } }),
+      JSON.stringify({ timestamp: "2026-07-28T00:00:02.000Z", type: "event_msg", payload: { type: "agent_message", message: "and the answer" } }),
+    ];
+    const plain = path.join(dir, "rollout-plain.jsonl");
+    const compressed = `${plain}.zst`;
+    const body = lines.join("\n") + "\n";
+    writeFileSync(plain, body, "utf8");
+    writeFileSync(compressed, zstdCompressSync(Buffer.from(body, "utf8")));
+
+    const decoded = await readZstdRolloutLines(compressed);
+    assert.equal(decoded.length, 3);
+    assert.match(decoded[1], /hello from a compressed transcript/);
+
+    // The compressed file must parse through the same path as the plain one, and must
+    // never be read with byte offsets (that produced parse errors on every line).
+    const fromPlain = await parseRollout(plain, { limit: 10 });
+    const fromZst = await parseRollout(compressed, { limit: 10, preferTail: true });
+    assert.equal(fromZst.messages.length, fromPlain.messages.length);
+    assert.deepEqual(
+      fromZst.messages.map((m) => m.content),
+      fromPlain.messages.map((m) => m.content),
+    );
+    assert.ok(
+      !fromZst.messages.some((m) => m.kind === "parse_error"),
+      "a compressed transcript must not produce parse errors",
+    );
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
 });

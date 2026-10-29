@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Compressed transcripts are now readable. Codex rotates older sessions to `<name>.jsonl.zst`, and the server only looked for `.jsonl`, so on this machine just 7 of 301 sessions had a readable transcript — opening any other conversation failed. `resolveRolloutFile()` falls back to the `.zst` sibling, `readZstdRolloutLines()` decompresses it, and the byte-offset tail path is skipped for compressed files (seeking into a `.zst` produced a parse error on every line). Measured on the live database: rollout issues fell from 294 to 34, and a `.zst`-only conversation now returns 200 with 26 messages (3788 total) and zero parse errors. The remaining 34 are files Codex itself has deleted; no reader can recover them.
+
 - A new conversation no longer offers the image picker: the first message of a conversation has to be text, so tapping `+` led straight to a rejected send with an English 409. The button is now disabled in a draft with a Chinese hint, and the send-side rejections a user can reach (`消息过长`, the new-conversation-with-images case) are Chinese too.
 
 - The conversation status window no longer hides a running turn: status costs one rollout parse per row, so it is computed for the newest 120 conversations — a running conversation older than that reported `状态未知`. Rows that are (or claim to be) running are now always included, whatever their position.
