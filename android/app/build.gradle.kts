@@ -1,4 +1,4 @@
-﻿plugins {
+plugins {
     id("com.android.application")
 }
 
@@ -10,8 +10,8 @@ android {
         applicationId = "com.codexpocket.mobile"
         minSdk = 23
         targetSdk = 35
-        versionCode = 32
-        versionName = "1.17.11"
+        versionCode = 33
+        versionName = "1.17.12"
     }
 
     buildTypes {

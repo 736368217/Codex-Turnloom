@@ -5,6 +5,8 @@ import android.app.DownloadManager;
 import android.app.NotificationManager;
 import android.app.PendingIntent;
 import android.content.BroadcastReceiver;
+import android.content.ClipData;
+import android.content.ClipboardManager;
 import android.content.Context;
 import android.content.DialogInterface;
 import android.content.Intent;
@@ -1312,6 +1314,15 @@ public class MainActivity extends ComponentActivity {
         @JavascriptInterface
         public void kickReminderCheck() {
             ReminderScheduler.kick(MainActivity.this);
+        }
+
+        @JavascriptInterface
+        public void copyText(String text) {
+            if (text == null || text.isEmpty()) return;
+            runOnUiThread(() -> {
+                ClipboardManager manager = (ClipboardManager) getSystemService(CLIPBOARD_SERVICE);
+                if (manager != null) manager.setPrimaryClip(ClipData.newPlainText("Codex-Turnloom", text));
+            });
         }
 
         @JavascriptInterface

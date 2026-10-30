@@ -1326,7 +1326,19 @@ html { color-scheme: light; }
 #shell .bubble table { display: block; max-width: 100%; overflow-x: auto; }
 #shell .message-file-icon { font-size: var(--t-11); }
 #shell .message-file-copy small { font-size: var(--t-12); }
-#shell .message-branch-button { min-height: 44px; padding: 0 var(--s-3); font-size: var(--t-12); border-radius: var(--r-sm); }
+/* Copy sits beside branch on the same row; both are thumb-sized. */
+#shell .message-branch-button,
+#shell .message-copy-button { min-height: 44px; margin-top: var(--s-3); padding: 0 var(--s-3); font-size: var(--t-12); border-radius: var(--r-sm); }
+#shell .message-copy-button {
+  display: inline-flex;
+  align-items: center;
+  margin-left: var(--s-2);
+  border: 1px solid var(--c-line);
+  background: var(--c-surface-2);
+  color: var(--c-ink-2);
+  cursor: pointer;
+}
+#shell .message-copy-button:active { background: var(--c-surface-3); color: var(--c-ink); }
 #shell .scroll-to-bottom-button { width: 44px; height: 44px; }
 #shell .empty-state { width: 100%; color: var(--c-ink-3); }
 /* A transient load is not an empty conversation: no logo, just a quiet spinner. */
