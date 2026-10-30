@@ -1420,6 +1420,21 @@ test("a .jsonl.zst transcript is decompressed and parsed like a plain one", asyn
     );
   } finally {
 
+test("messages offer one-tap copy with a WebView-safe clipboard path", () => {
+  const app = readFileSync(path.join(fileURLToPath(new URL("..", import.meta.url)), "public", "app.js"), "utf8");
+
+  assert.match(app, /class="message-copy-button" data-copy-index=/);
+  assert.match(app, /event\.target\.closest\("\[data-copy-index\]"\)/);
+  // The workspace is served over plain http on a LAN address, so it is not a secure
+  // context and navigator.clipboard is unavailable; execCommand is the fallback.
+  assert.match(app, /document\.execCommand\("copy"\)/);
+  assert.match(app, /navigator\.clipboard\?\.writeText/);
+  // The Android shell exposes a native clipboard writer that needs neither a secure
+  // context nor a trusted gesture; it is preferred when present.
+  assert.match(app, /window\.CodexPocket\?\.copyText/);
+  assert.equal((app.match(/copyMessage:/g) || []).length, 2, "both locales need the label");
+});
+
 test("an autostart duplicate never raises the console window", () => {
   const main = readFileSync(path.join(fileURLToPath(new URL("..", import.meta.url)), "desktop", "main.cjs"), "utf8");
 
