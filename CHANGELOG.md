@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.17.12 - 2026-10-30
+
+- 消息**一键复制**：手机上复制一段回答原本只能长按选择文本（WebView 里容易误触）。复制按钮与「从此处分支」同排、44px 高，走三层兜底——Android 原生剪贴板（`CodexPocket.copyText`，不依赖安全上下文与用户手势）→ `navigator.clipboard` → `document.execCommand("copy")`。网页侧实测 41 条消息渲染出 38 个复制按钮（仅 user/assistant）；真机剪贴板写入待复验。
+- PI 桥接层返回的消息**没有 id**（`data-message-id=""`），而 `renderBranchAction()` 依赖 id，所以既有的「从此处分支」在 PI 会话里**从来不出现**。复制按钮改为按渲染下标定位，不再依赖 id；分支按钮的同一问题记入能力审查待办。
+- **控制台开机自启不再弹窗**：`second-instance` 原先无条件 `showWindow()`，而应用有**两个自启入口**（计划任务 + 注册表 Run 键，`applyLoginItem()` 从不清理后者）。现在带 `--hidden` 的重复启动不再抬窗，且计划任务存在时清理遗留 Run 键。已重新打包，实测全部控制台进程 `MainWindowHandle = 0`、Run 键已清除。
+
 ## 1.17.11 - 2026-10-29
 - 真机复查（360dp）后修掉三处遗留观感问题：「思考中」后面跟着一个实心橙色方块（遗留样式给动画点盒填了 `background: var(--running)`，已置为 `background: none`）；空输入框按两行高度占位（`rows="2"` → `rows="1"`）；排队/插入控件居中悬浮（`.composer` 实际是 grid，`align-self` 无效且被自动外边距居中，改用 `justify-self: start` + `margin: 0`，实测与输入框左边缘同为 x=372）。
 - 修复 `styles.v3.css` 拿不到缓存失效指纹：服务端按 `"/styles.v3.css"` 精确匹配后追加 `?v=mtime-size`，而我在该 link 上写死了 `?v=1.17.10`，导致正则（排除 `?`）跳过它，样式被永久钉在同一个 URL 上，之后每次改样式都可能被浏览器/WebView 缓存挡住。现已改为裸引用，服务端正常加戳（`?v=mvtbpcne-v9e`）；并补测试要求 index.html 里的本地 css/js 引用一律不带查询串。

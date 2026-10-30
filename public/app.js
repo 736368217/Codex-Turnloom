@@ -310,6 +310,9 @@ const I18N = {
     threadLinkCopied: "已复制对话深度链接",
     threadLinkCopyFailed: "复制深度链接失败：{message}",
     branchFromHere: "从这里创建分支",
+    copyMessage: "复制",
+    copiedMessage: "已复制到剪贴板",
+    copyFailed: "复制失败，请长按选择文本",
     branchCreated: "分支已创建",
     branchFailed: "创建分支失败：{message}",
     messageQueued: "排队中",
@@ -507,6 +510,9 @@ const I18N = {
     threadLinkCopied: "Conversation deep link copied",
     threadLinkCopyFailed: "Could not copy deep link: {message}",
     branchFromHere: "Create branch from here",
+    copyMessage: "Copy",
+    copiedMessage: "Copied to clipboard",
+    copyFailed: "Copy failed — long-press to select the text",
     branchCreated: "Branch created",
     branchFailed: "Could not create branch: {message}",
     messageQueued: "Queued",
@@ -1965,8 +1971,11 @@ function renderMessages(data) {
 
   let previousUserMessage = null;
   let previousRole = null;
+  // Messages coming from the PI bridge carry no id, so the copy affordance is keyed by
+  // render index instead of id (the branch button silently never appeared for them).
+  state.displayMessages = displayMessages;
   const messageHtml = displayMessages
-    .map((message) => {
+    .map((message, index) => {
       const isTool = message.role === "tool";
       const isInteraction = message.role === "interaction";
       const isNotice = message.role === "notice";
@@ -2022,7 +2031,7 @@ function renderMessages(data) {
             ${!noticeCollapsed ? renderMessageImages(message) : ""}
             ${!noticeCollapsed ? renderMessageFiles(message) : ""}
             ${renderApprovalActions(message)}
-            ${branchAction}
+            ${branchAction}${renderCopyAction(message, index)}
             ${pendingDeliveryHtml(message)}
           </div>
         </article>
@@ -2049,6 +2058,63 @@ function renderMessages(data) {
 function renderBranchAction(message) {
   if (!message?.id || message.deliveryStatus || !["user", "assistant"].includes(message.role)) return "";
   return `<button type="button" class="message-branch-button" data-branch-message-id="${escapeHtml(message.id)}" data-branch-turn-id="${escapeHtml(message.turnId || "")}">${escapeHtml(t("branchFromHere"))}</button>`;
+}
+
+// Copying text out of a WebView normally means a fiddly long-press; one tap is the point.
+function renderCopyAction(message, index) {
+  if (message.deliveryStatus || !["user", "assistant"].includes(message.role)) return "";
+  if (!String(message.content || "").trim()) return "";
+  return `<button type="button" class="message-copy-button" data-copy-index="${index}" aria-label="${escapeHtml(
+    t("copyMessage")
+  )}">${escapeHtml(t("copyMessage"))}</button>`;
+}
+
+async function writeClipboard(text) {
+  // Inside the Android shell, the native writer is the only path that does not depend on
+  // a secure context or a trusted gesture, so prefer it.
+  try {
+    if (window.CodexPocket?.copyText) {
+      window.CodexPocket.copyText(text);
+      return true;
+    }
+  } catch {
+    // fall through
+  }
+  try {
+    if (navigator.clipboard?.writeText) {
+      await navigator.clipboard.writeText(text);
+      return true;
+    }
+  } catch {
+    // fall through to the execCommand path
+  }
+  // The workspace is served over plain http on a LAN address, so it is not a secure
+  // context and navigator.clipboard is unavailable inside the WebView.
+  try {
+    const area = document.createElement("textarea");
+    area.value = text;
+    area.setAttribute("readonly", "");
+    area.style.position = "fixed";
+    area.style.top = "-1000px";
+    document.body.appendChild(area);
+    area.select();
+    const ok = document.execCommand("copy");
+    document.body.removeChild(area);
+    return ok;
+  } catch {
+    return false;
+  }
+}
+
+async function copyMessageText(index, article) {
+  const source = (state.displayMessages || [])[Number(index)];
+  const text = String(source?.content || article?.querySelector(".bubble")?.innerText || "").trim();
+  if (!text) return;
+  const ok = await writeClipboard(text);
+  els.sendStatus.textContent = ok ? t("copiedMessage") : t("copyFailed");
+  window.setTimeout(() => {
+    if (els.sendStatus.textContent === t("copiedMessage")) els.sendStatus.textContent = "";
+  }, 2000);
 }
 
 window.setInterval(() => {
@@ -3295,6 +3361,13 @@ els.messageList.addEventListener("click", async (event) => {
     loadRetry.disabled = true;
     els.messageList.innerHTML = `<div class="empty-state empty-state-loading">${escapeHtml(t("loading"))}</div>`;
     void refresh(true);
+    return;
+  }
+  const copyButton = event.target.closest("[data-copy-index]");
+  if (copyButton) {
+    event.preventDefault();
+    event.stopPropagation();
+    await copyMessageText(copyButton.dataset.copyIndex || "", copyButton.closest("article"));
     return;
   }
   const branchButton = event.target.closest("[data-branch-message-id]");
