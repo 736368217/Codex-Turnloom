@@ -56,9 +56,11 @@
 `public/app.js` 里声明了 `state.account`、`accountExpanded`，但全仓搜索没有任何赋值处，也没有对应的 DOM 元素；`/api/account` 虽然存在却没有界面使用。
 建议：在抽屉页脚或标题区显示当前账号与剩余额度（Rate limit），这对移动端很实用。
 
-### 4 缺少「复制消息」
+### 4（已修复，1.17.12）缺少「复制消息」
 
-手机上要复制一段回答只能长按选择文本，WebView 里容易误触。IM 惯例是一键复制。建议在消息悬停/长按菜单加「复制」。
+原先手机上要复制一段回答只能长按选择文本，WebView 里容易误触。现已加一键复制：按钮与「从此处分支」同排、44px 高，三层兜底（Android 原生 `CodexPocket.copyText` → `navigator.clipboard` → `document.execCommand`）。网页侧实测 41 条消息渲染 38 个按钮；**真机剪贴板写入尚未复验**（见"验证边界"）。
+
+顺带发现：PI 桥接层返回的消息没有 id（`data-message-id=""`），而 `renderBranchAction()` 依赖 id，所以「从此处分支」在 **PI 会话里从来不出现**。复制按钮已改为按下标定位，避免同类问题；分支按钮的同一缺陷仍待处理。
 
 ### 5 会话内搜索缺失
 
