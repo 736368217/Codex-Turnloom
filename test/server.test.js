@@ -1420,6 +1420,20 @@ test("a .jsonl.zst transcript is decompressed and parsed like a plain one", asyn
     );
   } finally {
 
+test("an autostart duplicate never raises the console window", () => {
+  const main = readFileSync(path.join(fileURLToPath(new URL("..", import.meta.url)), "desktop", "main.cjs"), "utf8");
+
+  // Both autostart entries launch with --hidden. The one that loses the single-instance
+  // race must not call showWindow, otherwise the console pops up at every logon.
+  const handler = /app\.on\("second-instance",[\s\S]{0,400}?\n  \}\);/.exec(main)?.[0] || "";
+  assert.match(handler, /--hidden/, "the second-instance handler must inspect the launch args");
+  const guardIndex = handler.indexOf("--hidden");
+  const showIndex = handler.indexOf("showWindow(");
+  assert.ok(guardIndex !== -1 && showIndex !== -1 && guardIndex < showIndex, "the --hidden guard must run before showWindow");
+  // The scheduled task is the single source of autostart; a leftover Run entry is cleared.
+  assert.match(main, /app\.setLoginItemSettings\(\{ openAtLogin: false, path: process\.execPath, args: \[\] \}\)/);
+});
+
 test("the design layer neutralises legacy chrome that broke the phone layout", () => {
   const v3 = readFileSync(path.join(fileURLToPath(new URL("..", import.meta.url)), "public", "styles.v3.css"), "utf8");
   const html = readFileSync(path.join(fileURLToPath(new URL("..", import.meta.url)), "public", "index.html"), "utf8");
