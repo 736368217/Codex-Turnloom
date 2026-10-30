@@ -62,7 +62,12 @@ app.setAppUserModelId(APP_ID);
 if (!app.requestSingleInstanceLock()) {
   app.quit();
 } else {
-  app.on("second-instance", () => {
+  // An autostart duplicate must never raise the window. Two autostart entries (the
+  // scheduled task and a leftover Run key) both launch with --hidden at logon; the one
+  // that loses the single-instance race used to pop the console in the user's face.
+  app.on("second-instance", (_event, argv) => {
+    const raised = Array.isArray(argv) ? argv : [];
+    if (raised.includes("--hidden") || raised.includes("--start-minimized")) return;
     showWindow("overview");
   });
   registerIpc();
@@ -480,6 +485,12 @@ function applyLoginItem(config) {
         execFileSync("schtasks.exe", ["/Delete", "/TN", "Codex-Turnloom Console", "/F"], { stdio: "ignore", windowsHide: true });
       } catch {}
     }
+    // The scheduled task is the single source of autostart. Clear any Run entry left
+    // behind by an older build that predates the task, otherwise the app is started
+    // twice at logon and the duplicate launch raises the window.
+    try {
+      app.setLoginItemSettings({ openAtLogin: false, path: process.execPath, args: [] });
+    } catch {}
     return;
   }
   try {
