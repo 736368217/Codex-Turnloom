@@ -27,25 +27,34 @@ test("thread search filters the grouped main-task collection", () => {
   assert.deepEqual(groups[0].threads.map((thread) => thread.id), ["two"]);
 });
 
-test("ordinary conversations share the ungrouped section even when they have different working folders", () => {
+test("conversations without a project are filed by their working folder", () => {
   const groups = groupedVisibleThreads([
     { id: "one", title: "Alpha", cwd: "C:\\work\\one", project: null },
     { id: "two", title: "Beta", cwd: "C:\\work\\two", project: null },
-    { id: "three", title: "Gamma", project: { key: "project:three", name: "Project Three" } }
+    { id: "three", title: "Gamma", project: { key: "project:three", name: "Project Three" } },
+    { id: "loose", title: "Delta", project: null }
   ]);
 
-  assert.deepEqual(groups.map((group) => group.label), ["Project Three", "其他对话"]);
-  assert.equal(groups[1].ungrouped, true);
-  assert.deepEqual(groups[1].threads.map((thread) => thread.id), ["one", "two"]);
+  const labels = groups.map((group) => group.label);
+  const one = groups.find((group) => group.label === "one");
+  const two = groups.find((group) => group.label === "two");
+  assert.deepEqual(one.threads.map((thread) => thread.id), ["one"]);
+  assert.deepEqual(two.threads.map((thread) => thread.id), ["two"]);
+  assert.equal(one.ungrouped, false);
+  // 既没有项目也没有工作目录的会话仍然有归宿，并排在最后，真实文件夹留在顶部。
+  assert.equal(labels[labels.length - 1], "其他对话");
+  const ungrouped = groups[groups.length - 1];
+  assert.equal(ungrouped.ungrouped, true);
+  assert.deepEqual(ungrouped.threads.map((thread) => thread.id), ["loose"]);
 });
 
-test("mobile grouping preserves Desktop project names from server metadata", () => {
+test("mobile grouping preserves Desktop project names and lists folders by name", () => {
   const groups = groupedVisibleThreads([
     { id: "fast", title: "Fast", project: { key: "project:fast", name: "fast监控" } },
     { id: "pocket", title: "Pocket", project: { key: "project:pocket", name: "codex poket" } },
     { id: "plain", title: "Plain", project: null }
   ]);
-  assert.deepEqual(groups.map((group) => group.label), ["fast监控", "codex poket", "其他对话"]);
+  assert.deepEqual(groups.map((group) => group.label), ["codex poket", "fast监控", "其他对话"]);
 });
 
 test("project sorting puts other conversations last and recent sorting uses updated time", () => {
