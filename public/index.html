@@ -64,14 +64,13 @@
             <span id="newThreadLabel">新对话</span>
           </button>
         </div>
-        <label class="thread-sort-control">
-          <span>排序</span>
-          <select id="threadSortMode" aria-label="对话排序">
-            <option value="project">按项目</option>
-            <option value="folder">按文件夹</option>
-            <option value="recent">按最近</option>
-          </select>
-        </label>
+        <div class="thread-sort-control" role="group" aria-label="对话排序">
+          <span class="thread-sort-label">排序</span>
+          <div class="thread-sort-segments">
+            <button type="button" class="thread-sort-segment active" data-thread-sort="project" aria-pressed="true">按项目</button>
+            <button type="button" class="thread-sort-segment" data-thread-sort="recent" aria-pressed="false">按最近</button>
+          </div>
+        </div>
         <div id="threadList" class="thread-list" aria-label="对话列表"></div>
         <div class="sidebar-footer">
           <button id="guideButton" class="guide-button" type="button">
@@ -172,7 +171,14 @@
               <button class="follow-up-mode-button active" type="button" data-follow-up-mode="queue">排队（完成后发）</button>
               <button class="follow-up-mode-button" type="button" data-follow-up-mode="steer">插入（立即打断）</button>
             </div>
+            <button id="stopButton" class="icon-button stop-button" type="button" title="停止当前任务" aria-label="停止当前任务" hidden>
+              <span aria-hidden="true"></span>
+            </button>
           </div>
+          <label id="draftProjectRow" class="draft-project-row" hidden>
+            <span class="draft-project-label">项目</span>
+            <select id="draftProjectSelect" class="draft-project-select" aria-label="选择项目（文件夹）"></select>
+          </label>
           <div class="composer-pod">
           <textarea
             id="composerInput"
@@ -199,6 +205,15 @@
           <div id="attachmentTray" class="attachment-tray" hidden></div>
           <div class="composer-actions">
             <div class="composer-left">
+              <button id="attachButton" class="icon-button attach-button" type="button" title="添加图片" aria-label="添加图片">
+                <svg class="attach-icon" viewBox="0 0 24 24" aria-hidden="true">
+                  <path d="M21.4 11.05 12.2 20.25a5.5 5.5 0 0 1-7.78-7.78l8.49-8.48a3.67 3.67 0 0 1 5.19 5.19l-8.49 8.48a1.83 1.83 0 0 1-2.59-2.59l7.78-7.77"></path>
+                </svg>
+              </button>
+              <div id="imagePickerMenu" class="image-picker-menu" role="menu" hidden>
+                <button id="pickPhotoButton" type="button" role="menuitem">相册</button>
+                <button id="pickFileButton" type="button" role="menuitem">文件浏览</button>
+              </div>
               <div class="model-widget">
                 <button
                   id="modelSummary"
@@ -229,50 +244,56 @@
                     <select id="effortSelect"></select>
                   </label>
                 </div>
-                <button
-                  id="pluginPickerButton"
-                  class="plugin-picker-button"
-                  type="button"
-                  title="引用插件"
-                  aria-label="引用插件"
-                  aria-expanded="false"
-                >
-                  <span class="plugin-picker-dots" aria-hidden="true">
-                    <span></span>
-                    <span></span>
-                    <span></span>
-                    <span></span>
-                  </span>
-                  <span class="plugin-picker-label">插件</span>
-                </button>
-                <button
-                  id="skillPickerButton"
-                  class="plugin-picker-button skill-picker-button"
-                  type="button"
-                  title="引用技能"
-                  aria-label="引用技能"
-                  aria-expanded="false"
-                >
-                  <span class="skill-picker-icon" aria-hidden="true">/</span>
-                  <span class="plugin-picker-label">技能</span>
-                </button>
+              </div>
+              <button
+                id="pluginPickerButton"
+                class="plugin-picker-button mention-source"
+                type="button"
+                title="引用插件"
+                aria-label="引用插件"
+                aria-expanded="false"
+              >
+                <span class="plugin-picker-dots" aria-hidden="true">
+                  <span></span>
+                  <span></span>
+                  <span></span>
+                  <span></span>
+                </span>
+                <span class="plugin-picker-label">插件</span>
+              </button>
+              <button
+                id="skillPickerButton"
+                class="plugin-picker-button skill-picker-button mention-source"
+                type="button"
+                title="引用技能"
+                aria-label="引用技能"
+                aria-expanded="false"
+              >
+                <span class="skill-picker-icon" aria-hidden="true">/</span>
+                <span class="plugin-picker-label">技能</span>
+              </button>
+              <button
+                id="mentionButton"
+                class="plugin-picker-button mention-button"
+                type="button"
+                title="引用插件或技能"
+                aria-label="引用插件或技能"
+                aria-expanded="false"
+              >
+                <span class="mention-glyph" aria-hidden="true">@</span>
+              </button>
+              <div id="mentionMenu" class="mention-menu" role="menu" hidden>
+                <button id="mentionPluginItem" type="button" role="menuitem">插件</button>
+                <button id="mentionSkillItem" type="button" role="menuitem">技能</button>
               </div>
             </div>
             <div class="composer-buttons">
-              <button id="attachButton" class="icon-button attach-button" type="button" title="添加图片" aria-label="添加图片">+</button>
-              <div id="imagePickerMenu" class="image-picker-menu" role="menu" hidden>
-                <button id="pickPhotoButton" type="button" role="menuitem">相册</button>
-                <button id="pickFileButton" type="button" role="menuitem">文件浏览</button>
-              </div>
               <button id="sendButton" class="send-button" type="submit" title="发送" aria-label="发送">
                 <svg class="send-icon" viewBox="0 0 24 24" aria-hidden="true">
                   <path d="M12 19V5"></path>
                   <path d="m6 11 6-6 6 6"></path>
                 </svg>
                 <span class="send-stop-icon" aria-hidden="true"></span>
-              </button>
-              <button id="stopButton" class="icon-button stop-button" type="button" title="停止当前任务" aria-label="停止当前任务" hidden>
-                <span aria-hidden="true"></span>
               </button>
             </div>
           </div>

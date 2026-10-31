@@ -15,7 +15,10 @@ const state = {
   expandedNotices: {},
   sidebarCollapsed: false,
   modelFilter: "",
-    threadSortMode: (() => { const saved = safeStorageGet(localStorage, "codex-thread-sort-mode"); return saved === "recent" || saved === "folder" ? saved : "project"; })(),
+    threadSortMode: (() => { const saved = safeStorageGet(localStorage, "codex-thread-sort-mode"); return saved === "recent" ? "recent" : "project"; })(),
+  /** Projects (folders) a new conversation can be filed into, and the remembered choice. */
+  projects: [],
+  draftProjectId: safeStorageGet(localStorage, "codex-draft-project") || "",
   collapsedThreadGroups: JSON.parse(safeStorageGet(localStorage, "codex-collapsed-thread-groups") || "{}"),
   messageRequestSeq: 0,
   activeMessageRequest: null,
@@ -92,7 +95,9 @@ const els = {
   shell: document.querySelector("#shell"),
   threadCount: document.querySelector("#threadCount"),
   threadList: document.querySelector("#threadList"),
-  threadSortMode: document.querySelector("#threadSortMode"),
+  draftProjectRow: document.querySelector("#draftProjectRow"),
+  draftProjectSelect: document.querySelector("#draftProjectSelect"),
+  threadSortSegments: document.querySelector(".thread-sort-segments"),
   threadContextMenu: document.querySelector("#threadContextMenu"),
   threadContextTitle: document.querySelector("#threadContextTitle"),
   threadPinAction: document.querySelector("#threadPinAction"),
@@ -163,6 +168,10 @@ const els = {
   effortSelectLabel: document.querySelector("#effortSelectLabel"),
   pluginPickerButton: document.querySelector("#pluginPickerButton"),
   skillPickerButton: document.querySelector("#skillPickerButton"),
+  mentionButton: document.querySelector("#mentionButton"),
+  mentionMenu: document.querySelector("#mentionMenu"),
+  mentionPluginItem: document.querySelector("#mentionPluginItem"),
+  mentionSkillItem: document.querySelector("#mentionSkillItem"),
   guideButton: document.querySelector("#guideButton"),
   guideButtonLabel: document.querySelector("#guideButtonLabel"),
   privacyNote: document.querySelector("#privacyNote"),
@@ -339,6 +348,9 @@ const I18N = {
     skillPickerTitle: "引用技能",
     skillPickerLoading: "正在加载技能...",
     skillPickerEmpty: "没有找到匹配技能",
+    mentionTitle: "引用插件或技能",
+    mentionPlugin: "插件",
+    mentionSkill: "技能",
     goalLabel: "目标",
     goalDetail: "目标详情",
     goalBack: "返回",
@@ -539,6 +551,9 @@ const I18N = {
     skillPickerTitle: "Mention skill",
     skillPickerLoading: "Loading skills...",
     skillPickerEmpty: "No matching skills",
+    mentionTitle: "Mention a plugin or skill",
+    mentionPlugin: "Plugin",
+    mentionSkill: "Skill",
     goalLabel: "Goal",
     goalDetail: "Goal details",
     goalBack: "Back",
@@ -609,6 +624,7 @@ function hasActiveDraft() {
 function clearDraftThread() {
   state.draftThread = null;
   state.draftStartedAt = 0;
+  syncDraftProjectRow();
 }
 
 function t(key, values = {}) {
@@ -655,6 +671,12 @@ function applyStaticText() {
   els.pluginPickerButton.setAttribute("aria-label", t("pluginPickerTitle"));
   els.skillPickerButton.setAttribute("title", t("skillPickerTitle"));
   els.skillPickerButton.setAttribute("aria-label", t("skillPickerTitle"));
+  if (els.mentionButton) {
+    els.mentionButton.setAttribute("title", t("mentionTitle"));
+    els.mentionButton.setAttribute("aria-label", t("mentionTitle"));
+  }
+  if (els.mentionPluginItem) els.mentionPluginItem.textContent = t("mentionPlugin");
+  if (els.mentionSkillItem) els.mentionSkillItem.textContent = t("mentionSkill");
   els.attachButton.setAttribute("title", t("addImage"));
   els.attachButton.setAttribute("aria-label", t("addImage"));
   els.pickPhotoButton.textContent = t("pickPhoto");
@@ -1534,16 +1556,30 @@ function renderThreads() {
   els.threadList.innerHTML = `${draft}${groups.map((group) => `
     <section class="thread-group${group.ungrouped ? " thread-group-ungrouped" : ""}${state.collapsedThreadGroups[group.key] ? " is-collapsed" : ""}" data-group-key="${escapeHtml(group.key)}">
       <button type="button" class="thread-group-title" data-thread-group-toggle="${escapeHtml(group.key)}" aria-expanded="${String(!state.collapsedThreadGroups[group.key])}">
-        <span>${escapeHtml(group.label)}</span><span class="thread-group-chevron" aria-hidden="true">⌄</span>
+        <span>${escapeHtml(group.label)}</span><span class="thread-group-count">${group.threads.length}</span><span class="thread-group-chevron" aria-hidden="true">⌄</span>
       </button>
       <div class="thread-group-items">${group.threads.map(renderThread).join("")}</div>
     </section>
   `).join("")}`;
+  syncThreadSortSegments();
+}
+function syncThreadSortSegments() {
+  const buttons = els.threadSortSegments?.querySelectorAll("[data-thread-sort]") || [];
+  for (const button of buttons) {
+    const active = button.dataset.threadSort === state.threadSortMode;
+    button.classList.toggle("active", active);
+    button.setAttribute("aria-pressed", String(active));
+  }
 }
 
-els.threadSortMode?.addEventListener("change", () => {
-  state.threadSortMode = ["recent", "folder"].includes(els.threadSortMode.value) ? els.threadSortMode.value : "project";
-  safeStorageSet(localStorage, "codex-thread-sort-mode", state.threadSortMode);
+els.threadSortSegments?.addEventListener("click", (event) => {
+  const button = event.target.closest("[data-thread-sort]");
+  if (!button) return;
+  const next = button.dataset.threadSort === "recent" ? "recent" : "project";
+  if (next === state.threadSortMode) return;
+  state.threadSortMode = next;
+  safeStorageSet(localStorage, "codex-thread-sort-mode", next);
+  syncThreadSortSegments();
   renderThreads();
 });
 
@@ -2286,6 +2322,54 @@ async function postJson(url, body, options = {}) {
   return data;
 }
 
+async function getJson(url) {
+  const response = await appFetch(url, { headers: authHeaders() });
+  const data = await readJsonBody(response);
+  if (!response.ok) {
+    const error = new Error(data.error || response.statusText);
+    error.status = response.status;
+    handleUnauthorized(error);
+    throw error;
+  }
+  return data;
+}
+
+/**
+ * Projects (= folders) a new conversation can be filed into.
+ *
+ * Same list the server uses to validate the choice, so the picker can never
+ * offer something the host would reject. The remembered project is restored so
+ * filing consecutive conversations into the same folder stays one tap.
+ */
+async function loadProjects() {
+  try {
+    const data = await getJson("/api/projects");
+    state.projects = Array.isArray(data?.projects) ? data.projects : [];
+  } catch {
+    state.projects = [];
+  }
+  renderDraftProjectPicker();
+}
+
+function renderDraftProjectPicker() {
+  const select = els.draftProjectSelect;
+  if (!select) return;
+  const known = new Set(state.projects.map((project) => project.id));
+  if (state.draftProjectId && !known.has(state.draftProjectId)) state.draftProjectId = "";
+  const options = ['<option value="">不指定项目</option>'];
+  for (const project of state.projects) {
+    const label = project.threadCount ? `${project.name} · ${project.threadCount}` : project.name;
+    options.push(`<option value="${escapeHtml(project.id)}">${escapeHtml(label)}</option>`);
+  }
+  select.innerHTML = options.join("");
+  select.value = state.draftProjectId || "";
+}
+
+function syncDraftProjectRow() {
+  const visible = Boolean(state.draftThread) && state.projects.length > 0;
+  if (els.draftProjectRow) els.draftProjectRow.hidden = !visible;
+}
+
 function pluginMentionMatch() {
   const input = els.composerInput;
   const cursor = input.selectionStart ?? 0;
@@ -2707,6 +2791,7 @@ function renderComposerMode() {
   els.attachButton.setAttribute("aria-label", t(draftThread ? "attachNeedsText" : "addImage"));
   els.pluginPickerButton.disabled = !allowWrite || state.composerBusy || !hasTarget;
   els.skillPickerButton.disabled = !allowWrite || state.composerBusy || !hasTarget;
+  if (els.mentionButton) els.mentionButton.disabled = els.pluginPickerButton.disabled;
   els.sendButton.disabled = !canSend;
   els.sendButton.classList.remove("stop-mode");
   els.sendButton.setAttribute("aria-label", t("send"));
@@ -3251,8 +3336,16 @@ els.newThreadButton.addEventListener("click", () => {
   renderThreads();
   renderCurrentMessages(true);
   renderComposerMode();
+  renderDraftProjectPicker();
+  syncDraftProjectRow();
   closeSidebarOnCompact();
   if (shouldRefocusComposer()) els.composerInput.focus();
+});
+
+// Filing into a folder is a per-draft decision, remembered for the next one.
+els.draftProjectSelect?.addEventListener("change", () => {
+  state.draftProjectId = els.draftProjectSelect.value || "";
+  safeStorageSet(localStorage, "codex-draft-project", state.draftProjectId);
 });
 
 els.refreshButton.addEventListener("click", () => refresh(true, { preserveScrollPosition: true }));
@@ -3505,6 +3598,43 @@ els.skillPickerButton.addEventListener("click", () => {
   openSkillPickerMenu();
 });
 
+// 手机输入区只留一个「@」入口：插件与技能在这里二选一（这两个按钮在窄屏被移到
+// 屏幕外，程序化点击仍然走原来的打开逻辑），省下的 44px 留给模型名。
+function closeMentionMenu() {
+  if (!els.mentionMenu) return;
+  els.mentionMenu.hidden = true;
+  els.mentionButton?.setAttribute("aria-expanded", "false");
+}
+
+function toggleMentionMenu() {
+  if (!els.mentionMenu) return;
+  const nextOpen = els.mentionMenu.hidden;
+  if (nextOpen) closeModelPanel();
+  els.mentionMenu.hidden = !nextOpen;
+  els.mentionButton?.setAttribute("aria-expanded", String(nextOpen));
+}
+
+els.mentionButton?.addEventListener("click", (event) => {
+  event.preventDefault();
+  event.stopPropagation();
+  if (els.mentionButton.disabled) return;
+  toggleMentionMenu();
+});
+
+els.mentionPluginItem?.addEventListener("click", (event) => {
+  event.preventDefault();
+  event.stopPropagation();
+  closeMentionMenu();
+  els.pluginPickerButton.click();
+});
+
+els.mentionSkillItem?.addEventListener("click", (event) => {
+  event.preventDefault();
+  event.stopPropagation();
+  closeMentionMenu();
+  els.skillPickerButton.click();
+});
+
 document.addEventListener("click", (event) => {
   if (!els.threadContextMenu.hidden && !els.threadContextMenu.contains(event.target)) closeThreadContextMenu();
   if (els.goalContextMenu && !els.goalContextMenu.hidden && !els.goalContextMenu.contains(event.target) && !els.goalPanel.contains(event.target)) els.goalContextMenu.hidden = true;
@@ -3526,6 +3656,14 @@ document.addEventListener("click", (event) => {
     !els.skillPickerButton.contains(event.target)
   ) {
     closeSkillMentionMenu();
+  }
+  if (
+    els.mentionMenu &&
+    !els.mentionMenu.hidden &&
+    !els.mentionMenu.contains(event.target) &&
+    !els.mentionButton.contains(event.target)
+  ) {
+    closeMentionMenu();
   }
   if (
     !els.imagePickerMenu.hidden &&
@@ -3785,6 +3923,7 @@ els.composerForm.addEventListener("submit", async (event) => {
       mode: sendMode,
       model: state.model,
       effort: state.effort,
+      ...(isDraftThread && state.draftProjectId ? { projectId: state.draftProjectId } : {}),
       clientRequestId,
       images: images.map(({ name, mimeType, data }) => ({ name, mimeType, data }))
     });
@@ -4021,6 +4160,9 @@ function maybeOpenWelcomeGuide() {
 
 async function bootstrap() {
   await refresh(true);
+  // The project list only matters once the user starts a new conversation, but
+  // loading it here keeps the picker instant when they do.
+  void loadProjects();
   maybeOpenWelcomeGuide();
   scheduleThreadSync();
   scheduleMessageSync();

@@ -44,23 +44,30 @@ export function groupedVisibleThreads(threads, { query = "", pinnedLabel = "ч╜ощ
     return [...groups, ...ordered];
   }
 
+  // A folder and a project are the same thing here: a conversation is filed
+  // under its project, and one that has no project yet falls back to the last
+  // segment of its working directory so the list never loses its buckets.
   const projectGroups = new Map();
   for (const thread of visible) {
     if (thread.pinned) continue;
-    const key = thread.project?.key || "other";
+    const projectKey = thread.project?.key;
+    const label = thread.project?.name || folderLabel(thread, ungroupedLabel);
+    const key = projectKey || `folder:${label.toLowerCase()}`;
     if (!projectGroups.has(key)) {
       projectGroups.set(key, {
         key,
-        label: thread.project?.name || ungroupedLabel,
-        ungrouped: key === "other",
+        label,
+        ungrouped: !projectKey && label === ungroupedLabel,
         threads: []
       });
     }
     projectGroups.get(key).threads.push(thread);
   }
-  const ungrouped = projectGroups.get("other");
-  if (ungrouped) projectGroups.delete("other");
-  return [...groups, ...projectGroups.values(), ...(ungrouped ? [ungrouped] : [])];
+  const ordered = [...projectGroups.values()].sort((a, b) => {
+    if (a.ungrouped !== b.ungrouped) return a.ungrouped ? 1 : -1;
+    return a.label.localeCompare(b.label, "zh-Hans-CN");
+  });
+  return [...groups, ...ordered];
 }
 
 function folderLabel(thread, fallback) {
