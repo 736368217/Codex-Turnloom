@@ -1490,3 +1490,167 @@ html { color-scheme: light; }
   background: none;
   color: var(--c-ink-3);
 }
+
+/* ══════════════════════════════════════════════════════════════════════════
+   手机可用性补丁（2026-10-31）
+   · 排序：一行一个小下拉 → 两个 44px 分段按钮，点哪儿都是大目标
+   · 新建对话：多一行「项目（= 文件夹）」选择，默认沿用上次
+   · 分组标题带条数，超宽视口约束内容宽度，避免桌面式拉伸
+   ══════════════════════════════════════════════════════════════════════════ */
+
+#shell .thread-sort-control {
+  display: flex;
+  align-items: center;
+  gap: var(--s-3);
+  padding: 0 var(--s-4) var(--s-3);
+}
+
+#shell .thread-sort-label {
+  flex: 0 0 auto;
+  font-size: var(--t-12);
+  color: var(--c-ink-3);
+}
+
+#shell .thread-sort-segments {
+  display: flex;
+  flex: 1 1 auto;
+  gap: var(--s-1);
+  padding: var(--s-1);
+  border-radius: var(--r-pill);
+  background: var(--c-surface-3);
+}
+
+#shell .thread-sort-segment {
+  flex: 1 1 0;
+  min-width: 0;
+  min-height: 44px;
+  padding: 0 var(--s-3);
+  border: 0;
+  border-radius: var(--r-pill);
+  background: transparent;
+  color: var(--c-ink-2);
+  font-family: inherit;
+  font-size: var(--t-13);
+  font-weight: 600;
+  cursor: pointer;
+}
+
+#shell .thread-sort-segment.active {
+  background: var(--c-surface);
+  color: var(--c-ink);
+  box-shadow: var(--e-1);
+}
+
+/* 新对话：保证 44px 高，文字不被挤压 */
+#shell .new-thread-button {
+  flex: 0 0 auto;
+  min-height: 44px;
+  gap: var(--s-1);
+  padding: 0 var(--s-3);
+  white-space: nowrap;
+  font-size: var(--t-13);
+}
+
+/* 项目选择行：只在新建对话草稿态出现 */
+#shell .draft-project-row {
+  display: flex;
+  align-items: center;
+  gap: var(--s-3);
+  margin: 0 var(--s-4) var(--s-3);
+}
+
+#shell .draft-project-row[hidden] {
+  display: none;
+}
+
+#shell .draft-project-label {
+  flex: 0 0 auto;
+  font-size: var(--t-12);
+  color: var(--c-ink-3);
+}
+
+#shell .draft-project-select {
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 44px;
+  padding: 0 var(--s-3);
+  border: 1px solid var(--c-line);
+  border-radius: var(--r-md);
+  background: var(--c-surface);
+  color: var(--c-ink);
+  font-family: inherit;
+  font-size: var(--t-13);
+}
+
+#shell .thread-group-title {
+  min-height: 44px;
+}
+
+#shell .thread-group-count {
+  margin-left: auto;
+  padding: 0 var(--s-2);
+  border-radius: var(--r-pill);
+  background: var(--c-surface-3);
+  color: var(--c-ink-3);
+  font-size: var(--t-11);
+  font-weight: 600;
+  line-height: 18px;
+}
+
+/* 超宽视口（平板 / 模拟器 / 桌面窗口）：别把手机界面拉满一整屏 */
+@media (min-width: 1180px) {
+  #shell .conversation {
+    width: 100%;
+    max-width: 960px;
+    margin-inline: auto;
+  }
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
+   手机输入区重塑（2026-11-01）
+   · 三行 → 两行：附件在左、模型名可伸可缩、发送在右；运行态的「停止」并入
+     上方的排队/插入条 —— 两者描述的都是同一个进行中的任务，不该再占一行
+   · 附件图标由「+」（读起来像"新增"）改为回形针，插件/技能保留图标但补
+     title/aria-label；模型名超宽时省略号收尾，完整名称在 title 里
+   ══════════════════════════════════════════════════════════════════════════ */
+#shell .composer-actions { display: flex; align-items: center; flex-wrap: nowrap; gap: var(--s-1); row-gap: 0; }
+#shell .composer-left { display: flex; align-items: center; flex: 1 1 auto; min-width: 0; gap: 2px; }
+#shell .model-widget { display: flex; flex: 1 1 auto; min-width: 0; }
+#shell .model-summary { flex: 1 1 auto; min-width: 0; max-width: none; justify-content: flex-start; overflow: hidden; }
+#shell .model-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#shell .composer-buttons { display: flex; flex: 0 0 auto; align-items: center; }
+#shell .attach-button svg.attach-icon { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
+/* 附件按钮移到输入框左侧后，菜单跟着锚到左边，避免从右侧飘出来 */
+#shell .image-picker-menu { right: auto; left: 0; }
+
+/* 运行态：停止按钮跟在排队/插入后面，靠右 */
+#shell .follow-up-mode { display: flex; align-items: center; flex-wrap: wrap; gap: var(--s-2); }
+#shell .follow-up-mode[hidden] { display: none; }
+#shell .follow-up-mode .stop-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 44px;
+  width: 44px;
+  height: 44px;
+  min-width: 44px;
+  min-height: 44px;
+  margin-left: auto;
+  padding: 0;
+  border-radius: var(--r-sm);
+}
+
+/* 320dp 级别的窄屏：模型名放不下就不硬塞，只留思考强度与下拉箭头，
+   完整名称在点开的模型面板里；这样任何宽度都是两行，不再出现半空的一行。 */
+@media (max-width: 339px) {
+  #shell .model-name { display: none; }
+}
+
+/* 引用入口合并：插件/技能原按钮移出可视区（程序化点击仍然可用），
+   输入区只留一个「@」按钮，省下的宽度全部给模型名。 */
+#shell .mention-source { display: none; }
+#shell .mention-glyph { font-size: var(--t-15); font-weight: 700; line-height: 1; }
+#shell .mention-menu { position: absolute; left: var(--s-3); bottom: calc(100% + 8px); z-index: 40; display: grid; gap: 2px; min-width: 148px; padding: var(--s-2); border: 1px solid var(--c-line); border-radius: var(--r-md); background: var(--c-surface); box-shadow: var(--e-2); }
+#shell .mention-menu[hidden] { display: none; }
+#shell .mention-menu button { min-height: 48px; padding: 0 var(--s-3); border: 0; border-radius: var(--r-sm); background: transparent; color: var(--c-ink); font-family: inherit; font-size: var(--t-15); text-align: left; cursor: pointer; }
+#shell .mention-menu button:hover { background: var(--c-surface-3); }

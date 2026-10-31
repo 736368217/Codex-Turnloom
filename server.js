@@ -2073,9 +2073,12 @@ class DesktopCodexIpcClient {
     );
   }
 
-  async startConversation(text, images = [], turnSettings = {}) {
+  async startConversation(text, images = [], turnSettings = {}, project = null) {
     await this.ensureReady();
     const { model, effort } = normalizeTurnSettings(turnSettings);
+    // The host files a session into a project by its root path, so the project
+    // root doubles as the working directory for the new conversation.
+    const cwd = project?.root || process.cwd();
     const input = [];
     if (text) input.push({ type: "text", text, text_elements: [] });
     for (const image of images) {
@@ -2090,8 +2093,9 @@ class DesktopCodexIpcClient {
         hostId: "local",
         input,
         attachments: [],
-        cwd: process.cwd(),
-        workspaceRoots: [process.cwd()],
+        cwd,
+        workspaceRoots: [cwd],
+        ...(project ? { projectPath: project.root, projectId: project.id, projectName: project.name } : {}),
         model,
         effort,
         collaborationMode: null,
@@ -2680,6 +2684,48 @@ async function readGlobalProjectState() {
   } catch {
     return { byThread: new Map() };
   }
+}
+
+/**
+ * Projects the phone can file a new conversation into.
+ *
+ * The bridge mirrors PI-Desktop's projects into the facade state db, so the
+ * projects table is the single source of truth here — no second schema. Each
+ * entry keeps the first root path, because that is what the host needs as
+ * `projectPath` when it creates a session.
+ */
+async function readProjectList() {
+  try {
+    const rows = await runSqlJson(`
+      SELECT projects.id AS id, projects.name AS name, projects.position AS position,
+             (SELECT project_roots.path FROM project_roots
+               WHERE project_roots.project_id = projects.id
+               ORDER BY project_roots.position ASC LIMIT 1) AS root,
+             (SELECT COUNT(*) FROM threads
+               WHERE threads.project_id = projects.id AND COALESCE(threads.archived, 0) = 0) AS threadCount
+      FROM projects
+      ORDER BY projects.position ASC, projects.name ASC;
+    `);
+    return rows
+      .map((row) => ({
+        id: String(row.id || "").trim(),
+        name: String(row.name || "").trim(),
+        root: normalizedProjectPath(row.root),
+        threadCount: Number(row.threadCount) || 0
+      }))
+      .filter((p) => p.id && p.name);
+  } catch {
+    return [];
+  }
+}
+
+/** Resolve a client-supplied project reference against the known list only. */
+function pickKnownProject(projects, { projectId, projectPath }) {
+  const id = String(projectId || "").trim();
+  if (id) return projects.find((p) => p.id === id) || null;
+  const wanted = normalizedProjectPath(projectPath).toLowerCase();
+  if (!wanted) return null;
+  return projects.find((p) => p.root && p.root.toLowerCase() === wanted) || null;
 }
 
 async function parseThreadListStatus(rolloutPath, nowMs) {
@@ -5470,7 +5516,7 @@ function webpDimensions(bytes) {
   return null;
 }
 
-async function sendToCodex(text, threadId, images = [], { newThread = false, mode = "start", model, effort } = {}) {
+async function sendToCodex(text, threadId, images = [], { newThread = false, mode = "start", model, effort, project = null } = {}) {
   const homeState = await refreshCodexHomeContext({ source: "send" });
   const modelConfiguration = await loadCodexModelConfiguration(homeState.home);
   if (!ALLOW_WRITE) {
@@ -5504,7 +5550,7 @@ async function sendToCodex(text, threadId, images = [], { newThread = false, mod
       err.status = 409;
       throw err;
     }
-    const result = await startNewCodexThread(trimmed, turnSettings);
+    const result = await startNewCodexThread(trimmed, turnSettings, project);
     if (result.threadId) {
       await notifyCodexDesktopThreadCreated(result.threadId);
       rememberStartedThread({
@@ -5514,10 +5560,13 @@ async function sendToCodex(text, threadId, images = [], { newThread = false, mod
         updatedAtMs: Date.now(),
         archived: false,
         preview: trimmed.slice(0, 120),
-        cwd: "",
+        cwd: project?.root || "",
         model: turnSettings.model || "",
         rolloutPath: "",
-        source: "desktop-ipc"
+        source: "desktop-ipc",
+        // Show the new conversation in its folder right away instead of only
+        // after the next facade sync.
+        ...(project ? { project: { key: `project:${project.id}`, id: project.id, name: project.name, native: true } } : {})
       });
     }
     return {
@@ -5848,9 +5897,9 @@ function turnIdFromStartConversation(response) {
   return firstString(result?.turn?.id, result?.turnId, result?.turn_id, response?.turnId, response?.turn_id);
 }
 
-async function startNewCodexThread(text, turnSettings) {
+async function startNewCodexThread(text, turnSettings, project = null) {
   try {
-    const response = await getCodexIpcClient().startConversation(text, [], turnSettings);
+    const response = await getCodexIpcClient().startConversation(text, [], turnSettings, project);
     const threadId = conversationIdFromStartConversation(response);
     if (!threadId) throw new Error(`Codex Desktop did not return a conversation id. ${compact(response, 1200)}`);
     return {
@@ -7106,12 +7155,26 @@ const server = http.createServer(async (req, res) => {
     if (req.method === "POST" && url.pathname === "/api/send") {
       if (!requireAuthorized(req, res, url)) return;
       const body = await readJsonBody(req, MAX_SEND_BODY_BYTES);
+      // A new conversation may be filed into one of the known projects. Resolve
+      // it against the server-side list so a client cannot hand the host an
+      // arbitrary path; an unknown reference is refused instead of being
+      // silently created outside every project.
+      let project = null;
+      if (body.newThread && (body.projectId || body.projectPath)) {
+        const projects = await readProjectList();
+        project = pickKnownProject(projects, { projectId: body.projectId, projectPath: body.projectPath });
+        if (!project) {
+          sendJson(res, 400, { error: "Unknown project for the new conversation. Refresh the project list and try again." });
+          return;
+        }
+      }
       const result = await runIdempotentSend(body.clientRequestId, sendRequestFingerprint(body), () =>
         sendToCodex(body.message, body.threadId, body.images, {
           newThread: Boolean(body.newThread),
           mode: body.mode,
           model: body.model,
-          effort: body.effort
+          effort: body.effort,
+          project
         })
       );
       sendJson(res, 200, result);
@@ -7199,6 +7262,12 @@ const server = http.createServer(async (req, res) => {
         return;
       }
       sendJson(res, 200, body, { etag, "cache-control": "private, no-cache" });
+      return;
+    }
+    if (req.method === "GET" && url.pathname === "/api/projects") {
+      if (!requireAuthorized(req, res, url)) return;
+      const projects = await readProjectList();
+      sendJson(res, 200, { projects }, { "cache-control": "private, no-cache" });
       return;
     }
     const pinMatch = url.pathname.match(/^\/api\/threads\/([0-9a-fA-F-]{20,})\/pin$/);
