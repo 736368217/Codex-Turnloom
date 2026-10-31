@@ -244,6 +244,14 @@ npm run android:build
 
 项目包含服务端协议、消息队列、对话分组、文件访问、静默启动和 Android 行为的回归测试。GitHub Actions 会在推送后运行服务端测试并构建 Android 调试 APK。
 
+「手机新建的对话是否真的归档到所选项目」需要一次真机/真服务验证，因为这一步要过桥接插件：
+
+~~~powershell
+node scripts/verify-project-archiving.mjs --base http://127.0.0.1:8799 --interrupt
+~~~
+
+它会挑项目、建一条带「可删」标记的探针会话、核对会话上的项目后停掉这一轮。桥的代码更新后必须让宿主重新加载插件（重载插件或重启 PI-Desktop），否则探针会照实报 `pass: false`。
+
 ## 项目结构
 
 ~~~text
