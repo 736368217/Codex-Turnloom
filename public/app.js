@@ -1553,14 +1553,27 @@ function renderThreads() {
     ungroupedLabel: t("otherConversations"),
     sortMode: state.threadSortMode
   });
-  els.threadList.innerHTML = `${draft}${groups.map((group) => `
-    <section class="thread-group${group.ungrouped ? " thread-group-ungrouped" : ""}${state.collapsedThreadGroups[group.key] ? " is-collapsed" : ""}" data-group-key="${escapeHtml(group.key)}">
-      <button type="button" class="thread-group-title" data-thread-group-toggle="${escapeHtml(group.key)}" aria-expanded="${String(!state.collapsedThreadGroups[group.key])}">
-        <span>${escapeHtml(group.label)}</span><span class="thread-group-count">${group.threads.length}</span><span class="thread-group-chevron" aria-hidden="true">⌄</span>
+  // 项目一多、每个项目都摊开时，一个项目的会话就能占掉几屏，别的项目根本
+  // 露不出来 —— 这正是「分不出谁是谁」。默认只展开当前会话所在的那组：
+  // 打开列表先看到全部项目，想看哪个点哪个。用户自己点过的组记住他的选择，
+  // 搜索时一律展开（那时他要看的是命中项）。
+  const groupCollapsed = (group) => {
+    const explicit = state.collapsedThreadGroups[group.key];
+    if (typeof explicit === "boolean") return explicit;
+    if (String(state.filter || "").trim()) return false;
+    return !group.threads.some((thread) => thread.id === state.selectedId);
+  };
+  els.threadList.innerHTML = `${draft}${groups.map((group) => {
+    const collapsed = groupCollapsed(group);
+    return `
+    <section class="thread-group${group.ungrouped ? " thread-group-ungrouped" : ""}${collapsed ? " is-collapsed" : ""}" data-group-key="${escapeHtml(group.key)}">
+      <button type="button" class="thread-group-title" data-thread-group-toggle="${escapeHtml(group.key)}" aria-expanded="${String(!collapsed)}">
+        <span class="thread-group-name">${escapeHtml(group.label)}</span><span class="thread-group-count">${group.threads.length}</span><span class="thread-group-chevron" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"></path></svg></span>
       </button>
       <div class="thread-group-items">${group.threads.map(renderThread).join("")}</div>
     </section>
-  `).join("")}`;
+  `;
+  }).join("")}`;
   syncThreadSortSegments();
 }
 function syncThreadSortSegments() {
