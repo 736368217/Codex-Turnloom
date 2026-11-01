@@ -1789,3 +1789,114 @@ html { color-scheme: light; }
 #shell .composer-input {
   min-height: 44px;
 }
+
+/* ══════════════════════════════════════════════════════════════════════════
+   消息操作：长按菜单 + 中断按钮归位（2026-11-01）
+   · 每条消息下面常驻的「复制」「从这里创建分支」按钮去掉了 —— 它们把气泡
+     撑得比正文还高，读起来像每段话都跟着一个工具栏。改成按住消息弹操作单。
+   · 按住期间必须关掉 WebView 自己的长按选词，否则两个东西会同时冒出来；
+     选「选择文字」时才把这一段放开。
+   · 中断按钮原本漂在输入框上方的「排队/插入」条里。按习惯它应该和发送键
+     在同一行，就在输入行最右侧。
+   ══════════════════════════════════════════════════════════════════════════ */
+#shell .message .bubble {
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-touch-callout: none;
+}
+
+#shell .message.selecting .bubble {
+  -webkit-user-select: text;
+  user-select: text;
+  -webkit-touch-callout: default;
+}
+
+#shell .message-branch-button,
+#shell .message-copy-button {
+  display: none;
+}
+
+#shell .message-action-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  display: block;
+  border: 0;
+  padding: 0;
+  background: rgba(15, 23, 42, 0.32);
+}
+
+#shell .message-action-backdrop[hidden] {
+  display: none;
+}
+
+#shell .message-action-sheet {
+  position: fixed;
+  z-index: 61;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  display: grid;
+  gap: 2px;
+  width: min(320px, calc(100vw - 32px));
+  padding: var(--s-2);
+  border: 1px solid var(--c-line);
+  border-radius: var(--r-lg);
+  background: var(--c-surface);
+  box-shadow: var(--e-2);
+}
+
+#shell .message-action-sheet[hidden] {
+  display: none;
+}
+
+#shell .message-action-sheet button {
+  min-height: 48px;
+  padding: 0 var(--s-3);
+  border: 0;
+  border-radius: var(--r-sm);
+  background: transparent;
+  color: var(--c-ink);
+  font-family: inherit;
+  font-size: var(--t-15);
+  font-weight: 600;
+  text-align: left;
+  cursor: pointer;
+}
+
+#shell .message-action-sheet button:hover,
+#shell .message-action-sheet button:active {
+  background: var(--c-surface-3);
+}
+
+#shell .message-action-sheet button[hidden] {
+  display: none;
+}
+
+/* 中断按钮：跟发送键同一行的最右侧，红色圆点图标，和「停止」语义一致 */
+#shell .composer-buttons .stop-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 44px;
+  width: 44px;
+  height: 44px;
+  min-width: 44px;
+  min-height: 44px;
+  padding: 0;
+  border: 0;
+  border-radius: var(--r-sm);
+  background: var(--c-bad-soft);
+  color: var(--c-bad);
+}
+
+#shell .composer-buttons .stop-button[hidden] {
+  display: none;
+}
+
+#shell .composer-buttons .stop-button span[aria-hidden="true"] {
+  width: 14px;
+  height: 14px;
+  border-radius: 3px;
+  background: currentColor;
+}

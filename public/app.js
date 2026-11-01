@@ -157,6 +157,11 @@ const els = {
   queueStatusList: document.querySelector("#queueStatusList"),
   clearQueueButton: document.querySelector("#clearQueueButton"),
   sendStatus: document.querySelector("#sendStatus"),
+  messageActionSheet: document.querySelector("#messageActionSheet"),
+  messageActionBackdrop: document.querySelector("#messageActionBackdrop"),
+  messageCopyItem: document.querySelector("#messageCopyItem"),
+  messageSelectItem: document.querySelector("#messageSelectItem"),
+  messageBranchItem: document.querySelector("#messageBranchItem"),
   modelSummary: document.querySelector("#modelSummary"),
   modelName: document.querySelector("#modelName"),
   modelEffort: document.querySelector("#modelEffort"),
@@ -320,8 +325,11 @@ const I18N = {
     threadLinkCopyFailed: "复制深度链接失败：{message}",
     branchFromHere: "从这里创建分支",
     copyMessage: "复制",
+    copyMessageFull: "复制全文",
+    selectMessageText: "选择文字",
+    textSelected: "已选中文字，长按选区即可复制",
     copiedMessage: "已复制到剪贴板",
-    copyFailed: "复制失败，请长按选择文本",
+    copyFailed: "复制失败，请改用「选择文字」",
     branchCreated: "分支已创建",
     branchFailed: "创建分支失败：{message}",
     messageQueued: "排队中",
@@ -523,8 +531,11 @@ const I18N = {
     threadLinkCopyFailed: "Could not copy deep link: {message}",
     branchFromHere: "Create branch from here",
     copyMessage: "Copy",
+    copyMessageFull: "Copy text",
+    selectMessageText: "Select text",
+    textSelected: "Text selected — long-press the selection to copy",
     copiedMessage: "Copied to clipboard",
-    copyFailed: "Copy failed — long-press to select the text",
+    copyFailed: "Copy failed — use “Select text” instead",
     branchCreated: "Branch created",
     branchFailed: "Could not create branch: {message}",
     messageQueued: "Queued",
@@ -681,6 +692,9 @@ function applyStaticText() {
   els.attachButton.setAttribute("aria-label", t("addImage"));
   els.pickPhotoButton.textContent = t("pickPhoto");
   els.pickFileButton.textContent = t("pickFile");
+  if (els.messageCopyItem) els.messageCopyItem.textContent = t("copyMessageFull");
+  if (els.messageSelectItem) els.messageSelectItem.textContent = t("selectMessageText");
+  if (els.messageBranchItem) els.messageBranchItem.textContent = t("branchFromHere");
   els.sendButton.setAttribute("title", t("send"));
   els.sendButton.setAttribute("aria-label", t("send"));
   els.stopButton.setAttribute("title", t("stopCurrentTask"));
@@ -2064,9 +2078,9 @@ function renderMessages(data) {
       previousRole = message.role;
       const pendingClass = message.deliveryStatus && message.deliveryStatus !== "sent" ? " pending" : "";
       const pendingId = message.deliveryStatus ? ` data-pending-id="${escapeHtml(message.id || "")}"` : "";
-      const branchAction = renderBranchAction(message);
+      const messageIndexAttr = ` data-message-index="${index}"`;
       const messageArticle = `
-        <article class="message ${escapeHtml(message.role)}${pendingClass}${hidden}"${pendingId} data-message-id="${escapeHtml(message.id || "")}" data-turn-id="${escapeHtml(message.turnId || "")}">
+        <article class="message ${escapeHtml(message.role)}${pendingClass}${hidden}"${pendingId}${messageIndexAttr} data-message-id="${escapeHtml(message.id || "")}" data-turn-id="${escapeHtml(message.turnId || "")}">
           ${roleRow}
           <div class="bubble">
             ${title}
@@ -2080,7 +2094,6 @@ function renderMessages(data) {
             ${!noticeCollapsed ? renderMessageImages(message) : ""}
             ${!noticeCollapsed ? renderMessageFiles(message) : ""}
             ${renderApprovalActions(message)}
-            ${branchAction}${renderCopyAction(message, index)}
             ${pendingDeliveryHtml(message)}
           </div>
         </article>
@@ -2104,18 +2117,123 @@ function renderMessages(data) {
   updateScrollToBottomButton();
 }
 
-function renderBranchAction(message) {
-  if (!message?.id || message.deliveryStatus || !["user", "assistant"].includes(message.role)) return "";
-  return `<button type="button" class="message-branch-button" data-branch-message-id="${escapeHtml(message.id)}" data-branch-turn-id="${escapeHtml(message.turnId || "")}">${escapeHtml(t("branchFromHere"))}</button>`;
+// 每条消息下面常驻的「复制」「从这里创建分支」两个按钮被去掉了：它们把气泡
+// 撑得比正文还高，而且分支按钮在 PI 会话里根本出不来（PI 消息没有 id）。
+// 现在改成「长按消息」弹出操作单，按 turnId 分支 —— PI 会话每条消息都带 turnId。
+function messageActionTarget(node) {
+  const article = node?.closest?.("article.message");
+  if (!article) return null;
+  const role = article.classList.contains("user") ? "user" : article.classList.contains("assistant") ? "assistant" : "";
+  if (!role) return null;
+  const index = Number(article.dataset.messageIndex);
+  const message = Number.isInteger(index) ? state.displayMessages?.[index] : null;
+  if (!message || message.deliveryStatus) return null;
+  const text = String(message.content || "").trim();
+  if (!text && !message.turnId) return null;
+  return { article, role, index, text, turnId: String(article.dataset.turnId || message.turnId || "") };
 }
 
-// Copying text out of a WebView normally means a fiddly long-press; one tap is the point.
-function renderCopyAction(message, index) {
-  if (message.deliveryStatus || !["user", "assistant"].includes(message.role)) return "";
-  if (!String(message.content || "").trim()) return "";
-  return `<button type="button" class="message-copy-button" data-copy-index="${index}" aria-label="${escapeHtml(
-    t("copyMessage")
-  )}">${escapeHtml(t("copyMessage"))}</button>`;
+const messageActionState = { target: null };
+const LONG_PRESS_MS = 450;
+
+function closeMessageActions() {
+  if (els.messageActionSheet) els.messageActionSheet.hidden = true;
+  if (els.messageActionBackdrop) els.messageActionBackdrop.hidden = true;
+  messageActionState.target = null;
+}
+
+function openMessageActions(target) {
+  if (!target || !els.messageActionSheet) return;
+  messageActionState.target = target;
+  // 没有 turnId 就没有可分支的基点：直接隐藏这一项，而不是留一个点了没反应的
+  // 按钮。PI 会话的每条消息都带 turnId，所以这里基本不会隐藏。
+  const canBranch = Boolean(target.turnId);
+  if (els.messageBranchItem) {
+    els.messageBranchItem.hidden = !canBranch;
+    els.messageBranchItem.disabled = !canBranch;
+  }
+  if (els.messageCopyItem) els.messageCopyItem.disabled = !target.text;
+  if (els.messageSelectItem) els.messageSelectItem.disabled = !target.text;
+  els.messageActionBackdrop.hidden = false;
+  els.messageActionSheet.hidden = false;
+}
+
+function selectMessageText(target) {
+  if (!target?.article) return;
+  const bubble = target.article.querySelector(".bubble") || target.article;
+  target.article.classList.add("selecting");
+  const range = document.createRange();
+  range.selectNodeContents(bubble);
+  const selection = window.getSelection();
+  selection.removeAllRanges();
+  selection.addRange(range);
+  els.sendStatus.textContent = t("textSelected");
+}
+
+function wireMessageActions() {
+  if (!els.messageList) return;
+  let timer = null;
+  let start = null;
+  const cancel = () => {
+    if (timer) {
+      clearTimeout(timer);
+      timer = null;
+    }
+    start = null;
+  };
+
+  els.messageList.addEventListener("pointerdown", (event) => {
+    if (typeof event.button === "number" && event.button !== 0) return;
+    const target = messageActionTarget(event.target);
+    if (!target) return;
+    start = { x: event.clientX, y: event.clientY };
+    if (timer) clearTimeout(timer);
+    timer = setTimeout(() => {
+      timer = null;
+      // A short tick confirms the long press without stealing focus.
+      if (navigator.vibrate) navigator.vibrate(12);
+      openMessageActions(target);
+    }, LONG_PRESS_MS);
+  });
+
+  // 滑动必须取消长按，否则想滚动列表就会冒出一个菜单。
+  els.messageList.addEventListener("pointermove", (event) => {
+    if (!start) return;
+    if (Math.abs(event.clientX - start.x) > 10 || Math.abs(event.clientY - start.y) > 10) cancel();
+  });
+  els.messageList.addEventListener("pointerup", cancel);
+  els.messageList.addEventListener("pointercancel", cancel);
+  // 桌面端用右键，不必按住等。
+  els.messageList.addEventListener("contextmenu", (event) => {
+    const target = messageActionTarget(event.target);
+    if (!target) return;
+    event.preventDefault();
+    cancel();
+    openMessageActions(target);
+  });
+
+  els.messageActionBackdrop?.addEventListener("click", closeMessageActions);
+  els.messageCopyItem?.addEventListener("click", async () => {
+    const target = messageActionState.target;
+    closeMessageActions();
+    if (!target?.text) return;
+    const ok = await writeClipboard(target.text);
+    flashSendStatus(ok ? t("copiedMessage") : t("copyFailed"));
+  });
+  els.messageSelectItem?.addEventListener("click", () => {
+    const target = messageActionState.target;
+    closeMessageActions();
+    selectMessageText(target);
+  });
+  els.messageBranchItem?.addEventListener("click", async () => {
+    const target = messageActionState.target;
+    closeMessageActions();
+    if (!target?.turnId) return;
+    await createMessageBranch(target.turnId);
+  });
+  document.addEventListener("keydown", (event) => {
+    if (event.key === "Escape" && els.messageActionSheet && !els.messageActionSheet.hidden) closeMessageActions();
+  });
 }
 
 async function writeClipboard(text) {
@@ -2155,17 +2273,13 @@ async function writeClipboard(text) {
   }
 }
 
-async function copyMessageText(index, article) {
-  const source = (state.displayMessages || [])[Number(index)];
-  const text = String(source?.content || article?.querySelector(".bubble")?.innerText || "").trim();
-  if (!text) return;
-  const ok = await writeClipboard(text);
-  els.sendStatus.textContent = ok ? t("copiedMessage") : t("copyFailed");
+// 「已复制」这条提示两秒后收掉，免得一直挂在输入框下面。
+function flashSendStatus(text) {
+  els.sendStatus.textContent = text;
   window.setTimeout(() => {
-    if (els.sendStatus.textContent === t("copiedMessage")) els.sendStatus.textContent = "";
+    if (els.sendStatus.textContent === text) els.sendStatus.textContent = "";
   }, 2000);
 }
-
 window.setInterval(() => {
   if (document.hidden) return;
   const label = els.messageList.querySelector(".running-time");
@@ -3469,20 +3583,7 @@ els.messageList.addEventListener("click", async (event) => {
     void refresh(true);
     return;
   }
-  const copyButton = event.target.closest("[data-copy-index]");
-  if (copyButton) {
-    event.preventDefault();
-    event.stopPropagation();
-    await copyMessageText(copyButton.dataset.copyIndex || "", copyButton.closest("article"));
-    return;
-  }
-  const branchButton = event.target.closest("[data-branch-message-id]");
-  if (branchButton) {
-    event.preventDefault();
-    event.stopPropagation();
-    await createMessageBranch(branchButton.dataset.branchTurnId || "");
-    return;
-  }
+  // 复制与分支现在走长按操作单（wireMessageActions），消息里不再有常驻按钮。
   const retryButton = event.target.closest("[data-pending-action='retry']");
   if (retryButton) {
     event.preventDefault();
@@ -4172,6 +4273,7 @@ function maybeOpenWelcomeGuide() {
 }
 
 async function bootstrap() {
+  wireMessageActions();
   await refresh(true);
   // The project list only matters once the user starts a new conversation, but
   // loading it here keeps the picker instant when they do.

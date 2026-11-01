@@ -171,9 +171,6 @@
               <button class="follow-up-mode-button active" type="button" data-follow-up-mode="queue">排队（完成后发）</button>
               <button class="follow-up-mode-button" type="button" data-follow-up-mode="steer">插入（立即打断）</button>
             </div>
-            <button id="stopButton" class="icon-button stop-button" type="button" title="停止当前任务" aria-label="停止当前任务" hidden>
-              <span aria-hidden="true"></span>
-            </button>
           </div>
           <label id="draftProjectRow" class="draft-project-row" hidden>
             <span class="draft-project-label">项目</span>
@@ -295,12 +292,21 @@
                 </svg>
                 <span class="send-stop-icon" aria-hidden="true"></span>
               </button>
+              <button id="stopButton" class="icon-button stop-button" type="button" title="停止当前任务" aria-label="停止当前任务" hidden>
+                <span aria-hidden="true"></span>
+              </button>
             </div>
           </div>
           </div>
           <span id="sendStatus" class="send-status" aria-live="polite"></span>
         </form>
       </section>
+    <button id="messageActionBackdrop" class="message-action-backdrop" type="button" aria-label="关闭" hidden></button>
+    <div id="messageActionSheet" class="message-action-sheet" role="menu" aria-label="消息操作" hidden>
+      <button id="messageCopyItem" type="button" role="menuitem">复制全文</button>
+      <button id="messageSelectItem" type="button" role="menuitem">选择文字</button>
+      <button id="messageBranchItem" type="button" role="menuitem">从这里创建分支</button>
+    </div>
     </main>
     <div id="welcomeDialog" class="welcome-dialog" role="dialog" aria-modal="true" aria-labelledby="welcomeTitle" hidden>
       <button class="welcome-backdrop" type="button" data-guide-close aria-label="关闭指引"></button>
