@@ -331,7 +331,9 @@ const I18N = {
     copiedMessage: "已复制到剪贴板",
     copyFailed: "复制失败，请改用「选择文字」",
     branchCreated: "分支已创建",
+    branchCreatedAtEnd: "分支已创建（这条会话没有轮次标记，已在末尾分叉）",
     branchFailed: "创建分支失败：{message}",
+    branchNeedsIdle: "会话正在运行，等它结束或先点停止再创建分支",
     messageQueued: "排队中",
     pinThread: "置顶",
     unpinThread: "取消置顶",
@@ -537,7 +539,9 @@ const I18N = {
     copiedMessage: "Copied to clipboard",
     copyFailed: "Copy failed — use “Select text” instead",
     branchCreated: "Branch created",
+    branchCreatedAtEnd: "Branch created (no turn markers here, so it branched at the end)",
     branchFailed: "Could not create branch: {message}",
+    branchNeedsIdle: "This conversation is still running — stop it first, then branch",
     messageQueued: "Queued",
     pinThread: "Pin",
     unpinThread: "Unpin",
@@ -4292,17 +4296,29 @@ async function createMessageBranch(turnId = "") {
       headers: { "content-type": "application/json" },
       body: JSON.stringify(turnId ? { lastTurnId: turnId } : {})
     });
-    els.sendStatus.textContent = t("branchCreated");
-    await loadThreads(false);
+    els.sendStatus.textContent = result.branchFallback ? t("branchCreatedAtEnd") : t("branchCreated");
+    // 新分叉要等门面同步一轮才进列表（桥每 3 秒重算一次）。不轮询的话，
+    // 界面会先提示「分支已创建」然后停在原地——看着像没成功。
     if (result.threadId) {
-      state.selectedId = result.threadId;
+      const wanted = String(result.threadId);
+      for (let attempt = 0; attempt < 8; attempt++) {
+        await loadThreads(false);
+        if ((state.threads || []).some((thread) => String(thread.id) === wanted)) break;
+        await new Promise((resolve) => setTimeout(resolve, 1200));
+      }
+      state.selectedId = wanted;
       state.messagesSignature = "";
       state.threadStatus = null;
       renderThreads();
-      await loadMessages(true, result.threadId);
+      await loadMessages(true, wanted);
+    } else {
+      await loadThreads(false);
     }
   } catch (error) {
-    els.sendStatus.textContent = t("branchFailed", { message: error.message });
+    // 宿主会直接抛英文原因（"Cannot fork a running session"）。这条是用户最容易撞上的
+    // 一种，翻成人话；其余原样带上，至少能看出是宿主拒绝的。
+    const needsIdle = /running session/i.test(error.message || "");
+    els.sendStatus.textContent = needsIdle ? t("branchNeedsIdle") : t("branchFailed", { message: error.message });
   }
 }
 
