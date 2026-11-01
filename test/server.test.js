@@ -1463,6 +1463,33 @@ test("the design layer neutralises legacy chrome that broke the phone layout", (
   // An empty composer reserved two lines of height.
   assert.match(html, /id="composerInput"[\s\S]{0,80}rows="1"/);
 });
+
+test("conversation groups read as separate cards with a real collapse control", () => {
+  const root = fileURLToPath(new URL("..", import.meta.url));
+  const v3 = readFileSync(path.join(root, "public", "styles.v3.css"), "utf8");
+  const app = readFileSync(path.join(root, "public", "app.js"), "utf8");
+
+  // 分组标题曾只是 12px 灰字、组间只有 12px 空隙，和会话条目同色系，
+  // 扫视时读不出「这是另一个项目」。现在每组是一整块带边框的卡片。
+  assert.match(v3, /#shell \.thread-group\s*\{[^}]*border:\s*1px solid var\(--c-line\)/);
+  assert.match(v3, /#shell \.thread-group\s*\{[^}]*background:\s*var\(--c-surface\)/);
+  assert.match(v3, /#shell \.thread-group-title\s*\{[^}]*font-weight:\s*700/);
+  assert.match(v3, /#shell \.thread-group-title\s*\{[^}]*min-height:\s*48px/);
+
+  // 展开/收起曾是 8px 高的文字符号「⌄」，看不出能点；现在换成 20px 图标，
+  // 包在 44×44 的命中区里。
+  assert.match(app, /class="thread-group-chevron"[^>]*>\s*<svg/);
+  assert.match(v3, /#shell \.thread-group-chevron\s*\{[^}]*flex:\s*0 0 44px/);
+  assert.match(v3, /#shell \.thread-group-chevron svg\s*\{[^}]*width:\s*20px/);
+  // 收起时箭头转 90°，而且条目必须真的塌下去（旧规则被 #shell 提权盖掉了）。
+  assert.match(v3, /#shell \.thread-group\.is-collapsed \.thread-group-chevron\s*\{[^}]*rotate\(-90deg\)/);
+  assert.match(v3, /#shell \.thread-group\.is-collapsed \.thread-group-items\s*\{[^}]*display:\s*none/);
+
+  // 默认只展开当前会话所在的那组：否则一个 33 条会话的项目就占掉几屏，
+  // 后面的项目根本露不出来。
+  assert.match(app, /const groupCollapsed = \(group\) => \{/);
+  assert.match(app, /return !group\.threads\.some\(\(thread\) => thread\.id === state\.selectedId\)/);
+});
     rmSync(dir, { recursive: true, force: true });
   }
 });

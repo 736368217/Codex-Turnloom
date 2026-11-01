@@ -1654,3 +1654,138 @@ html { color-scheme: light; }
 #shell .mention-menu[hidden] { display: none; }
 #shell .mention-menu button { min-height: 48px; padding: 0 var(--s-3); border: 0; border-radius: var(--r-sm); background: transparent; color: var(--c-ink); font-family: inherit; font-size: var(--t-15); text-align: left; cursor: pointer; }
 #shell .mention-menu button:hover { background: var(--c-surface-3); }
+
+/* ══════════════════════════════════════════════════════════════════════════
+   项目分组：让「一个项目」和「另一个项目」在视觉上真正分开（2026-11-01）
+   旧样式里分组标题只是 12px 灰字 + 12px 空隙，和会话条目同色系、之间没有
+   边界，扫视时会被读成一串会话；展开箭头是 8px 高的文字符号「⌄」，
+   看不出可以点。现在每个项目是一整块卡片：
+   · 卡片有边框、圆角、条带底色的标题行 —— 边界一眼可辨
+   · 标题 13px/700 深色，和下面的会话标题拉开层级
+   · 箭头换成 20px 线性图标，包在 44×44 的可点区里；收起时旋转 90°
+   · 「其他对话」用虚线边框，表明它是兜底桶而不是真实项目
+   ══════════════════════════════════════════════════════════════════════════ */
+#shell .thread-group {
+  margin: 0 0 var(--s-3);
+  border: 1px solid var(--c-line);
+  border-radius: var(--r-md);
+  background: var(--c-surface);
+  overflow: hidden;
+}
+
+#shell .thread-group + .thread-group {
+  margin-top: 0;
+}
+
+#shell .thread-group-ungrouped {
+  border-style: dashed;
+  border-color: var(--c-line-strong);
+}
+
+#shell .thread-group-title {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+  width: 100%;
+  min-height: 48px;
+  margin: 0;
+  padding: 0 var(--s-1) 0 var(--s-3);
+  border: 0;
+  border-bottom: 1px solid var(--c-line);
+  background: var(--c-surface-2);
+  color: var(--c-ink);
+  font-family: inherit;
+  font-size: var(--t-13);
+  font-weight: 700;
+  letter-spacing: 0;
+  text-transform: none;
+  text-align: left;
+  cursor: pointer;
+}
+
+#shell .thread-group-title:hover {
+  background: var(--c-surface-3);
+  color: var(--c-ink);
+}
+
+#shell .thread-group.is-collapsed .thread-group-title {
+  border-bottom-color: transparent;
+}
+
+#shell .thread-group-name {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+#shell .thread-group-count {
+  flex: 0 0 auto;
+  margin-left: 0;
+  min-width: 26px;
+  padding: 0 var(--s-2);
+  border-radius: var(--r-pill);
+  background: var(--c-surface-3);
+  color: var(--c-ink-2);
+  font-size: var(--t-12);
+  font-weight: 700;
+  line-height: 20px;
+  text-align: center;
+}
+
+#shell .thread-group-title:hover .thread-group-count {
+  background: var(--c-surface);
+}
+
+#shell .thread-group-chevron {
+  flex: 0 0 44px;
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  color: var(--c-ink-3);
+  transition: transform 140ms ease;
+}
+
+#shell .thread-group-chevron svg {
+  width: 20px;
+  height: 20px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+#shell .thread-group.is-collapsed .thread-group-chevron {
+  transform: rotate(-90deg);
+}
+
+#shell .thread-group-items {
+  display: grid;
+  gap: 2px;
+  padding: var(--s-1);
+}
+
+/* 卡片内已有边界，条目不再需要自己的下外边距把它顶开 */
+#shell .thread-group-items .thread-item {
+  margin-bottom: 0;
+}
+
+/* 收起态必须真的塌下去：上面用 #shell 提权给 .thread-group-items 设了 grid，
+   会盖掉旧样式里三类的 display:none，所以收起规则要一起提权。 */
+#shell .thread-group.is-collapsed .thread-group-items {
+  display: none;
+}
+
+/* 触控审计（2026-11-01）抓到的两处不达标：排队/插入分段只有 38px 高、
+   输入框在窄屏被压到 40px。两者都该是 44px 的舒适下限。 */
+#shell .follow-up-mode-button {
+  min-height: 44px;
+  height: 44px;
+}
+
+#shell .composer-input {
+  min-height: 44px;
+}
