@@ -1528,6 +1528,16 @@ function threadStatusPill(status) {
   return "";
 }
 
+
+// 会话归属的文件夹名：优先用宿主给的项目名，其次退回工作目录末段，
+// 两者都没有才归到「其他对话」——和分组用的是同一套口径。
+function threadFolderLabel(thread) {
+  const name = String(thread?.project?.name || "").trim();
+  if (name) return name;
+  const cwd = String(thread?.cwd || "").replace(/[\\/]+$/, "");
+  const segment = cwd.split(/[\\/]+/).filter(Boolean).pop();
+  return segment || t("otherConversations");
+}
 function renderThreads() {
   els.threadCount.textContent = t("conversationsCount", { count: state.threads.length });
   const renderThread = (thread) => {
@@ -1546,10 +1556,16 @@ function renderThreads() {
             : "unknown";
       const elapsed = compactElapsed(status);
       const showStatus = statusClass !== "unknown" || reminder;
+      // 「按最近」把会话按时间平铺，分组标题只剩一个「最近对话」。这时每条会话
+      // 必须自己带上所属文件夹，否则项目信息彻底消失——用户就分不出谁是谁。
+      const folderChip =
+        state.threadSortMode === "recent" && thread.id !== DRAFT_THREAD_ID
+          ? `<span class="thread-folder">${escapeHtml(threadFolderLabel(thread))}</span>`
+          : "";
       return `
         <button class="thread-item${active}${thread.id === DRAFT_THREAD_ID ? " draft" : ""}" data-id="${thread.id}" ${thread.id === DRAFT_THREAD_ID ? "" : 'aria-haspopup="menu"'}>
           <span class="thread-copy">
-            <span class="thread-title">${title}</span>
+            <span class="thread-title">${title}</span>${folderChip}
             ${
               showStatus
                 ? `<span class="thread-status thread-status-${statusClass}" title="${escapeHtml(threadStatusLabel(status))}">

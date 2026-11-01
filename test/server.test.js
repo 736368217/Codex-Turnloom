@@ -1524,6 +1524,23 @@ test("conversation groups read as separate cards with a real collapse control", 
   assert.match(app, /const groupCollapsed = \(group\) => \{/);
   assert.match(app, /return !group\.threads\.some\(\(thread\) => thread\.id === state\.selectedId\)/);
 });
+
+test("the time-ordered list still shows which folder each conversation belongs to", () => {
+  const root = fileURLToPath(new URL("..", import.meta.url));
+  const app = readFileSync(path.join(root, "public", "app.js"), "utf8");
+  const v3 = readFileSync(path.join(root, "public", "styles.v3.css"), "utf8");
+  const threads = readFileSync(path.join(root, "public", "threads.js"), "utf8");
+
+  // 「按最近」把会话平铺成一组「最近对话」，项目标题就全没了。行内不带文件夹名，
+  // 用户根本分不出这条属于哪个项目 —— 这正是「一个项目和另一个项目没分开」的来源。
+  assert.match(threads, /sortMode === "recent"/);
+  assert.match(app, /state\.threadSortMode === "recent" && thread\.id !== DRAFT_THREAD_ID/);
+  assert.match(app, /class="thread-folder"/);
+  // 口径和分组一致：项目名 → 工作目录末段 → 其他对话。
+  assert.match(app, /function threadFolderLabel\(thread\) \{/);
+  assert.match(app, /const segment = cwd\.split\(\/\[\\\\\/\]\+\/\)\.filter\(Boolean\)\.pop\(\)/);
+  assert.match(v3, /#shell \.thread-folder\s*\{[^}]*text-overflow:\s*ellipsis/);
+});
     rmSync(dir, { recursive: true, force: true });
   }
 });
