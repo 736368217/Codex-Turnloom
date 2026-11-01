@@ -1900,3 +1900,33 @@ html { color-scheme: light; }
   border-radius: 3px;
   background: currentColor;
 }
+
+/* 「按最近」把会话平铺时，每条要自己带所属文件夹 —— 否则项目信息整个消失。 */
+#shell .thread-folder {
+  display: inline-block;
+  max-width: 100%;
+  margin-top: 3px;
+  padding: 1px 8px;
+  border-radius: var(--r-pill);
+  background: var(--c-surface-3);
+  color: var(--c-ink-3);
+  font-size: var(--t-11);
+  font-weight: 600;
+  line-height: 18px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  vertical-align: middle;
+}
+
+#shell .thread-item.active .thread-folder {
+  background: var(--c-surface);
+  color: var(--c-accent-press);
+}
+
+#shell .thread-copy {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
