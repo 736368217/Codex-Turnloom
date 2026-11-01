@@ -1420,11 +1420,32 @@ test("a .jsonl.zst transcript is decompressed and parsed like a plain one", asyn
     );
   } finally {
 
-test("messages offer one-tap copy with a WebView-safe clipboard path", () => {
-  const app = readFileSync(path.join(fileURLToPath(new URL("..", import.meta.url)), "public", "app.js"), "utf8");
+test("copy and branch live behind a long-press sheet, not per-message buttons", () => {
+  const root = fileURLToPath(new URL("..", import.meta.url));
+  const app = readFileSync(path.join(root, "public", "app.js"), "utf8");
+  const html = readFileSync(path.join(root, "public", "index.html"), "utf8");
+  const v3 = readFileSync(path.join(root, "public", "styles.v3.css"), "utf8");
 
-  assert.match(app, /class="message-copy-button" data-copy-index=/);
-  assert.match(app, /event\.target\.closest\("\[data-copy-index\]"\)/);
+  // 每条消息下面常驻的「复制」「从这里创建分支」两个按钮会把气泡撑得比正文还高，
+  // 而且分支按钮在 PI 会话里根本出不来（PI 消息不带 id）。现在是长按弹操作单。
+  assert.doesNotMatch(app, /class="message-copy-button"/);
+  assert.doesNotMatch(app, /class="message-branch-button"/);
+  assert.match(html, /id="messageActionSheet"/);
+  assert.match(html, /id="messageCopyItem"/);
+  assert.match(html, /id="messageBranchItem"/);
+  assert.match(app, /const LONG_PRESS_MS = \d+;/);
+  assert.match(app, /els\.messageList\.addEventListener\("pointerdown"/);
+  // 滑动必须取消长按，否则想滚动列表就会冒出菜单。
+  assert.match(app, /Math\.abs\(event\.clientX - start\.x\) > 10/);
+  assert.match(app, /els\.messageList\.addEventListener\("contextmenu"/);
+  // 按住期间关掉 WebView 自己的长按选词，选「选择文字」时才放开。
+  assert.match(v3, /#shell \.message \.bubble\s*\{[^}]*user-select:\s*none/);
+  assert.match(v3, /#shell \.message\.selecting \.bubble\s*\{[^}]*user-select:\s*text/);
+
+  // 分支按 turnId 走：PI 消息没有 id，但有 turnId。
+  assert.match(app, /await createMessageBranch\(target\.turnId\)/);
+  assert.match(app, /data-turn-id="\$\{escapeHtml\(message\.turnId \|\| ""\)\}"/);
+
   // The workspace is served over plain http on a LAN address, so it is not a secure
   // context and navigator.clipboard is unavailable; execCommand is the fallback.
   assert.match(app, /document\.execCommand\("copy"\)/);
@@ -1432,7 +1453,20 @@ test("messages offer one-tap copy with a WebView-safe clipboard path", () => {
   // The Android shell exposes a native clipboard writer that needs neither a secure
   // context nor a trusted gesture; it is preferred when present.
   assert.match(app, /window\.CodexPocket\?\.copyText/);
-  assert.equal((app.match(/copyMessage:/g) || []).length, 2, "both locales need the label");
+});
+
+test("the interrupt control sits in the composer row, next to send", () => {
+  const root = fileURLToPath(new URL("..", import.meta.url));
+  const html = readFileSync(path.join(root, "public", "index.html"), "utf8");
+  const v3 = readFileSync(path.join(root, "public", "styles.v3.css"), "utf8");
+
+  // 中断按钮原本漂在输入框上方的「排队/插入」条里；按习惯它该和发送键同一行。
+  assert.match(html, /<div class="composer-buttons">[\s\S]{0,700}?id="stopButton"/);
+  const followUp = /<div id="followUpMode"[\s\S]*?<\/div>\s*<\/div>/.exec(html)?.[0] || "";
+  assert.ok(followUp, "the follow-up mode bar should still exist");
+  assert.doesNotMatch(followUp, /id="stopButton"/, "stop must not live in the follow-up bar");
+  assert.match(v3, /#shell \.composer-buttons \.stop-button\s*\{[^}]*width:\s*44px/);
+  assert.match(v3, /#shell \.composer-buttons \.stop-button\s*\{[^}]*height:\s*44px/);
 });
 
 test("an autostart duplicate never raises the console window", () => {
