@@ -7313,8 +7313,19 @@ const server = http.createServer(async (req, res) => {
         lastTurnId: body.lastTurnId || null,
         beforeTurnId: body.beforeTurnId || null
       });
-      const thread = result?.result?.thread || result?.thread || result?.result || null;
-      sendJson(res, 200, { ok: true, thread, threadId: thread?.id || null });
+      // 分叉出来的新会话 id 可能在不同位置的形状里：Codex 给 thread 对象，
+      // 而 PI 桥直接回 { threadId }。少认一种，界面就会「提示成功但不跳过去」。
+      const thread = result?.result?.thread || result?.thread || null;
+      const threadId =
+        thread?.id ||
+        result?.threadId ||
+        result?.conversationId ||
+        result?.result?.threadId ||
+        result?.result?.conversationId ||
+        result?.result?.id ||
+        null;
+      const branchFallback = Boolean(result?.branchFallback || result?.result?.branchFallback);
+      sendJson(res, 200, { ok: true, thread, threadId, branchFallback });
       return;
     }
     const match = url.pathname.match(/^\/api\/threads\/([0-9a-fA-F-]{20,})\/messages$/);
