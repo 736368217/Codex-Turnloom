@@ -1644,3 +1644,17 @@ test("conversation status counts, overview and per-thread marks stay consistent"
   assert.match(app, /thread-status-mark \$\{kind\}/, "every row must carry a visual status mark");
   assert.match(app, /status-\$\{kind\}/, "status class must be attached to the row");
 });
+
+test("the composer stays above the software keyboard on short viewports", () => {
+  const root = fileURLToPath(new URL("..", import.meta.url));
+  const app = readFileSync(path.join(root, "public", "app.js"), "utf8");
+  const css = readFileSync(path.join(root, "public", "styles.app.css"), "utf8");
+
+  assert.match(app, /function syncVisualViewport\(/, "must track the visual viewport, not just 100dvh");
+  assert.match(app, /visualViewport\.addEventListener\("resize"/);
+  assert.match(app, /--app-visible-height/, "shell height must be pinned to the visible area");
+  assert.match(app, /keyboard-open/, "a keyboard state must be exposed to CSS");
+  assert.match(css, /html\.keyboard-open #shell \.composer/, "keyboard state must compact the composer");
+  assert.match(css, /html\.keyboard-open #shell \.follow-up-mode[\s\S]{0,160}display:\s*none/, "queue bar must not eat the short viewport");
+});
+
