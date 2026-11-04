@@ -7,19 +7,58 @@ export function filterVisibleThreads(threads, query = "") {
   });
 }
 
+/** 统一的状态口径：列表、总览、筛选、状态条都用这一套，避免各处判断不一致。 */
+export function threadStatusKind(status) {
+  const s = status || {};
+  if (s.interactionRequired) return "waiting";
+  if (s.thinking) return s.staleTurn ? "stale" : "running";
+  if (s.state === "ended") return "ended";
+  return "unknown";
+}
+
+export function threadStatusCounts(threads) {
+  const counts = { waiting: 0, running: 0, stale: 0, ended: 0, unknown: 0 };
+  for (const thread of threads || []) counts[threadStatusKind(thread?.status)] += 1;
+  return counts;
+}
+
 export function threadDeepLink(threadId) {
   const id = String(threadId || "").trim();
   return id ? `codex://threads/${encodeURIComponent(id)}` : "";
 }
 
-export function groupedVisibleThreads(threads, { query = "", pinnedLabel = "置顶", ungroupedLabel = "其他对话", sortMode = "project" } = {}) {
-  const visible = filterVisibleThreads(threads, query);
+export function groupedVisibleThreads(threads, {
+  query = "",
+  pinnedLabel = "置顶",
+  ungroupedLabel = "其他对话",
+  sortMode = "project",
+  statusFilter = ""
+} = {}) {
+  let visible = filterVisibleThreads(threads, query);
+  if (statusFilter) {
+    visible = visible.filter((thread) => threadStatusKind(thread?.status) === statusFilter);
+    // 点状态总览时，最需要人处理的排在最前（待处理 > 疑似停滞 > 运行中）。
+    const rank = { waiting: 0, stale: 1, running: 2 };
+    if (rank[statusFilter] !== undefined) {
+      visible = visible.slice().sort((a, b) =>
+        (rank[threadStatusKind(a?.status)] ?? 9) - (rank[threadStatusKind(b?.status)] ?? 9)
+      );
+    }
+  }
   const pinned = visible.filter((thread) => thread.pinned);
   const groups = [];
   if (pinned.length) groups.push({ key: "pinned", label: pinnedLabel, threads: pinned });
 
   if (sortMode === "recent") {
-    const recent = visible.filter((thread) => !thread.pinned).slice().sort((a, b) => (Number(b.updatedAtMs) || 0) - (Number(a.updatedAtMs) || 0));
+    // 最需要人处理的排最前：待处理 > 疑似停滞 > 运行中，其余才按时间。
+    // 否则一个卡住的任务会被一堆刚结束的会话挤到下面，用户在列表里找不到它。
+    const priority = { waiting: 0, stale: 1, running: 2 };
+    const recent = visible.filter((thread) => !thread.pinned).slice().sort((a, b) => {
+      const pa = priority[threadStatusKind(a?.status)] ?? 3;
+      const pb = priority[threadStatusKind(b?.status)] ?? 3;
+      if (pa !== pb) return pa - pb;
+      return (Number(b.updatedAtMs) || 0) - (Number(a.updatedAtMs) || 0);
+    });
     if (recent.length) groups.push({ key: "recent", label: "最近对话", threads: recent });
     return groups;
   }

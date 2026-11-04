@@ -58,6 +58,12 @@
             <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m15 18-6-6 6-6"></path></svg>
           </button>
         </div>
+        <div id="statusOverview" class="status-overview" role="group" aria-label="会话状态总览">
+          <button type="button" class="status-overview-chip" data-status-filter="waiting"><span class="status-overview-dot waiting"></span><b id="statusCountWaiting">0</b> 待处理</button>
+          <button type="button" class="status-overview-chip" data-status-filter="running"><span class="status-overview-dot running"></span><b id="statusCountRunning">0</b> 运行中</button>
+          <button type="button" class="status-overview-chip" data-status-filter="stale"><span class="status-overview-dot stale"></span><b id="statusCountStale">0</b> 疑似停滞</button>
+          <button type="button" class="status-overview-chip" data-status-filter="ended"><span class="status-overview-dot ended"></span><b id="statusCountEnded">0</b> 已完成</button>
+        </div>
         <div class="thread-search-row">
           <input id="searchInput" class="search" type="search" placeholder="搜索对话" autocomplete="off" />
           <button id="newThreadButton" class="new-thread-button" type="button">
@@ -95,6 +101,9 @@
           <div class="conversation-title">
             <h2 id="threadTitle">选择一个对话</h2>
             <p id="threadMeta">每 3 秒自动同步</p>
+            <button id="headerStatusButton" class="header-status-button" type="button" title="查看会话状态总览" hidden>
+              <span class="header-status-dot"></span><span id="headerStatusText"></span>
+            </button>
             <section id="goalPanel" class="goal-panel" hidden>
               <button class="goal-view" id="goalView" type="button" aria-haspopup="dialog">
                 <span class="goal-heading"><span id="goalLabel">目标</span><span id="goalObjective" class="goal-objective"></span><span id="goalStatus" class="goal-status"></span></span>
