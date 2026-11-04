@@ -3856,6 +3856,45 @@ window.addEventListener("resize", () => {
   updateScrollToBottomButton();
 });
 
+/**
+ * 键盘遮挡修复（2026-11-05）。
+ *
+ * Android WebView 在 adjustResize 下不一定同步更新 100dvh（老内核尤其明显），
+ * 结果 shell 仍按全屏高布局，composer 被软键盘盖住。这里直接用
+ * visualViewport.height 重订 shell 高度，并把「键盘开着」标到 <html> 上，
+ * 让 CSS 收紧输入区、保持发送键始终在键盘上方。
+ */
+function syncVisualViewport() {
+  const shell = els.shell || document.querySelector("#shell");
+  const vv = window.visualViewport;
+  if (!shell) return;
+  const layout = window.innerHeight || document.documentElement.clientHeight;
+  const visible = vv ? Math.round(vv.height) : layout;
+  const keyboardOpen = (Boolean(vv) && layout - visible > 120) || layout < 520;
+  // vv.offsetTop 是可视区相对布局视口的偏移；键盘态下把 shell 钉在可视区。
+  const offset = vv ? Math.round(vv.offsetTop || 0) : 0;
+  shell.style.setProperty("--app-visible-height", `${visible}px`);
+  shell.style.setProperty("--app-viewport-offset", `${offset}px`);
+  shell.style.height = `${visible}px`;
+  document.documentElement.classList.toggle("keyboard-open", keyboardOpen);
+  if (keyboardOpen) {
+    // 输入焦点在 composer 时，把它滚进可视区（某些内核不会自动 pan）。
+    if (document.activeElement === els.composerInput) {
+      els.composerInput.scrollIntoView({ block: "nearest", inline: "nearest" });
+    }
+  }
+  updateScrollToBottomButton();
+}
+
+if (window.visualViewport) {
+  window.visualViewport.addEventListener("resize", syncVisualViewport);
+  window.visualViewport.addEventListener("scroll", syncVisualViewport);
+}
+window.addEventListener("resize", syncVisualViewport);
+window.addEventListener("focusin", () => window.setTimeout(syncVisualViewport, 120));
+window.addEventListener("focusout", () => window.setTimeout(syncVisualViewport, 180));
+syncVisualViewport();
+
 els.searchInput.addEventListener("input", (event) => {
   state.filter = event.target.value;
   renderThreads();

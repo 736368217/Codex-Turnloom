@@ -974,3 +974,93 @@ body,
 #shell .header-status-button {
   min-height: 44px;
 }
+
+/* ══════════════════════════════════════════════════════════════════════════
+   软键盘态（2026-11-05）
+   app.js 用 visualViewport.height 给 #shell 设了精确高度；这里再保证
+   composer 永远贴着可视区底部、消息区仍能滚动、顶部栏不被挤没。
+   ══════════════════════════════════════════════════════════════════════════ */
+#shell {
+  height: var(--app-visible-height, 100dvh);
+  overflow: hidden;
+}
+
+html.keyboard-open #shell .conversation-header {
+  min-height: 48px;
+  padding: 4px 10px;
+}
+
+html.keyboard-open #shell .conversation-header .header-status-button,
+html.keyboard-open #shell .conversation-header #threadMeta,
+html.keyboard-open #shell .conversation-header .goal-panel {
+  display: none;
+}
+
+html.keyboard-open #shell .message-list {
+  padding-top: 10px;
+  padding-bottom: 10px;
+}
+
+html.keyboard-open #shell .composer {
+  padding-top: 6px;
+  padding-bottom: max(6px, env(safe-area-inset-bottom));
+}
+
+html.keyboard-open #shell .composer-pod {
+  padding: 6px 10px;
+  border-radius: 16px;
+}
+
+html.keyboard-open #shell .composer-input {
+  min-height: 40px;
+  max-height: 88px;
+}
+
+html.keyboard-open #shell .draft-project-row,
+html.keyboard-open #shell .queue-status-bar {
+  display: none;
+}
+
+/* 键盘弹出时把模型面板等浮层限制在可视区内，别盖住输入行 */
+html.keyboard-open #shell .model-panel {
+  max-height: min(240px, 32dvh);
+}
+
+/* 键盘态再收紧一轮：矮窗口（含 320×300）也要留得住输入行和发送键 */
+html.keyboard-open #shell .follow-up-mode,
+html.keyboard-open #shell .plugin-mention-tray,
+html.keyboard-open #shell .attachment-tray {
+  display: none;
+}
+
+html.keyboard-open #shell .composer-pod {
+  gap: 4px;
+}
+
+html.keyboard-open #shell .composer-input {
+  min-height: 38px;
+  max-height: 72px;
+  padding: 4px 0;
+}
+
+html.keyboard-open #shell .composer-actions {
+  margin-top: 2px;
+}
+
+html.keyboard-open #shell .send-status {
+  display: none;
+}
+
+/* shell 用 flex 列，消息区吃掉剩余空间，composer 永远贴底 */
+#shell .conversation {
+  min-height: 0;
+}
+
+#shell .message-list {
+  min-height: 0;
+}
+
+/* 键盘态下输入框仍保持 44px 命中高度；composer 只比原来高 6px，不影响可视区 */
+html.keyboard-open #shell .composer-input {
+  min-height: 44px;
+}
