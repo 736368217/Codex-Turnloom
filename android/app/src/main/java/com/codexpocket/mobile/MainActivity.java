@@ -36,6 +36,12 @@ import android.webkit.WebSettings;
 import android.webkit.WebView;
 import android.webkit.WebViewClient;
 import android.webkit.JavascriptInterface;
+
+import android.view.ActionMode;
+import android.view.Menu;
+import android.view.MenuItem;
+import android.webkit.JsResult;
+import android.webkit.JsPromptResult;
 import android.widget.Button;
 import android.widget.EditText;
 import android.widget.FrameLayout;
@@ -76,6 +82,52 @@ import javax.crypto.SecretKey;
 import javax.crypto.spec.GCMParameterSpec;
 
 public class MainActivity extends ComponentActivity {
+
+    /** 应用内样式的 JS 对话框兜底，替代 WebView 默认系统对话框。 */
+    private void showJsDialog(String message, String defaultValue, JsResult result, boolean cancellable) {
+        AlertDialog.Builder builder = new AlertDialog.Builder(this);
+        builder.setTitle("Codex-Turnloom");
+        builder.setMessage(message == null ? "" : message);
+        builder.setCancelable(cancellable);
+        builder.setPositiveButton("确定", (dialog, which) -> {
+            if (result instanceof JsPromptResult) {
+                ((JsPromptResult) result).confirm(defaultValue == null ? "" : defaultValue);
+            } else {
+                result.confirm();
+            }
+        });
+        if (cancellable) {
+            builder.setNegativeButton("取消", (dialog, which) -> result.cancel());
+        }
+        builder.setOnCancelListener(dialog -> result.cancel());
+        AlertDialog dialog = builder.create();
+        dialog.setOnShowListener(d -> {
+            Button positive = dialog.getButton(DialogInterface.BUTTON_POSITIVE);
+            Button negative = dialog.getButton(DialogInterface.BUTTON_NEGATIVE);
+            int blue = Color.rgb(37, 99, 235);
+            if (positive != null) positive.setTextColor(blue);
+            if (negative != null) negative.setTextColor(Color.rgb(107, 124, 147));
+        });
+        dialog.show();
+    }
+
+    /** 拦掉系统文字选择 ActionMode（复制/全选把手），长按交给网页里的应用内菜单。 */
+    @Override
+    public void onActionModeStarted(ActionMode mode) {
+        super.onActionModeStarted(mode);
+        Menu menu = mode.getMenu();
+        boolean isTextSelection = false;
+        for (int i = 0; i < menu.size(); i++) {
+            MenuItem item = menu.getItem(i);
+            int id = item.getItemId();
+            if (id == android.R.id.selectAll || id == android.R.id.copy
+                    || "复制".equals(item.getTitle()) || "全选".equals(item.getTitle())) {
+                isTextSelection = true;
+                break;
+            }
+        }
+        if (isTextSelection) mode.finish();
+    }
     /** Installed package version code. Never hardcode it: a stale constant makes every device prompt for an update forever. */
     private int appVersionCode() {
         try {
@@ -549,6 +601,12 @@ public class MainActivity extends ComponentActivity {
         view.setFocusableInTouchMode(true);
         view.setOverScrollMode(View.OVER_SCROLL_NEVER);
         view.addJavascriptInterface(new NativeBridge(), "CodexPocket");
+        // 长按由网页里的应用内操作单接管；不要让 WebView 弹出系统选词把手，
+        // 那样一眼就能看出这是浏览器。输入框仍允许聚焦与软键盘。
+        view.setLongClickable(false);
+        view.setHapticFeedbackEnabled(false);
+        view.setOnLongClickListener(v -> true);
+        view.setNestedScrollingEnabled(false);
         WebSettings settings = view.getSettings();
         settings.setJavaScriptEnabled(true);
         settings.setDomStorageEnabled(true);
@@ -575,6 +633,30 @@ public class MainActivity extends ComponentActivity {
                 pageProgress.setProgress(progress);
                 pageProgress.setVisibility(progress >= 100 ? View.INVISIBLE : View.VISIBLE);
             }
+
+            // 兜底：网页里任何残留的 alert/confirm/prompt 都不再掉进
+            // WebView 的默认系统对话框（那种方框一眼就是网页水平）。
+            // Web 层已改用应用内弹层；这里用带样式的 AlertDialog 收尾，
+            // 且必须调用 JsResult，否则 JS 线程会一直被挂住。
+            @Override
+            public boolean onJsAlert(WebView webView, String url, String message, JsResult result) {
+                showJsDialog(message, null, result, false);
+                return true;
+            }
+
+            @Override
+            public boolean onJsConfirm(WebView webView, String url, String message, JsResult result) {
+                showJsDialog(message, null, result, true);
+                return true;
+            }
+
+            @Override
+            public boolean onJsPrompt(WebView webView, String url, String message,
+                                      String defaultValue, JsPromptResult result) {
+                showJsDialog(message, defaultValue, result, true);
+                return true;
+            }
+
 
             @Override
             public boolean onShowFileChooser(WebView webView, ValueCallback<Uri[]> callback, FileChooserParams params) {

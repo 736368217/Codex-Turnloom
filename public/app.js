@@ -15,6 +15,7 @@ const state = {
   expandedNotices: {},
   sidebarCollapsed: false,
   modelFilter: "",
+  showAllModels: false,
     threadSortMode: (() => { const saved = safeStorageGet(localStorage, "codex-thread-sort-mode"); return saved === "recent" ? "recent" : "project"; })(),
   /** Projects (folders) a new conversation can be filed into, and the remembered choice. */
   projects: [],
@@ -266,7 +267,7 @@ const I18N = {
     steerBecameNewTurn: "原任务刚好完成，这条消息已作为下一步发送。",
     modelSettings: "选择模型和思考强度",
     modelLabel: "模型",
-    filterModels: "筛选模型",
+    filterModels: "搜索模型或供应商",
     effortLabel: "思考强度",
     effortLow: "低",
     effortMedium: "中",
@@ -351,6 +352,8 @@ const I18N = {
     sendUncertainFailed: "发送未确认，可能未到达桌面端。请重试。",
     sendUncertainAccepted: "桌面端已接收这条消息，正在刷新状态。",
     interruptFailed: "停止失败：{message}",
+    stoppingTask: "正在停止当前任务…",
+    taskStopped: "已停止",
     busyCannotSend: "Codex 正在处理。请先停止当前任务，再发送这条消息。",
     pluginPickerTitle: "引用插件",
     pluginPickerLoading: "正在加载插件...",
@@ -474,7 +477,7 @@ const I18N = {
     steerBecameNewTurn: "The previous task finished, so this message was sent as the next step.",
     modelSettings: "Choose model and reasoning effort",
     modelLabel: "Model",
-    filterModels: "Filter models",
+    filterModels: "Search models or providers",
     effortLabel: "Reasoning effort",
     effortLow: "Low",
     effortMedium: "Medium",
@@ -559,6 +562,8 @@ const I18N = {
     sendUncertainFailed: "The send was not confirmed and may not have reached Desktop. Retry it.",
     sendUncertainAccepted: "Desktop accepted the message. Refreshing the conversation state.",
     interruptFailed: "Stop failed: {message}",
+    stoppingTask: "Stopping the current task…",
+    taskStopped: "Stopped",
     busyCannotSend: "Codex is still processing. Stop the current task before sending this message.",
     pluginPickerTitle: "Mention plugin",
     pluginPickerLoading: "Loading plugins...",
@@ -818,19 +823,80 @@ function renderModelSettings() {
   const models = availableModels();
   if (!models.length) return;
   const selectedModel = models.find((model) => model.id === state.model) || models[0];
-  // PI exposes 170+ models; a flat native select is unusable at that size, so
-  // long catalogues get a filter box above the list.
-  const filtered = filteredModels(models, state.modelFilter);
-  const showFilter = models.length > MODEL_FILTER_THRESHOLD;
-  if (els.modelFilter) {
-    els.modelFilter.hidden = !showFilter;
-    if (!showFilter && els.modelFilter.value) els.modelFilter.value = "";
+  // usedModelIds 是会话里记录的裸 slug（deepseek-v4.1-flash），目录 id 是
+  // 「供应商/模型」。两种写法都要认，否则常用列表会空掉。
+  const usedIds = (Array.isArray(state.config?.usedModelIds) ? state.config.usedModelIds : [])
+    .map((id) => String(id).toLowerCase());
+  const usedRank = new Map(usedIds.map((id, index) => [id, index]));
+  const usedSet = new Set(usedIds);
+  const rankOf = (model) => {
+    const id = String(model.id || "").toLowerCase();
+    const tail = id.includes("/") ? id.slice(id.lastIndexOf("/") + 1) : id;
+    const a = usedRank.has(id) ? usedRank.get(id) : Infinity;
+    const b = usedRank.has(tail) ? usedRank.get(tail) : Infinity;
+    return Math.min(a, b);
+  };
+  const isUsed = (model) => Number.isFinite(rankOf(model));
+  // 供应商自动发现的模型可能上百个，默认只列这台电脑上真正在用的，
+  // 并按使用频次排序取前 20；同名模型散落在多个供应商时不再全部铺开。
+  const scopeAll = state.showAllModels || Boolean(String(state.modelFilter || "").trim());
+  const scoped = usedSet.size && !scopeAll
+    ? (() => {
+        const seen = new Set();
+        return models
+          .filter((model) => isUsed(model) || model.id === selectedModel.id)
+          .sort((a, b) => rankOf(a) - rankOf(b))
+          .filter((model) => {
+            // 同一个模型名散落在多个供应商时，常用视图只留使用频次最高的那条，
+            // 其余仍可在「显示全部」/搜索里找到，避免列表里三个同名看不出区别。
+            const key = String(model.label || model.id).split(" · ")[0].toLowerCase();
+            if (seen.has(key)) return false;
+            seen.add(key);
+            return true;
+          })
+          .slice(0, 20);
+      })()
+    : models;
+  const filtered = filteredModels(scoped, state.modelFilter);
+  const rows = filtered.length && !filtered.some((model) => model.id === selectedModel.id)
+    ? [selectedModel, ...filtered]
+    : filtered.length
+      ? filtered
+      : [selectedModel];
+
+  const list = document.querySelector("#modelList");
+  const empty = document.querySelector("#modelEmpty");
+  const count = document.querySelector("#modelCount");
+  const scopeButton = document.querySelector("#modelScopeButton");
+  if (list) {
+    list.replaceChildren(...rows.map((model) => {
+      const row = document.createElement("button");
+      row.type = "button";
+      row.className = "model-row" + (model.id === selectedModel.id ? " active" : "");
+      row.dataset.modelId = model.id;
+      row.setAttribute("role", "option");
+      row.setAttribute("aria-selected", String(model.id === selectedModel.id));
+      const name = document.createElement("span");
+      name.className = "model-row-name";
+      name.textContent = String(model.label || model.id).split(" · ")[0];
+      const provider = document.createElement("span");
+      provider.className = "model-row-provider";
+      provider.textContent = String(model.label || "").includes(" · ")
+        ? String(model.label).split(" · ").slice(1).join(" · ")
+        : model.id;
+      row.append(name, provider);
+      return row;
+    }));
   }
-  // Keep the current model in the list even when the filter excludes it: the
-  // select must never display a model that is not the active one.
-  const optionRows =
-    filtered.length && !filtered.some((model) => model.id === selectedModel.id) ? [selectedModel, ...filtered] : filtered;
-  els.modelSelect.replaceChildren(...(optionRows.length ? optionRows : [selectedModel]).map((model) => {
+  if (empty) empty.hidden = rows.length > 0 || !String(state.modelFilter || "").trim();
+  if (count) count.textContent = scopeAll ? `共 ${rows.length} 个` : `常用 ${rows.length} 个`;
+  if (scopeButton) {
+    scopeButton.textContent = state.showAllModels ? "只看常用模型" : "显示全部模型";
+    scopeButton.hidden = usedIds.size === 0;
+  }
+
+  // 隐藏 select 保留给表单/兼容路径，但不作为用户可见控件。
+  els.modelSelect.replaceChildren(...rows.map((model) => {
     const option = document.createElement("option");
     option.value = model.id;
     option.textContent = model.label || model.id;
@@ -838,6 +904,17 @@ function renderModelSettings() {
   }));
   els.modelSelect.value = selectedModel.id;
   const efforts = Array.isArray(selectedModel.efforts) ? selectedModel.efforts : [];
+  const chips = document.querySelector("#effortChips");
+  if (chips) {
+    chips.replaceChildren(...efforts.map((effort) => {
+      const chip = document.createElement("button");
+      chip.type = "button";
+      chip.className = "effort-chip" + (effort === state.effort ? " active" : "");
+      chip.dataset.effort = effort;
+      chip.textContent = effortLabel(effort);
+      return chip;
+    }));
+  }
   els.effortSelect.replaceChildren(...efforts.map((effort) => {
     const option = document.createElement("option");
     option.value = effort;
@@ -1591,10 +1668,12 @@ function renderThreads() {
   // 露不出来 —— 这正是「分不出谁是谁」。默认只展开当前会话所在的那组：
   // 打开列表先看到全部项目，想看哪个点哪个。用户自己点过的组记住他的选择，
   // 搜索时一律展开（那时他要看的是命中项）。
+  const searching = Boolean(String(state.filter || "").trim());
   const groupCollapsed = (group) => {
+    // 搜索时一律展开：用户要看的就是命中项，手动折叠过的组也必须打开。
+    if (searching) return false;
     const explicit = state.collapsedThreadGroups[group.key];
     if (typeof explicit === "boolean") return explicit;
-    if (String(state.filter || "").trim()) return false;
     return !group.threads.some((thread) => thread.id === state.selectedId);
   };
   els.threadList.innerHTML = `${draft}${groups.map((group) => {
@@ -1608,6 +1687,8 @@ function renderThreads() {
     </section>
   `;
   }).join("")}`;
+  const searchEmpty = document.querySelector("#searchEmpty");
+  if (searchEmpty) searchEmpty.hidden = !searching || groups.some((group) => group.threads.length);
   syncThreadSortSegments();
 }
 function syncThreadSortSegments() {
@@ -2118,6 +2199,46 @@ function renderMessages(data) {
           </div>
         </article>
       `;
+
+/**
+ * 应用内确认层。WebChromeClient 默认会把 confirm() 画成安卓系统对话框，
+ * 一眼看出是网页。所有需要确认的动作都走这里，样式与 App 其余弹层一致。
+ */
+function appConfirm(message, { title = "请确认", confirmText = "确定", cancelText = "取消", danger = false } = {}) {
+  const backdrop = document.querySelector("#appDialogBackdrop");
+  const dialog = document.querySelector("#appDialog");
+  if (!backdrop || !dialog) return Promise.resolve(window.confirm(message));
+  document.querySelector("#appDialogTitle").textContent = title;
+  document.querySelector("#appDialogBody").textContent = message;
+  const cancel = document.querySelector("#appDialogCancel");
+  const ok = document.querySelector("#appDialogConfirm");
+  cancel.textContent = cancelText;
+  ok.textContent = confirmText;
+  dialog.classList.toggle("danger", danger);
+  backdrop.hidden = false;
+  dialog.hidden = false;
+  ok.focus({ preventScroll: true });
+  return new Promise((resolve) => {
+    const done = (value) => {
+      backdrop.hidden = true;
+      dialog.hidden = true;
+      backdrop.removeEventListener("click", onCancel);
+      cancel.removeEventListener("click", onCancel);
+      ok.removeEventListener("click", onOk);
+      document.removeEventListener("keydown", onKey);
+      resolve(value);
+    };
+    const onCancel = () => done(false);
+    const onOk = () => done(true);
+    const onKey = (event) => {
+      if (event.key === "Escape") done(false);
+    };
+    backdrop.addEventListener("click", onCancel);
+    cancel.addEventListener("click", onCancel);
+    ok.addEventListener("click", onOk);
+    document.addEventListener("keydown", onKey);
+  });
+}
       return `${messageArticle}${isTool ? renderPromotedToolImages(message) : ""}`;
     })
     .join("");
@@ -3533,7 +3654,15 @@ els.goalEditDialog?.addEventListener("click", (event) => {
 });
 
 els.goalClearButton?.addEventListener("click", async () => {
-  if (!state.selectedId || !confirm("删除当前目标？")) return;
+  if (!state.selectedId) return;
+  if (
+    !(await appConfirm("删除当前目标？", {
+      title: "删除目标",
+      confirmText: "删除",
+      danger: true,
+    }))
+  )
+    return;
   try {
     await fetchJson(`/api/threads/${encodeURIComponent(state.selectedId)}/goal`, { method: "DELETE" });
     state.goal = null;
@@ -3680,10 +3809,47 @@ els.searchInput.addEventListener("input", (event) => {
   renderThreads();
 });
 
+// 搜索时给出明确的空结果与清除入口，别让用户对着空白列表猜。
+els.searchInput.addEventListener("search", () => {
+  state.filter = "";
+  renderThreads();
+});
+
 els.toolToggle.addEventListener("change", (event) => {
   state.showTools = event.target.checked;
   state.messagesSignature = "";
   loadMessages(true);
+});
+
+function selectModel(modelId) {
+  if (!modelId) return;
+  state.model = modelId;
+  state.effort = "";
+  rememberModelSettingsForCurrentThread();
+  normalizeModelSettings();
+  closeModelPanel();
+}
+
+function selectEffort(effort) {
+  if (!effort) return;
+  state.effort = effort;
+  rememberModelSettingsForCurrentThread();
+  normalizeModelSettings();
+}
+
+document.querySelector("#modelList")?.addEventListener("click", (event) => {
+  const row = event.target.closest("[data-model-id]");
+  if (row) selectModel(row.dataset.modelId);
+});
+
+document.querySelector("#effortChips")?.addEventListener("click", (event) => {
+  const chip = event.target.closest("[data-effort]");
+  if (chip) selectEffort(chip.dataset.effort);
+});
+
+document.querySelector("#modelScopeButton")?.addEventListener("click", () => {
+  state.showAllModels = !state.showAllModels;
+  renderModelSettings();
 });
 
 els.modelSummary.addEventListener("click", () => {
@@ -3693,7 +3859,6 @@ els.modelSummary.addEventListener("click", () => {
   closePluginMentionMenu();
   closeSkillMentionMenu();
   renderModelSettings();
-  renderModelSettings();
 });
 
 els.modelFilter?.addEventListener("input", () => {
@@ -3701,16 +3866,16 @@ els.modelFilter?.addEventListener("input", () => {
   renderModelSettings();
 });
 
+// 隐藏 select 只作表单值载体；用户实际通过 #modelList / #effortChips 选择。
 els.modelSelect.addEventListener("change", () => {
+  if (!els.modelSelect.value) return;
   state.model = els.modelSelect.value;
-  state.effort = "";
-  rememberModelSettingsForCurrentThread();
   normalizeModelSettings();
 });
 
 els.effortSelect.addEventListener("change", () => {
+  if (!els.effortSelect.value) return;
   state.effort = els.effortSelect.value;
-  rememberModelSettingsForCurrentThread();
   normalizeModelSettings();
 });
 
@@ -4173,16 +4338,27 @@ els.followUpMode.addEventListener("click", (event) => {
 els.stopButton.addEventListener("click", async () => {
   if (!state.threadStatus?.thinking || state.composerBusy || !state.selectedId) return;
   const previousStatus = state.threadStatus;
+  const threadId = state.selectedId;
+  const expectedTurnId = String(state.threadStatus.turnId || "");
   const controller = new AbortController();
   const timeout = window.setTimeout(() => controller.abort(), 15000);
   state.composerBusy = true;
-  state.threadStatus = { ...(state.threadStatus || {}), thinking: false, turnId: null, stopping: true };
+  // 保持 thinking=true 直到服务端确认真的停了：否则按钮会在点击瞬间消失，
+  // 用户既看不到反馈，也不知道该等还是该再点一次。
+  state.threadStatus = { ...(state.threadStatus || {}), stopping: true };
   renderComposerMode();
-  els.sendStatus.textContent = "";
+  els.sendStatus.textContent = t("stoppingTask");
+  els.stopButton.classList.add("is-stopping");
   try {
-    await postJson("/api/interrupt", { threadId: state.selectedId }, { signal: controller.signal });
+    const result = await postJson(
+      "/api/interrupt",
+      { threadId, ...(expectedTurnId ? { expectedTurnId } : {}) },
+      { signal: controller.signal }
+    );
+    if (result?.ok === false) throw new Error(result?.error || "宿主未确认停止");
     state.threadStatus = { ...(state.threadStatus || {}), thinking: false, turnId: null, stopping: false };
     state.messagesSignature = "";
+    els.sendStatus.textContent = t("taskStopped");
     refreshSoon(250);
   } catch (error) {
     state.threadStatus = previousStatus;
@@ -4191,6 +4367,7 @@ els.stopButton.addEventListener("click", async () => {
   } finally {
     window.clearTimeout(timeout);
     state.composerBusy = false;
+    els.stopButton.classList.remove("is-stopping");
     renderComposerMode();
   }
 });

@@ -500,3 +500,298 @@
 #shell .thread-group-items .thread-copy {
   gap: 2px;
 }
+
+/* ══════════════════════════════════════════════════════════════════════════
+   消掉「浏览器感」的交互细节（2026-11-05）
+   · 默认全站禁止长按选词/系统复制把手；只有用户主动点「选择文字」才放开
+   · 点按高亮、长按菜单、应用内确认弹层统一按 App 的观感来做
+   ══════════════════════════════════════════════════════════════════════════ */
+html,
+body,
+#shell,
+#shell * {
+  -webkit-touch-callout: none;
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+/* 输入框当然要能选词，但不要系统长按把手 */
+#shell input,
+#shell textarea,
+#shell [contenteditable="true"] {
+  -webkit-user-select: text;
+  user-select: text;
+  -webkit-touch-callout: none;
+}
+
+/* 长按菜单里用户主动选「选择文字」时，只放开那一条消息 */
+#shell .message.selecting .bubble,
+#shell .message.selecting .bubble * {
+  -webkit-user-select: text;
+  user-select: text;
+  -webkit-touch-callout: default;
+}
+
+/* 去掉 WebView 的点按高亮方块 */
+#shell * {
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* 应用内确认框：替代安卓系统 confirm() */
+#shell .app-dialog-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 70;
+  display: block;
+  border: 0;
+  padding: 0;
+  background: rgba(15, 26, 44, 0.38);
+  backdrop-filter: blur(3px);
+  -webkit-backdrop-filter: blur(3px);
+}
+
+#shell .app-dialog-backdrop[hidden] {
+  display: none;
+}
+
+#shell .app-dialog {
+  position: fixed;
+  z-index: 71;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  width: min(320px, calc(100vw - 40px));
+  padding: 22px 20px 16px;
+  border: 1px solid var(--app-line);
+  border-radius: var(--app-radius-lg);
+  background: var(--app-surface);
+  box-shadow: var(--app-shadow-2);
+  text-align: left;
+}
+
+#shell .app-dialog[hidden] {
+  display: none;
+}
+
+#shell .app-dialog h3 {
+  margin: 0 0 8px;
+  font-size: 17px;
+  font-weight: 750;
+  color: var(--app-ink);
+}
+
+#shell .app-dialog p {
+  margin: 0 0 20px;
+  font-size: 14px;
+  line-height: 1.6;
+  color: var(--app-ink-2);
+}
+
+#shell .app-dialog-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+#shell .app-dialog-actions button {
+  min-width: 84px;
+  min-height: 44px;
+  padding: 0 16px;
+  border: 0;
+  border-radius: 12px;
+  background: var(--app-surface-2);
+  color: var(--app-ink-2);
+  font-family: inherit;
+  font-size: 14px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+#shell .app-dialog-actions #appDialogConfirm {
+  background: linear-gradient(145deg, #3B76F0, var(--app-brand-deep));
+  color: #FFFFFF;
+  box-shadow: 0 4px 12px rgba(37, 99, 235, 0.24);
+}
+
+#shell .app-dialog.danger .app-dialog-actions #appDialogConfirm {
+  background: linear-gradient(145deg, #F05252, #DC2626);
+  box-shadow: 0 4px 12px rgba(220, 38, 38, 0.22);
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
+   模型面板：应用内可搜索列表，替代 240 项原生 <select>
+   ══════════════════════════════════════════════════════════════════════════ */
+#shell .model-panel {
+  max-height: min(460px, 62dvh);
+  overflow-y: auto;
+}
+
+#shell .model-filter {
+  width: 100%;
+  min-height: 44px;
+  margin-top: 6px;
+  padding: 0 12px;
+  border: 1px solid var(--app-line);
+  border-radius: 12px;
+  background: var(--app-surface);
+  color: var(--app-ink);
+  font-family: inherit;
+  font-size: 14px;
+}
+
+#shell .model-filter:focus {
+  outline: none;
+  border-color: var(--app-brand);
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.10);
+}
+
+#shell .model-list-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin: 8px 0 6px;
+}
+
+#shell .model-scope-button {
+  min-height: 36px;
+  padding: 0 12px;
+  border: 1px solid var(--app-line);
+  border-radius: 999px;
+  background: var(--app-surface-2);
+  color: var(--app-brand-deep);
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+#shell .model-count {
+  color: var(--app-ink-3);
+  font-size: 11px;
+  font-weight: 600;
+}
+
+#shell .model-list {
+  display: grid;
+  gap: 4px;
+  max-height: 260px;
+  overflow-y: auto;
+  padding: 2px;
+}
+
+#shell .model-row {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  min-height: 48px;
+  padding: 8px 12px;
+  border: 1px solid transparent;
+  border-radius: 12px;
+  background: transparent;
+  text-align: left;
+  cursor: pointer;
+}
+
+#shell .model-row:hover {
+  background: var(--app-surface-2);
+}
+
+#shell .model-row.active {
+  background: var(--app-brand-soft);
+  border-color: rgba(37, 99, 235, 0.18);
+}
+
+#shell .model-row-name {
+  color: var(--app-ink);
+  font-size: 14px;
+  font-weight: 650;
+  line-height: 1.4;
+}
+
+#shell .model-row-provider {
+  color: var(--app-ink-3);
+  font-size: 11px;
+  line-height: 1.4;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 100%;
+}
+
+#shell .model-empty {
+  margin: 10px 0 2px;
+  color: var(--app-ink-3);
+  font-size: 13px;
+  text-align: center;
+}
+
+#shell .effort-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 6px;
+}
+
+#shell .effort-chip {
+  min-height: 44px;
+  min-width: 56px;
+  padding: 0 14px;
+  border: 1px solid var(--app-line);
+  border-radius: 999px;
+  background: var(--app-surface);
+  color: var(--app-ink-2);
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 650;
+  cursor: pointer;
+}
+
+#shell .effort-chip.active {
+  background: var(--app-brand-soft);
+  border-color: rgba(37, 99, 235, 0.25);
+  color: var(--app-brand-deep);
+}
+
+#shell .model-select-hidden {
+  display: none;
+}
+
+/* 打断进行中：按钮不消失，给持续的视觉反馈，避免"点了没反应" */
+#shell .composer-buttons .stop-button.is-stopping {
+  animation: app-stop-pulse 900ms ease-in-out infinite;
+}
+
+@keyframes app-stop-pulse {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.62; transform: scale(0.92); }
+}
+
+/* 搜索无结果 */
+#shell .search-empty {
+  margin: 16px 12px;
+  padding: 18px;
+  border: 1px dashed var(--app-line);
+  border-radius: var(--app-radius-md);
+  background: var(--app-surface);
+  color: var(--app-ink-3);
+  font-size: 13px;
+  text-align: center;
+}
+
+/* 常用视图里同名模型已去重，供应商名要能完整读到，别挤成半行 */
+#shell .model-list .model-row {
+  min-height: 52px;
+}
+
+#shell .model-row-provider {
+  white-space: normal;
+  overflow: visible;
+  text-overflow: clip;
+  line-height: 1.35;
+}
+
+#shell .model-scope-button {
+  min-height: 44px;
+}
