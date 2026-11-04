@@ -1245,17 +1245,20 @@ test("an empty or truncated auth.json degrades to no account instead of a 500", 
   assert.equal(profile.authMode, "chatgpt");
 });
 
-test("large model catalogues get a filter box instead of one flat list", () => {
+test("large model catalogues default to models this machine actually uses", () => {
   const root = fileURLToPath(new URL("..", import.meta.url));
   const html = readFileSync(path.join(root, "public", "index.html"), "utf8");
   const app = readFileSync(path.join(root, "public", "app.js"), "utf8");
-  const styles = readFileSync(path.join(root, "public", "styles.css"), "utf8");
+  const server = readFileSync(path.join(root, "server.js"), "utf8");
 
-  assert.match(html, /id="modelFilter"/, "expected a filter input inside the model panel");
-  assert.match(app, /const MODEL_FILTER_THRESHOLD = 20;/);
-  assert.match(app, /function filteredModels\(/, "expected the filter predicate to be shared");
-  assert.match(app, /els\.modelFilter\.hidden = !showFilter/);
-  assert.match(styles, /\.model-filter\s*\{/);
+  // 供应商自动发现的 240 个模型不该一上来全平铺给用户。
+  assert.match(html, /id="modelList"/, "expected an in-app model list instead of a native select");
+  assert.match(html, /id="modelScopeButton"/, "expected an explicit 'show all' switch");
+  assert.match(html, /id="modelFilter"[^>]*placeholder="搜索模型或供应商"/);
+  assert.match(app, /usedModelIds/, "the client must scope models by the used list");
+  assert.match(app, /state\.showAllModels/, "the client needs an explicit all-models mode");
+  assert.match(server, /async function usedModelIds\(/, "the server must derive used models from the facade DB");
+  assert.match(server, /usedModelIds: usedModels/, "health must carry the used-model ids");
 });
 
 test("a conversation started from the phone stays visible until Desktop lists it", () => {
@@ -1597,4 +1600,32 @@ test("the advertised app version comes from the build files, not a stale constan
   const server = readFileSync(path.join(root, "server.js"), "utf8");
   assert.ok(!/const APP_VERSION_CODE = 24;/.test(server));
   assert.ok(!/const APP_VERSION_NAME = "1\.17\.3";/.test(server));
+});
+
+test("the Android shell suppresses browser text selection and JS system dialogs", () => {
+  const root = fileURLToPath(new URL("..", import.meta.url));
+  const main = readFileSync(path.join(root, "android", "app", "src", "main", "java", "com", "codexpocket", "mobile", "MainActivity.java"), "utf8");
+  const app = readFileSync(path.join(root, "public", "app.js"), "utf8");
+  const css = readFileSync(path.join(root, "public", "styles.app.css"), "utf8");
+  const html = readFileSync(path.join(root, "public", "index.html"), "utf8");
+
+  assert.match(main, /setLongClickable\(false\)/, "long-press selection must be disabled at the WebView level");
+  assert.match(main, /onActionModeStarted/, "system copy handles must be intercepted");
+  assert.match(main, /onJsConfirm/, "JS confirm must not fall through to the system dialog");
+  assert.match(css, /user-select:\s*none/, "web layer must not allow arbitrary text selection");
+  assert.match(html, /id="appDialog"/, "in-app confirmation layer must exist");
+  assert.match(app, /function appConfirm\(/, "confirmations must use the in-app dialog");
+  assert.doesNotMatch(app, /!\s*confirm\(/, "no bare window.confirm left");
+});
+
+test("search expands groups and interrupt waits for host confirmation", () => {
+  const root = fileURLToPath(new URL("..", import.meta.url));
+  const app = readFileSync(path.join(root, "public", "app.js"), "utf8");
+  const html = readFileSync(path.join(root, "public", "index.html"), "utf8");
+
+  assert.match(html, /id="searchEmpty"/, "an explicit empty-search state is required");
+  assert.match(app, /if \(searching\) return false;/, "search must expand every group");
+  assert.match(app, /expectedTurnId/, "interrupt should carry the active turn id");
+  assert.match(app, /stopping: true/, "interrupt must show a stopping state");
+  assert.doesNotMatch(app, /thinking: false, turnId: null, stopping: true/, "interrupt must not fake a stop before confirmation");
 });

@@ -4748,6 +4748,26 @@ async function loadCodexModelConfiguration(home = codexHomeState.home) {
   }
 }
 
+
+/**
+ * 手机端只该默认看到「这台电脑上真正在用的模型」。
+ * 门面 state_5.sqlite 的 threads.model 就是每次会话实际记录的模型 slug；
+ * 供应商自动发现的 240 个模型不该全部平铺给用户（2026-11-05 用户反馈）。
+ * 读不到就返回空数组，前端退回全量列表，绝不假装知道用户用过什么。
+ */
+async function usedModelIds(home) {
+  try {
+    const dbPath = path.join(path.resolve(home), "state_5.sqlite");
+    const sql = `SELECT model AS id, COUNT(*) AS n FROM threads
+                 WHERE model IS NOT NULL AND trim(model) <> ''
+                 GROUP BY model ORDER BY n DESC LIMIT 40`;
+    const rows = await runSqlJsonAttempt(sql, dbPath);
+    if (!Array.isArray(rows)) return [];
+    return rows.map((row) => String(row?.id || "").trim()).filter(Boolean);
+  } catch {
+    return [];
+  }
+}
 function normalizeTurnSettings({ model, effort } = {}, modelConfiguration = activeModelConfiguration) {
   const models = Array.isArray(modelConfiguration?.models) && modelConfiguration.models.length
     ? modelConfiguration.models
@@ -7046,7 +7066,6 @@ const server = http.createServer(async (req, res) => {
       return;
     }
     req.turnloomProfile = profileForRequest(req, url);
-    if (await handleHttpBackendApi(req, res, url, req.turnloomProfile)) return;
     if (req.method === "GET" && url.pathname === "/api/local-image") {
       if (!requireAuthorized(req, res, url)) return;
       await serveLocalImage(res, url.searchParams.get("path"), url.searchParams.get("threadId"));
@@ -7067,6 +7086,7 @@ const server = http.createServer(async (req, res) => {
       keepIpcWarm();
       const homeState = await refreshCodexHomeContext({ force: true, source: "health" });
       const modelConfiguration = await loadCodexModelConfiguration(homeState.home);
+      const usedModels = await usedModelIds(homeState.home);
       sendJson(res, 200, {
         ok: true,
         codexHome: homeState.home,
@@ -7087,6 +7107,7 @@ const server = http.createServer(async (req, res) => {
         statusMaxAgeMinutes: STATUS_OVERRIDE_MAX_AGE_MS / 60_000,
         sqliteDriver: sqliteDriverInfo(),
         models: modelConfiguration.models,
+        usedModelIds: usedModels,
         defaultModel: modelConfiguration.defaultModel,
         defaultEffort: modelConfiguration.defaultEffort,
         now: new Date().toISOString(),
