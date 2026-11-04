@@ -795,3 +795,182 @@ body,
 #shell .model-scope-button {
   min-height: 44px;
 }
+
+/* ══════════════════════════════════════════════════════════════════════════
+   会话状态可视化（2026-11-05）
+   用户主诉：在外面看不见哪些在跑、哪些完成、哪些要我决策/停滞。
+   · 抽屉顶部全局计数条，点一下即筛选
+   · 主标题栏常驻徽标（抽屉关着也有）
+   · 每条会话左侧彩色状态条，四类颜色统一
+   ══════════════════════════════════════════════════════════════════════════ */
+#shell .status-overview {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 6px;
+  margin: 2px 12px 10px;
+}
+
+#shell .status-overview-chip {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: center;
+  gap: 2px;
+  min-height: 52px;
+  padding: 6px 8px;
+  border: 1px solid var(--app-line);
+  border-radius: 12px;
+  background: var(--app-surface);
+  color: var(--app-ink-3);
+  font-family: inherit;
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1.2;
+  text-align: left;
+  cursor: pointer;
+}
+
+#shell .status-overview-chip b {
+  font-size: 18px;
+  font-weight: 750;
+  color: var(--app-ink);
+  line-height: 1;
+}
+
+#shell .status-overview-chip.has-items {
+  border-color: rgba(37, 99, 235, 0.18);
+}
+
+#shell .status-overview-chip.active {
+  background: var(--app-brand-soft);
+  border-color: var(--app-brand);
+  color: var(--app-brand-deep);
+  box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.10);
+}
+
+#shell .status-overview-chip.active b {
+  color: var(--app-brand-deep);
+}
+
+#shell .status-overview-dot {
+  position: absolute;
+  width: 0;
+  height: 0;
+  overflow: hidden;
+}
+
+#shell .header-status-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 100%;
+  margin-top: 2px;
+  padding: 3px 10px;
+  border: 1px solid transparent;
+  border-radius: 999px;
+  background: var(--app-brand-soft);
+  color: var(--app-brand-deep);
+  font-family: inherit;
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1.4;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+#shell .header-status-button[hidden] {
+  display: none;
+}
+
+#shell .header-status-button.urgent {
+  background: #FFF2E8;
+  border-color: #FBD3B5;
+  color: #B45309;
+}
+
+#shell .header-status-dot {
+  flex: 0 0 7px;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: currentColor;
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.14);
+}
+
+#shell .header-status-button.running .header-status-dot {
+  animation: app-live-pulse 1.6s ease-in-out infinite;
+}
+
+@keyframes app-live-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.35; }
+}
+
+/* 每条会话左侧的状态条 */
+#shell .thread-group-items .thread-item {
+  position: relative;
+  padding-left: 18px;
+}
+
+#shell .thread-status-mark {
+  position: absolute;
+  left: 6px;
+  top: 12px;
+  bottom: 12px;
+  width: 4px;
+  border-radius: 999px;
+  background: #C9D3E1;
+}
+
+#shell .thread-status-mark.running {
+  background: var(--app-running);
+  box-shadow: 0 0 0 2px rgba(14, 164, 122, 0.12);
+}
+
+#shell .thread-status-mark.stale {
+  background: #F59E0B;
+  box-shadow: 0 0 0 2px rgba(245, 158, 11, 0.14);
+}
+
+#shell .thread-status-mark.waiting {
+  background: #DC2626;
+  box-shadow: 0 0 0 2px rgba(220, 38, 38, 0.14);
+}
+
+#shell .thread-status-mark.ended {
+  background: #C9D3E1;
+}
+
+#shell .thread-status-mark.unknown {
+  background: transparent;
+  border: 1px dashed #C9D3E1;
+}
+
+/* 状态文案按类别上色，别让「需决策」混在灰字里 */
+#shell .thread-status-running { color: var(--app-running); font-weight: 700; }
+#shell .thread-status-stale { color: #B45309; font-weight: 700; }
+#shell .thread-status-waiting { color: #DC2626; font-weight: 750; }
+#shell .thread-status-ended { color: var(--app-ink-3); }
+#shell .thread-status-unknown { color: var(--app-ink-3); opacity: 0.8; }
+
+#shell .thread-item.status-waiting .thread-title,
+#shell .thread-item.status-stale .thread-title {
+  color: var(--app-ink);
+  font-weight: 750;
+}
+
+/* 状态徽标虽然看起来是标签，但它是可点的；命中区要够大 */
+#shell .header-status-button {
+  min-height: 32px;
+  padding: 6px 12px;
+}
+
+#shell .conversation-header .refresh-button,
+#shell .conversation-header .icon-button {
+  width: 44px;
+  min-width: 44px;
+}
+
+#shell .header-status-button {
+  min-height: 44px;
+}

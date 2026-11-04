@@ -1,6 +1,6 @@
 import { MESSAGE_PAGE_SIZE, messageScrollMode, nextMessageLimit, reconcilePendingMessages, retainedScrollTop, shouldHydrateConversationCache } from "./history.js";
 import { renderMarkdown } from "./markdown.js";
-import { filterVisibleThreads, groupedVisibleThreads, threadDeepLink } from "./threads.js";
+import { filterVisibleThreads, groupedVisibleThreads, threadDeepLink, threadStatusKind, threadStatusCounts } from "./threads.js";
 import { resolveAuthToken } from "./auth.js";
 import { runningTimeLabel } from "./runtime.js";
 import { clearConversationCache, conversationCacheKey, isConversationCacheFresh, readConversationCache, writeConversationCache } from "./conversation-cache.js";
@@ -11,6 +11,7 @@ const state = {
   draftThread: null,
   messagesSignature: "",
   filter: "",
+  statusFilter: "",
   showTools: false,
   expandedNotices: {},
   sidebarCollapsed: false,
@@ -1616,62 +1617,91 @@ function threadFolderLabel(thread) {
   return segment || t("otherConversations");
 }
 function renderThreads() {
+  const counts = threadStatusCounts(state.threads);
   els.threadCount.textContent = t("conversationsCount", { count: state.threads.length });
-  const renderThread = (thread) => {
-      const active = thread.id === state.selectedId ? " active" : "";
-      const title = escapeHtml(thread.title || t("untitled"));
-      const status = thread.status || {};
-      const reminder = reminderEnabled(thread.id);
-      const statusClass = status.interactionRequired
-        ? "waiting"
-        : status.thinking
-          ? status.staleTurn
-            ? "running stale"
-            : "running"
-          : status.state === "ended"
-            ? "ended"
-            : "unknown";
-      const elapsed = compactElapsed(status);
-      const showStatus = statusClass !== "unknown" || reminder;
-      // 「按最近」把会话按时间平铺，分组标题只剩一个「最近对话」。这时每条会话
-      // 必须自己带上所属文件夹，否则项目信息彻底消失——用户就分不出谁是谁。
-      const folderChip =
-        state.threadSortMode === "recent" && thread.id !== DRAFT_THREAD_ID
-          ? `<span class="thread-folder">${escapeHtml(threadFolderLabel(thread))}</span>`
-          : "";
-      return `
-        <button class="thread-item${active}${thread.id === DRAFT_THREAD_ID ? " draft" : ""}" data-id="${thread.id}" ${thread.id === DRAFT_THREAD_ID ? "" : 'aria-haspopup="menu"'}>
-          <span class="thread-copy">
-            <span class="thread-title">${title}</span>${folderChip}
-            ${
-              showStatus
-                ? `<span class="thread-status thread-status-${statusClass}" title="${escapeHtml(threadStatusLabel(status))}">
-              <span class="thread-status-dot" aria-hidden="true"></span>${escapeHtml(threadStatusLabel(status))}${elapsed ? ` · ${escapeHtml(elapsed)}` : ""}
-              ${reminder ? `<span class="thread-reminder-state">🔔 ${escapeHtml(t("reminderEnabledLabel"))}</span>` : ""}
-            </span>`
-                : ""
-            }
-          </span>
-        </button>
-      `;
+
+  // 抽屉顶部的全局状态总览：一眼看到哪些在跑、哪些要我处理、哪些卡住了。
+  const setCount = (id, value) => {
+    const el = document.querySelector(id);
+    if (el) el.textContent = String(value);
   };
-  const draft = state.draftThread && filterVisibleThreads([state.draftThread], state.filter).length
+  setCount("#statusCountWaiting", counts.waiting);
+  setCount("#statusCountRunning", counts.running);
+  setCount("#statusCountStale", counts.stale);
+  setCount("#statusCountEnded", counts.ended);
+  for (const chip of document.querySelectorAll(".status-overview-chip")) {
+    chip.classList.toggle("active", chip.dataset.statusFilter === state.statusFilter);
+    const n = counts[chip.dataset.statusFilter] || 0;
+    chip.classList.toggle("has-items", n > 0);
+  }
+
+  // 主标题栏常驻徽标：抽屉关着也能看见有几条在跑 / 要不要处理。
+  const headerBtn = document.querySelector("#headerStatusButton");
+  const headerText = document.querySelector("#headerStatusText");
+  if (headerBtn && headerText) {
+    const urgent = counts.waiting + counts.stale;
+    if (urgent > 0) {
+      headerBtn.hidden = false;
+      headerBtn.className = "header-status-button urgent";
+      headerText.textContent = `${counts.waiting ? `${counts.waiting} 待处理` : `${counts.stale} 疑似停滞`} · ${counts.running} 运行中`;
+    } else if (counts.running > 0) {
+      headerBtn.hidden = false;
+      headerBtn.className = "header-status-button running";
+      headerText.textContent = `${counts.running} 个任务运行中`;
+    } else {
+      headerBtn.hidden = true;
+      headerText.textContent = "";
+    }
+  }
+
+  const renderThread = (thread) => {
+    const active = thread.id === state.selectedId ? " active" : "";
+    const title = escapeHtml(thread.title || t("untitled"));
+    const status = thread.status || {};
+    const reminder = reminderEnabled(thread.id);
+    const kind = threadStatusKind(status);
+    const elapsed = compactElapsed(status);
+    const statusText = {
+      waiting: t("statusWaiting"),
+      running: t("statusThinking"),
+      stale: `${t("statusThinking")} · ${t("statusStale")}`,
+      ended: t("statusEnded"),
+      unknown: t("statusUnknown") || "状态未知"
+    }[kind];
+    // 每条都带状态条：已结束/未知也要有明确标识，不能只靠灰字小圆点。
+    const statusMark = `<span class="thread-status-mark ${kind}" title="${escapeHtml(statusText)}" aria-hidden="true"></span>`;
+    const folderChip =
+      state.threadSortMode === "recent" && thread.id !== DRAFT_THREAD_ID
+        ? `<span class="thread-folder">${escapeHtml(threadFolderLabel(thread))}</span>`
+        : "";
+    return `
+      <button class="thread-item${active} status-${kind}${thread.id === DRAFT_THREAD_ID ? " draft" : ""}" data-id="${thread.id}" ${thread.id === DRAFT_THREAD_ID ? "" : 'aria-haspopup="menu"'}>
+        ${statusMark}
+        <span class="thread-copy">
+          <span class="thread-title">${title}</span>${folderChip}
+          <span class="thread-status thread-status-${kind}" title="${escapeHtml(statusText)}">
+            <span class="thread-status-dot" aria-hidden="true"></span>${escapeHtml(statusText)}${elapsed ? ` · ${escapeHtml(elapsed)}` : ""}
+            ${reminder ? `<span class="thread-reminder-state">🔔 ${escapeHtml(t("reminderEnabledLabel"))}</span>` : ""}
+          </span>
+        </span>
+      </button>
+    `;
+  };
+  const draft = state.draftThread && filterVisibleThreads([state.draftThread], state.filter).length && !state.statusFilter
     ? renderThread(state.draftThread)
     : "";
   const groups = groupedVisibleThreads(state.threads, {
     query: state.filter,
     pinnedLabel: t("pinnedGroup"),
     ungroupedLabel: t("otherConversations"),
-    sortMode: state.threadSortMode
+    sortMode: state.threadSortMode,
+    statusFilter: state.statusFilter
   });
-  // 项目一多、每个项目都摊开时，一个项目的会话就能占掉几屏，别的项目根本
-  // 露不出来 —— 这正是「分不出谁是谁」。默认只展开当前会话所在的那组：
-  // 打开列表先看到全部项目，想看哪个点哪个。用户自己点过的组记住他的选择，
-  // 搜索时一律展开（那时他要看的是命中项）。
   const searching = Boolean(String(state.filter || "").trim());
+  const filtering = Boolean(state.statusFilter);
   const groupCollapsed = (group) => {
-    // 搜索时一律展开：用户要看的就是命中项，手动折叠过的组也必须打开。
-    if (searching) return false;
+    // 搜索/状态筛选时一律展开，用户要看的就是命中项。
+    if (searching || filtering) return false;
     const explicit = state.collapsedThreadGroups[group.key];
     if (typeof explicit === "boolean") return explicit;
     return !group.threads.some((thread) => thread.id === state.selectedId);
@@ -1688,7 +1718,10 @@ function renderThreads() {
   `;
   }).join("")}`;
   const searchEmpty = document.querySelector("#searchEmpty");
-  if (searchEmpty) searchEmpty.hidden = !searching || groups.some((group) => group.threads.length);
+  if (searchEmpty) {
+    searchEmpty.hidden = !(searching || filtering) || groups.some((group) => group.threads.length);
+    searchEmpty.textContent = filtering ? "这个状态下暂时没有对话" : "没有匹配的对话";
+  }
   syncThreadSortSegments();
 }
 function syncThreadSortSegments() {
@@ -1708,6 +1741,25 @@ els.threadSortSegments?.addEventListener("click", (event) => {
   state.threadSortMode = next;
   safeStorageSet(localStorage, "codex-thread-sort-mode", next);
   syncThreadSortSegments();
+  renderThreads();
+});
+
+// 状态总览：点哪一类就只看哪一类；再点一次取消筛选。
+document.querySelector("#statusOverview")?.addEventListener("click", (event) => {
+  const chip = event.target.closest("[data-status-filter]");
+  if (!chip) return;
+  const next = chip.dataset.statusFilter;
+  state.statusFilter = state.statusFilter === next ? "" : next;
+  renderThreads();
+  const list = document.querySelector(".thread-list");
+  if (list) list.scrollTop = 0;
+});
+
+// 主标题栏徽标：直接打开抽屉并跳到「需要人处理」的那一类。
+document.querySelector("#headerStatusButton")?.addEventListener("click", () => {
+  const counts = threadStatusCounts(state.threads);
+  state.statusFilter = counts.waiting ? "waiting" : counts.stale ? "stale" : "running";
+  if (els.shell?.classList.contains("sidebar-collapsed")) els.shell.classList.remove("sidebar-collapsed");
   renderThreads();
 });
 

@@ -1624,8 +1624,23 @@ test("search expands groups and interrupt waits for host confirmation", () => {
   const html = readFileSync(path.join(root, "public", "index.html"), "utf8");
 
   assert.match(html, /id="searchEmpty"/, "an explicit empty-search state is required");
-  assert.match(app, /if \(searching\) return false;/, "search must expand every group");
+  assert.match(app, /if \(searching \|\| filtering\) return false;/, "search/status filter must expand every group");
   assert.match(app, /expectedTurnId/, "interrupt should carry the active turn id");
   assert.match(app, /stopping: true/, "interrupt must show a stopping state");
   assert.doesNotMatch(app, /thinking: false, turnId: null, stopping: true/, "interrupt must not fake a stop before confirmation");
+});
+
+test("conversation status counts, overview and per-thread marks stay consistent", () => {
+  const root = fileURLToPath(new URL("..", import.meta.url));
+  const html = readFileSync(path.join(root, "public", "index.html"), "utf8");
+  const app = readFileSync(path.join(root, "public", "app.js"), "utf8");
+  const threads = readFileSync(path.join(root, "public", "threads.js"), "utf8");
+
+  assert.match(html, /id="statusOverview"/, "a global status overview must exist");
+  assert.match(html, /id="headerStatusButton"/, "the header badge must be visible with the drawer closed");
+  assert.match(threads, /export function threadStatusKind\(/, "one shared status classifier");
+  assert.match(threads, /export function threadStatusCounts\(/, "counts must come from the shared classifier");
+  assert.match(threads, /statusFilter/, "the overview must actually filter the list");
+  assert.match(app, /thread-status-mark \$\{kind\}/, "every row must carry a visual status mark");
+  assert.match(app, /status-\$\{kind\}/, "status class must be attached to the row");
 });
