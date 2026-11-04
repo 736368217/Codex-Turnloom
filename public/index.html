@@ -73,6 +73,7 @@
           </div>
         </div>
         <div id="threadList" class="thread-list" aria-label="对话列表"></div>
+          <div id="searchEmpty" class="search-empty" hidden>没有匹配的对话</div>
         <div class="sidebar-footer">
           <button id="guideButton" class="guide-button" type="button">
             <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"></circle><path d="M9.8 9a2.35 2.35 0 0 1 4.55.8c0 1.8-2.35 2.05-2.35 3.7"></path><path d="M12 17h.01"></path></svg>
@@ -225,22 +226,22 @@
                   <span id="modelEffort" class="model-effort">中</span>
                 </button>
                 <div id="modelPanel" class="model-panel" hidden>
-                  <label class="model-field" for="modelSelect">
+                  <div class="model-field">
                     <span id="modelSelectLabel">模型</span>
-                    <select id="modelSelect"></select>
-                    <input
-                      id="modelFilter"
-                      class="model-filter"
-                      type="search"
-                      placeholder="筛选模型"
-                      autocomplete="off"
-                      hidden
-                    />
-                  </label>
-                  <label class="model-field" for="effortSelect">
+                    <input id="modelFilter" class="model-filter" type="search" placeholder="搜索模型或供应商" autocomplete="off" />
+                    <div class="model-list-toolbar">
+                      <button id="modelScopeButton" class="model-scope-button" type="button">显示全部模型</button>
+                      <span id="modelCount" class="model-count"></span>
+                    </div>
+                    <div id="modelList" class="model-list" role="listbox" aria-label="可用模型"></div>
+                    <select id="modelSelect" class="model-select-hidden" aria-hidden="true" tabindex="-1" hidden></select>
+                    <p id="modelEmpty" class="model-empty" hidden>没有匹配的模型</p>
+                  </div>
+                  <div class="model-field">
                     <span id="effortSelectLabel">思考强度</span>
-                    <select id="effortSelect"></select>
-                  </label>
+                    <div id="effortChips" class="effort-chips" role="group" aria-label="思考强度"></div>
+                    <select id="effortSelect" class="model-select-hidden" aria-hidden="true" tabindex="-1" hidden></select>
+                  </div>
                 </div>
               </div>
               <button
@@ -302,11 +303,21 @@
           <span id="sendStatus" class="send-status" aria-live="polite"></span>
         </form>
       </section>
+    </div>
     <button id="messageActionBackdrop" class="message-action-backdrop" type="button" aria-label="关闭" hidden></button>
     <div id="messageActionSheet" class="message-action-sheet" role="menu" aria-label="消息操作" hidden>
       <button id="messageCopyItem" type="button" role="menuitem">复制全文</button>
       <button id="messageSelectItem" type="button" role="menuitem">选择文字</button>
       <button id="messageBranchItem" type="button" role="menuitem">从这里创建分支</button>
+    </div>
+    <button id="appDialogBackdrop" class="app-dialog-backdrop" type="button" aria-label="关闭" hidden></button>
+    <div id="appDialog" class="app-dialog" role="alertdialog" aria-modal="true" aria-labelledby="appDialogTitle" hidden>
+      <h3 id="appDialogTitle"></h3>
+      <p id="appDialogBody"></p>
+      <div class="app-dialog-actions">
+        <button id="appDialogCancel" type="button">取消</button>
+        <button id="appDialogConfirm" type="button">确定</button>
+      </div>
     </div>
     </main>
     <div id="welcomeDialog" class="welcome-dialog" role="dialog" aria-modal="true" aria-labelledby="welcomeTitle" hidden>
