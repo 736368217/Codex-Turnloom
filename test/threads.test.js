@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { groupedVisibleThreads, threadDeepLink } from "../public/threads.js";
+import { groupedVisibleThreads, threadDeepLink, threadStatusCounts, threadStatusKind } from "../public/threads.js";
 
 test("thread groups put pinned tasks first and never duplicate them", () => {
   const groups = groupedVisibleThreads([
@@ -68,6 +68,36 @@ test("project sorting puts other conversations last and recent sorting uses upda
     { id: "new", title: "New", updatedAtMs: 300, project: null }
   ], { sortMode: "recent" });
   assert.deepEqual(recentGroups[0].threads.map((thread) => thread.id), ["new", "old"]);
+});
+
+
+test("the time-ordered list puts conversations needing attention first", () => {
+  const groups = groupedVisibleThreads([
+    { id: "finished", title: "Done", updatedAtMs: 900, status: { state: "ended" } },
+    { id: "stuck", title: "Stuck", updatedAtMs: 100, status: { state: "running", thinking: true, staleTurn: true } },
+    { id: "waiting", title: "Decide", updatedAtMs: 200, status: { interactionRequired: true } },
+    { id: "running", title: "Live", updatedAtMs: 800, status: { state: "running", thinking: true } }
+  ], { sortMode: "recent" });
+  assert.deepEqual(groups[0].threads.map((thread) => thread.id), ["waiting", "stuck", "running", "finished"]);
+});
+
+test("status counts use one shared classifier", () => {
+  const counts = threadStatusCounts([
+    { status: { interactionRequired: true } },
+    { status: { thinking: true, staleTurn: true } },
+    { status: { thinking: true } },
+    { status: { state: "ended" } },
+    { status: {} }
+  ]);
+  assert.deepEqual(counts, { waiting: 1, running: 1, stale: 1, ended: 1, unknown: 1 });
+});
+
+test("status classifier covers the four states a phone user can see", () => {
+  assert.equal(threadStatusKind({ interactionRequired: true }), "waiting");
+  assert.equal(threadStatusKind({ thinking: true, staleTurn: true }), "stale");
+  assert.equal(threadStatusKind({ thinking: true }), "running");
+  assert.equal(threadStatusKind({ state: "ended" }), "ended");
+  assert.equal(threadStatusKind({}), "unknown");
 });
 
 test("thread deep links use the Codex Desktop thread scheme", () => {
