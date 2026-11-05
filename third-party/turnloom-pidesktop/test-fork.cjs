@@ -48,11 +48,11 @@ if (source === before) {
   console.error("FAIL: could not redirect PIPE_PATH — refusing to run against the live pipe");
   process.exit(1);
 }
-// Point the resolver at the fixture instead of the real database: the real
-// candidates are checked in order and would win, so the return is pinned.
+// 直接把 PI_DB 常量固定到夹具库，避免依赖解析函数的内部实现
+// （解析链改成「存在且非空」后，替换 return 字符串已经不可行）。
 const dbPatched = source.replace(
-  "return candidates.find((p) => p && fs.existsSync(p)) || candidates[0];",
-  `return ${JSON.stringify(fixtureDb)};`,
+  "const PI_DB = resolvePiDb();",
+  `const PI_DB = ${JSON.stringify(fixtureDb)};`,
 );
 if (dbPatched === source) {
   console.error("FAIL: could not redirect the PI database path");

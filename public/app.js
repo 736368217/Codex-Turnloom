@@ -4876,15 +4876,30 @@ async function showWorkspaceDiff(threadId) {
   try {
     const data = await fetchJson(`/api/host/diff?threadId=${encodeURIComponent(threadId)}`);
     const payload = data?.result ?? data;
+    // 宿主返回的是结构化结果：{ repo, clean, files:[{path,status,additions,deletions,binary}] }
+    const files = Array.isArray(payload?.files) ? payload.files : null;
+    if (files) {
+      if (!files.length || payload.clean) {
+        openHostSheet("工作区改动", `<p class="host-empty">当前工作区没有未提交改动。</p>`);
+        return;
+      }
+      const rows = files.map((file) => {
+        const status = String(file.status || "");
+        const badge = status === "untracked" ? "新增" : status === "deleted" ? "删除" : "修改";
+        const stat = file.binary ? "二进制" : `+${Number(file.additions) || 0} −${Number(file.deletions) || 0}`;
+        return `<li><span>${escapeHtml(file.path || "")}</span><span class="host-muted">${badge} · ${stat}</span></li>`;
+      });
+      openHostSheet(`工作区改动（${files.length} 个文件）`, hostRows(rows, "没有改动。"));
+      return;
+    }
     const text = typeof payload === "string" ? payload : String(payload?.diff ?? payload?.patch ?? "");
     openHostSheet("工作区改动", text
       ? `<pre class="host-code">${escapeHtml(text)}</pre>`
       : `<p class="host-empty">当前工作区没有未提交改动。</p>`);
   } catch (error) {
-    openHostSheet("工作区改动", `<p class="host-empty">读取失败：${escapeHtml(error.message)}</p>`);
+    openHostSheet("工作区改动", `<p class="host-empty">${escapeHtml(error.message)}</p>`);
   }
 }
-
 // ── 更多能力（通知 / 定时 / 技能与命令 / 供应商 / 浏览器） ───────────────
 async function showHostTools() {
   openHostSheet("更多能力", `
