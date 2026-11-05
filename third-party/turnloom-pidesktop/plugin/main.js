@@ -107,27 +107,6 @@ function nativeQueueDb() {
   db.exec("PRAGMA busy_timeout = 8000");
   return db;
 }
-/**
- * 宿主 agent/prompt 的 attachments 不是「内联 base64」而是「磁盘路径」：
- * preparePromptAttachments() 会读 attachment.path 并在
- *   <dataRoot>/scratch/<sessionId>、<dataRoot>/attachments、项目根
- * 之内解析，否则直接抛 PATH_OUTSIDE_WORKSPACE。照片因此必须先落盘再按路径传。
- */
-function resolvePiDataRoot() {
-  for (const name of ["PI-Desktop", "pi-desktop"]) {
-    try {
-      const file = path.join(process.env.APPDATA || "", name, "storage-location.json");
-      const data = JSON.parse(fs.readFileSync(file, "utf8"))?.roots?.data;
-      if (data) return String(data);
-    } catch {
-      /* 没有这个配置文件就跳过 */
-    }
-  }
-  // Call the resolver rather than reading PI_DB: at module-eval time PI_DB is still in
-  // its temporal dead zone, and touching it made the whole plugin fail to load
-  // (host log: plugin.load.error PLUGIN_LOAD_FAILED / "Cannot access 'PI_DB'").
-  return path.dirname(resolvePiDb());
-}
 const PI_DATA_ROOT = resolvePiDataRoot();
 
 /** 把 data URL / 裸 base64 落成宿主可解析的附件文件，返回 {path,name}。 */
@@ -157,12 +136,6 @@ const crypto = require("node:crypto");
 const TURNLOOM_QUEUE_PRINCIPAL = "turnloom-mobile";
 const MAX_NATIVE_QUEUE_ITEMS = 50;
 const nativeQueueLocks = new Map();
-
-function nativeQueueDb() {
-  const db = new DatabaseSync(PI_DB);
-  db.exec("PRAGMA busy_timeout = 8000");
-  return db;
-}
 
 function nativeQueueSessionId(params) {
   const value = String(params?.sessionId || params?.threadId || params?.conversationId || "").trim();
