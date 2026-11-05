@@ -94,6 +94,13 @@
         <button id="threadPinAction" type="button" role="menuitem"></button>
         <button id="threadReminderAction" type="button" role="menuitem"></button>
         <button id="threadCopyLinkAction" type="button" role="menuitem"></button>
+        <button id="threadRenameAction" type="button" role="menuitem">重命名</button>
+        <button id="threadCompactAction" type="button" role="menuitem">压缩上下文</button>
+        <button id="threadUsageAction" type="button" role="menuitem">查看用量</button>
+        <button id="threadFilesAction" type="button" role="menuitem">文件与改动</button>
+        <button id="threadRevisionsAction" type="button" role="menuitem">历史版本</button>
+        <button id="threadOpenAction" type="button" role="menuitem">在桌面打开</button>
+        <button id="threadDeleteAction" type="button" role="menuitem" class="danger">删除会话</button>
       </div>
 
       <section class="conversation">
@@ -120,6 +127,9 @@
               <input id="toolToggle" type="checkbox" />
               <span id="toolToggleLabel"><svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true" focusable="false" stroke="currentColor" stroke-width="1.9" fill="none" stroke-linecap="round" stroke-linejoin="round"><path d="m14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"></path></svg></span>
             </label>
+            <button id="hostToolsButton" class="icon-button" type="button" title="更多能力" aria-label="更多能力">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h16M4 12h16M4 18h10"></path></svg>
+            </button>
             <button id="refreshButton" class="icon-button refresh-button" type="button" title="刷新" aria-label="刷新">
               <svg viewBox="0 0 24 24" aria-hidden="true">
                 <path d="M20 11a8.1 8.1 0 0 0-15.5-2M4 5v4h4"></path>
@@ -128,6 +138,17 @@
             </button>
           </div>
         </header>
+        <div id="approvalBanner" class="approval-banner" hidden></div>
+        <div id="hostSheet" class="host-sheet" role="dialog" aria-modal="true" aria-labelledby="hostSheetTitle" hidden>
+          <div class="host-sheet-backdrop" data-host-sheet-close></div>
+          <div class="host-sheet-card" role="document">
+            <header class="host-sheet-header">
+              <h3 id="hostSheetTitle">更多能力</h3>
+              <button class="host-sheet-close" type="button" data-host-sheet-close aria-label="关闭">×</button>
+            </header>
+            <div id="hostSheetBody" class="host-sheet-body"></div>
+          </div>
+        </div>
         <div id="goalEditDialog" class="goal-edit-dialog" role="dialog" aria-modal="true" aria-labelledby="goalEditDialogTitle" hidden>
           <div class="goal-dialog-backdrop" data-goal-dialog-close></div>
           <div class="goal-dialog-card" role="document">
