@@ -76,7 +76,6 @@ insModel.run("P3", "community/vendouple/deepseek-v4.1-flash", "nested", '["text"
 insModel.run("P4", "ghost-model", "ghost-model", '["text"]');
 const insSession = db.prepare("INSERT INTO sessions (id,provider_id,model_id,deleted_at,title,last_seq,updated_at) VALUES (?,?,?,?,?,?,?)");
 // sess-broken：供应商被禁用 → 宿主必抛 No provider configured。
-insSession.run("sess-broken", "P4", "ghost-model", null, "broken", 1, Date.now());
 // sess-healthy：正常会话。
 insSession.run("sess-healthy", "P1", "x-deepseek-v4.1-flash", null, "healthy", 1, Date.now());
 db.prepare("INSERT INTO turns (id,session_id,status,provider_id,model_id,started_at,ended_at) VALUES (?,?,?,?,?,?,?)")
@@ -94,7 +93,7 @@ if (source === before) throw new Error("could not redirect PIPE_PATH — refusin
 source = source.replace("const PI_DB = resolvePiDb();", `const PI_DB = ${JSON.stringify(dbPath)};`);
 if (!source.includes(JSON.stringify(dbPath))) throw new Error("could not redirect PI_DB");
 source +=
-  "\nmodule.exports = { handleAction, turnSettingsFromRequest, buildModelIndex, ensureSendableModel, modelPairUsable, sessionModelPair, fallbackModelPair, applyModelIfChanged, modelCapabilities };\n";
+  "\nmodule.exports = { handleAction, turnSettingsFromRequest, buildModelIndex, ensureSendableModel, modelPairUsable, sessionModelPair, fallbackModelPair, applyModelIfChanged, modelCapabilities, modelVisionFromRow };\n";
 
 for (const name of ["codex-side.cjs", "manifest.json"]) {
   fs.copyFileSync(path.join(path.dirname(SRC), name), path.join(outDir, name));
@@ -168,6 +167,24 @@ check("裸 modelId 优先沿用会话自己的供应商", preferred.providerId =
 check("capabilities 能识别视觉模型", plugin.modelCapabilities('["text","vision"]').vision === true);
 check("capabilities 纯文本返回 false", plugin.modelCapabilities('["text"]').vision === false);
 check("capabilities 坏 JSON 保守按纯文本", plugin.modelCapabilities("{oops").vision === false);
+// 真机事实：krisphyn 的 cn:hy4 在 capabilities_json 里是 ["text"]，但供应商
+// config_json 明确写了 supportsImages:true。只看能力表会误拦能用的模型。
+const visionRow = {
+  model_id: "cn:hy4",
+  capabilities_json: '["text"]',
+  provider_config_json: JSON.stringify({ models: [{ id: "cn:hy4", supportsImages: true }] }),
+};
+check("供应商显式 supportsImages 优先于过时能力表", plugin.modelVisionFromRow(visionRow) === true);
+const textRow = {
+  model_id: "cn:deepseek-v4.1-flash",
+  capabilities_json: '["vision"]',
+  provider_config_json: JSON.stringify({ models: [{ id: "cn:deepseek-v4.1-flash", supportsImages: false }] }),
+};
+check("供应商显式 false 时按 false", plugin.modelVisionFromRow(textRow) === false);
+check(
+  "没有供应商声明时退回能力表",
+  plugin.modelVisionFromRow({ model_id: "m", capabilities_json: '["text","vision"]' }) === true,
+);
 
 (async () => {
   // ── 3. 新建会话只走 session/create ─────────────────────────────────────

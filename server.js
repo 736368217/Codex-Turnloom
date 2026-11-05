@@ -4810,6 +4810,64 @@ function modelSupportsImages(modelId, modelConfiguration = activeModelConfigurat
   return selected.supportsImages === true;
 }
 
+/**
+ * 直接读 PI 自己的供应商配置与模型能力表判断多模态能力。
+ *
+ * 为什么不能只看模型目录：目录由桥接插件生成，旧桥会把所有模型都写成
+ * ["text","image"]，于是纯文本模型也能带图发出去。
+ * 为什么也不能只看 models.capabilities_json：真机上它常是过时的 ["text"]，
+ * 而供应商 config_json 里已经声明了 supportsImages:true（用户实际配置）。
+ * 优先级：供应商显式声明 > 模型能力表。60 秒缓存，避免每次发送都查库。
+ */
+let piModelCapabilityCache = { at: 0, map: new Map() };
+
+function piRowSupportsImages(row) {
+  let declared = null;
+  try {
+    const config = JSON.parse(String(row?.provider_config_json || "{}"));
+    const list = Array.isArray(config?.models) ? config.models : [];
+    const modelId = String(row?.model_id || "");
+    const hit = list.find((item) => String(item?.id || item?.modelId || "") === modelId);
+    if (hit && typeof hit.supportsImages === "boolean") declared = hit.supportsImages;
+  } catch {
+    /* 配置坏了就退回能力表 */
+  }
+  if (declared !== null) return declared;
+  return /"(vision|image|images)"/i.test(String(row?.capabilities_json || ""));
+}
+
+async function piModelCapabilityMap() {
+  if (piModelCapabilityCache.map.size && Date.now() - piModelCapabilityCache.at < 60_000) {
+    return piModelCapabilityCache.map;
+  }
+  const map = new Map();
+  try {
+    const rows = await runSqlJsonFromDb(
+      path.join(PI_DATA_ROOT, "pi.sqlite"),
+      `SELECT p.name AS provider_name, m.model_id AS model_id,
+              m.capabilities_json AS capabilities_json, p.config_json AS provider_config_json
+         FROM models m INNER JOIN providers p ON p.id = m.provider_id
+        WHERE p.enabled = 1;`
+    );
+    for (const row of Array.isArray(rows) ? rows : []) {
+      map.set(`${row?.provider_name}/${row?.model_id}`, piRowSupportsImages(row));
+    }
+  } catch (error) {
+    // 不要把「读不到能力表」伪装成成功：留一条可检索的诊断，但仍然退回目录判断，
+    // 避免因为一次数据库抖动把用户的图片挡在门外。
+    logError(`[image-capability] PI capability lookup failed: ${error?.message || error}`);
+  }
+  piModelCapabilityCache = { at: Date.now(), map };
+  return map;
+}
+
+async function modelSupportsImagesForSend(modelId, modelConfiguration = activeModelConfiguration) {
+  const slug = String(modelId || "").trim();
+  const fromPi = (await piModelCapabilityMap()).get(slug);
+  if (fromPi !== undefined) return fromPi;
+  return modelSupportsImages(slug, modelConfiguration);
+}
+
 
 function preparedTurnSettings({ model, effort } = {}) {
   const requestedModel = String(model || "").trim();
@@ -5737,7 +5795,7 @@ async function sendToCodex(text, threadId, images = [], { newThread = false, mod
   const trimmed = String(text || "").trim();
   const normalizedImages = normalizeSendImages(images);
   const turnSettings = normalizeTurnSettings({ model, effort }, modelConfiguration);
-  if (normalizedImages.length && !modelSupportsImages(turnSettings.model, modelConfiguration)) {
+  if (normalizedImages.length && !(await modelSupportsImagesForSend(turnSettings.model, modelConfiguration))) {
     const err = new Error("当前模型不支持图片。请在模型面板切换到带「支持图片」标记的模型后再发送，或移除图片只发文字。");
     err.status = 409;
     throw err;
@@ -7757,6 +7815,7 @@ export {
   modelConfigurationFromCatalog,
   normalizeTurnSettings,
   modelSupportsImages,
+  modelSupportsImagesForSend,
   parseCodexModelConfig,
   parseRolloutLine,
   parseRolloutTail,
