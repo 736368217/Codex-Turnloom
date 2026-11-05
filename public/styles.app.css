@@ -1064,3 +1064,257 @@ html.keyboard-open #shell .send-status {
 html.keyboard-open #shell .composer-input {
   min-height: 44px;
 }
+
+/* ══════════════════════════════════════════════════════════════════════════
+   系统字体放大适配（2026-11-05）
+   用户在系统里开了全局字体放大；原先大量 11/13px 固定字号 + 固定高度 +
+   nowrap/ellipsis 会把品牌名、模型名、状态胶囊切掉。
+   原则：字号用 em 跟着根走、容器用 min-height 而非 height、
+   单行文本允许换行、计数条允许两行、绝不靠 overflow:hidden 假装正常。
+   ══════════════════════════════════════════════════════════════════════════ */
+
+/* 品牌名/标题：放大时不裁切，允许折行 */
+#shell .sidebar-brand h1,
+#shell .conversation-header h2,
+#shell .conversation-title {
+  max-width: 100%;
+  overflow-wrap: anywhere;
+  white-space: normal;
+  line-height: 1.35;
+}
+
+#shell .sidebar-brand h1 {
+  font-size: clamp(17px, 1.15em, 24px);
+}
+
+#shell .conversation-header h2,
+#shell .conversation-title {
+  font-size: clamp(15px, 1em, 21px);
+}
+
+/* 顶栏不再设死高：内容多就自然长高 */
+#shell .conversation-header {
+  height: auto;
+  min-height: 60px;
+  flex-wrap: wrap;
+}
+
+#shell .conversation-actions {
+  flex: 0 0 auto;
+}
+
+/* 状态总览：允许换行、两行文案，不裁切 */
+#shell .status-overview {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+#shell .status-overview-chip {
+  overflow: visible;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  line-height: 1.35;
+}
+
+#shell .status-overview-chip b {
+  font-size: 1.25em;
+}
+
+/* 模型胶囊/会话标题/状态文案：放大时不省略 */
+#shell .model-name,
+#shell .thread-title,
+#shell .thread-group-name,
+#shell .model-row-name,
+#shell .model-row-provider {
+  overflow: visible;
+  text-overflow: clip;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+#shell .model-summary {
+  max-width: none;
+  min-width: 0;
+}
+
+/* 所有 44px 命中区改成「至少 44px 或 2.8 倍行高」，放大时不会被压扁 */
+#shell .composer-buttons .send-button,
+#shell .composer-buttons .stop-button,
+#shell .attach-button,
+#shell .mention-button,
+#shell .plugin-picker-button,
+#shell .skill-picker-button,
+#shell .effort-chip,
+#shell .thread-group-title,
+#shell .status-overview-chip,
+#shell .header-status-button,
+#shell .app-dialog-actions button,
+#shell .model-scope-button {
+  height: auto;
+  min-height: max(44px, 2.8em);
+}
+
+/* 会话行：文字变多时行高自然增长，状态条跟着拉长 */
+#shell .thread-group-items .thread-item {
+  height: auto;
+  min-height: max(56px, 3.4em);
+  padding-block: 8px;
+}
+
+#shell .thread-status-mark {
+  top: 8px;
+  bottom: 8px;
+}
+
+/* 键盘态下也别把文字压回固定 px */
+html.keyboard-open #shell .composer-input {
+  height: auto;
+  min-height: max(44px, 2.6em);
+  max-height: 6em;
+}
+
+/* 输入区/抽屉在放大字体下允许自身滚动，避免内容被 shell 的 overflow 吃掉 */
+#shell .sidebar {
+  overflow-y: auto;
+}
+
+#shell .thread-list {
+  overflow-y: auto;
+}
+
+/* 默认仍是紧凑 4 列；只有检测到系统字体放大时才切成 2 列可读布局 */
+#shell .status-overview {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+html.large-text #shell .status-overview {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+/* 「需要关注」置顶分组：只在这里点名疑似停滞/需决策，列表其余处不再重复 */
+#shell .thread-group-attention {
+  border-color: rgba(245, 158, 11, 0.42);
+  background: #FFFBF4;
+  box-shadow: 0 2px 10px rgba(245, 158, 11, 0.10);
+}
+
+#shell .thread-group-attention .thread-group-title {
+  background: linear-gradient(180deg, #FFF7E8 0%, #FFF1D9 100%);
+  color: #92400E;
+  font-weight: 750;
+}
+
+#shell .thread-group-attention .thread-group-count {
+  background: #FFE9C7;
+  border-color: #FBD3A0;
+  color: #92400E;
+}
+
+#shell .thread-group-attention .thread-group-chevron {
+  color: #B45309;
+}
+
+/* 大字下主内容不能被顶栏/总览/输入区吃掉：shell 是 flex 列，
+   只有列表与消息区可伸缩，其余按内容自然高但设上限。 */
+#shell .conversation {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  flex: 1 1 auto;
+}
+
+#shell .message-list {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+}
+
+#shell .sidebar {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+#shell .sidebar-top,
+#shell .status-overview,
+#shell .thread-search-row,
+#shell .thread-sort-control {
+  flex: 0 0 auto;
+}
+
+#shell .thread-list {
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+html.large-text #shell .composer {
+  flex: 0 0 auto;
+  max-height: 42dvh;
+  overflow-y: auto;
+}
+
+html.large-text #shell .conversation-header {
+  max-height: 22dvh;
+  overflow-y: auto;
+}
+
+html.large-text #shell .status-overview {
+  max-height: 26dvh;
+  overflow-y: auto;
+}
+
+/* 字体放大时状态徽标也要能折行，不能被 nowrap 切掉 */
+#shell .header-status-button {
+  white-space: normal;
+  overflow-wrap: anywhere;
+  max-width: 100%;
+  height: auto;
+  text-align: left;
+}
+
+#shell .header-status-button {
+  white-space: normal !important;
+}
+
+/* 大字 + 软键盘同时出现：输入区必须回到紧凑，否则 2.8em 的弹性高度
+   会把发送键撑到几百 px，把键盘可视区吃光。 */
+html.keyboard-open #shell .composer-buttons .send-button,
+html.keyboard-open #shell .composer-buttons .stop-button,
+html.keyboard-open #shell .attach-button,
+html.keyboard-open #shell .mention-button,
+html.keyboard-open #shell .plugin-picker-button,
+html.keyboard-open #shell .skill-picker-button,
+html.keyboard-open #shell .effort-chip,
+html.keyboard-open #shell .model-scope-button {
+  min-height: 44px !important;
+  height: 44px !important;
+  flex: 0 0 44px;
+}
+
+html.keyboard-open #shell .composer-input {
+  min-height: 44px !important;
+  max-height: 88px !important;
+  font-size: clamp(15px, 1em, 20px) !important;
+}
+
+html.keyboard-open #shell .composer {
+  max-height: 46dvh;
+  overflow-y: auto;
+}
+
+html.keyboard-open #shell .model-name,
+html.keyboard-open #shell .composer-actions {
+  font-size: clamp(12px, 0.85em, 16px) !important;
+}
+
+/* grid 容器不能被 max-height 压扁：键盘态让 composer 按内容自然高，
+   只限制 pod 内部滚动，发送键始终在可视区内。 */
+html.keyboard-open #shell .composer {
+  max-height: none !important;
+  overflow: visible !important;
+  flex: 0 0 auto !important;
+}
+
+html.keyboard-open #shell .composer-pod {
+  max-height: 40dvh;
+  overflow-y: auto;
+}

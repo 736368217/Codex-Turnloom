@@ -620,7 +620,11 @@ public class MainActivity extends ComponentActivity {
         settings.setDisplayZoomControls(false);
         settings.setUseWideViewPort(true);
         settings.setLoadWithOverviewMode(false);
-        settings.setTextZoom(100);
+        // 尊重系统「字体大小」设置，但夹在 100–150 之间：完全屏蔽会让无障碍
+        // 设置失效，完全放开又会把布局撑坏。Web 层据根字号切 large-text 布局。
+        float systemScale = getResources().getConfiguration().fontScale;
+        int zoom = Math.round(100 * Math.max(1f, Math.min(1.5f, systemScale)));
+        settings.setTextZoom(zoom);
         settings.setMediaPlaybackRequiresUserGesture(false);
         settings.setMixedContentMode(WebSettings.MIXED_CONTENT_COMPATIBILITY_MODE);
         CookieManager.getInstance().setAcceptCookie(true);

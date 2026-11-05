@@ -1338,19 +1338,22 @@ test("the override status contract only gains staleTurn when contested", () => {
   assert.equal(statusFieldsFromOverride(record, true).staleTurn, true);
 });
 
-test("a stale running turn is disclosed instead of shown as plainly live", () => {
+test("a stale running turn is surfaced once in the attention group, not on every row", () => {
   const root = fileURLToPath(new URL("..", import.meta.url));
   const app = readFileSync(path.join(root, "public", "app.js"), "utf8");
-  const styles = readFileSync(path.join(root, "public", "styles.css"), "utf8");
+  const threads = readFileSync(path.join(root, "public", "threads.js"), "utf8");
+  const css = readFileSync(path.join(root, "public", "styles.app.css"), "utf8");
 
-  assert.match(app, /status\.staleTurn \? `\$\{t\("statusRunning"\)\} · \$\{t\("statusStale"\)\}` : t\("statusRunning"\)/);
-  assert.match(app, /status-pill running\$\{status\.staleTurn \? " stale" : ""\}/);
-  assert.match(app, /data\.status\?\.thinking && data\.status\?\.staleTurn/);
-  assert.match(styles, /\.status-pill\.stale\s*\{/);
-  assert.match(styles, /\.thread-status-running\.stale\s*\{/);
-  // Both locales must carry the wording.
-  assert.equal((app.match(/statusStale:/g) || []).length, 2);
-  assert.equal((app.match(/staleTurnHelp:/g) || []).length, 2);
+  assert.match(threads, /attention: true/, "attention group must be a distinct group");
+  assert.match(app, /thread-group-attention/, "attention group must be styled");
+  assert.match(app, /if \(group\.attention\) return false;/, "attention group must never collapse");
+  assert.match(css, /\.thread-group-attention\s*\{/);
+  // 逐条会话不再写「长时间无输出」；标题栏也不再重复。
+  assert.doesNotMatch(app, /stale: `\$\{t\("statusThinking"\)\} · \$\{t\("statusStale"\)\}`/);
+  assert.doesNotMatch(app, /status-pill-note/);
+  assert.doesNotMatch(app, /const staleNote/, "no per-conversation stale note");
+  // 全局总览仍保留「疑似停滞」计数，用户点了就能筛到那一组。
+  assert.match(app, /statusCountStale/);
 });
 
 test("a running conversation is inside the status window even when it is old", () => {
@@ -1656,5 +1659,20 @@ test("the composer stays above the software keyboard on short viewports", () => 
   assert.match(app, /keyboard-open/, "a keyboard state must be exposed to CSS");
   assert.match(css, /html\.keyboard-open #shell \.composer/, "keyboard state must compact the composer");
   assert.match(css, /html\.keyboard-open #shell \.follow-up-mode[\s\S]{0,160}display:\s*none/, "queue bar must not eat the short viewport");
+});
+
+test("system font scaling keeps text readable and layout scrollable", () => {
+  const root = fileURLToPath(new URL("..", import.meta.url));
+  const app = readFileSync(path.join(root, "public", "app.js"), "utf8");
+  const css = readFileSync(path.join(root, "public", "styles.app.css"), "utf8");
+  const main = readFileSync(path.join(root, "android", "app", "src", "main", "java", "com", "codexpocket", "mobile", "MainActivity.java"), "utf8");
+
+  assert.match(main, /getResources\(\)\.getConfiguration\(\)\.fontScale/, "respect the system font scale");
+  assert.match(main, /setTextZoom\(zoom\)/, "WebView zoom must follow it with a cap");
+  assert.match(app, /classList\.toggle\("large-text"/, "large text must be detectable in CSS");
+  assert.match(css, /html\.large-text #shell \.status-overview/, "large text switches the overview to two columns");
+  assert.match(css, /min-height:\s*max\(44px, 2\.8em\)/, "touch targets must grow with the font");
+  assert.match(css, /overflow-wrap:\s*anywhere/, "titles must wrap instead of being clipped");
+  assert.match(css, /#shell \.message-list \{\s*flex: 1 1 auto/, "content area must remain scrollable");
 });
 
