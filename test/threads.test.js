@@ -71,14 +71,22 @@ test("project sorting puts other conversations last and recent sorting uses upda
 });
 
 
-test("the time-ordered list puts conversations needing attention first", () => {
-  const groups = groupedVisibleThreads([
+test("attention items live in one pinned group in both sort modes", () => {
+  const items = [
     { id: "finished", title: "Done", updatedAtMs: 900, status: { state: "ended" } },
     { id: "stuck", title: "Stuck", updatedAtMs: 100, status: { state: "running", thinking: true, staleTurn: true } },
     { id: "waiting", title: "Decide", updatedAtMs: 200, status: { interactionRequired: true } },
     { id: "running", title: "Live", updatedAtMs: 800, status: { state: "running", thinking: true } }
-  ], { sortMode: "recent" });
-  assert.deepEqual(groups[0].threads.map((thread) => thread.id), ["waiting", "stuck", "running", "finished"]);
+  ];
+  for (const sortMode of ["project", "recent"]) {
+    const groups = groupedVisibleThreads(items, { sortMode });
+    const attention = groups.find((group) => group.key === "attention");
+    assert.ok(attention, `${sortMode}: an attention group must exist`);
+    assert.deepEqual(attention.threads.map((thread) => thread.id), ["waiting", "stuck"]);
+    const allIds = groups.flatMap((group) => group.threads.map((thread) => thread.id));
+    assert.equal(new Set(allIds).size, allIds.length, `${sortMode}: no conversation may appear twice`);
+    assert.equal(allIds.length, items.length, `${sortMode}: every conversation is still listed`);
+  }
 });
 
 test("status counts use one shared classifier", () => {

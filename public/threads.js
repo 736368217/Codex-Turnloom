@@ -7,7 +7,7 @@ export function filterVisibleThreads(threads, query = "") {
   });
 }
 
-/** 统一的状态口径：列表、总览、筛选、状态条都用这一套，避免各处判断不一致。 */
+/** 统一的状态口径：列表、总览、筛选、状态条都用这一套。 */
 export function threadStatusKind(status) {
   const s = status || {};
   if (s.interactionRequired) return "waiting";
@@ -27,48 +27,51 @@ export function threadDeepLink(threadId) {
   return id ? `codex://threads/${encodeURIComponent(id)}` : "";
 }
 
+/** 需要人处理的会话：待处理、疑似停滞。它们是唯一会进「需要关注」组的。 */
+export function needsAttention(status) {
+  const kind = threadStatusKind(status);
+  return kind === "waiting" || kind === "stale";
+}
+
 export function groupedVisibleThreads(threads, {
   query = "",
   pinnedLabel = "置顶",
   ungroupedLabel = "其他对话",
   sortMode = "project",
-  statusFilter = ""
+  statusFilter = "",
+  attentionLabel = "需要关注"
 } = {}) {
   let visible = filterVisibleThreads(threads, query);
-  if (statusFilter) {
-    visible = visible.filter((thread) => threadStatusKind(thread?.status) === statusFilter);
-    // 点状态总览时，最需要人处理的排在最前（待处理 > 疑似停滞 > 运行中）。
-    const rank = { waiting: 0, stale: 1, running: 2 };
-    if (rank[statusFilter] !== undefined) {
-      visible = visible.slice().sort((a, b) =>
-        (rank[threadStatusKind(a?.status)] ?? 9) - (rank[threadStatusKind(b?.status)] ?? 9)
-      );
-    }
-  }
-  const pinned = visible.filter((thread) => thread.pinned);
+  if (statusFilter) visible = visible.filter((thread) => threadStatusKind(thread?.status) === statusFilter);
+
   const groups = [];
+  const pinned = visible.filter((thread) => thread.pinned);
   if (pinned.length) groups.push({ key: "pinned", label: pinnedLabel, threads: pinned });
 
+  // 「疑似停滞/需决策」只在最上面出现一次：做成一个置顶分组，
+  // 其余分组里不再重复它们，也不再在每条会话上写「长时间无输出」。
+  // 用户明确说：看见了会自己处理，不要每个会话都提示。
+  const attention = visible.filter((thread) => !thread.pinned && needsAttention(thread?.status));
+  if (attention.length) {
+    const rank = { waiting: 0, stale: 1 };
+    attention.sort((a, b) =>
+      (rank[threadStatusKind(a?.status)] ?? 9) - (rank[threadStatusKind(b?.status)] ?? 9)
+    );
+    groups.push({ key: "attention", label: attentionLabel, attention: true, threads: attention });
+  }
+  const attentionIds = new Set(attention.map((thread) => thread.id));
+  // 普通列表（项目/最近/文件夹）里跳过这些会话，避免同一条出现两次。
+  const rest = visible.filter((thread) => !thread.pinned && !attentionIds.has(thread.id));
+
   if (sortMode === "recent") {
-    // 最需要人处理的排最前：待处理 > 疑似停滞 > 运行中，其余才按时间。
-    // 否则一个卡住的任务会被一堆刚结束的会话挤到下面，用户在列表里找不到它。
-    const priority = { waiting: 0, stale: 1, running: 2 };
-    const recent = visible.filter((thread) => !thread.pinned).slice().sort((a, b) => {
-      const pa = priority[threadStatusKind(a?.status)] ?? 3;
-      const pb = priority[threadStatusKind(b?.status)] ?? 3;
-      if (pa !== pb) return pa - pb;
-      return (Number(b.updatedAtMs) || 0) - (Number(a.updatedAtMs) || 0);
-    });
+    const recent = rest.slice().sort((a, b) => (Number(b.updatedAtMs) || 0) - (Number(a.updatedAtMs) || 0));
     if (recent.length) groups.push({ key: "recent", label: "最近对话", threads: recent });
     return groups;
   }
 
   if (sortMode === "folder") {
-    // Codex sessions only carry a cwd; group them by the working folder's last
-    // segment so a phone user still gets buckets instead of one flat list.
     const folders = new Map();
-    for (const thread of visible) {
-      if (thread.pinned) continue;
+    for (const thread of rest) {
       const label = folderLabel(thread, ungroupedLabel);
       const key = `folder:${label.toLowerCase()}`;
       if (!folders.has(key)) folders.set(key, { key, label, threads: [] });
@@ -87,8 +90,7 @@ export function groupedVisibleThreads(threads, {
   // under its project, and one that has no project yet falls back to the last
   // segment of its working directory so the list never loses its buckets.
   const projectGroups = new Map();
-  for (const thread of visible) {
-    if (thread.pinned) continue;
+  for (const thread of rest) {
     const projectKey = thread.project?.key;
     const label = thread.project?.name || folderLabel(thread, ungroupedLabel);
     const key = projectKey || `folder:${label.toLowerCase()}`;

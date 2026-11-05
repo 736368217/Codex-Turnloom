@@ -1,6 +1,13 @@
 # Changelog
 
 
+## 1.17.17 - 2026-11-05
+
+- **适配系统全局字体放大**（用户实测反馈）：Android 原来 `setTextZoom(100)` 直接屏蔽系统字号；现在按 `fontScale` 夹在 100–150% 跟随系统，Web 层检测根字号给 `<html>` 加 `large-text`。CSS 去掉危险 `nowrap/ellipsis`、标题/品牌名/模型名允许折行、命中区改 `min-height:max(44px,2.8em)`、状态总览在大字下切两列、顶栏/输入区设占比上限且主内容区保持可滚。100/125/150% 三档实测 0 截断、0 横向溢出；与键盘态组合（390×400 / 360×360 / 320×300）发送键仍可见。
+- **疑似停滞不再逐条提示**：从每行状态文案和标题栏移除「长时间无输出」，改成列表顶部唯一的「需要关注」置顶分组（待处理 / 疑似停滞），**按项目与按最近两种模式都生效**，永远展开、不与其他分组重复。全局总览的「疑似停滞」计数保留作为入口。
+- 126 项测试 ×3 次稳定、Android 编译通过；版本 1.17.17(38)。
+
+
 ## 1.17.16 - 2026-11-05
 
 - **修复 App 内更新「下载完却装不上」**：`updateDownloadReceiver` 原来把 `DownloadManager.COLUMN_LOCAL_URI`（Android 7+ 多为 `file://`）直接交给 `ACTION_VIEW`，会触发 `FileUriExposedException`；`installApk` 也没有 `REQUEST_INSTALL_PACKAGES` 对应的安装 action。现在改用 `DownloadManager.getUriForDownloadedFile(id)` 拿 `content://`，配 `ACTION_INSTALL_PACKAGE` + `FLAG_GRANT_READ_URI_PERMISSION`，失败再回退 `ACTION_VIEW`。
