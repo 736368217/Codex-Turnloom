@@ -254,7 +254,7 @@ const I18N = {
     followUpLabel: "发送方式",
     queueFollowUp: "当前任务完成后发送",
     steerFollowUp: "立即插入当前任务",
-    queuedCount: "⏳ 候发队列（{count} 条）· 任务完成后自动发送",
+    queuedCount: "⏳ 共享候发队列（{count} 条）· 与 PI 桌面端同一顺序（#1 先发）",
     queuedWithPreview: "已排队 {count} 条 · {preview}",
     queueAccepted: "已加入队列，当前任务完成后发送。",
     steerAccepted: "已插入当前任务。",
@@ -262,7 +262,8 @@ const I18N = {
     queueCleared: "已取消 {count} 条排队消息。",
     queueClearFailed: "取消队列失败：{message}",
     queuedItem: "排队中",
-    insertQueued: "⚡ 插入",
+    queuedItemPriority: "优先发送",
+    insertQueued: "⚡ 设为优先",
     editQueued: "编辑",
     cancelQueued: "取消",
     steerBecameNewTurn: "原任务刚好完成，这条消息已作为下一步发送。",
@@ -465,7 +466,7 @@ const I18N = {
     followUpLabel: "Send mode",
     queueFollowUp: "Send after the current task",
     steerFollowUp: "Insert into the current task",
-    queuedCount: "⏳ Queue ({count}) · sends when this task finishes",
+    queuedCount: "⏳ Shared queue ({count}) · same PI desktop order (#1 sends first)",
     queuedWithPreview: "{count} queued · {preview}",
     queueAccepted: "Queued for after the current task.",
     steerAccepted: "Inserted into the current task.",
@@ -473,7 +474,8 @@ const I18N = {
     queueCleared: "Cancelled {count} queued messages.",
     queueClearFailed: "Could not cancel queue: {message}",
     queuedItem: "Queued",
-    insertQueued: "⚡ Insert",
+    queuedItemPriority: "Priority",
+    insertQueued: "⚡ Prioritize",
     editQueued: "Edit",
     cancelQueued: "Cancel",
     steerBecameNewTurn: "The previous task finished, so this message was sent as the next step.",
@@ -3159,12 +3161,12 @@ function renderQueueStatus(status = state.threadStatus) {
       (item, index) => `
         <div class="queue-status-item" data-queue-item-id="${escapeHtml(item.id || "")}">
           <div class="queue-status-copy">
-            <span class="queue-status-label">#${index + 1} · ${escapeHtml(item.deliveryState === "failed" ? t("messageFailed") : item.deliveryState === "awaitingConfirmation" || item.deliveryState === "sending" ? t("messageSending") : t("queuedItem"))}</span>
+            <span class="queue-status-label">#${Number(item.position) || index + 1} · ${escapeHtml(item.priority != null ? t("queuedItemPriority") : item.deliveryState === "failed" ? t("messageFailed") : item.deliveryState === "awaitingConfirmation" || item.deliveryState === "sending" ? t("messageSending") : t("queuedItem"))}</span>
             <span class="queue-status-preview">${escapeHtml(compactPreview(item.preview || item.text))}</span>
             ${Array.isArray(item.images) && item.images.length ? `<div class="queue-status-images">${item.images.map((image) => `<img src="${escapeHtml(withAuthToken(image.url))}" alt="${escapeHtml(image.name || t("addImage"))}" loading="lazy" />`).join("")}</div>` : ""}
           </div>
           <div class="queue-status-actions">
-            ${item.deliveryState === "queued" ? `<button class="queue-steer-button" type="button" data-queue-action="steer">${escapeHtml(t("insertQueued"))}</button>` : ""}
+            ${item.deliveryState === "queued" && item.priority == null ? `<button class="queue-steer-button" type="button" data-queue-action="steer">${escapeHtml(t("insertQueued"))}</button>` : ""}
             <button type="button" data-queue-action="edit">${escapeHtml(t("editQueued"))}</button>
             <button type="button" data-queue-action="cancel">${escapeHtml(t("cancelQueued"))}</button>
           </div>

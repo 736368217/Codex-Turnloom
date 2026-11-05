@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.17.19 - 2026-11-05
+
+- **手机端与 PI 桌面端共用一份候发队列**（用户实测反馈「手机排队，桌面端看不见，先后顺序混乱」）：定位到旧链路把手机消息写进 `%LOCALAPPDATA%\CodexPocket\pending-queues.json`，而 PI 桌面端维护 `pi.sqlite` 的 `turn_queue` 和自己的内存队列，两套队列互相不可见。现在桥接插件暴露 `turnloom/queue/push|list|remove|steer`，直接读写 PI 权威 `turn_queue`；Turnloom 的 PI 设备不再创建影子队列，也不再由自己 drain，手机端队列栏显示 PI 的 `position/priority`，顺序规则为普通项按 position FIFO，显式「设为优先」项由 PI priority 提前。
+- 手机端队列文案改为「共享候发队列 · 与 PI 桌面端同一顺序（#1 先发）」；每条显示权威序号与「优先发送」标记。重复排队由 `clientRequestId/idempotencyKey` 去重；编辑、取消、设为优先都转发到同一队列。
+- 桥接插件在同步门面时把 `turn_queue` 纳入签名，并把排队消息写进会话 rollout，手机端和桥的缓存能及时看到队列变化；新增 `test-shared-queue.cjs` 覆盖「桌面先排 → 手机后排 → 重复请求去重 → 设为优先 → 取消/清空 → IPC 门面」。
+- 兼容旧桥：PI 插件尚未重载时，服务端识别 `unsupported method: turnloom/queue/*` 并自动退回旧本地队列，保证排队、取消、插入不会变成 500；插件重载后自动启用共享队列。Codex 独立设备仍沿用原有本地队列，不受影响。
+- 127 项 Node 测试、桥四套回归与共享队列测试通过；版本 1.17.19(40)。
+
 ## 1.17.18 - 2026-11-05
 
 - **修复 App 更新提示「下载失败，无法更新」**（用户实测反馈）：旧链路把 APK 交给系统 `DownloadManager` 下载到公共 `Download` 目录；在 Android 10+ 分区存储、反向代理/自签 HTTPS、重定向丢失自定义请求头等场景下，系统下载服务会独立失败，而健康检查却正常。现在改为 App 内用与 `/api/health` 完全相同的 `HttpURLConnection` 下载到应用私有目录：访问码同时走 `x-access-token` 请求头与 `token` 查询参数，响应校验 HTTP 状态、`Content-Length` 与 APK ZIP 魔数，避免把登录页当作安装包；下载成功后通过 `FileProvider` 的 `content://` URI 调用系统安装器。整条链路不再依赖存储权限、系统下载服务或下载完成广播。
