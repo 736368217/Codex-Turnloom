@@ -255,6 +255,10 @@ const I18N = {
     queueFollowUp: "当前任务完成后发送",
     steerFollowUp: "立即插入当前任务",
     queuedCount: "⏳ 共享候发队列（{count} 条）· 与 PI 桌面端同一顺序（#1 先发）",
+    queueUnavailableStatus: "共享候发队列暂时不可用，请稍后刷新；本次消息未写入第二份队列。",
+    imageModelUnsupported: "当前模型不支持图片，请切换到「支持图片」的模型，或移除图片只发文字。",
+    modelSupportsImages: "支持图片",
+    modelTextOnly: "仅文字",
     queuedWithPreview: "已排队 {count} 条 · {preview}",
     queueAccepted: "已加入队列，当前任务完成后发送。",
     steerAccepted: "已插入当前任务。",
@@ -467,6 +471,10 @@ const I18N = {
     queueFollowUp: "Send after the current task",
     steerFollowUp: "Insert into the current task",
     queuedCount: "⏳ Shared queue ({count}) · same PI desktop order (#1 sends first)",
+    queueUnavailableStatus: "Shared queue is temporarily unavailable. Refresh in a moment; this message was not written to a second queue.",
+    imageModelUnsupported: "The selected model does not support images. Choose an image-capable model or remove the images.",
+    modelSupportsImages: "Images",
+    modelTextOnly: "Text only",
     queuedWithPreview: "{count} queued · {preview}",
     queueAccepted: "Queued for after the current task.",
     steerAccepted: "Inserted into the current task.",
@@ -889,7 +897,11 @@ function renderModelSettings() {
       provider.textContent = String(model.label || "").includes(" · ")
         ? String(model.label).split(" · ").slice(1).join(" · ")
         : model.id;
-      row.append(name, provider);
+      const capability = document.createElement("span");
+      capability.className = "model-row-capability";
+      capability.textContent = model.supportsImages === false ? t("modelTextOnly") : "";
+      row.append(name, provider, capability);
+      return row;
       return row;
     }));
   }
@@ -3143,15 +3155,18 @@ function renderComposerMode() {
 function renderQueueStatus(status = state.threadStatus) {
   const queuedMessages = Array.isArray(status?.queuedMessages) ? status.queuedMessages : [];
   const count = Number(status?.queueLength) || queuedMessages.length;
-  els.queueStatusBar.hidden = count <= 0;
-  els.queueStatusHeader.hidden = count <= 0;
+  const queueError = String(status?.queueError || "").trim();
+  const queueUnavailable = Boolean(status?.queueUnavailable);
+  const showError = Boolean(queueError || queueUnavailable);
+  els.queueStatusBar.hidden = count <= 0 && !showError;
+  els.queueStatusHeader.hidden = count <= 0 && !showError;
   els.queueStatusList.hidden = count <= 0;
   const compactPreview = (value, maxLength = 120) => {
     const text = String(value || "").replace(/[\r\n\t]+/g, " ").replace(/\s{2,}/g, " ").trim();
     return text.length > maxLength ? `${text.slice(0, maxLength - 1)}…` : text;
   };
   if (count <= 0) {
-    els.queueStatusText.textContent = "";
+    els.queueStatusText.textContent = queueError || (queueUnavailable ? t("queueUnavailableStatus") : "");
     els.queueStatusList.innerHTML = "";
     return;
   }
@@ -4288,6 +4303,14 @@ els.composerForm.addEventListener("submit", async (event) => {
   const sendMessage = composerSendMessage(message);
   const images = [...state.imageAttachments];
   if (!sendMessage && !images.length) return;
+  if (images.length) {
+    const selected = availableModels().find((model) => model.id === state.model);
+    if (selected && selected.supportsImages === false) {
+      els.sendStatus.textContent = t("imageModelUnsupported");
+      renderModelSettings();
+      return;
+    }
+  }
   const sendMode = thinking && !isDraftThread ? state.followUpMode : "start";
   const previousThreadStatus = state.threadStatus;
   const draftSnapshot = {

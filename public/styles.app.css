@@ -1131,6 +1131,22 @@ html.keyboard-open #shell .composer-input {
   overflow-wrap: anywhere;
 }
 
+/* 模型能力标记：纯文本模型在列表里明确标出，避免带图发送到不支持的模型 */
+#shell .model-row-capability {
+  margin-left: auto;
+  padding: 2px 8px;
+  border-radius: 999px;
+  border: 1px solid color-mix(in srgb, currentColor 28%, transparent);
+  font-size: 0.72em;
+  line-height: 1.6;
+  opacity: 0.72;
+  white-space: nowrap;
+}
+
+#shell .model-row-capability:empty {
+  display: none;
+}
+
 #shell .model-summary {
   max-width: none;
   min-width: 0;
