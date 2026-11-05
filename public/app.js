@@ -1686,17 +1686,23 @@ function renderThreads() {
       state.threadSortMode === "recent" && thread.id !== DRAFT_THREAD_ID
         ? `<span class="thread-folder">${escapeHtml(threadFolderLabel(thread))}</span>`
         : "";
+    const moreButton = thread.id === DRAFT_THREAD_ID
+      ? ""
+      : `<button class="thread-more-button" type="button" data-thread-more="${escapeHtml(thread.id)}" aria-label="会话操作" aria-haspopup="menu">⋯</button>`;
     return `
-      <button class="thread-item${active} status-${kind}${thread.id === DRAFT_THREAD_ID ? " draft" : ""}" data-id="${thread.id}" ${thread.id === DRAFT_THREAD_ID ? "" : 'aria-haspopup="menu"'}>
-        ${statusMark}
-        <span class="thread-copy">
-          <span class="thread-title">${title}</span>${folderChip}
-          <span class="thread-status thread-status-${kind}" title="${escapeHtml(statusText)}">
-            <span class="thread-status-dot" aria-hidden="true"></span>${escapeHtml(statusText)}${elapsed ? ` · ${escapeHtml(elapsed)}` : ""}
-            ${reminder ? `<span class="thread-reminder-state">🔔 ${escapeHtml(t("reminderEnabledLabel"))}</span>` : ""}
+      <div class="thread-row">
+        <button class="thread-item${active} status-${kind}${thread.id === DRAFT_THREAD_ID ? " draft" : ""}" data-id="${thread.id}" ${thread.id === DRAFT_THREAD_ID ? "" : 'aria-haspopup="menu"'}>
+          ${statusMark}
+          <span class="thread-copy">
+            <span class="thread-title">${title}</span>${folderChip}
+            <span class="thread-status thread-status-${kind}" title="${escapeHtml(statusText)}">
+              <span class="thread-status-dot" aria-hidden="true"></span>${escapeHtml(statusText)}${elapsed ? ` · ${escapeHtml(elapsed)}` : ""}
+              ${reminder ? `<span class="thread-reminder-state">🔔 ${escapeHtml(t("reminderEnabledLabel"))}</span>` : ""}
+            </span>
           </span>
-        </span>
-      </button>
+        </button>
+        ${moreButton}
+      </div>
     `;
   };
   const draft = state.draftThread && filterVisibleThreads([state.draftThread], state.filter).length && !state.statusFilter
@@ -3551,6 +3557,14 @@ function shouldRefocusComposer() {
 }
 
 els.threadList.addEventListener("click", (event) => {
+  const more = event.target.closest("[data-thread-more]");
+  if (more) {
+    event.preventDefault();
+    event.stopPropagation();
+    const rect = more.getBoundingClientRect();
+    openThreadContextMenu(more.dataset.threadMore, rect.left, rect.bottom);
+    return;
+  }
   const button = event.target.closest(".thread-item");
   if (!button) return;
   if (Date.now() < suppressThreadClickUntil) {
