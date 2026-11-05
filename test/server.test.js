@@ -38,6 +38,8 @@ import {
   desktopStartTurnRequest,
   desktopSteerRestoreMessage,
   enqueueSend,
+  localQueuedSendStatus,
+  nativeQueuedSendStatusFromEntries,
   ipcVersionForMethod,
   ipcVersionForRequest,
   interruptTurnAndConfirm,
@@ -333,18 +335,17 @@ test("a real user message replaces a stale optimistic bubble with generated prom
 
   assert.deepEqual(reconcilePendingMessages(pending, messages, "thread-1"), []);
 });
-
-test("one queued message can be cancelled without clearing the rest", () => {
+test("one queued message can be cancelled without clearing the rest", async () => {
   const threadId = `queue-test-${Date.now()}`;
-  const first = enqueueSend(threadId, "first", [], { model: "gpt-5.6-sol", effort: "medium" });
-  const second = enqueueSend(threadId, "second", [], { model: "gpt-5.6-sol", effort: "medium" });
+  const first = await enqueueSend(threadId, "first", [], { model: "gpt-5.6-sol", effort: "medium" });
+  const second = await enqueueSend(threadId, "second", [], { model: "gpt-5.6-sol", effort: "medium" });
 
-  const result = cancelQueuedSend(threadId, first.queueItem.id);
+  const result = await cancelQueuedSend(threadId, first.queueItem.id);
   assert.equal(result.cancelled, 1);
   assert.equal(result.queueLength, 1);
-  assert.deepEqual(queuedSendStatus(threadId).queuedMessages.map((item) => item.text), ["second"]);
+  assert.deepEqual(localQueuedSendStatus(threadId).queuedMessages.map((item) => item.text), ["second"]);
 
-  cancelQueuedSend(threadId);
+  await cancelQueuedSend(threadId);
   assert.equal(second.queueLength, 2);
 });
 
@@ -400,15 +401,29 @@ test("conversation cache is rejected when the thread list has newer data", () =>
   );
 });
 
-test("queued message status exposes image previews", () => {
+test("queued message status exposes image previews", async () => {
   const threadId = `queue-image-test-${Date.now()}`;
-  const queued = enqueueSend(threadId, "with image", [
+  await enqueueSend(threadId, "with image", [
     { name: "sample.png", mimeType: "image/png", data: "aGVsbG8=", size: 5 }
   ], { model: "gpt-6-astra", effort: "medium" });
-  const item = queuedSendStatus(threadId).queuedMessages[0];
+  const item = localQueuedSendStatus(threadId).queuedMessages[0];
   assert.equal(item.imageCount, 1);
   assert.equal(item.images[0].name, "sample.png");
-  cancelQueuedSend(threadId);
+  await cancelQueuedSend(threadId);
+});
+
+test("PI native queue preserves authoritative order and priority", () => {
+  const entries = [
+    { id: "desktop-1", sessionId: "thread-1", content: "桌面先排", position: 1, createdAt: "2026-11-05T10:00:00.000Z" },
+    { id: "phone-2", sessionId: "thread-1", content: "手机后排", position: 2, createdAt: "2026-11-05T10:00:01.000Z" },
+    { id: "priority-3", sessionId: "thread-1", content: "插队", position: 3, priority: 1, createdAt: "2026-11-05T10:00:02.000Z" }
+  ];
+  const status = nativeQueuedSendStatusFromEntries("thread-1", entries);
+  assert.equal(status.queueLength, 3);
+  assert.deepEqual(status.queuedMessages.map((item) => item.id), ["desktop-1", "phone-2", "priority-3"]);
+  assert.equal(status.queuedMessages[0].source, "pi-native");
+  assert.equal(status.queuedMessages[2].priority, 1);
+  assert.equal(status.queuedMessages[2].preview.includes("插队"), true);
 });
 
 test("rollout user messages preserve multiple inline images", () => {
