@@ -86,3 +86,35 @@ node test-project-routing.cjs
 4. 模型能力以供应商 `config_json.models[].supportsImages` 为准、`models.capabilities_json` 兜底（后者常常过时），写进模型目录的 `input_modalities` / `supports_images`；`/api/health.models` 暴露 `supportsImages`，纯文本模型带图会被手机端与服务端同时拦下。
 
 回归脚本：`node test-model-routing.cjs`（26 项，含「configure 被拒后绝不 prompt」「坏会话自动修复」「confirm:true 契约」「无可用模型明确拒绝」）。
+
+## 手机端宿主能力矩阵（1.17.21）
+
+桥方法 `turnloom/host/invoke { operation, args, confirm }`，白名单在桥内，服务端另有危险操作集合。
+
+| 域 | 操作 | 等级 | 手机端入口 |
+|---|---|---|---|
+| 文件 | `fs/list` `fs/read` `fs/readImageDataUrl` `fs/index` `workspace/diff` | read | 会话菜单「文件与改动」 |
+| 会话 | `session/list` `session/get` `session/getScratchPath` `session/listRevisions` | read | 历史版本 |
+| 会话 | `session/rename` `session/open` `session/moveProject` `session/create` `session/fork` | write | 重命名 / 在桌面打开 |
+| 会话 | `session/delete` `session/configure` | **dangerous** | 删除会话（二次确认） |
+| Agent | `agent/compact` `agent/abort` `agent/stop` | write | 压缩上下文 / 停止 |
+| 审批 | `plans/pending` + `plans/resolve` | read / **dangerous** | 审批卡（Plan/Goal） |
+| 审批 | `tool/resolvePermission` `agent/askTool/resolve` | **dangerous** | 审批卡（权限/提问） |
+| 用量 | `stats/getTokenUsageHistory`；另聚合 `turns` | read | 查看用量 |
+| 通知 | `notification/list` `notification/markRead` `notification/markAllRead` | read / write | 更多能力 → 通知 |
+| 自动化 | `scheduled/list` `scheduled/listRuns` | read | 更多能力 → 定时任务 |
+| 扩展 | `composer/commands` `commandPalette/search` `skill/list` `subagent/*` `mcp/list` `plugin/*` | read | 更多能力 → 技能与命令 |
+| 供应商 | `providers/list` `providers/listModels` `providers/modelCatalogStatus` | read | 更多能力 → 供应商与模型 |
+| 供应商 | `providers/refreshModelCatalog` | write | 刷新模型目录 |
+| 应用 | `app/getVersion` `app/health` `updates/getState` `network/testProxy` `settings/get` | read | 诊断 |
+| 浏览器 | `browser/getState` | read | 更多能力 → 浏览器状态 |
+
+审批解决契约（实测自宿主）：
+
+- `plans/resolve [{ proposalId, sessionId, turnId, toolCallId, action: approve|reject, targetPermissionMode?: ask|accept-edits|auto, version? }]`
+- `tool/resolvePermission [{ requestId, decision: allow-once|allow-session|deny }]`
+- `agent/askTool/resolve [{ sessionId, requestId, answer|answers }]`
+
+三者都是 dangerous：手机必须二次确认，服务端与桥都要求 `confirm:true`，宿主仍会弹原生确认框。
+
+**边界**：宿主没有把「工具级权限请求列表」暴露给插件（`pendingInteractive` 不在 `CONTROL_OPERATION_SPECS` 里），所以手机能看到并处理的是持久化的 Plan/Goal 审批（`plan_approvals`）与已知 `requestId` 的权限/提问；桌面上正在等待的一次性工具授权仍需在桌面确认。

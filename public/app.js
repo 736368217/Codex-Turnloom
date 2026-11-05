@@ -4588,6 +4588,472 @@ function maybeOpenWelcomeGuide() {
 
 async function bootstrap() {
   wireMessageActions();
+// ── 手机端 · PI 宿主能力（审批 / 会话管理 / 文件 / 用量 / 通知 / 定时 / 技能）──
+const hostUi = { approvals: [], filePath: "", sheetTitle: "", busy: false };
+
+function hostSheetEl() {
+  return document.querySelector("#hostSheet");
+}
+
+function openHostSheet(title, html) {
+  const sheet = hostSheetEl();
+  if (!sheet) return;
+  hostUi.sheetTitle = title;
+  const heading = document.querySelector("#hostSheetTitle");
+  const body = document.querySelector("#hostSheetBody");
+  if (heading) heading.textContent = title;
+  if (body) body.innerHTML = html;
+  sheet.hidden = false;
+}
+
+function closeHostSheet() {
+  const sheet = hostSheetEl();
+  if (sheet) sheet.hidden = true;
+}
+
+function hostNotice(message) {
+  if (els.sendStatus) els.sendStatus.textContent = message;
+}
+
+async function hostInvoke(operation, args = [], confirm = false) {
+  return postJson("/api/host", { operation, args, confirm });
+}
+
+function hostRows(rows, emptyLabel) {
+  if (!Array.isArray(rows) || !rows.length) {
+    return `<p class="host-empty">${escapeHtml(emptyLabel)}</p>`;
+  }
+  return `<ul class="host-list">${rows.join("")}</ul>`;
+}
+
+// ── 审批 ────────────────────────────────────────────────────────────────
+async function refreshApprovals() {
+  const threadId = state.selectedId;
+  if (!threadId || threadId === DRAFT_THREAD_ID) {
+    hostUi.approvals = [];
+    renderApprovals();
+    return;
+  }
+  try {
+    const data = await fetchJson(`/api/host/approvals?threadId=${encodeURIComponent(threadId)}`);
+    hostUi.approvals = Array.isArray(data?.approvals) ? data.approvals : [];
+  } catch {
+    // 桥未重载时不打扰用户：审批区保持上一次已知状态。
+  }
+  renderApprovals();
+}
+
+function renderApprovals() {
+  const banner = document.querySelector("#approvalBanner");
+  if (!banner) return;
+  const pending = hostUi.approvals.filter((item) => item.status === "pending");
+  if (!pending.length) {
+    banner.hidden = true;
+    banner.innerHTML = "";
+    return;
+  }
+  banner.hidden = false;
+  banner.innerHTML = pending
+    .map(
+      (item) => `
+      <article class="approval-card" data-approval-id="${escapeHtml(item.requestId)}">
+        <div class="approval-card-head">
+          <strong>${escapeHtml(item.title || (item.kind === "goal" ? "目标待批准" : "计划待批准"))}</strong>
+          <span class="approval-kind">${escapeHtml(item.kind)}</span>
+        </div>
+        <p class="approval-card-question">${escapeHtml(item.question || "")}</p>
+        <label class="approval-mode">批准后权限
+          <select data-approval-mode>
+            <option value="ask">逐次询问</option>
+            <option value="accept-edits">允许改文件</option>
+            <option value="auto">自动执行</option>
+          </select>
+        </label>
+        <div class="approval-card-actions">
+          <button type="button" class="approval-approve" data-approval-action="approve">批准</button>
+          <button type="button" class="approval-reject" data-approval-action="reject">拒绝</button>
+        </div>
+      </article>`
+    )
+    .join("");
+}
+
+async function resolveApprovalCard(card, action) {
+  const requestId = card?.dataset?.approvalId || "";
+  const item = hostUi.approvals.find((entry) => entry.requestId === requestId);
+  if (!item) return;
+  const mode = card.querySelector("[data-approval-mode]")?.value || "ask";
+  const approved = await appConfirm(
+    action === "approve"
+      ? `确认批准这一步？批准后将以「${mode === "auto" ? "自动执行" : mode === "accept-edits" ? "允许改文件" : "逐次询问"}」继续执行。`
+      : "确认拒绝这一步？",
+    { title: action === "approve" ? "批准" : "拒绝", confirmText: "确认", cancelText: "取消", danger: action !== "approve" }
+  );
+  if (!approved) return;
+  try {
+    await postJson("/api/host/approvals/resolve", {
+      kind: item.kind,
+      requestId: item.requestId,
+      sessionId: item.sessionId,
+      turnId: item.turnId,
+      toolCallId: item.toolCallId,
+      version: item.version,
+      action,
+      targetPermissionMode: mode,
+      confirm: true
+    });
+    hostNotice(action === "approve" ? "已批准。" : "已拒绝。");
+    await refreshApprovals();
+  } catch (error) {
+    hostNotice(`${action === "approve" ? "批准" : "拒绝"}失败：${error.message}`);
+  }
+}
+
+// ── 会话管理 ────────────────────────────────────────────────────────────
+async function renameCurrentThread() {
+  const threadId = state.contextThreadId;
+  const thread = (state.threads || []).find((entry) => entry.id === threadId);
+  if (!threadId || !thread) return;
+  openHostSheet("重命名会话", `
+    <form class="host-form" id="hostRenameForm">
+      <label>标题<input id="hostRenameInput" value="${escapeHtml(thread.title || "")}" autocomplete="off" /></label>
+      <div class="host-form-actions">
+        <button type="submit">保存</button>
+        <button type="button" data-host-sheet-close>取消</button>
+      </div>
+    </form>`);
+  const form = document.querySelector("#hostRenameForm");
+  form?.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const title = String(document.querySelector("#hostRenameInput")?.value || "").trim();
+    if (!title) return;
+    try {
+      await hostInvoke("session/rename", [threadId, title]);
+      closeHostSheet();
+      await loadThreads(false);
+      hostNotice("已重命名。");
+    } catch (error) {
+      hostNotice(`重命名失败：${error.message}`);
+    }
+  });
+}
+
+async function compactCurrentThread() {
+  const threadId = state.contextThreadId;
+  if (!threadId) return;
+  const ok = await appConfirm("压缩这个会话的上下文？压缩后历史仍在，但模型上下文会变短。", {
+    title: "压缩上下文",
+    confirmText: "压缩",
+    cancelText: "取消"
+  });
+  if (!ok) return;
+  try {
+    await hostInvoke("agent/compact", [{ sessionId: threadId }]);
+    hostNotice("已请求压缩上下文。");
+  } catch (error) {
+    hostNotice(`压缩失败：${error.message}`);
+  }
+}
+
+async function openThreadOnDesktop() {
+  const threadId = state.contextThreadId;
+  if (!threadId) return;
+  try {
+    await hostInvoke("session/open", [threadId]);
+    hostNotice("已在桌面端打开。");
+  } catch (error) {
+    hostNotice(`打开失败：${error.message}`);
+  }
+}
+
+async function deleteCurrentThread() {
+  const threadId = state.contextThreadId;
+  const thread = (state.threads || []).find((entry) => entry.id === threadId);
+  if (!threadId || !thread) return;
+  const ok = await appConfirm(`删除「${thread.title || "这条会话"}」？删除后手机端与桌面端都不再显示。`, {
+    title: "删除会话",
+    confirmText: "删除",
+    cancelText: "取消",
+    danger: true
+  });
+  if (!ok) return;
+  try {
+    await hostInvoke("session/delete", [threadId], true);
+    closeThreadContextMenu();
+    if (state.selectedId === threadId) state.selectedId = null;
+    await loadThreads(false);
+    hostNotice("会话已删除。");
+  } catch (error) {
+    hostNotice(`删除失败：${error.message}`);
+  }
+}
+
+// ── 用量 ────────────────────────────────────────────────────────────────
+async function showUsage(threadId = state.contextThreadId) {
+  if (!threadId) return;
+  openHostSheet("会话用量", `<p class="host-empty">加载中…</p>`);
+  try {
+    const data = await fetchJson(`/api/host/usage?threadId=${encodeURIComponent(threadId)}`);
+    const totals = data?.totals || {};
+    const turns = Array.isArray(data?.turns) ? data.turns : [];
+    const rows = turns.map(
+      (turn) => `<li><span>${escapeHtml(turn.modelId || "-")}</span><span>${Number(turn.inputTokens) || 0} in / ${Number(turn.outputTokens) || 0} out</span><span class="host-muted">${escapeHtml(turn.status)}</span></li>`
+    );
+    openHostSheet("会话用量", `
+      <p class="host-summary">完成 ${Number(totals.turns) || 0} 轮 · 输入 ${Number(totals.inputTokens) || 0} · 输出 ${Number(totals.outputTokens) || 0}</p>
+      ${hostRows(rows, "还没有完成的轮次。")}`);
+  } catch (error) {
+    openHostSheet("会话用量", `<p class="host-empty">读取失败：${escapeHtml(error.message)}</p>`);
+  }
+}
+
+// ── 历史版本 ────────────────────────────────────────────────────────────
+async function showRevisions(threadId = state.contextThreadId) {
+  if (!threadId) return;
+  openHostSheet("历史版本", `<p class="host-empty">加载中…</p>`);
+  try {
+    const data = await hostInvoke("session/listRevisions", [{ sessionId: threadId }]);
+    const payload = data?.result ?? data;
+    const list = Array.isArray(payload?.revisions) ? payload.revisions : [];
+    const rows = list.map((rev) => {
+      const id = String(rev.id || rev.revisionId || "");
+      const label = String(rev.title || rev.label || id);
+      const time = Number(rev.createdAt || rev.created_at) || 0;
+      return `<li><span>${escapeHtml(label)}</span><span class="host-muted">${time ? escapeHtml(new Date(time).toLocaleString()) : ""}</span></li>`;
+    });
+    openHostSheet("历史版本", hostRows(rows, "这个会话没有历史版本记录。"));
+  } catch (error) {
+    openHostSheet("历史版本", `<p class="host-empty">读取失败：${escapeHtml(error.message)}</p>`);
+  }
+}
+
+// ── 文件与改动 ──────────────────────────────────────────────────────────
+async function showFiles(threadId = state.contextThreadId, dirPath = "") {
+  if (!threadId) return;
+  openHostSheet("文件与改动", `<p class="host-empty">加载中…</p>`);
+  try {
+    const data = await fetchJson(
+      `/api/host/files?threadId=${encodeURIComponent(threadId)}&path=${encodeURIComponent(dirPath)}`
+    );
+    const payload = data?.result ?? data;
+    const entries = Array.isArray(payload?.entries) ? payload.entries : [];
+    const parent = dirPath.includes("/") ? dirPath.slice(0, dirPath.lastIndexOf("/")) : "";
+    const rows = entries.map((entry) => {
+      const name = String(entry.name || entry.path || "");
+      const isDir = entry.type === "directory" || entry.kind === "dir" || entry.isDirectory === true;
+      const target = String(entry.path || (dirPath ? `${dirPath}/${name}` : name));
+      return `<li><button type="button" class="host-file" data-host-file="${escapeHtml(target)}" data-host-dir="${isDir ? "1" : "0"}">${isDir ? "📁" : "📄"} ${escapeHtml(name)}</button></li>`;
+    });
+    openHostSheet(
+      "文件与改动",
+      `${dirPath ? `<button type="button" class="host-crumb" data-host-file="${escapeHtml(parent)}" data-host-dir="1">← 上级</button>` : ""}
+       <p class="host-muted">${escapeHtml(dirPath || "项目根目录")}</p>
+       ${hostRows(rows, "这个目录是空的。")}
+       <button type="button" class="host-secondary" data-host-diff="1">查看工作区改动</button>`
+    );
+  } catch (error) {
+    openHostSheet("文件与改动", `<p class="host-empty">读取失败：${escapeHtml(error.message)}</p>`);
+  }
+}
+
+async function showFilePreview(threadId, filePath) {
+  try {
+    const data = await fetchJson(
+      `/api/host/file?threadId=${encodeURIComponent(threadId)}&path=${encodeURIComponent(filePath)}`
+    );
+    const payload = data?.result ?? data;
+    const content = String(payload?.content ?? "");
+    openHostSheet(filePath.split("/").pop() || "文件预览", `
+      ${payload?.truncated ? `<p class="host-muted">文件较大，仅显示前 200 KB。</p>` : ""}
+      <pre class="host-code">${escapeHtml(content || "(空文件或二进制内容)")}</pre>
+      <button type="button" class="host-secondary" data-host-file="${escapeHtml(filePath.split("/").slice(0, -1).join("/"))}" data-host-dir="1">← 返回目录</button>`);
+  } catch (error) {
+    openHostSheet("文件预览", `<p class="host-empty">读取失败：${escapeHtml(error.message)}</p>`);
+  }
+}
+
+async function showWorkspaceDiff(threadId) {
+  try {
+    const data = await fetchJson(`/api/host/diff?threadId=${encodeURIComponent(threadId)}`);
+    const payload = data?.result ?? data;
+    const text = typeof payload === "string" ? payload : String(payload?.diff ?? payload?.patch ?? "");
+    openHostSheet("工作区改动", text
+      ? `<pre class="host-code">${escapeHtml(text)}</pre>`
+      : `<p class="host-empty">当前工作区没有未提交改动。</p>`);
+  } catch (error) {
+    openHostSheet("工作区改动", `<p class="host-empty">读取失败：${escapeHtml(error.message)}</p>`);
+  }
+}
+
+// ── 更多能力（通知 / 定时 / 技能与命令 / 供应商 / 浏览器） ───────────────
+async function showHostTools() {
+  openHostSheet("更多能力", `
+    <div class="host-tools">
+      <button type="button" data-host-tool="notifications">通知</button>
+      <button type="button" data-host-tool="scheduled">定时任务</button>
+      <button type="button" data-host-tool="commands">技能与命令</button>
+      <button type="button" data-host-tool="providers">供应商与模型</button>
+      <button type="button" data-host-tool="browser">浏览器状态</button>
+    </div>`);
+}
+
+async function showNotifications() {
+  openHostSheet("通知", `<p class="host-empty">加载中…</p>`);
+  try {
+    const data = await fetchJson("/api/host/notifications?limit=30");
+    const items = Array.isArray(data?.notifications) ? data.notifications : [];
+    const rows = items.map((item) => {
+      const time = Number(item.createdAt) || 0;
+      return `<li><span>${escapeHtml(item.sessionTitle || item.kind)}</span><span class="host-muted">${escapeHtml(item.kind)}${time ? " · " + escapeHtml(new Date(time).toLocaleString()) : ""}</span></li>`;
+    });
+    openHostSheet(
+      `通知${Number(data?.unread) ? `（${data.unread} 条未读）` : ""}`,
+      `${hostRows(rows, "没有通知。")}
+       ${items.length ? `<button type="button" class="host-secondary" data-host-notif-read="1">全部标为已读</button>` : ""}`
+    );
+  } catch (error) {
+    openHostSheet("通知", `<p class="host-empty">读取失败：${escapeHtml(error.message)}</p>`);
+  }
+}
+
+async function showScheduled() {
+  openHostSheet("定时任务", `<p class="host-empty">加载中…</p>`);
+  try {
+    const data = await fetchJson("/api/host/scheduled");
+    const items = Array.isArray(data?.tasks) ? data.tasks : [];
+    const rows = items.map((task) => {
+      const time = Number(task.lastRunAt) || 0;
+      return `<li><span>${escapeHtml(task.title || task.prompt.slice(0, 40))}</span><span class="host-muted">${escapeHtml(task.cadence)}${task.enabled ? "" : " · 已停用"}${time ? " · 上次 " + escapeHtml(new Date(time).toLocaleString()) : ""}</span></li>`;
+    });
+    openHostSheet("定时任务", hostRows(rows, "没有定时任务。"));
+  } catch (error) {
+    openHostSheet("定时任务", `<p class="host-empty">读取失败：${escapeHtml(error.message)}</p>`);
+  }
+}
+
+async function showCommands() {
+  openHostSheet("技能与命令", `<p class="host-empty">加载中…</p>`);
+  try {
+    const data = await hostInvoke("composer/commands", [{}]);
+    const payload = data?.result ?? data;
+    const list = Array.isArray(payload?.commands) ? payload.commands : Array.isArray(payload) ? payload : [];
+    const rows = list.slice(0, 80).map((cmd) => {
+      const name = String(cmd.name || cmd.id || cmd.title || "");
+      const desc = String(cmd.description || "");
+      const insert = name.startsWith("/") ? name : `/${name}`;
+      return `<li><button type="button" class="host-command" data-host-command="${escapeHtml(insert)}"><strong>${escapeHtml(insert)}</strong><span class="host-muted">${escapeHtml(desc)}</span></button></li>`;
+    });
+    openHostSheet("技能与命令", `${hostRows(rows, "没有可用的斜杠命令。")}<p class="host-muted">点一条会插入到输入框，再补充内容发送。</p>`);
+  } catch (error) {
+    openHostSheet("技能与命令", `<p class="host-empty">读取失败：${escapeHtml(error.message)}</p>`);
+  }
+}
+
+async function showProviders() {
+  openHostSheet("供应商与模型", `<p class="host-empty">加载中…</p>`);
+  try {
+    const data = await hostInvoke("providers/list", [{ includeDisabled: true }]);
+    const payload = data?.result ?? data;
+    const list = Array.isArray(payload?.providers) ? payload.providers : [];
+    const rows = list.map((provider) => {
+      const models = Array.isArray(provider.models) ? provider.models.length : 0;
+      return `<li><span>${escapeHtml(provider.name || provider.id)}</span><span class="host-muted">${models} 个模型${provider.enabled === false ? " · 已停用" : ""}</span></li>`;
+    });
+    openHostSheet("供应商与模型", hostRows(rows, "没有配置供应商。"));
+  } catch (error) {
+    openHostSheet("供应商与模型", `<p class="host-empty">读取失败：${escapeHtml(error.message)}</p>`);
+  }
+}
+
+async function showBrowserState() {
+  openHostSheet("浏览器状态", `<p class="host-empty">加载中…</p>`);
+  try {
+    const data = await hostInvoke("browser/getState", []);
+    const payload = data?.result ?? data;
+    const tabs = Array.isArray(payload?.tabs) ? payload.tabs : [];
+    const rows = tabs.map((tab) => `<li><span>${escapeHtml(tab.title || tab.url || "")}</span><span class="host-muted">${escapeHtml(tab.url || "")}</span></li>`);
+    openHostSheet("浏览器状态", rows.length ? hostRows(rows, "") : `<p class="host-empty">桌面端浏览器没有打开的标签页。</p>`);
+  } catch (error) {
+    openHostSheet("浏览器状态", `<p class="host-empty">读取失败：${escapeHtml(error.message)}</p>`);
+  }
+}
+
+// ── 事件绑定 ────────────────────────────────────────────────────────────
+function initHostTools() {
+  document.querySelectorAll("[data-host-sheet-close]").forEach((button) => {
+    button.addEventListener("click", closeHostSheet);
+  });
+  document.querySelector("#hostToolsButton")?.addEventListener("click", showHostTools);
+
+  document.querySelector("#approvalBanner")?.addEventListener("click", (event) => {
+    const button = event.target.closest("[data-approval-action]");
+    if (!button) return;
+    const card = button.closest("[data-approval-id]");
+    resolveApprovalCard(card, button.dataset.approvalAction);
+  });
+
+  const actions = {
+    threadRenameAction: renameCurrentThread,
+    threadCompactAction: compactCurrentThread,
+    threadUsageAction: () => showUsage(state.contextThreadId),
+    threadFilesAction: () => showFiles(state.contextThreadId, ""),
+    threadRevisionsAction: () => showRevisions(state.contextThreadId),
+    threadOpenAction: openThreadOnDesktop,
+    threadDeleteAction: deleteCurrentThread
+  };
+  for (const [id, handler] of Object.entries(actions)) {
+    document.querySelector(`#${id}`)?.addEventListener("click", () => {
+      closeThreadContextMenu();
+      handler();
+    });
+  }
+
+  document.querySelector("#hostSheetBody")?.addEventListener("click", (event) => {
+    const fileButton = event.target.closest("[data-host-file]");
+    if (fileButton) {
+      const target = fileButton.dataset.hostFile || "";
+      if (fileButton.dataset.hostDir === "1") showFiles(state.selectedId, target);
+      else showFilePreview(state.selectedId, target);
+      return;
+    }
+    if (event.target.closest("[data-host-diff]")) {
+      showWorkspaceDiff(state.selectedId);
+      return;
+    }
+    if (event.target.closest("[data-host-notif-read]")) {
+      postJson("/api/host/notifications/read", {})
+        .then(() => showNotifications())
+        .catch((error) => hostNotice(`标记失败：${error.message}`));
+      return;
+    }
+    const command = event.target.closest("[data-host-command]");
+    if (command) {
+      const text = command.dataset.hostCommand || "";
+      if (els.composerInput) {
+        els.composerInput.value = `${text} `;
+        els.composerInput.focus();
+      }
+      closeHostSheet();
+      return;
+    }
+    const tool = event.target.closest("[data-host-tool]");
+    if (tool) {
+      const name = tool.dataset.hostTool;
+      if (name === "notifications") showNotifications();
+      if (name === "scheduled") showScheduled();
+      if (name === "commands") showCommands();
+      if (name === "providers") showProviders();
+      if (name === "browser") showBrowserState();
+    }
+  });
+
+  setInterval(() => {
+    if (!document.hidden) refreshApprovals();
+  }, 15000);
+  refreshApprovals();
+}
+
+initHostTools();
   await refresh(true);
   // The project list only matters once the user starts a new conversation, but
   // loading it here keeps the picker instant when they do.
