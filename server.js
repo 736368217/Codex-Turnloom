@@ -308,6 +308,8 @@ const CODEX_IPC_SOCKET =
   (process.platform === "win32"
     ? String.raw`\\.\pipe\codex-ipc`
     : path.join(os.tmpdir(), "codex-ipc", typeof process.getuid === "function" ? `ipc-${process.getuid()}.sock` : "ipc.sock"));
+/** PI-Desktop 桥接管这个命名管道时，由宿主的 turn_queue 充当权威队列。 */
+const PI_NATIVE_QUEUE = process.env.CODEX_LAN_PI_NATIVE_QUEUE === "1" || String(cli.ipcSocket || process.env.CODEX_IPC_SOCKET || "").includes("pidesktop-codex-ipc");
 function defaultCodexCli() {
   const macAppCli = "/Applications/Codex.app/Contents/Resources/codex";
   if (existsSync(macAppCli)) return macAppCli;
@@ -4402,7 +4404,7 @@ async function getMessages(id, { limit = DEFAULT_MESSAGE_LIMIT, fullHistory = fa
       ? { ...baseStatus, ...statusFieldsFromOverride(statusOverride, overrideLacksCorroboration(statusOverride, null)) }
       : baseStatus;
     const limited = limitMessagesForClient(messages, status, limit, before);
-    return finalizeMessagesResponse(id, {
+    return await finalizeMessagesResponse(id, {
       thread,
       goal,
       meta: {},
@@ -4432,7 +4434,7 @@ async function getMessages(id, { limit = DEFAULT_MESSAGE_LIMIT, fullHistory = fa
   if (!liveMessages.length) {
     const messages = await decorateMessageFiles(parsed.messages, id, thread);
     const limited = limitMessagesForClient(messages, parsedStatus, limit, before);
-    return finalizeMessagesResponse(id, { thread, goal, ...parsed, status: parsedStatus, messages, ...includePartialHistoryAvailability(limited, parsed.partial) });
+    return await finalizeMessagesResponse(id, { thread, goal, ...parsed, status: parsedStatus, messages, ...includePartialHistoryAvailability(limited, parsed.partial) });
   }
   const status = {
     ...parsedStatus,
@@ -4440,7 +4442,7 @@ async function getMessages(id, { limit = DEFAULT_MESSAGE_LIMIT, fullHistory = fa
   };
   const messages = await decorateMessageFiles(dedupeInteractionMessages([...parsed.messages, ...liveMessages]).sort(messageSortCompare), id, thread);
   const limited = limitMessagesForClient(messages, status, limit, before);
-  return finalizeMessagesResponse(id, {
+  return await finalizeMessagesResponse(id, {
     thread,
     goal,
     ...parsed,
@@ -4463,12 +4465,13 @@ async function threadChangeSignature(id) {
       files.push(`${filePath}:missing`);
     }
   }
-  const queue = queuedSendStatus(id);
+  const queue = await queuedSendStatus(id);
   return JSON.stringify({
     updatedAtMs: thread.updatedAtMs || 0,
     files,
     statusOverride: statusOverride ? `${statusOverride.state}:${statusOverride.updatedAtMs}` : "",
     queueLength: queue.queueLength,
+    queuePositions: queue.queuedMessages.map((item) => `${item.id}:${item.deliveryState}:${item.position ?? ""}:${item.priority ?? ""}`),
     deliveryStates: queue.queuedMessages.map((item) => `${item.id}:${item.deliveryState}`)
   });
 }
@@ -4983,7 +4986,7 @@ function restorePendingSendQueues() {
       if (!restoredItems.length) continue;
       pendingSendQueues.set(key, restoredItems);
       restored += restoredItems.length;
-      scheduleQueuedSendDrain(key, 1000);
+      scheduleLocalQueuedSendDrain(key, 1000);
     }
     if (dropped) persistPendingSendQueues();
     logInfo("[queue] Restored " + restored + " pending message" + (restored === 1 ? "" : "s") + ".");
@@ -5032,7 +5035,7 @@ function removeQueuedSendItem(threadId, itemId) {
   return true;
 }
 
-function queuedSendStatus(threadId) {
+function localQueuedSendStatus(threadId) {
   const queue = pendingSendQueues.get(String(threadId || "")) || [];
   return {
     queueLength: queue.length,
@@ -5052,8 +5055,76 @@ function queuedSendStatus(threadId) {
   };
 }
 
-function finalizeMessagesResponse(threadId, response) {
-  const queueStatus = queuedSendStatus(threadId);
+/** PI-Desktop 桥提供权威 turn_queue；桌面端与手机端只显示这一份队列。 */
+async function requestNativeQueue(method, threadId, extra = {}, timeoutMs = 15000) {
+  const response = await getCodexIpcClient().request(
+    `turnloom/queue/${method}`,
+    { conversationId: String(threadId || ""), threadId: String(threadId || ""), ...extra },
+    { timeoutMs }
+  );
+  return response?.result ?? response ?? {};
+}
+
+/** 旧版桥尚未 reload 时不要让手机端排队变成 500：退回本地队列并提示一次。 */
+function isLegacyQueueBridge(error) {
+  return /unsupported method:\s*turnloom\/queue\//i.test(String(error?.message || error || ""));
+}
+
+let legacyQueueBridgeWarned = false;
+
+function useLegacyQueueFallback(error) {
+  if (!isLegacyQueueBridge(error)) throw error;
+  if (!legacyQueueBridgeWarned) {
+    legacyQueueBridgeWarned = true;
+    logError("[queue] PI bridge needs reload; using the legacy local queue until then.");
+  }
+  return true;
+}
+
+function nativeQueuedSendStatusFromEntries(threadId, entries) {
+  const rows = Array.isArray(entries) ? entries : [];
+  return {
+    queueLength: rows.length,
+    queuedMessages: rows.map((entry, index) => {
+      const text = String(entry?.content ?? entry?.text ?? "");
+      const images = Array.isArray(entry?.attachments)
+        ? entry.attachments.map((image, imageIndex) => ({
+            name: String(image?.name || `图片 ${imageIndex + 1}`),
+            url: `/api/queue/image?threadId=${encodeURIComponent(threadId)}&itemId=${encodeURIComponent(entry?.id || "")}&index=${imageIndex}`
+          }))
+        : [];
+      return {
+        id: String(entry?.id || `native-${index}`),
+        text,
+        preview: queuedMessagePreview(text, images.length),
+        imageCount: images.length,
+        images,
+        enqueuedAt: entry?.createdAt || new Date().toISOString(),
+        lastError: null,
+        deliveryState: "queued",
+        position: Number(entry?.position) || index + 1,
+        priority: entry?.priority == null ? null : Number(entry.priority),
+        source: "pi-native"
+      };
+    }),
+    queueSource: "pi-native"
+  };
+}
+
+async function queuedSendStatus(threadId) {
+  if (!PI_NATIVE_QUEUE) return localQueuedSendStatus(threadId);
+  try {
+    const result = await requestNativeQueue("list", threadId, {}, 8000);
+    return nativeQueuedSendStatusFromEntries(threadId, result.entries);
+  } catch (error) {
+    if (useLegacyQueueFallback(error)) return localQueuedSendStatus(threadId);
+    logError(`[queue] PI native queue unavailable: ${error?.message || error}`);
+    return { queueLength: 0, queuedMessages: [], queueError: error?.message || String(error), queueSource: "pi-native" };
+  }
+}
+
+async function finalizeMessagesResponse(threadId, response) {
+  const queueStatus = await queuedSendStatus(threadId);
   const result = {
     ...response,
     status: {
@@ -5061,12 +5132,38 @@ function finalizeMessagesResponse(threadId, response) {
       ...queueStatus
     }
   };
-  if (!result.status.thinking && queueStatus.queueLength) scheduleQueuedSendDrain(threadId);
+  if (!PI_NATIVE_QUEUE && !result.status.thinking && queueStatus.queueLength) scheduleLocalQueuedSendDrain(threadId);
   return result;
 }
 
-function enqueueSend(threadId, text, images, turnSettings) {
+
+async function enqueueSend(threadId, text, images = [], turnSettings = {}, clientRequestId = "") {
   const key = String(threadId);
+  if (PI_NATIVE_QUEUE) {
+    try {
+      const result = await requestNativeQueue("push", key, {
+        content: String(text || ""),
+        images,
+        clientRequestId: String(clientRequestId || randomUUID()),
+        model: turnSettings?.model || "",
+        effort: turnSettings?.effort || ""
+      });
+      const status = await queuedSendStatus(key);
+      const item = status.queuedMessages.find((entry) => entry.id === String(result?.id || "")) || status.queuedMessages.at(-1) || null;
+      return {
+        ok: true,
+        mode: "queue",
+        queued: true,
+        threadId: key,
+        queueItem: item,
+        queueLength: status.queueLength,
+        sentAt: result?.createdAt || new Date().toISOString(),
+        queueSource: "pi-native"
+      };
+    } catch (error) {
+      if (!useLegacyQueueFallback(error)) throw error;
+    }
+  }
   const queue = pendingSendQueues.get(key) || [];
   queueIdleObservations.delete(key);
   const item = {
@@ -5083,22 +5180,40 @@ function enqueueSend(threadId, text, images, turnSettings) {
     deliveryAttemptedAtMs: 0
   };
   setPendingSendQueue(key, [...queue, item]);
-  scheduleQueuedSendDrain(key);
+  scheduleLocalQueuedSendDrain(key);
+  const status = localQueuedSendStatus(key);
   return {
     ok: true,
     mode: "queue",
     queued: true,
     threadId: key,
-    queueItem: queuedSendStatus(key).queuedMessages.find((entry) => entry.id === item.id),
-    queueLength: queue.length + 1,
+    queueItem: status.queuedMessages.find((entry) => entry.id === item.id),
+    queueLength: status.queueLength,
     sentAt: item.enqueuedAt
   };
 }
 
-function cancelQueuedSend(threadId, itemId = "", { edit = false } = {}) {
+async function cancelQueuedSend(threadId, itemId = "", { edit = false } = {}) {
   const key = String(threadId || "");
+  if (PI_NATIVE_QUEUE) {
+    try {
+      const result = await requestNativeQueue("remove", key, { itemId: String(itemId || ""), edit: Boolean(edit) });
+      const status = nativeQueuedSendStatusFromEntries(key, result.entries);
+      return {
+        ok: true,
+        threadId: key,
+        cancelled: Number(result?.cancelled) || 0,
+        cancelledIds: Array.isArray(result?.cancelledIds) ? result.cancelledIds : [],
+        ...(edit && result?.draft ? { draft: result.draft } : {}),
+        ...status
+      };
+    } catch (error) {
+      if (!useLegacyQueueFallback(error)) throw error;
+    }
+  }
   const queue = pendingSendQueues.get(key) || [];
-  if (!queue.length) return { ok: true, threadId: key, cancelled: 0, ...queuedSendStatus(key) };
+  const status = () => localQueuedSendStatus(key);
+  if (!queue.length) return { ok: true, threadId: key, cancelled: 0, ...status() };
   const selected = queue.filter((item) => !itemId || item.id === itemId);
   if (selected.some((item) => ["sending", "awaitingConfirmation"].includes(item.deliveryState))) {
     const error = new Error("这条消息正在发送或等待确认，暂时不能编辑或取消。");
@@ -5123,7 +5238,7 @@ function cancelQueuedSend(threadId, itemId = "", { edit = false } = {}) {
     ok: true, threadId: key, cancelled,
     cancelledIds: selected.map((item) => item.id),
     ...(edit ? { draft: { text: selected[0].text, images: cloneQueuedSendImages(selected[0].images) } } : {}),
-    ...queuedSendStatus(key)
+    ...status()
   };
 }
 
@@ -5139,6 +5254,17 @@ function sendRequestFingerprint(body = {}) {
       ? body.images.map((image) => ({ name: image?.name || "", mimeType: image?.mimeType || "", data: image?.data || "" }))
       : []
   });
+}
+
+function scheduleLocalQueuedSendDrain(threadId, delayMs = 250) {
+  const key = String(threadId || "");
+  if (!key || drainingSendQueues.has(key) || queuedSendDrainTimers.has(key)) return;
+  const timer = setTimeout(() => {
+    queuedSendDrainTimers.delete(key);
+    void drainQueuedSend(key);
+  }, delayMs);
+  queuedSendDrainTimers.set(key, timer);
+  timer.unref?.();
 }
 
 function runIdempotentSend(requestId, fingerprint, execute, store = recentSendRequests) {
@@ -5173,16 +5299,6 @@ function runSerializedThreadStart(threadId, execute, store = threadStartOperatio
   return operation;
 }
 
-function scheduleQueuedSendDrain(threadId, delayMs = 250) {
-  const key = String(threadId || "");
-  if (!key || drainingSendQueues.has(key) || queuedSendDrainTimers.has(key)) return;
-  const timer = setTimeout(() => {
-    queuedSendDrainTimers.delete(key);
-    void drainQueuedSend(key);
-  }, delayMs);
-  queuedSendDrainTimers.set(key, timer);
-  timer.unref?.();
-}
 
 function queuedSendIdleDecision(thinking, idleSinceMs, nowMs = Date.now(), settleMs = QUEUE_IDLE_SETTLE_MS) {
   if (thinking) return { ready: false, idleSinceMs: null, retryAfterMs: null };
@@ -5197,6 +5313,21 @@ function queuedSendIdleDecision(thinking, idleSinceMs, nowMs = Date.now(), settl
 
 async function steerQueuedSend(threadId, itemId) {
   const key = String(threadId || "");
+  if (PI_NATIVE_QUEUE) {
+    try {
+      const result = await requestNativeQueue("steer", key, { itemId: String(itemId || "") });
+      const status = nativeQueuedSendStatusFromEntries(key, result.entries);
+      return {
+        ok: true,
+        threadId: key,
+        mode: result?.mode || "priority",
+        turnId: result?.turnId || null,
+        ...status
+      };
+    } catch (error) {
+      if (!useLegacyQueueFallback(error)) throw error;
+    }
+  }
   const queue = pendingSendQueues.get(key) || [];
   const index = queue.findIndex((item) => item.id === itemId);
   if (index < 0) {
@@ -5219,14 +5350,14 @@ async function steerQueuedSend(threadId, itemId) {
       threadId: key,
       mode: result?.mode || "steer",
       turnId: result?.turnId || null,
-      ...queuedSendStatus(key)
+      ...localQueuedSendStatus(key)
     };
   } catch (error) {
     // Restore the item at its original position so a failed insert never loses
     // the user's queued message.
     const current = pendingSendQueues.get(key) || [];
     setPendingSendQueue(key, [...current.slice(0, index), item, ...current.slice(index)]);
-    scheduleQueuedSendDrain(key);
+    scheduleLocalQueuedSendDrain(key);
     throw error;
   }
 }
@@ -5331,7 +5462,7 @@ async function drainQueuedSend(threadId) {
     }
     queueIdleObservations.set(key, idleDecision.idleSinceMs);
     if (!idleDecision.ready) {
-      scheduleQueuedSendDrain(key, idleDecision.retryAfterMs);
+      scheduleLocalQueuedSendDrain(key, idleDecision.retryAfterMs);
       return;
     }
     queueIdleObservations.delete(key);
@@ -5393,7 +5524,7 @@ async function drainQueuedSend(threadId) {
     const remaining = pendingSendQueues.get(key);
     if (remaining?.length) {
       const retryDelayMs = Math.max(1500, (remaining[0].nextAttemptAtMs || 0) - Date.now());
-      scheduleQueuedSendDrain(key, retryDelayMs);
+      scheduleLocalQueuedSendDrain(key, retryDelayMs);
     }
   }
 }
@@ -5536,7 +5667,7 @@ function webpDimensions(bytes) {
   return null;
 }
 
-async function sendToCodex(text, threadId, images = [], { newThread = false, mode = "start", model, effort, project = null } = {}) {
+async function sendToCodex(text, threadId, images = [], { newThread = false, mode = "start", model, effort, project = null, clientRequestId = "" } = {}) {
   const homeState = await refreshCodexHomeContext({ source: "send" });
   const modelConfiguration = await loadCodexModelConfiguration(homeState.home);
   if (!ALLOW_WRITE) {
@@ -5614,7 +5745,7 @@ async function sendToCodex(text, threadId, images = [], { newThread = false, mod
     throw err;
   }
 
-  if (sendMode === "queue") return enqueueSend(targetThreadId, trimmed, normalizedImages, turnSettings);
+  if (sendMode === "queue") return enqueueSend(targetThreadId, trimmed, normalizedImages, turnSettings, clientRequestId);
 
   if (sendMode === "steer") {
     const current = await getMessages(targetThreadId, { limit: 20, fullHistory: true });
@@ -7195,7 +7326,8 @@ const server = http.createServer(async (req, res) => {
           mode: body.mode,
           model: body.model,
           effort: body.effort,
-          project
+          project,
+          clientRequestId: String(body.clientRequestId || "")
         })
       );
       sendJson(res, 200, result);
@@ -7204,7 +7336,7 @@ const server = http.createServer(async (req, res) => {
     if (req.method === "POST" && url.pathname === "/api/queue/cancel") {
       if (!requireAuthorized(req, res, url)) return;
       const body = await readJsonBody(req);
-      sendJson(res, 200, cancelQueuedSend(body.threadId, body.itemId, { edit: body.edit === true }));
+      sendJson(res, 200, await cancelQueuedSend(body.threadId, body.itemId, { edit: body.edit === true }));
       return;
     }
     if (req.method === "POST" && url.pathname === "/api/queue/steer") {
@@ -7215,13 +7347,29 @@ const server = http.createServer(async (req, res) => {
     }
     if (req.method === "GET" && url.pathname === "/api/queue/image") {
       if (!requireAuthorized(req, res, url)) return;
-      const queue = pendingSendQueues.get(url.searchParams.get("threadId")) || [];
-      const item = queue.find((entry) => entry.id === url.searchParams.get("itemId"));
-      const image = item?.images[Number(url.searchParams.get("index"))];
-      if (!image) return sendJson(res, 404, { error: "Queued image not found" });
-      res.writeHead(200, { "content-type": image.mimeType, "cache-control": "private, no-store", "x-content-type-options": "nosniff" });
-      res.end(Buffer.from(image.data, "base64"));
-      return;
+      const threadId = String(url.searchParams.get("threadId") || "");
+      const itemId = String(url.searchParams.get("itemId") || "");
+      const index = Number(url.searchParams.get("index"));
+      if (PI_NATIVE_QUEUE) {
+        const result = await requestNativeQueue("list", threadId, {}, 8000);
+        const entry = (Array.isArray(result?.entries) ? result.entries : []).find((row) => String(row?.id || "") === itemId);
+        const attachment = Array.isArray(entry?.attachments) ? entry.attachments[index] : null;
+        if (attachment?.path && existsSync(attachment.path)) {
+          res.writeHead(200, { "content-type": String(attachment.mimeType || "image/png"), "cache-control": "private, no-store", "x-content-type-options": "nosniff" });
+          createReadStream(attachment.path).pipe(res);
+          return;
+        }
+      } else {
+        const queue = pendingSendQueues.get(threadId) || [];
+        const item = queue.find((entry) => entry.id === itemId);
+        const image = item?.images[index];
+        if (image) {
+          res.writeHead(200, { "content-type": image.mimeType, "cache-control": "private, no-store", "x-content-type-options": "nosniff" });
+          res.end(Buffer.from(image.data, "base64"));
+          return;
+        }
+      }
+      return sendJson(res, 404, { error: "Queued image not found" });
     }
     if (req.method === "POST" && url.pathname === "/api/new-thread") {
       if (!requireAuthorized(req, res, url)) return;
@@ -7541,6 +7689,8 @@ export {
   parseRolloutLine,
   parseRolloutTail,
   cancelQueuedSend,
+  localQueuedSendStatus,
+  nativeQueuedSendStatusFromEntries,
   queuedSendStatus,
   queuedSendIdleDecision,
   repairInvalidCustomToolCallIdsInText,
