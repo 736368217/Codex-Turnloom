@@ -25,20 +25,87 @@ const codexSide = require("./codex-side.cjs");
  * PI-Desktop 的数据根目录可以被用户改（%APPDATA%\PI-Desktop\storage-location.json 指向别处），
  * 所以不能把 ~/.pi-desktop/pi.sqlite 写死：配置优先，再按两个已知位置兜底。
  */
-function resolvePiDb() {
-  const candidates = [];
-  for (const name of ["PI-Desktop", "pi-desktop"]) {
-    try {
-      const file = path.join(process.env.APPDATA || "", name, "storage-location.json");
-      const data = JSON.parse(fs.readFileSync(file, "utf8"))?.roots?.data;
-      if (data) candidates.push(path.join(String(data), "pi.sqlite"));
-    } catch {
-      /* 没有这个配置文件就跳过 */
+function piStorageBases() {
+  const bases = [];
+  const push = (value) => {
+    const v = String(value || "").trim();
+    if (v && !bases.includes(v)) bases.push(v);
+  };
+  push(process.env.APPDATA);
+  if (process.platform === "win32") push(path.join(os.homedir(), "AppData", "Roaming"));
+  if (process.platform === "darwin") push(path.join(os.homedir(), "Library", "Application Support"));
+  push(path.join(os.homedir(), ".config"));
+  return bases;
+}
+
+/**
+ * 宿主进程里 process.env.APPDATA 可能为空（Electron 子进程实测会丢），
+ * 所以除了环境变量还要按各平台标准位置找 storage-location.json。
+ * 只认 roots.data，找不到就返回空数组。
+ */
+function piConfiguredDataRoots() {
+  const roots = [];
+  for (const base of piStorageBases()) {
+    for (const name of ["PI-Desktop", "pi-desktop"]) {
+      try {
+        const parsed = JSON.parse(fs.readFileSync(path.join(base, name, "storage-location.json"), "utf8"));
+        const data = parsed?.roots?.data;
+        if (data && !roots.includes(String(data))) roots.push(String(data));
+      } catch {
+        /* 该位置没有配置 */
+      }
     }
   }
-  candidates.push(path.join(os.homedir(), ".pi-desktop", "pi.sqlite"));
-  candidates.push("D:\\pi-data\\data\\pi.sqlite");
-  return candidates.find((p) => p && fs.existsSync(p)) || candidates[0];
+  return roots;
+}
+
+/**
+ * 解析 PI 数据库。
+ *
+ * 2026-11-05 事故：宿主进程拿不到 APPDATA → 回落到 ~/.pi-desktop/pi.sqlite，
+ * 而那个路径是被 DatabaseSync 顺手创建出来的 0 字节空库，于是所有「表不存在」，
+ * 手机端审批/待办/通知全空。现在：
+ *   1. 按多平台标准位置读配置；
+ *   2. 只接受「存在且非空」的数据库，绝不把空库当权威；
+ *   3. 配置失效时用已知默认位置兜底。
+ */
+function resolvePiDb() {
+  const configured = piConfiguredDataRoots().map((root) => path.join(root, "pi.sqlite"));
+  const known = ["D:\\pi-data\\data\\pi.sqlite", path.join(os.homedir(), ".pi-desktop", "pi.sqlite")];
+  const all = [...configured, ...known];
+  const usable = all.find((file) => {
+    try {
+      return fs.existsSync(file) && fs.statSync(file).size > 0;
+    } catch {
+      return false;
+    }
+  });
+  return usable || configured[0] || known[0];
+}
+
+function resolvePiDataRoot() {
+  const configured = piConfiguredDataRoots();
+  if (configured.length) return configured[0];
+  // 不要直接读 PI_DB 变量（模块求值时它还在 TDZ，曾导致整个插件加载失败）；
+  // 调用解析函数拿到最终数据库所在目录，保证与 PI_DB 一致。
+  return path.dirname(resolvePiDb());
+}
+
+function nativeQueueDb() {
+  // 绝不创建空库：DatabaseSync 默认会新建文件，一旦路径解析错就会留下
+  // 0 字节 pi.sqlite，后续所有查询都变成 "no such table"。
+  let size = 0;
+  try {
+    size = fs.statSync(PI_DB).size;
+  } catch {
+    /* 下面统一报错 */
+  }
+  if (!size) {
+    throw new Error(`PI database is missing or empty: ${PI_DB}`);
+  }
+  const db = new DatabaseSync(PI_DB);
+  db.exec("PRAGMA busy_timeout = 8000");
+  return db;
 }
 /**
  * 宿主 agent/prompt 的 attachments 不是「内联 base64」而是「磁盘路径」：
