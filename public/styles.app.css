@@ -1334,3 +1334,296 @@ html.keyboard-open #shell .composer-pod {
   max-height: 40dvh;
   overflow-y: auto;
 }
+
+/* ── 审批横幅（PI 的 Plan/Goal 审批）────────────────────────────────── */
+#shell .approval-banner {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 10px 12px;
+  max-height: 42vh;
+  overflow-y: auto;
+  border-bottom: 1px solid color-mix(in srgb, currentColor 14%, transparent);
+  background: color-mix(in srgb, #f59e0b 12%, transparent);
+}
+
+#shell .approval-card {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px;
+  border-radius: 14px;
+  border: 1px solid color-mix(in srgb, currentColor 18%, transparent);
+  background: var(--surface, rgba(255, 255, 255, 0.06));
+}
+
+#shell .approval-card-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+#shell .approval-kind {
+  font-size: 0.75em;
+  opacity: 0.7;
+  white-space: nowrap;
+}
+
+#shell .approval-card-question {
+  margin: 0;
+  font-size: 0.9em;
+  line-height: 1.55;
+  overflow-wrap: anywhere;
+}
+
+#shell .approval-mode {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.82em;
+  opacity: 0.85;
+}
+
+#shell .approval-mode select {
+  flex: 1;
+  min-height: 38px;
+  border-radius: 10px;
+  border: 1px solid color-mix(in srgb, currentColor 22%, transparent);
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  padding: 0 8px;
+}
+
+#shell .approval-card-actions {
+  display: flex;
+  gap: 8px;
+}
+
+#shell .approval-card-actions button {
+  flex: 1;
+  min-height: max(42px, 2.6em);
+  border-radius: 12px;
+  border: 1px solid color-mix(in srgb, currentColor 22%, transparent);
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-weight: 600;
+}
+
+#shell .approval-approve {
+  background: color-mix(in srgb, #10b981 26%, transparent);
+  border-color: color-mix(in srgb, #10b981 45%, transparent);
+}
+
+#shell .approval-reject {
+  background: color-mix(in srgb, #ef4444 18%, transparent);
+  border-color: color-mix(in srgb, #ef4444 38%, transparent);
+}
+
+/* ── 通用宿主面板 ──────────────────────────────────────────────────── */
+#shell .host-sheet {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+}
+
+#shell .host-sheet-backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.45);
+}
+
+#shell .host-sheet-card {
+  position: relative;
+  width: min(680px, 100%);
+  max-height: 82vh;
+  display: flex;
+  flex-direction: column;
+  border-radius: 20px 20px 0 0;
+  background: var(--surface-strong, #16181d);
+  color: inherit;
+  box-shadow: 0 -8px 32px rgba(0, 0, 0, 0.35);
+  padding-bottom: env(safe-area-inset-bottom, 0);
+}
+
+#shell .host-sheet-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 14px 16px 10px;
+  border-bottom: 1px solid color-mix(in srgb, currentColor 12%, transparent);
+}
+
+#shell .host-sheet-header h3 {
+  margin: 0;
+  font-size: 1.02em;
+  overflow-wrap: anywhere;
+}
+
+#shell .host-sheet-close {
+  min-width: 40px;
+  min-height: 40px;
+  border: 0;
+  border-radius: 12px;
+  background: transparent;
+  color: inherit;
+  font-size: 1.4em;
+  line-height: 1;
+}
+
+#shell .host-sheet-body {
+  flex: 1;
+  overflow-y: auto;
+  padding: 12px 16px calc(18px + env(safe-area-inset-bottom, 0));
+  -webkit-overflow-scrolling: touch;
+}
+
+#shell .host-list {
+  list-style: none;
+  margin: 8px 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+#shell .host-list li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 6px 12px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  background: color-mix(in srgb, currentColor 6%, transparent);
+}
+
+#shell .host-empty {
+  margin: 18px 4px;
+  text-align: center;
+  opacity: 0.7;
+  font-size: 0.9em;
+  line-height: 1.6;
+}
+
+#shell .host-muted {
+  font-size: 0.8em;
+  opacity: 0.66;
+  overflow-wrap: anywhere;
+}
+
+#shell .host-summary {
+  margin: 4px 2px 10px;
+  font-size: 0.9em;
+  line-height: 1.6;
+}
+
+#shell .host-code {
+  margin: 8px 0;
+  padding: 12px;
+  max-height: 46vh;
+  overflow: auto;
+  border-radius: 12px;
+  background: color-mix(in srgb, currentColor 8%, transparent);
+  font-size: 0.8em;
+  line-height: 1.55;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+#shell .host-form {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+#shell .host-form label {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 0.9em;
+}
+
+#shell .host-form input {
+  min-height: 44px;
+  border-radius: 12px;
+  border: 1px solid color-mix(in srgb, currentColor 22%, transparent);
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  padding: 0 12px;
+}
+
+#shell .host-form-actions,
+#shell .host-tools {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+#shell .host-form-actions button,
+#shell .host-tools button,
+#shell .host-secondary,
+#shell .host-crumb {
+  min-height: max(44px, 2.6em);
+  padding: 0 16px;
+  border-radius: 12px;
+  border: 1px solid color-mix(in srgb, currentColor 22%, transparent);
+  background: color-mix(in srgb, currentColor 6%, transparent);
+  color: inherit;
+  font: inherit;
+}
+
+#shell .host-tools button {
+  flex: 1 1 44%;
+}
+
+#shell .host-secondary,
+#shell .host-crumb {
+  display: inline-block;
+  margin: 10px 0 2px;
+}
+
+#shell .host-file,
+#shell .host-command {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 6px 10px;
+  width: 100%;
+  min-height: 44px;
+  padding: 8px 10px;
+  border: 0;
+  border-radius: 10px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  overflow-wrap: anywhere;
+}
+
+#shell .host-file:hover,
+#shell .host-command:hover,
+#shell .host-tools button:hover {
+  background: color-mix(in srgb, currentColor 10%, transparent);
+}
+
+#shell .thread-context-menu .danger {
+  color: #ef4444;
+}
+
+/* 大字模式：面板与列表都改成相对高度，不出现固定 px 截断 */
+#shell.large-text .host-sheet-card {
+  max-height: 88vh;
+}
+
+#shell.large-text .approval-card-actions button,
+#shell.large-text .host-tools button {
+  flex: 1 1 100%;
+}

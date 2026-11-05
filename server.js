@@ -403,6 +403,18 @@ const MAX_SEND_IMAGE_BYTES = 5 * 1024 * 1024;
 const MAX_SEND_BODY_BYTES = 32 * 1024 * 1024;
 const MAX_LOCAL_IMAGE_BYTES = 10 * 1024 * 1024;
 const MAX_LOCAL_FILE_BYTES = 50 * 1024 * 1024;
+/** 手机端文本预览上限；超过就截断并标记 truncated。 */
+const MAX_HOST_TEXT_PREVIEW = 200 * 1024;
+/** 需要用户显式确认的宿主操作（服务端与桥各校验一次，纵深防御）。 */
+const DANGEROUS_HOST_OPERATIONS = new Set([
+  "session/delete",
+  "session/configure",
+  "plans/resolve",
+  "tool/resolvePermission",
+  "agent/askTool/resolve",
+  "agent/instructions/save",
+  "extensions/ui/respond"
+]);
 const DEFAULT_MESSAGE_LIMIT = 80;
 const MAX_MESSAGE_LIMIT = 1000;
 const TAIL_ROLLOUT_MIN_BYTES = 512 * 1024;
@@ -5149,6 +5161,59 @@ async function requestNativeQueue(method, threadId, extra = {}, timeoutMs = 1500
   return response?.result ?? response ?? {};
 }
 
+
+/** 桥未重载 / 未连接时给手机端一个可操作的说法，而不是 500。 */
+function hostBridgeError(error) {
+  const message = String(error?.message || error || "");
+  const needsReload =
+    /unsupported method:\s*turnloom\//i.test(message) || /desktop IPC is not connected/i.test(message);
+  return {
+    status: needsReload ? 503 : 502,
+    body: {
+      error: needsReload
+        ? "PI 插件需要重载后才能使用这个能力：在 PI 插件页重载 cn.star.turnloom-bridge，或下次启动 PI。"
+        : message,
+      needsReload
+    }
+  };
+}
+
+async function hostReply(res, work) {
+  try {
+    sendJson(res, 200, await work());
+  } catch (error) {
+    const { status, body } = hostBridgeError(error);
+    sendJson(res, status, body);
+  }
+}
+
+/**
+ * 旧桥用 `method.includes("approval")` 兜底，会把 turnloom/approvals/* 吞成
+ * {ok:true}，手机端会误以为「没有待审批」。这里用响应形状把这种假成功识别成
+ * 「桥需要重载」，避免静默丢审批。
+ */
+function assertHostShape(data, key, method) {
+  if (!data || !Array.isArray(data[key])) {
+    throw new Error(`unsupported method: turnloom/${method}`);
+  }
+  return data;
+}
+/**
+ * 统一的桥委托：手机端的「更多能力」都走这里。
+ * 白名单在桥里（HOST_*_OPERATIONS），服务端只做形状校验与审计；
+ * 危险操作必须由请求体显式 confirm:true（手机端二次确认后才带）。
+ */
+async function requestBridge(method, params = {}, timeoutMs = 20000) {
+  const client = getCodexIpcClient();
+  await client.ensureReady();
+  const response = await client.request(`turnloom/${method}`, params, { timeoutMs });
+  const result = response?.result ?? response ?? {};
+  if (result && result.ok === false) {
+    throw new Error(String(result.error || result.reason || `${method} failed`));
+  }
+  return result;
+}
+
 /**
  * 只有「桥明确不支持新方法」才说明运行中的插件尚未重载；连接失败/超时必须
  * 保持错误，不能把消息偷偷写进第二套队列，否则桌面端与手机端会各发一份。
@@ -7426,6 +7491,122 @@ const server = http.createServer(async (req, res) => {
       sendJson(res, 405, { error: "Method not allowed" });
       return;
     }
+    // ── 手机端「更多能力」：统一委托给桥的白名单宿主调用层 ──────────────
+    if (req.method === "POST" && url.pathname === "/api/host") {
+      if (!requireAuthorized(req, res, url)) return;
+      const body = await readJsonBody(req, MAX_SEND_BODY_BYTES);
+      const operation = String(body.operation || "").trim();
+      if (!operation) {
+        sendJson(res, 400, { error: "operation is required" });
+        return;
+      }
+      const confirm = body.confirm === true;
+      if (DANGEROUS_HOST_OPERATIONS.has(operation) && !confirm) {
+        sendJson(res, 409, { error: `confirmation required for ${operation}`, needsConfirm: true });
+        return;
+      }
+      const args = Array.isArray(body.args) ? body.args : [];
+      await hostReply(res, () => requestBridge("host/invoke", { operation, args, confirm }));
+      return;
+    }
+
+    if (req.method === "POST" && url.pathname === "/api/host/approvals/resolve") {
+      if (!requireAuthorized(req, res, url)) return;
+      const body = await readJsonBody(req, MAX_SEND_BODY_BYTES);
+      if (body.confirm !== true) {
+        sendJson(res, 409, { error: "approval requires explicit confirmation", needsConfirm: true });
+        return;
+      }
+      await hostReply(res, () => requestBridge("approvals/resolve", body));
+      return;
+    }
+
+    if (req.method === "POST" && url.pathname === "/api/host/notifications/read") {
+      if (!requireAuthorized(req, res, url)) return;
+      const body = await readJsonBody(req);
+      await hostReply(res, () => requestBridge("notifications/read", { id: String(body.id || "") }));
+      return;
+    }
+
+    if (req.method === "GET" && url.pathname.startsWith("/api/host/")) {
+      if (!requireAuthorized(req, res, url)) return;
+      const name = url.pathname.slice("/api/host/".length);
+      const threadId = String(url.searchParams.get("threadId") || "").trim();
+      const filePath = String(url.searchParams.get("path") || "");
+      if (name === "approvals") {
+        await hostReply(res, async () => assertHostShape(await requestBridge("approvals/list", { threadId }), "approvals", "approvals/list"));
+        return;
+      }
+      if (name === "todos") {
+        await hostReply(res, async () => assertHostShape(await requestBridge("todos", { threadId }), "todos", "todos"));
+        return;
+      }
+      if (name === "notifications") {
+        await hostReply(res, async () => assertHostShape(await requestBridge("notifications", { limit: url.searchParams.get("limit") }), "notifications", "notifications"));
+        return;
+      }
+      if (name === "scheduled") {
+        await hostReply(res, async () => assertHostShape(await requestBridge("scheduled", {}), "tasks", "scheduled"));
+        return;
+      }
+      if (name === "usage") {
+        await hostReply(res, async () => assertHostShape(await requestBridge("usage", { threadId }), "turns", "usage"));
+        return;
+      }
+      if (name === "files") {
+        await hostReply(res, () =>
+          requestBridge("host/invoke", {
+            operation: "fs/list",
+            args: [{ sessionId: threadId, path: filePath }]
+          })
+        );
+        return;
+      }
+      if (name === "file-image") {
+        if (!threadId || !filePath) {
+          sendJson(res, 400, { error: "threadId and path are required" });
+          return;
+        }
+        await hostReply(res, () =>
+          requestBridge("host/invoke", {
+            operation: "fs/readImageDataUrl",
+            args: [{ sessionId: threadId, path: filePath }]
+          })
+        );
+        return;
+      }
+      if (name === "file") {
+        if (!threadId || !filePath) {
+          sendJson(res, 400, { error: "threadId and path are required" });
+          return;
+        }
+        await hostReply(res, async () => {
+          const result = await requestBridge("host/invoke", {
+            operation: "fs/read",
+            args: [{ sessionId: threadId, path: filePath }]
+          });
+          // 文本预览上限：手机不需要把几十 MB 的文件塞进 JSON。
+          const payload = result?.result ?? result;
+          const content = String(payload?.content ?? payload?.text ?? payload?.data ?? "");
+          const truncated = content.length > MAX_HOST_TEXT_PREVIEW;
+          return {
+            ...payload,
+            content: truncated ? content.slice(0, MAX_HOST_TEXT_PREVIEW) : content,
+            truncated
+          };
+        });
+        return;
+      }
+      if (name === "diff") {
+        await hostReply(res, () =>
+          requestBridge("host/invoke", { operation: "workspace/diff", args: [{ sessionId: threadId, path: filePath }] })
+        );
+        return;
+      }
+      sendJson(res, 404, { error: "unknown host resource" });
+      return;
+    }
+
     if (req.method === "POST" && url.pathname === "/api/send") {
       if (!requireAuthorized(req, res, url)) return;
       const body = await readJsonBody(req, MAX_SEND_BODY_BYTES);

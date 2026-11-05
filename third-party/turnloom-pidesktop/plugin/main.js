@@ -320,6 +320,294 @@ function nativeQueueSteer(params) {
     };
   });
 }
+
+// ── 宿主能力层：把 PI 的只读能力与显式确认的写能力开放给手机 ──────────────
+/**
+ * 白名单是安全边界：手机端只能调用这里列出的操作。
+ *   read      —— 只读，直接放行；
+ *   write     —— 会改状态但不危险（重命名、压缩、标记已读）；
+ *   dangerous —— 宿主会弹原生确认框，必须由手机用户明确点「确认」后才带
+ *                confirm:true 下发，绝不由桥自动确认。
+ */
+const HOST_READ_OPERATIONS = new Set([
+  "app/getVersion", "app/health", "app/getOnboarding", "app/systemFonts",
+  "providers/list", "providers/listModels", "providers/modelCatalogStatus",
+  "project/get", "project/list", "settings/get", "commandShell/list",
+  "session/list", "session/get", "session/getScratchPath", "session/listRevisions",
+  "stats/getTokenUsageHistory", "notification/list",
+  "scheduled/list", "scheduled/listRuns",
+  "fs/list", "fs/read", "fs/readImageDataUrl", "fs/index",
+  "workspace/diff", "browser/getState",
+  "composer/commands", "commandPalette/search", "skill/list", "skill/read",
+  "subagent/list", "subagent/catalog", "subagent/read",
+  "mcp/list", "plugin/list", "plugin/views", "plugin/themes", "plugin/services",
+  "plans/pending", "market/search", "market/getDetail",
+  "updates/getState", "network/testProxy",
+]);
+const HOST_WRITE_OPERATIONS = new Set([
+  "session/rename", "session/open", "session/moveProject",
+  "agent/compact", "agent/abort", "agent/stop",
+  "providers/refreshModelCatalog", "updates/check",
+  "notification/markRead", "notification/markAllRead",
+  "session/create", "session/fork",
+]);
+const HOST_DANGEROUS_OPERATIONS = new Set([
+  "session/delete", "session/configure", "plans/resolve",
+  "tool/resolvePermission", "agent/askTool/resolve",
+  "agent/instructions/save", "extensions/ui/respond",
+]);
+
+async function hostInvoke(params) {
+  const operation = String(params?.operation || "").trim();
+  const args = Array.isArray(params?.args) ? params.args : [];
+  const confirm = params?.confirm === true;
+  if (!operation) throw new Error("host invoke without operation");
+  const isRead = HOST_READ_OPERATIONS.has(operation);
+  const isWrite = HOST_WRITE_OPERATIONS.has(operation);
+  const isDangerous = HOST_DANGEROUS_OPERATIONS.has(operation);
+  if (!isRead && !isWrite && !isDangerous) {
+    throw new Error(`host operation not allowed from phone: ${operation}`);
+  }
+  if (isDangerous && !confirm) {
+    throw new Error(`host operation requires explicit confirmation: ${operation}`);
+  }
+  const result = await invokeHostArgs(operation, args, isDangerous ? { confirm: true } : {});
+  return { ok: true, operation, result };
+}
+
+/** 审批：PI 把 Plan/Goal 审批持久化在 plan_approvals，手机端据此渲染审批卡。 */
+function hostApprovals(params) {
+  const sessionId = String(params?.sessionId || params?.threadId || "").trim();
+  const db = nativeQueueDb();
+  try {
+    const where = sessionId ? "WHERE session_id = ?" : "";
+    const rows = db
+      .prepare(
+        `SELECT request_id, session_id, turn_id, tool_call_id, kind, title, question, status,
+                action, target_permission_mode, feedback, created_at, updated_at, expires_at,
+                resolved_at, error_code, version
+           FROM plan_approvals ${where} ORDER BY created_at DESC LIMIT 50`,
+      )
+      .all(...(sessionId ? [sessionId] : []));
+    return {
+      ok: true,
+      approvals: rows.map((row) => ({
+        requestId: String(row.request_id || ""),
+        sessionId: String(row.session_id || ""),
+        turnId: String(row.turn_id || ""),
+        toolCallId: String(row.tool_call_id || ""),
+        kind: String(row.kind || "plan"),
+        title: String(row.title || ""),
+        question: String(row.question || ""),
+        status: String(row.status || ""),
+        action: String(row.action || ""),
+        targetPermissionMode: String(row.target_permission_mode || ""),
+        feedback: String(row.feedback || ""),
+        version: Number(row.version) || 1,
+        createdAt: Number(row.created_at) || 0,
+        updatedAt: Number(row.updated_at) || 0,
+        expiresAt: Number(row.expires_at) || 0,
+        resolvedAt: Number(row.resolved_at) || 0,
+        errorCode: String(row.error_code || ""),
+      })),
+    };
+  } finally {
+    db.close();
+  }
+}
+
+/**
+ * 审批决定。宿主契约：
+ *   plans/resolve              需要 proposalId/sessionId/turnId/toolCallId/action；
+ *                              approve 还必须给 targetPermissionMode(ask|accept-edits|auto)。
+ *   tool/resolvePermission     需要 requestId + decision(allow-once|allow-session|deny)。
+ *   agent/askTool/resolve      需要 sessionId + requestId + 回答内容。
+ * 三类都是 dangerous，必须带 confirm:true，且宿主仍会弹原生确认框。
+ */
+async function hostApprovalsResolve(params) {
+  const kind = String(params?.kind || "plan").toLowerCase();
+  const confirm = params?.confirm === true;
+  if (!confirm) throw new Error("approval requires explicit confirmation on the phone");
+  if (kind === "permission") {
+    const requestId = String(params?.requestId || "").trim();
+    const decision = String(params?.decision || "").trim();
+    if (!requestId || !["allow-once", "allow-session", "deny"].includes(decision)) {
+      throw new Error("permission resolution needs requestId and decision");
+    }
+    const result = await invokeHostArgs("tool/resolvePermission", [{ requestId, decision }], { confirm: true });
+    return { ok: true, kind, result };
+  }
+  if (kind === "ask") {
+    const sessionId = String(params?.sessionId || "").trim();
+    const requestId = String(params?.requestId || "").trim();
+    if (!sessionId || !requestId) throw new Error("ask resolution needs sessionId and requestId");
+    const result = await invokeHostArgs(
+      "agent/askTool/resolve",
+      [{ sessionId, requestId, answers: params?.answers ?? null, answer: params?.answer ?? null, action: params?.action ?? null }],
+      { confirm: true },
+    );
+    return { ok: true, kind, result };
+  }
+  const action = String(params?.action || "").trim();
+  if (action !== "approve" && action !== "reject") throw new Error("plan resolution needs approve or reject");
+  const targetPermissionMode = String(params?.targetPermissionMode || "ask").trim();
+  const payload = {
+    proposalId: String(params?.requestId || params?.proposalId || "").trim(),
+    sessionId: String(params?.sessionId || "").trim(),
+    turnId: String(params?.turnId || "").trim(),
+    toolCallId: String(params?.toolCallId || "").trim(),
+    action,
+    ...(action === "approve" ? { targetPermissionMode } : {}),
+    ...(Number.isFinite(Number(params?.version)) && Number(params.version) > 0 ? { version: Number(params.version) } : {}),
+  };
+  if (!payload.proposalId || !payload.sessionId || !payload.turnId || !payload.toolCallId) {
+    throw new Error("plan resolution needs requestId, sessionId, turnId and toolCallId");
+  }
+  const result = await invokeHostArgs("plans/resolve", [payload], { confirm: true });
+  return { ok: true, kind: "plan", result };
+}
+
+function hostTodos(params) {
+  const sessionId = String(params?.sessionId || params?.threadId || "").trim();
+  if (!sessionId) return { ok: true, todos: [] };
+  const db = nativeQueueDb();
+  try {
+    const rows = db
+      .prepare(
+        `SELECT position, content, status, priority, updated_at
+           FROM session_todo WHERE session_id = ? ORDER BY position ASC`,
+      )
+      .all(sessionId);
+    return {
+      ok: true,
+      todos: rows.map((row) => ({
+        position: Number(row.position) || 0,
+        content: String(row.content || ""),
+        status: String(row.status || "pending"),
+        priority: String(row.priority || ""),
+        updatedAt: Number(row.updated_at) || 0,
+      })),
+    };
+  } finally {
+    db.close();
+  }
+}
+
+function hostNotifications(params) {
+  const limit = Math.min(Math.max(Number(params?.limit) || 30, 1), 100);
+  const db = nativeQueueDb();
+  try {
+    const rows = db
+      .prepare(
+        `SELECT id, kind, session_id, session_title, turn_id, error_code, created_at, read_at
+           FROM notifications ORDER BY created_at DESC LIMIT ?`,
+      )
+      .all(limit);
+    const unread = db.prepare("SELECT COUNT(*) AS n FROM notifications WHERE read_at IS NULL").get();
+    return {
+      ok: true,
+      unread: Number(unread?.n) || 0,
+      notifications: rows.map((row) => ({
+        id: String(row.id || ""),
+        kind: String(row.kind || ""),
+        sessionId: String(row.session_id || ""),
+        sessionTitle: String(row.session_title || ""),
+        turnId: String(row.turn_id || ""),
+        errorCode: String(row.error_code || ""),
+        createdAt: Number(row.created_at) || 0,
+        read: Boolean(row.read_at),
+      })),
+    };
+  } finally {
+    db.close();
+  }
+}
+
+function hostNotificationsRead(params) {
+  const id = String(params?.id || "").trim();
+  const db = nativeQueueDb();
+  try {
+    const now = Date.now();
+    if (id) db.prepare("UPDATE notifications SET read_at = ? WHERE id = ? AND read_at IS NULL").run(now, id);
+    else db.prepare("UPDATE notifications SET read_at = ? WHERE read_at IS NULL").run(now);
+    return { ok: true };
+  } finally {
+    db.close();
+  }
+}
+
+function hostScheduled(params) {
+  const db = nativeQueueDb();
+  try {
+    const rows = db
+      .prepare(
+        `SELECT id, title, prompt, cadence, enabled, project_id, last_run_at, created_at, updated_at
+           FROM scheduled_tasks ORDER BY created_at DESC LIMIT 50`,
+      )
+      .all();
+    return {
+      ok: true,
+      tasks: rows.map((row) => ({
+        id: String(row.id || ""),
+        title: String(row.title || ""),
+        prompt: String(row.prompt || ""),
+        cadence: String(row.cadence || ""),
+        enabled: Boolean(row.enabled),
+        projectId: row.project_id == null ? null : String(row.project_id),
+        lastRunAt: Number(row.last_run_at) || 0,
+        createdAt: Number(row.created_at) || 0,
+        updatedAt: Number(row.updated_at) || 0,
+      })),
+    };
+  } finally {
+    db.close();
+  }
+}
+
+/** 用量：按会话聚合 turns，手机端能看到真实 token 与最近几轮。 */
+function hostUsage(params) {
+  const sessionId = String(params?.sessionId || params?.threadId || "").trim();
+  if (!sessionId) return { ok: true, totals: null, turns: [] };
+  const db = nativeQueueDb();
+  try {
+    const totals = db
+      .prepare(
+        `SELECT COUNT(*) AS turns, COALESCE(SUM(input_tokens),0) AS input_tokens,
+                COALESCE(SUM(output_tokens),0) AS output_tokens, MAX(ended_at) AS last_at
+           FROM turns WHERE session_id = ? AND status = 'completed'`,
+      )
+      .get(sessionId);
+    const rows = db
+      .prepare(
+        `SELECT id, status, provider_id, model_id, input_tokens, output_tokens, error_code,
+                started_at, ended_at
+           FROM turns WHERE session_id = ? ORDER BY started_at DESC LIMIT 20`,
+      )
+      .all(sessionId);
+    return {
+      ok: true,
+      totals: {
+        turns: Number(totals?.turns) || 0,
+        inputTokens: Number(totals?.input_tokens) || 0,
+        outputTokens: Number(totals?.output_tokens) || 0,
+        lastAt: Number(totals?.last_at) || 0,
+      },
+      turns: rows.map((row) => ({
+        id: String(row.id || ""),
+        status: String(row.status || ""),
+        providerId: String(row.provider_id || ""),
+        modelId: String(row.model_id || ""),
+        inputTokens: Number(row.input_tokens) || 0,
+        outputTokens: Number(row.output_tokens) || 0,
+        errorCode: String(row.error_code || ""),
+        startedAt: Number(row.started_at) || 0,
+        endedAt: Number(row.ended_at) || 0,
+      })),
+    };
+  } finally {
+    db.close();
+  }
+}
 const STATE_DB = path.join(SHIM_HOME, "state_5.sqlite");
 const SESSION_INDEX = path.join(SHIM_HOME, "session_index.jsonl");
 const AUTH_FILE = path.join(SHIM_HOME, "auth.json");
@@ -1282,6 +1570,15 @@ async function handleAction(method, params, version) {
   if (method === "turnloom/queue/list") return nativeQueueList(params);
   if (method === "turnloom/queue/remove") return nativeQueueRemove(params);
   if (method === "turnloom/queue/steer") return nativeQueueSteer(params);
+  // 宿主能力：手机端经白名单访问 PI 的只读能力与显式确认的写能力。
+  if (method === "turnloom/host/invoke") return hostInvoke(params);
+  if (method === "turnloom/approvals/list") return hostApprovals(params);
+  if (method === "turnloom/approvals/resolve") return hostApprovalsResolve(params);
+  if (method === "turnloom/todos") return hostTodos(params);
+  if (method === "turnloom/notifications") return hostNotifications(params);
+  if (method === "turnloom/notifications/read") return hostNotificationsRead(params);
+  if (method === "turnloom/scheduled") return hostScheduled(params);
+  if (method === "turnloom/usage") return hostUsage(params);
 
   if (conversationId && codexThreadIds.has(conversationId)) {
     const frame = await codexSide.proxyRequest(method, params, version);
@@ -1396,11 +1693,21 @@ async function handleAction(method, params, version) {
     }
     return { ok: true };
   }
-  if (method === "thread-follower-compact-thread") return { ok: true };
+  // 真调用宿主压缩；旧实现只回 ok，手机端按了没有任何效果。
+  if (method === "thread-follower-compact-thread") {
+    if (!conversationId) throw new Error("compact without conversationId");
+    await ensureSendableModel(conversationId, {});
+    const result = await invokeHost("agent/compact", { sessionId: conversationId });
+    return { ok: true, result };
+  }
   if (method === "thread-owner-discovery") return { handledByClientId: null };
   if (method === "refresh-recent-conversations-for-host") return { ok: true };
-  if (method.includes("approval")) return { ok: true };
-  if (method === "thread/goal/get" || method === "thread/goal/set") return { goal: null };
+  // Codex 形状的审批回执：PI 的审批走 turnloom/approvals/resolve。
+  if (method.includes("approval")) {
+    return { ok: false, reason: "PI approvals are resolved through turnloom/approvals/resolve" };
+  }
+  if (method === "thread/goal/get") return { goal: null };
+  if (method === "thread/goal/set") return { goal: null };
   throw new Error(`unsupported method: ${method}`);
 }
 
