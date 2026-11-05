@@ -1,6 +1,13 @@
 # Changelog
 
 
+## 1.17.16 - 2026-11-05
+
+- **修复 App 内更新「下载完却装不上」**：`updateDownloadReceiver` 原来把 `DownloadManager.COLUMN_LOCAL_URI`（Android 7+ 多为 `file://`）直接交给 `ACTION_VIEW`，会触发 `FileUriExposedException`；`installApk` 也没有 `REQUEST_INSTALL_PACKAGES` 对应的安装 action。现在改用 `DownloadManager.getUriForDownloadedFile(id)` 拿 `content://`，配 `ACTION_INSTALL_PACKAGE` + `FLAG_GRANT_READ_URI_PERMISSION`，失败再回退 `ACTION_VIEW`。
+- 复核更新链路：健康接口 `appVersionCode/apkAvailable/apkUrl` 正常，公网 `/api/apk` 带设备访问码返回 200（3.4MB 新包），App「检查更新」→ 下载 → 系统安装界面闭环。
+- 30 个本地提交已推送到 `origin/main`。
+
+
 ## 1.17.15 - 2026-11-05
 
 - **修复软键盘遮挡输入框/发送键**（用户实测反馈）：Android WebView 在 `adjustResize` 下不保证同步更新 `100dvh`，老内核尤其明显。新增 `syncVisualViewport()`，用 `visualViewport.height` 把 `#shell` 钉到可视高度并写 `--app-visible-height`，键盘态给 `<html>` 加 `keyboard-open`；CSS 收紧顶栏/输入舱、隐藏排队条与附属行，composer 从 201px 压到 121px。
