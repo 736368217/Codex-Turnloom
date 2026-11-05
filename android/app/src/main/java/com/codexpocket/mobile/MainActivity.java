@@ -202,12 +202,14 @@ public class MainActivity extends ComponentActivity {
                     Toast.makeText(MainActivity.this, "更新下载失败，请稍后重试", Toast.LENGTH_LONG).show();
                     return;
                 }
-                String uri = cursor.getString(cursor.getColumnIndexOrThrow(DownloadManager.COLUMN_LOCAL_URI));
-                if (uri == null || uri.isBlank()) {
-                    Toast.makeText(MainActivity.this, "更新文件已下载，请从系统下载通知打开", Toast.LENGTH_LONG).show();
+                // 用 DownloadManager 自己的 content:// URI，而不是 COLUMN_LOCAL_URI
+                // 的 file://，否则 Android 7+ 的安装器会拒绝。
+                Uri downloaded = manager.getUriForDownloadedFile(id);
+                if (downloaded == null) {
+                    Toast.makeText(MainActivity.this, "更新已下载，请从系统下载通知打开安装", Toast.LENGTH_LONG).show();
                     return;
                 }
-                installApk(Uri.parse(uri));
+                installApk(downloaded);
             } catch (Exception error) {
                 Toast.makeText(MainActivity.this, "更新文件已下载，请从系统下载通知打开", Toast.LENGTH_LONG).show();
             }
@@ -1010,13 +1012,26 @@ public class MainActivity extends ComponentActivity {
     }
 
     private void installApk(Uri uri) {
+        // DownloadManager.COLUMN_LOCAL_URI 在 Android 7+ 常是 file://，直接
+        // ACTION_VIEW 会抛 FileUriExposedException，导致"下载完了却装不上"。
+        // 改用系统安装器 action + 授权读 URI；content:// 由 DownloadManager 自己给。
         try {
-            Intent intent = new Intent(Intent.ACTION_VIEW, uri);
-            intent.setDataAndType(uri, "application/vnd.android.package-archive");
+            Intent intent = new Intent(Intent.ACTION_INSTALL_PACKAGE);
+            intent.setData(uri);
+            intent.setType("application/vnd.android.package-archive");
             intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION | Intent.FLAG_ACTIVITY_NEW_TASK);
+            intent.putExtra(Intent.EXTRA_NOT_UNKNOWN_SOURCE, true);
+            intent.putExtra(Intent.EXTRA_RETURN_RESULT, true);
             startActivity(intent);
         } catch (Exception error) {
-            Toast.makeText(this, "无法打开安装界面，请从下载通知打开更新文件", Toast.LENGTH_LONG).show();
+            try {
+                Intent fallback = new Intent(Intent.ACTION_VIEW);
+                fallback.setDataAndType(uri, "application/vnd.android.package-archive");
+                fallback.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION | Intent.FLAG_ACTIVITY_NEW_TASK);
+                startActivity(fallback);
+            } catch (Exception ignored) {
+                Toast.makeText(this, "更新已下载，请从系统下载通知打开安装", Toast.LENGTH_LONG).show();
+            }
         }
     }
 
