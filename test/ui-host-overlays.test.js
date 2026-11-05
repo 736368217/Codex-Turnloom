@@ -69,3 +69,19 @@ test("mobile session removal uses server soft-delete, not desktop-confirmed host
   assert.match(app, /showHiddenSessions[\s\S]*?\/api\/host\/hidden/);
   assert.match(app, /\/api\/host\/session\/restore/);
 });
+
+test("keyboard state pins the composer inside the visible viewport", () => {
+  // 视觉检定：layout 765px / 可视 420px 时发送键曾落到 y=708（不可见）。
+  assert.match(css, /html\.keyboard-open #shell \{[\s\S]*?height:\s*var\(--app-visible-height/);
+  assert.match(css, /html\.keyboard-open #shell \.conversation \{[\s\S]*?flex-direction:\s*column/);
+  assert.match(css, /html\.keyboard-open #shell \.composer \{[\s\S]*?margin-top:\s*auto/);
+  assert.match(css, /html\.keyboard-open #shell \.host-sheet-card[\s\S]*?max-height:\s*min\(88%/);
+});
+
+test("new users get a visible more button and thread action button", () => {
+  assert.match(html, /id="hostToolsButton"[^>]*class="[^"]*host-tools-button/);
+  assert.match(html, /<span>更多<\/span>/);
+  assert.match(app, /data-thread-more=/);
+  assert.match(app, /const more = event\.target\.closest\("\[data-thread-more\]"\)/);
+  assert.match(css, /#shell \.thread-more-button/);
+});
