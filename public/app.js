@@ -340,6 +340,7 @@ const I18N = {
     pinThread: "置顶",
     unpinThread: "取消置顶",
     pinnedGroup: "置顶",
+    attentionGroup: "需要关注",
     otherConversations: "其他对话",
     pinFailed: "置顶操作失败：{message}",
     window: "窗口",
@@ -550,6 +551,7 @@ const I18N = {
     pinThread: "Pin",
     unpinThread: "Unpin",
     pinnedGroup: "Pinned",
+    attentionGroup: "Needs attention",
     otherConversations: "Other conversations",
     pinFailed: "Could not update pin: {message}",
     window: "Window",
@@ -1569,11 +1571,9 @@ function openThreadContextMenu(threadId, clientX, clientY) {
 }
 
 function threadStatusLabel(status) {
-  if (status?.thinking) {
-    // The Desktop database keeps a running flag alive even after the process behind
-    // the turn is gone, so say how long it has been silent instead of a bare 运行中.
-    return status.staleTurn ? `${t("statusRunning")} · ${t("statusStale")}` : t("statusRunning");
-  }
+  // 状态文案按「用户要采取的行动」分：疑険停滞只在列表顶部的
+  // 「需要关注」分组里点名，标题/工具提示统一说运行中，避免每条都提示。
+  if (status?.thinking) return t("statusRunning");
   if (status?.interactionRequired) return t("statusWaiting");
   if (status?.state === "ended") return t("statusEnded");
   return t("statusUnknown");
@@ -1591,14 +1591,10 @@ function threadStatusPill(status) {
   }
   if (status.thinking) {
     const elapsed = compactElapsed(status);
-    // A database-sourced running flag can outlive the process behind the turn, so
-    // disclose the silence instead of showing a bare 思考中.
-    const stale = status.staleTurn
-      ? `<span class="status-pill-note" title="${escapeHtml(t("staleTurnHelp"))}">${escapeHtml(t("statusStale"))}</span>`
-      : "";
-    return `<span class="status-pill running${status.staleTurn ? " stale" : ""}"><span class="status-pill-dot" aria-hidden="true"></span>${escapeHtml(t("statusThinking"))}${
+    // 疑険停滞统一在列表顶部的「需要关注」分组点名，标题栏不再重复。
+    return `<span class="status-pill running"><span class="status-pill-dot" aria-hidden="true"></span>${escapeHtml(t("statusThinking"))}${
       elapsed ? ` · <span id="threadMetaTime">${escapeHtml(elapsed)}</span>` : ""
-    }${stale}</span>`;
+    }</span>`;
   }
   if (status.state === "ended") {
     return `<span class="status-pill online"><span class="status-pill-dot" aria-hidden="true"></span>${escapeHtml(t("statusEnded"))}</span>`;
@@ -1664,7 +1660,9 @@ function renderThreads() {
     const statusText = {
       waiting: t("statusWaiting"),
       running: t("statusThinking"),
-      stale: `${t("statusThinking")} · ${t("statusStale")}`,
+      // 疑似停滞只在「需要关注」置顶分组里点名一次；列表行仍显示运行中，
+      // 不再在每条会话上重复「长时间无输出」。
+      stale: t("statusThinking"),
       ended: t("statusEnded"),
       unknown: t("statusUnknown") || "状态未知"
     }[kind];
@@ -1695,12 +1693,14 @@ function renderThreads() {
     pinnedLabel: t("pinnedGroup"),
     ungroupedLabel: t("otherConversations"),
     sortMode: state.threadSortMode,
-    statusFilter: state.statusFilter
+    statusFilter: state.statusFilter,
+    attentionLabel: t("attentionGroup") || "需要关注"
   });
   const searching = Boolean(String(state.filter || "").trim());
   const filtering = Boolean(state.statusFilter);
   const groupCollapsed = (group) => {
-    // 搜索/状态筛选时一律展开，用户要看的就是命中项。
+    // 「需要关注」永远展开：用户说看见了会自己处理，不能让他再点一次。
+    if (group.attention) return false;
     if (searching || filtering) return false;
     const explicit = state.collapsedThreadGroups[group.key];
     if (typeof explicit === "boolean") return explicit;
@@ -1709,7 +1709,7 @@ function renderThreads() {
   els.threadList.innerHTML = `${draft}${groups.map((group) => {
     const collapsed = groupCollapsed(group);
     return `
-    <section class="thread-group${group.ungrouped ? " thread-group-ungrouped" : ""}${collapsed ? " is-collapsed" : ""}" data-group-key="${escapeHtml(group.key)}">
+    <section class="thread-group${group.attention ? " thread-group-attention" : ""}${group.ungrouped ? " thread-group-ungrouped" : ""}${collapsed ? " is-collapsed" : ""}" data-group-key="${escapeHtml(group.key)}">
       <button type="button" class="thread-group-title" data-thread-group-toggle="${escapeHtml(group.key)}" aria-expanded="${String(!collapsed)}">
         <span class="thread-group-name">${escapeHtml(group.label)}</span><span class="thread-group-count">${group.threads.length}</span><span class="thread-group-chevron" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"></path></svg></span>
       </button>
@@ -2173,11 +2173,8 @@ function renderMessages(data) {
   const countNote = visibleCount
     ? `<span class="thread-meta-count">${escapeHtml(t("contents", { count: visibleCount }))}</span>`
     : "";
-  const staleNote =
-    data.status?.thinking && data.status?.staleTurn
-      ? `<span class="thread-meta-note" title="${escapeHtml(t("staleTurnHelp"))}">${escapeHtml(t("statusStale"))}</span>`
-      : "";
-  els.threadMeta.innerHTML = `${statusPill}${countNote}${staleNote}${attentionNote}`;
+  // 疑似停滞的提示统一放到列表顶部的「需要关注」分组，标题栏不再重复。
+  els.threadMeta.innerHTML = `${statusPill}${countNote}${attentionNote}`;
 
   if (!displayMessages.length && !data.status?.thinking) {
     els.messageList.innerHTML = `<div class="empty-state">${escapeHtml(state.selectedId === DRAFT_THREAD_ID ? t("newConversationReady") : t("emptyThread"))}</div>`;
@@ -3877,6 +3874,10 @@ function syncVisualViewport() {
   shell.style.setProperty("--app-viewport-offset", `${offset}px`);
   shell.style.height = `${visible}px`;
   document.documentElement.classList.toggle("keyboard-open", keyboardOpen);
+  // 系统全局字体放大：WebView 的 textZoom 会把根字号一起放大。
+  // 检测到超过基准就切到宽松布局（两列状态条、允许折行、相对高度）。
+  const rootFont = parseFloat(getComputedStyle(document.documentElement).fontSize) || 16;
+  document.documentElement.classList.toggle("large-text", rootFont > 18.5);
   if (keyboardOpen) {
     // 输入焦点在 composer 时，把它滚进可视区（某些内核不会自动 pan）。
     if (document.activeElement === els.composerInput) {
