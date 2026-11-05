@@ -5172,7 +5172,9 @@ function hostBridgeError(error) {
     body: {
       error: needsReload
         ? "PI 插件需要重载后才能使用这个能力：在 PI 插件页重载 cn.star.turnloom-bridge，或下次启动 PI。"
-        : message,
+        : /workspace required/i.test(message)
+          ? "这个会话没有绑定工作区（项目），无法浏览文件或查看改动。请在桌面端把会话移到项目后再试。"
+          : message,
       needsReload
     }
   };
@@ -5186,7 +5188,6 @@ async function hostReply(res, work) {
     sendJson(res, status, body);
   }
 }
-
 /**
  * 旧桥用 `method.includes("approval")` 兜底，会把 turnloom/approvals/* 吞成
  * {ok:true}，手机端会误以为「没有待审批」。这里用响应形状把这种假成功识别成
