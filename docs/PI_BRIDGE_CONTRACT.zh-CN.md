@@ -39,3 +39,29 @@ node -e "const {DatabaseSync}=require('node:sqlite');const p=require('path').joi
 # 服务端
 curl.exe -sS -H "x-access-token: <访问码>" http://127.0.0.1:8799/api/threads?limit=1
 ```
+
+## 共享候发队列（2026-11-05）
+
+桥新增四个命名管道方法，供 8799 的 PI 设备使用；Codex 独立设备不受影响：
+
+| 方法 | 作用 |
+|---|---|
+| `turnloom/queue/push` | 把手机端排队消息写进 PI 的权威 `turn_queue`，用 `clientRequestId` 去重 |
+| `turnloom/queue/list` | 按 `position / created_at` 返回同一会话的共享队列 |
+| `turnloom/queue/remove` | 取消一条或清空队列，编辑时返回草稿 |
+| `turnloom/queue/steer` | 给队列项设置 PI `priority`，成为下一条优先发送 |
+
+执行顺序由 PI 决定：普通项按 `position` FIFO，显式优先项由 `priority` 提前。Turnloom 在 PI 模式不再保存 `pending-queues.json` 影子队列，也不再自行 drain。
+
+源码快照位于 `third-party/turnloom-pidesktop/`。部署时把 `plugin/*` 同步到 `D:\pi11\11\turnloom-pidesktop\plugin\`，运行 `node install-plugin.cjs`，再到 PI 插件页重载 `cn.star.turnloom-bridge`。**安装文件不等于重载运行中的插件**；未重载时 8799 会自动回退旧本地队列，保证不出现 500，但共享队列尚未生效。
+
+回归脚本：
+
+```powershell
+cd D:\pi11\11\turnloom-pidesktop
+node test-shared-queue.cjs
+node test-attachments.cjs
+node test-fork.cjs
+node test-model-routing.cjs
+node test-project-routing.cjs
+```
