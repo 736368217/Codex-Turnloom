@@ -397,7 +397,8 @@ function readPiSessions() {
           `SELECT p.id AS provider_id, p.name AS provider_name, p.enabled AS provider_enabled,
                   p.default_model_id AS provider_default_model_id,
                   m.model_id AS model_id, m.display_name AS display_name,
-                  m.capabilities_json AS capabilities_json
+                  m.capabilities_json AS capabilities_json,
+                  p.config_json AS provider_config_json
              FROM models m INNER JOIN providers p ON p.id = m.provider_id
             ORDER BY p.name ASC, m.model_id ASC`,
         )
@@ -698,6 +699,29 @@ function modelCapabilities(raw) {
     return { items: [], vision: false };
   }
 }
+/**
+ * 一个模型到底能不能收图。
+ *
+ * 真机上 `models.capabilities_json` 经常是过时的 `["text"]`，而供应商的
+ * `config_json.models[].supportsImages` 才是用户实际配置的权威声明
+ * （例：krisphyn 的 cn:hy4 caps 写 text、config 写 supportsImages:true，
+ * 只看 caps 会误拦一个本来能用的多模态模型）。
+ * 优先级：供应商显式声明 > models 能力表。
+ */
+function modelVisionFromRow(row) {
+  const caps = modelCapabilities(row?.capabilities_json).vision;
+  let declared = null;
+  try {
+    const config = JSON.parse(String(row?.provider_config_json || "{}"));
+    const list = Array.isArray(config?.models) ? config.models : [];
+    const modelId = String(row?.model_id || "");
+    const hit = list.find((item) => String(item?.id || item?.modelId || "") === modelId);
+    if (hit && typeof hit.supportsImages === "boolean") declared = hit.supportsImages;
+  } catch {
+    /* 配置坏了就退回能力表 */
+  }
+  return declared === null ? caps : declared;
+}
 
 /** 把 PI 的 供应商 × 模型 写成 Codex 兼容的模型目录，手机端才能按 PI 的配置选模型。 */
 function writeModelCatalog(piModels = []) {
@@ -717,10 +741,11 @@ function writeModelCatalog(piModels = []) {
       seen.add(slug);
       const label = String(row.display_name || modelId).trim();
       const display = label === modelId ? `${modelId} · ${providerName}` : `${label} · ${providerName}`;
+      const vision = modelVisionFromRow(row);
+      // 手机端靠 input_modalities 判断「这个模型能不能收图」。模板原本固定写
+      // ["text","image"]，加上过时的 capabilities 表，会把能力判断带偏。
+      const inputModalities = vision ? ["text", "image"] : ["text"];
       const capabilities = modelCapabilities(row.capabilities_json);
-      // 手机端要靠 input_modalities 判断「纯文本模型不能发图」。模板里原本
-      // 固定写成 ["text","image"]，会把仅支持 text 的 cn:hy4 等模型误标成多模态。
-      const inputModalities = capabilities.vision ? ["text", "image"] : ["text"];
       entries.push({
         ...template,
         slug,
@@ -731,7 +756,7 @@ function writeModelCatalog(piModels = []) {
         visibility: "list",
         supported_in_api: true,
         input_modalities: inputModalities,
-        supports_images: capabilities.vision,
+        supports_images: vision,
         pi_capabilities: capabilities.items,
         supported_reasoning_levels: ["low", "medium", "high", "xhigh", "max"].map((effort) => ({
           effort,

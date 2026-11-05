@@ -83,6 +83,6 @@ node test-project-routing.cjs
 1. `session/configure` 一律带 `confirm: true`，仍由 PI 原生确认框授权，不绕过用户；
 2. 切换被拒 → 抛错中止本轮，**不再调用 `agent/prompt`**；
 3. 发送前经过模型闸门：手机端所选模型 → 会话当前模型 → 最近一次成功轮次 → 供应商默认模型，取第一个**确定可用**的 `(providerId, modelId)`；会话已坏则自动修复，全部不可用就明确报错；
-4. 模型能力来自 `models.capabilities_json`，写进模型目录的 `input_modalities` / `supports_images`；`/api/health.models` 暴露 `supportsImages`，纯文本模型带图会被手机端与服务端同时拦下。
+4. 模型能力以供应商 `config_json.models[].supportsImages` 为准、`models.capabilities_json` 兜底（后者常常过时），写进模型目录的 `input_modalities` / `supports_images`；`/api/health.models` 暴露 `supportsImages`，纯文本模型带图会被手机端与服务端同时拦下。
 
 回归脚本：`node test-model-routing.cjs`（26 项，含「configure 被拒后绝不 prompt」「坏会话自动修复」「confirm:true 契约」「无可用模型明确拒绝」）。
