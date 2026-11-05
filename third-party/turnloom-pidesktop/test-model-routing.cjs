@@ -78,6 +78,8 @@ const insSession = db.prepare("INSERT INTO sessions (id,provider_id,model_id,del
 // sess-broken：供应商被禁用 → 宿主必抛 No provider configured。
 // sess-healthy：正常会话。
 insSession.run("sess-healthy", "P1", "x-deepseek-v4.1-flash", null, "healthy", 1, Date.now());
+// sess-same：桥刚重载、内存里还没有快照，但数据库里的模型与手机端所选相同。
+insSession.run("sess-same", "P1", "x-deepseek-v4.1-flash", null, "same", 1, Date.now());
 db.prepare("INSERT INTO turns (id,session_id,status,provider_id,model_id,started_at,ended_at) VALUES (?,?,?,?,?,?,?)")
   .run("t-good", "sess-broken", "completed", "P1", "x-deepseek-v4.1-flash", 1, 2);
 db.close();
@@ -249,6 +251,23 @@ check(
     2,
   );
   check("同一模型不重复 configure（不重复弹确认框）", calls.every((c) => c.operation !== "session/configure"), JSON.stringify(opsOf()));
+
+  // ── 5b. 桥刚重载、内存无快照：数据库已同模型时不能弹确认框 ─────────────
+  calls.length = 0;
+  await plugin.handleAction(
+    "thread-follower-start-turn",
+    {
+      conversationId: "sess-same",
+      turnStart: { request: { threadId: "sess-same", input: [{ type: "text", text: "first after reload" }], model: "77625 free/x-deepseek-v4.1-flash" } },
+    },
+    2,
+  );
+  check(
+    "内存无快照时按数据库判断，同模型不弹确认框",
+    calls.every((c) => c.operation !== "session/configure"),
+    JSON.stringify(opsOf()),
+  );
+  check("这一轮仍然正常发送", Boolean(calls.find((c) => c.operation === "agent/prompt")), JSON.stringify(opsOf()));
 
   // ── 6. 解析不出的模型不阻断、也不写坏会话 ─────────────────────────────
   calls.length = 0;

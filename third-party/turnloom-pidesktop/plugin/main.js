@@ -1202,7 +1202,9 @@ function turnSettingsFromRequest(params, preferredProviderId = "") {
  */
 async function applyModelIfChanged(sessionId, settings) {
   if (!sessionId || !settings.providerId || !settings.modelId) return;
-  const current = currentSessionModel(sessionId);
+  // 内存快照每 3 秒同步一次；桥刚重载时它还是空的。没有快照就以数据库为准，
+  // 否则「模型其实没变」也会触发一次危险操作的确认框。
+  const current = currentSessionModel(sessionId) || sessionModelPair(sessionId);
   if (current && current.providerId === settings.providerId && current.modelId === settings.modelId) return;
   const wanted = `${settings.providerId}/${settings.modelId}`;
   const key = `${sessionId}|${wanted}`;
