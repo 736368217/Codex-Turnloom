@@ -1627,3 +1627,72 @@ html.keyboard-open #shell .composer-pod {
 #shell.large-text .host-tools button {
   flex: 1 1 100%;
 }
+/* ── 关键修复：hidden 必须真的隐藏 ────────────────────────────────────
+   上面 #shell .host-sheet 写了 display:flex，会覆盖浏览器对 [hidden]
+   的默认 display:none。结果弹层从加载起就一直铺满视口：透明 backdrop
+   吃掉所有指针事件，手机端「点哪里都没反应」。这里用 !important 兜住，
+   也保护其它同类弹层。 */
+#shell .host-sheet[hidden],
+#shell .approval-banner[hidden],
+#shell .thread-context-menu[hidden],
+#shell .goal-edit-dialog[hidden],
+#shell .app-dialog[hidden],
+#shell .app-dialog-backdrop[hidden] {
+  display: none !important;
+}
+
+#shell .host-sheet:not([hidden]) {
+  display: flex;
+}
+/* ── 真实机型实测修复：对比度 + 大文本性能 ─────────────────────────────
+   在浅色主题的 WebView 里 `color:inherit` 继承的是深色文字，而卡片用了深色
+   背景，结果「字几乎看不见」。这里固定卡片自己的前景色，并覆盖 hover/按钮；
+   不再依赖 color-mix（Android WebView 支持不一致）。 */
+#shell .host-sheet-card,
+#shell .host-sheet-card button,
+#shell .host-sheet-card select,
+#shell .host-sheet-card input,
+#shell .host-sheet-card pre,
+#shell .host-sheet-card li,
+#shell .host-sheet-card h3 {
+  color: #f4f6fb;
+}
+
+#shell .host-sheet-card {
+  background: #171a21;
+}
+
+#shell .host-sheet-card .host-muted,
+#shell .host-sheet-card .approval-kind {
+  color: #b8c0d0;
+  opacity: 1;
+}
+
+#shell .host-sheet-card .host-list li,
+#shell .host-sheet-card .host-file,
+#shell .host-sheet-card .host-command,
+#shell .host-sheet-card .host-secondary,
+#shell .host-sheet-card .host-crumb,
+#shell .host-sheet-card .host-form-actions button,
+#shell .host-sheet-card .host-tools button,
+#shell .host-sheet-card .host-code {
+  background: #222733;
+  color: #f4f6fb;
+  border-color: #3b4354;
+}
+
+#shell .host-sheet-card .host-code {
+  /* 20 万字符一次性排版会卡住 WebView；限制渲染盒并交给滚动容器。 */
+  max-height: 46vh;
+  contain: content;
+  font-size: 0.72em;
+}
+
+#shell .host-sheet-card .host-sheet-close {
+  color: #f4f6fb;
+}
+
+#shell .host-sheet-card select option {
+  color: #111820;
+  background: #ffffff;
+}

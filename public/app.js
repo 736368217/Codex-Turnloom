@@ -4912,7 +4912,7 @@ async function showFilePreview(threadId, filePath) {
       `/api/host/file?threadId=${encodeURIComponent(threadId)}&path=${encodeURIComponent(filePath)}`
     );
     const payload = data?.result ?? data;
-    const content = String(payload?.content ?? "");
+    const content = String(payload?.content ?? "").slice(0, 12 * 1024);
     openHostSheet(filePath.split("/").pop() || "文件预览", `
       ${payload?.truncated ? `<p class="host-muted">文件较大，仅显示前 200 KB。</p>` : ""}
       <pre class="host-code">${escapeHtml(content || "(空文件或二进制内容)")}</pre>
