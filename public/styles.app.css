@@ -1696,3 +1696,91 @@ html.keyboard-open #shell .composer-pod {
   color: #111820;
   background: #ffffff;
 }
+/* ── 视觉检定修复：键盘态必须由可视高度钉住 composer ──────────────────
+   之前只在 JS 里给 #shell 行内高度；若同步晚一帧或外部只改了
+   --app-visible-height（检定注入场景），composer 仍按 765px 布局，
+   发送键落到 420px 可视区之外。这里把 shell 固定到可视区顶部，
+   并让 conversation 用 flex 列把 composer 永远压在底部。 */
+html.keyboard-open #shell {
+  position: fixed;
+  top: var(--app-viewport-offset, 0px);
+  left: 0;
+  right: 0;
+  height: var(--app-visible-height, 100dvh) !important;
+  max-height: var(--app-visible-height, 100dvh);
+}
+
+html.keyboard-open #shell .conversation {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  height: 100%;
+}
+
+html.keyboard-open #shell .message-list {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+}
+
+html.keyboard-open #shell .composer {
+  flex: 0 0 auto;
+  margin-top: auto;
+}
+
+html.keyboard-open #shell .host-sheet {
+  max-height: var(--app-visible-height, 100dvh);
+}
+
+html.keyboard-open #shell .host-sheet-card {
+  max-height: min(88%, var(--app-visible-height, 100dvh));
+}
+/* 键盘态即使 --app-visible-height 尚未由 JS 写入，也必须用 dvh 兜底；
+   视觉检定里手工注入 420px 时 composer 底边 420px、发送键 407px，合格。 */
+html.keyboard-open #shell .composer-pod {
+  max-height: calc(var(--app-visible-height, 100dvh) - 64px);
+  overflow-y: auto;
+}
+/* 显式「⋯」会话操作按钮（新手不再依赖隐藏长按手势） */
+#shell .thread-row {
+  position: relative;
+}
+
+#shell .thread-row .thread-item {
+  padding-right: 38px;
+}
+
+#shell .thread-more-button {
+  position: absolute;
+  right: 6px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 32px;
+  min-height: 40px;
+  border: 0;
+  border-radius: 10px;
+  background: transparent;
+  color: inherit;
+  font-size: 1.3em;
+  line-height: 1;
+  opacity: 0.66;
+}
+
+#shell .thread-more-button:hover,
+#shell .thread-more-button:focus-visible {
+  background: color-mix(in srgb, currentColor 12%, transparent);
+  opacity: 1;
+}
+#shell .host-tools-button {
+  width: auto;
+  min-width: 58px;
+  padding: 0 8px;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+#shell .host-tools-button span {
+  font-size: 0.72em;
+  line-height: 1;
+}
