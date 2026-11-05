@@ -17,6 +17,7 @@ import {
   loginUrlForProfile,
   modelConfigurationFromCatalog,
   normalizeTurnSettings,
+  modelSupportsImages,
   parseCodexModelConfig,
   staticSecurityHeaders,
   withAssetVersions,
@@ -137,6 +138,37 @@ model = "must-not-overwrite-the-top-level-model"
 });
 
 test("thread list hides subagents even when a hidden task was selected", () => {
+
+// 真机事故：手机端把图片发给只有 text 能力的模型（cn:hy4），桥再按模型 slug
+// 去修会话，最终整条会话被 No provider configured 拖垮。能力必须从 catalog
+// 的 input_modalities 透出来，发送前就能拦住。
+test("model capability distinguishes text-only from image-capable models", () => {
+  const catalog = {
+    models: [
+      {
+        slug: "krisphyn（model1）/cn:hy4",
+        display_name: "cn:hy4",
+        visibility: "list",
+        input_modalities: ["text"],
+        supported_reasoning_levels: [{ effort: "high" }]
+      },
+      {
+        slug: "wb反代/hy4free",
+        display_name: "hy4free",
+        visibility: "list",
+        input_modalities: ["text", "image"],
+        supported_reasoning_levels: [{ effort: "high" }]
+      }
+    ]
+  };
+  const result = modelConfigurationFromCatalog(catalog, {});
+  assert.equal(result.models.find((m) => m.id === "krisphyn（model1）/cn:hy4").supportsImages, false);
+  assert.equal(result.models.find((m) => m.id === "wb反代/hy4free").supportsImages, true);
+  assert.equal(modelSupportsImages("krisphyn（model1）/cn:hy4", result), false);
+  assert.equal(modelSupportsImages("wb反代/hy4free", result), true);
+  // 未知模型不误拦：宁可让宿主报真实错误，也不把用户挡在门外。
+  assert.equal(modelSupportsImages("unknown/model", result), true);
+});
   const rows = [
     { id: "main", source: "vscode", threadSource: "user" },
     {
