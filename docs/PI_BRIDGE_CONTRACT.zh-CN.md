@@ -65,3 +65,24 @@ node test-fork.cjs
 node test-model-routing.cjs
 node test-project-routing.cjs
 ```
+
+## 模型路由与「一张图拖垮会话」
+
+宿主契约（实测自 `app.asar` 的 `CONTROL_OPERATION_SPECS`）：
+
+| 操作 | 形态 | 风险 |
+|---|---|---|
+| `session/create` | `{ mode, providerId, modelId, thinkingLevel, projectPath? }` | write |
+| `session/configure` | `[sessionId, { mode, providerId, modelId, thinkingLevel? }]` + `confirm: true` | **dangerous**（还会弹原生确认框） |
+| `agent/prompt` | `{ sessionId, content, attachments? }`（**没有模型字段**） | write |
+
+2026-11-05 故障链：手机端每轮都带模型 slug → 桥调 `session/configure` 但缺 `confirm:true` → 宿主返回 `confirm=true is required for session/configure` → 旧桥吞掉错误继续 `agent/prompt` → 宿主按已失效的 provider/model 启动轮次 → `No provider configured` → 之后每条普通消息重复失败。
+
+桥现在的不变式：
+
+1. `session/configure` 一律带 `confirm: true`，仍由 PI 原生确认框授权，不绕过用户；
+2. 切换被拒 → 抛错中止本轮，**不再调用 `agent/prompt`**；
+3. 发送前经过模型闸门：手机端所选模型 → 会话当前模型 → 最近一次成功轮次 → 供应商默认模型，取第一个**确定可用**的 `(providerId, modelId)`；会话已坏则自动修复，全部不可用就明确报错；
+4. 模型能力来自 `models.capabilities_json`，写进模型目录的 `input_modalities` / `supports_images`；`/api/health.models` 暴露 `supportsImages`，纯文本模型带图会被手机端与服务端同时拦下。
+
+回归脚本：`node test-model-routing.cjs`（26 项，含「configure 被拒后绝不 prompt」「坏会话自动修复」「confirm:true 契约」「无可用模型明确拒绝」）。

@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.17.20 - 2026-11-05
+
+- **修复「手机端发图失败，之后普通消息也全部失败，一张图拖垮整个会话」**（用户实测截图 `发送失败：No provider configured`）：根因不在图片上传，而在模型切换。手机端每轮都带模型 slug，桥接插件据此调用 PI 宿主的 `session/configure` 切换模型，但宿主把它标记为 dangerous、要求 `confirm=true`；旧代码既没带该字段，还把拒绝吞掉继续 `agent/prompt`，宿主随即用失效的 provider/model 启动轮次并抛 `No provider configured`，之后每条普通消息重复同一条坏路径。
+- 桥改为按宿主契约发起切换：`desktop.invoke({ operation, args, confirm: true })`，仍由 PI 原生确认框授权；**切换被拒就中止本轮并回传明确原因，绝不再继续 prompt**，从根上切断级联污染。失败缓存改为 45 秒冷却，避免一次失败永久封锁会话。
+- 新增发送前模型闸门：按「手机端所选模型 → 会话当前模型 → 该会话最近一次成功轮次 → 供应商默认模型」依次挑选确定可用的 `(providerId, modelId)`；会话本身已被写成失效组合时自动修复，一个可用模型都没有就明确报错、不发送。
+- 模型能力透出：桥从 `models.capabilities_json` 计算真实多模态能力，写进 Codex 模型目录的 `input_modalities` / `supports_images`；`/api/health.models` 暴露 `supportsImages`，手机端在模型列表标注「仅文字」，带图发送前直接提示切换模型，服务端 `sendToCodex` 同样返回 409，防止旧客户端绕过。
+- 共享候发队列的瞬时不可用不再表现为「队列凭空清空」：`queueError` / `queueUnavailable` 在队列栏可见，并说明「本次消息未写入第二份队列」。
+- 桥回归测试重写为 26 项模型路由断言（含「configure 被拒后绝不 prompt」「坏会话自动修复」「confirm:true 契约」「无可用模型明确拒绝」），附件测试改为隔离数据库；Node 测试 133/133、桥五套全绿，版本 1.17.20(41)。
+
 ## 1.17.19 - 2026-11-05
 
 - **手机端与 PI 桌面端共用一份候发队列**（用户实测反馈「手机排队，桌面端看不见，先后顺序混乱」）：定位到旧链路把手机消息写进 `%LOCALAPPDATA%\CodexPocket\pending-queues.json`，而 PI 桌面端维护 `pi.sqlite` 的 `turn_queue` 和自己的内存队列，两套队列互相不可见。现在桥接插件暴露 `turnloom/queue/push|list|remove|steer`，直接读写 PI 权威 `turn_queue`；Turnloom 的 PI 设备不再创建影子队列，也不再由自己 drain，手机端队列栏显示 PI 的 `position/priority`，顺序规则为普通项按 position FIFO，显式「设为优先」项由 PI priority 提前。

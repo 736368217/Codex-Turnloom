@@ -309,7 +309,17 @@ const CODEX_IPC_SOCKET =
     ? String.raw`\\.\pipe\codex-ipc`
     : path.join(os.tmpdir(), "codex-ipc", typeof process.getuid === "function" ? `ipc-${process.getuid()}.sock` : "ipc.sock"));
 /** PI-Desktop 桥接管这个命名管道时，由宿主的 turn_queue 充当权威队列。 */
-const PI_NATIVE_QUEUE = process.env.CODEX_LAN_PI_NATIVE_QUEUE === "1" || String(cli.ipcSocket || process.env.CODEX_IPC_SOCKET || "").includes("pidesktop-codex-ipc");
+const PI_NATIVE_QUEUE = process.env.CODEX_LAN_PI_NATIVE_QUEUE === "1" || CODEX_IPC_SOCKET.includes("pidesktop-codex-ipc");
+/** PI 数据根（可由 APPDATA 下 storage-location.json 重定向），用于校验队列附件路径。 */
+const PI_DATA_ROOT = (() => {
+  for (const name of ["PI-Desktop", "pi-desktop"]) {
+    try {
+      const parsed = JSON.parse(readFileSync(path.join(process.env.APPDATA || "", name, "storage-location.json"), "utf8"));
+      if (parsed?.roots?.data) return path.resolve(String(parsed.roots.data));
+    } catch {}
+  }
+  return path.join(os.homedir(), ".pi-desktop");
+})();
 function defaultCodexCli() {
   const macAppCli = "/Applications/Codex.app/Contents/Resources/codex";
   if (existsSync(macAppCli)) return macAppCli;
@@ -4652,11 +4662,14 @@ function modelConfigurationFromCatalog(catalog, config = {}) {
             : efforts.includes(DEFAULT_CODEX_EFFORT)
               ? DEFAULT_CODEX_EFFORT
               : efforts[0];
+          const supportsImages = entry.supports_images === true ||
+            (Array.isArray(entry.input_modalities) && entry.input_modalities.some((item) => String(item).toLowerCase() === "image"));
           return {
             id: String(entry.slug).trim(),
             label: String(entry.display_name || entry.slug).trim(),
             efforts,
             defaultEffort,
+            supportsImages,
             priority: Number.isFinite(Number(entry.priority)) ? Number(entry.priority) : Number.MAX_SAFE_INTEGER
           };
         })
@@ -4786,6 +4799,17 @@ function normalizeTurnSettings({ model, effort } = {}, modelConfiguration = acti
       : selectedModel.defaultEffort || selectedModel.efforts[0];
   return { model: selectedModel.id, effort: selectedEffort };
 }
+
+/** 模型能力查询：catalog 里没写能力时按「未知」处理，不误拦用户的图片。 */
+function modelSupportsImages(modelId, modelConfiguration = activeModelConfiguration) {
+  const models = Array.isArray(modelConfiguration?.models) && modelConfiguration.models.length
+    ? modelConfiguration.models
+    : FALLBACK_CODEX_MODELS;
+  const selected = models.find((entry) => entry.id === String(modelId || "").trim());
+  if (!selected || selected.supportsImages === undefined) return true;
+  return selected.supportsImages === true;
+}
+
 
 function preparedTurnSettings({ model, effort } = {}) {
   const requestedModel = String(model || "").trim();
@@ -5057,7 +5081,9 @@ function localQueuedSendStatus(threadId) {
 
 /** PI-Desktop 桥提供权威 turn_queue；桌面端与手机端只显示这一份队列。 */
 async function requestNativeQueue(method, threadId, extra = {}, timeoutMs = 15000) {
-  const response = await getCodexIpcClient().request(
+  const client = getCodexIpcClient();
+  await client.ensureReady();
+  const response = await client.request(
     `turnloom/queue/${method}`,
     { conversationId: String(threadId || ""), threadId: String(threadId || ""), ...extra },
     { timeoutMs }
@@ -5065,7 +5091,10 @@ async function requestNativeQueue(method, threadId, extra = {}, timeoutMs = 1500
   return response?.result ?? response ?? {};
 }
 
-/** 旧版桥尚未 reload 时不要让手机端排队变成 500：退回本地队列并提示一次。 */
+/**
+ * 只有「桥明确不支持新方法」才说明运行中的插件尚未重载；连接失败/超时必须
+ * 保持错误，不能把消息偷偷写进第二套队列，否则桌面端与手机端会各发一份。
+ */
 function isLegacyQueueBridge(error) {
   return /unsupported method:\s*turnloom\/queue\//i.test(String(error?.message || error || ""));
 }
@@ -5079,6 +5108,27 @@ function useLegacyQueueFallback(error) {
     logError("[queue] PI bridge needs reload; using the legacy local queue until then.");
   }
   return true;
+}
+
+/** 旧桥期间即使 PI_NATIVE_QUEUE=true，也要让本地队列继续 drain。 */
+let legacyQueueMode = false;
+
+function localQueueDrainEnabled() {
+  return !PI_NATIVE_QUEUE || legacyQueueMode;
+}
+
+function markLegacyQueueMode() {
+  legacyQueueMode = true;
+}
+
+function queueUnavailableStatus(error) {
+  return {
+    queueLength: 0,
+    queuedMessages: [],
+    queueError: error?.message || String(error),
+    queueUnavailable: true,
+    queueSource: "pi-native"
+  };
 }
 
 function nativeQueuedSendStatusFromEntries(threadId, entries) {
@@ -5112,14 +5162,17 @@ function nativeQueuedSendStatusFromEntries(threadId, entries) {
 }
 
 async function queuedSendStatus(threadId) {
-  if (!PI_NATIVE_QUEUE) return localQueuedSendStatus(threadId);
+  if (!PI_NATIVE_QUEUE || legacyQueueMode) return localQueuedSendStatus(threadId);
   try {
     const result = await requestNativeQueue("list", threadId, {}, 8000);
     return nativeQueuedSendStatusFromEntries(threadId, result.entries);
   } catch (error) {
-    if (useLegacyQueueFallback(error)) return localQueuedSendStatus(threadId);
+    if (useLegacyQueueFallback(error)) {
+      markLegacyQueueMode();
+      return localQueuedSendStatus(threadId);
+    }
     logError(`[queue] PI native queue unavailable: ${error?.message || error}`);
-    return { queueLength: 0, queuedMessages: [], queueError: error?.message || String(error), queueSource: "pi-native" };
+    return queueUnavailableStatus(error);
   }
 }
 
@@ -5132,14 +5185,16 @@ async function finalizeMessagesResponse(threadId, response) {
       ...queueStatus
     }
   };
-  if (!PI_NATIVE_QUEUE && !result.status.thinking && queueStatus.queueLength) scheduleLocalQueuedSendDrain(threadId);
+  if (localQueueDrainEnabled() && !result.status.thinking && queueStatus.queueLength) {
+    scheduleLocalQueuedSendDrain(threadId);
+  }
   return result;
 }
 
 
 async function enqueueSend(threadId, text, images = [], turnSettings = {}, clientRequestId = "") {
   const key = String(threadId);
-  if (PI_NATIVE_QUEUE) {
+  if (PI_NATIVE_QUEUE && !legacyQueueMode) {
     try {
       const result = await requestNativeQueue("push", key, {
         content: String(text || ""),
@@ -5161,7 +5216,9 @@ async function enqueueSend(threadId, text, images = [], turnSettings = {}, clien
         queueSource: "pi-native"
       };
     } catch (error) {
+      // 连接/超时错误不能回退，否则权威表可能已经写入，手机端又会出现第二份。
       if (!useLegacyQueueFallback(error)) throw error;
+      markLegacyQueueMode();
     }
   }
   const queue = pendingSendQueues.get(key) || [];
@@ -5195,7 +5252,7 @@ async function enqueueSend(threadId, text, images = [], turnSettings = {}, clien
 
 async function cancelQueuedSend(threadId, itemId = "", { edit = false } = {}) {
   const key = String(threadId || "");
-  if (PI_NATIVE_QUEUE) {
+  if (PI_NATIVE_QUEUE && !legacyQueueMode) {
     try {
       const result = await requestNativeQueue("remove", key, { itemId: String(itemId || ""), edit: Boolean(edit) });
       const status = nativeQueuedSendStatusFromEntries(key, result.entries);
@@ -5209,6 +5266,7 @@ async function cancelQueuedSend(threadId, itemId = "", { edit = false } = {}) {
       };
     } catch (error) {
       if (!useLegacyQueueFallback(error)) throw error;
+      markLegacyQueueMode();
     }
   }
   const queue = pendingSendQueues.get(key) || [];
@@ -5313,7 +5371,7 @@ function queuedSendIdleDecision(thinking, idleSinceMs, nowMs = Date.now(), settl
 
 async function steerQueuedSend(threadId, itemId) {
   const key = String(threadId || "");
-  if (PI_NATIVE_QUEUE) {
+  if (PI_NATIVE_QUEUE && !legacyQueueMode) {
     try {
       const result = await requestNativeQueue("steer", key, { itemId: String(itemId || "") });
       const status = nativeQueuedSendStatusFromEntries(key, result.entries);
@@ -5326,6 +5384,7 @@ async function steerQueuedSend(threadId, itemId) {
       };
     } catch (error) {
       if (!useLegacyQueueFallback(error)) throw error;
+      markLegacyQueueMode();
     }
   }
   const queue = pendingSendQueues.get(key) || [];
@@ -5678,6 +5737,11 @@ async function sendToCodex(text, threadId, images = [], { newThread = false, mod
   const trimmed = String(text || "").trim();
   const normalizedImages = normalizeSendImages(images);
   const turnSettings = normalizeTurnSettings({ model, effort }, modelConfiguration);
+  if (normalizedImages.length && !modelSupportsImages(turnSettings.model, modelConfiguration)) {
+    const err = new Error("当前模型不支持图片。请在模型面板切换到带「支持图片」标记的模型后再发送，或移除图片只发文字。");
+    err.status = 409;
+    throw err;
+  }
   const sendMode = newThread ? "start" : String(mode || "start").toLowerCase();
   if (!["start", "queue", "steer"].includes(sendMode)) {
     const err = new Error("Invalid send mode. Use start, queue, or steer.");
@@ -7350,13 +7414,20 @@ const server = http.createServer(async (req, res) => {
       const threadId = String(url.searchParams.get("threadId") || "");
       const itemId = String(url.searchParams.get("itemId") || "");
       const index = Number(url.searchParams.get("index"));
-      if (PI_NATIVE_QUEUE) {
+      if (PI_NATIVE_QUEUE && !legacyQueueMode) {
         const result = await requestNativeQueue("list", threadId, {}, 8000);
         const entry = (Array.isArray(result?.entries) ? result.entries : []).find((row) => String(row?.id || "") === itemId);
         const attachment = Array.isArray(entry?.attachments) ? entry.attachments[index] : null;
-        if (attachment?.path && existsSync(attachment.path)) {
+        // Queue attachments are staged under PI's per-session scratch directory.
+        // Never trust an arbitrary absolute path from the database.
+        const scratchRoot = path.join(PI_DATA_ROOT, "scratch", threadId);
+        const candidate = attachment?.path ? path.resolve(String(attachment.path)) : "";
+        const safePath = candidate && candidate.startsWith(path.resolve(scratchRoot) + path.sep)
+          ? candidate
+          : "";
+        if (safePath && existsSync(safePath)) {
           res.writeHead(200, { "content-type": String(attachment.mimeType || "image/png"), "cache-control": "private, no-store", "x-content-type-options": "nosniff" });
-          createReadStream(attachment.path).pipe(res);
+          createReadStream(safePath).pipe(res);
           return;
         }
       } else {
@@ -7685,6 +7756,7 @@ export {
   loadCodexModelConfiguration,
   modelConfigurationFromCatalog,
   normalizeTurnSettings,
+  modelSupportsImages,
   parseCodexModelConfig,
   parseRolloutLine,
   parseRolloutTail,

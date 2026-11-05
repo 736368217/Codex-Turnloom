@@ -107,7 +107,7 @@ const threadId = "session-shared";
 
   await plugin.nativeQueueSteer({ threadId, itemId: pushed.id });
   entries = plugin.nativeQueueList({ threadId }).entries;
-  assert.deepEqual(entries.map((row) => row.content), ["桌面先排", "手机后排"], "列表保持 PI 的原始 position 顺序");
+  assert.deepEqual(entries.map((row) => row.content), ["手机后排", "桌面先排"], "设为优先后按 PI priority 先发");
   const prioritized = entries.find((row) => row.id === pushed.id);
   assert.equal(prioritized.priority, 1, "设为优先的项带 priority，PI 执行时会先取它");
 

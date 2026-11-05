@@ -92,7 +92,9 @@ const MAX_NATIVE_QUEUE_ITEMS = 50;
 const nativeQueueLocks = new Map();
 
 function nativeQueueDb() {
-  return new DatabaseSync(PI_DB);
+  const db = new DatabaseSync(PI_DB);
+  db.exec("PRAGMA busy_timeout = 8000");
+  return db;
 }
 
 function nativeQueueSessionId(params) {
@@ -116,16 +118,31 @@ function nativeQueueAttachments(params, sessionId) {
   return attachmentsFromTurnInput(input, sessionId);
 }
 
-function nativeQueueRows(sessionId = "") {
-  const db = nativeQueueDb();
+/** PI 宿主的真实执行顺序：优先项（小 priority）在前，其余按 position/created_at。 */
+function orderNativeQueueRows(rows) {
+  return [...rows].sort((a, b) => {
+    const left = a.priority == null ? null : Number(a.priority);
+    const right = b.priority == null ? null : Number(b.priority);
+    if (left != null && right == null) return -1;
+    if (left == null && right != null) return 1;
+    if (left != null && right != null && left !== right) return left - right;
+    return (Number(a.position) || 0) - (Number(b.position) || 0)
+      || (Number(a.created_at) || 0) - (Number(b.created_at) || 0)
+      || String(a.id).localeCompare(String(b.id));
+  });
+}
+
+function nativeQueueRows(sessionId = "", db = null) {
+  const ownsDb = !db;
+  const database = db || nativeQueueDb();
   try {
     const sql = `SELECT id, session_id, principal, idempotency_key, input_hash, content,
         attachments_json, permission_mode, position, priority, created_at
-      FROM turn_queue ${sessionId ? "WHERE session_id = ?" : ""}
-      ORDER BY session_id ASC, position ASC, created_at ASC, id ASC`;
-    return sessionId ? db.prepare(sql).all(sessionId) : db.prepare(sql).all();
+      FROM turn_queue ${sessionId ? "WHERE session_id = ?" : ""}`;
+    const rows = sessionId ? database.prepare(sql).all(sessionId) : database.prepare(sql).all();
+    return orderNativeQueueRows(rows);
   } finally {
-    db.close();
+    if (ownsDb) database.close();
   }
 }
 
@@ -142,7 +159,7 @@ function nativeQueueEntry(row, index = 0) {
     sessionId: String(row.session_id),
     content: String(row.content || ""),
     attachments,
-    position: Number(row.position) || index + 1,
+    position: index + 1,
     ...(row.priority == null ? {} : { priority: Number(row.priority) }),
     createdAt: new Date(Number(row.created_at) || Date.now()).toISOString(),
     source: "pi-native"
@@ -150,7 +167,7 @@ function nativeQueueEntry(row, index = 0) {
 }
 
 function serializedNativeQueue(rows, sessionId = "") {
-  return rows.map((row, index) => nativeQueueEntry(row, index));
+  return orderNativeQueueRows(rows).map((row, index) => nativeQueueEntry(row, index));
 }
 
 function withNativeQueueLock(key, execute) {
@@ -163,45 +180,64 @@ function withNativeQueueLock(key, execute) {
   return operation;
 }
 
+/** 写 pi.sqlite 时用 BEGIN IMMEDIATE 把「读位置 → 写行」变成一个原子事务。 */
+function nativeQueueWrite(execute) {
+  const db = nativeQueueDb();
+  try {
+    db.exec("BEGIN IMMEDIATE");
+    const result = execute(db);
+    db.exec("COMMIT");
+    return result;
+  } catch (error) {
+    try { db.exec("ROLLBACK"); } catch {}
+    throw error;
+  } finally {
+    db.close();
+  }
+}
+
 async function nativeQueuePush(params) {
   const sessionId = nativeQueueSessionId(params);
   const content = nativeQueueText(params);
   const idempotencyKey = String(params?.clientRequestId || params?.idempotencyKey || "").trim() || crypto.randomUUID();
-  return withNativeQueueLock(sessionId, async () => {
-    const existing = nativeQueueRows(sessionId).find((row) => String(row.idempotency_key || "") === idempotencyKey);
+  return withNativeQueueLock(sessionId, () => nativeQueueWrite((db) => {
+    const existing = db.prepare(
+      "SELECT * FROM turn_queue WHERE session_id = ? AND principal = ? AND idempotency_key = ?"
+    ).get(sessionId, TURNLOOM_QUEUE_PRINCIPAL, idempotencyKey);
     if (existing) return { ok: true, duplicate: true, ...nativeQueueEntry(existing) };
-    const db = nativeQueueDb();
-    try {
-      const exists = db.prepare("SELECT EXISTS(SELECT 1 FROM sessions WHERE id = ? AND deleted_at IS NULL) AS yes").get(sessionId);
-      if (!Number(exists?.yes)) throw new Error(`session not found: ${sessionId}`);
-      const count = db.prepare("SELECT COUNT(*) AS count, COALESCE(MAX(position), 0) AS position FROM turn_queue WHERE session_id = ?").get(sessionId);
-      if (Number(count?.count) >= MAX_NATIVE_QUEUE_ITEMS) throw new Error("QUEUE_FULL");
-      const attachments = nativeQueueAttachments(params, sessionId);
-      const inputHash = crypto.createHash("sha256").update(JSON.stringify({ content, attachments, sessionId })).digest("hex");
-      const id = crypto.randomUUID();
-      const position = Number(count?.position || 0) + 1;
-      const createdAt = Date.now();
-      db.prepare(`INSERT INTO turn_queue (
-          id, session_id, principal, idempotency_key, input_hash, content,
-          attachments_json, permission_mode, position, created_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(
-        id, sessionId, TURNLOOM_QUEUE_PRINCIPAL, idempotencyKey, inputHash,
-        content, JSON.stringify(attachments), "inherit", position, createdAt
-      );
-      return {
-        ok: true,
-        duplicate: false,
-        id,
-        sessionId,
-        content,
-        position,
-        createdAt: new Date(createdAt).toISOString(),
-        source: "pi-native"
-      };
-    } finally {
-      db.close();
-    }
-  });
+    const exists = db.prepare("SELECT EXISTS(SELECT 1 FROM sessions WHERE id = ? AND deleted_at IS NULL) AS yes").get(sessionId);
+    if (!Number(exists?.yes)) throw new Error(`session not found: ${sessionId}`);
+    const count = db.prepare("SELECT COUNT(*) AS count, COALESCE(MAX(position), 0) AS position FROM turn_queue WHERE session_id = ?").get(sessionId);
+    if (Number(count?.count) >= MAX_NATIVE_QUEUE_ITEMS) throw new Error("QUEUE_FULL");
+    const attachments = nativeQueueAttachments(params, sessionId);
+    const inputHash = crypto.createHash("sha256").update(JSON.stringify({
+      content,
+      attachments,
+      sessionId,
+      model: String(params?.model || ""),
+      effort: String(params?.effort || "")
+    })).digest("hex");
+    const id = crypto.randomUUID();
+    const position = Number(count?.position || 0) + 1;
+    const createdAt = Date.now();
+    db.prepare(`INSERT INTO turn_queue (
+        id, session_id, principal, idempotency_key, input_hash, content,
+        attachments_json, permission_mode, position, created_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(
+      id, sessionId, TURNLOOM_QUEUE_PRINCIPAL, idempotencyKey, inputHash,
+      content, JSON.stringify(attachments), "inherit", position, createdAt
+    );
+    return {
+      ok: true,
+      duplicate: false,
+      id,
+      sessionId,
+      content,
+      position,
+      createdAt: new Date(createdAt).toISOString(),
+      source: "pi-native"
+    };
+  }));
 }
 
 function nativeQueueList(params) {
@@ -216,23 +252,41 @@ function nativeQueueList(params) {
 function nativeQueueRemove(params) {
   const sessionId = nativeQueueSessionId(params);
   const itemId = String(params?.itemId || params?.id || "").trim();
+  const wantsDraft = Boolean(params?.edit);
   return withNativeQueueLock(sessionId, () => {
-    const rows = nativeQueueRows(sessionId);
-    const selected = itemId ? rows.filter((row) => String(row.id) === itemId) : rows;
-    const draft = selected[0] ? { text: String(selected[0].content), images: [] } : null;
-    const db = nativeQueueDb();
-    try {
-      if (itemId) db.prepare("DELETE FROM turn_queue WHERE session_id = ? AND id = ?").run(sessionId, itemId);
-      else db.prepare("DELETE FROM turn_queue WHERE session_id = ?").run(sessionId);
-    } finally {
-      db.close();
-    }
+    const result = nativeQueueWrite((db) => {
+      const rows = nativeQueueRows(sessionId, db);
+      const selected = itemId ? rows.filter((row) => String(row.id) === itemId) : rows;
+      if (selected.length) {
+        const ids = selected.map((row) => String(row.id));
+        const placeholders = ids.map(() => "?").join(",");
+        db.prepare(`DELETE FROM turn_queue WHERE session_id = ? AND id IN (${placeholders})`).run(sessionId, ...ids);
+      }
+      const draft = wantsDraft && selected[0]
+        ? {
+            text: String(selected[0].content),
+            images: nativeQueueEntry(selected[0]).attachments.map((attachment) => ({
+              name: String(attachment.name || ""),
+              mimeType: String(attachment.mimeType || "image/png"),
+              data: attachment.path && fs.existsSync(attachment.path)
+                ? fs.readFileSync(attachment.path).toString("base64")
+                : "",
+              path: String(attachment.path || "")
+            }))
+          }
+        : null;
+      return {
+        selected,
+        draft,
+        entries: serializedNativeQueue(nativeQueueRows(sessionId, db), sessionId)
+      };
+    });
     return {
       ok: true,
-      cancelled: selected.length,
-      cancelledIds: selected.map((row) => String(row.id)),
-      ...(draft ? { draft } : {}),
-      entries: serializedNativeQueue(nativeQueueRows(sessionId), sessionId),
+      cancelled: result.selected.length,
+      cancelledIds: result.selected.map((row) => String(row.id)),
+      ...(result.draft ? { draft: result.draft } : {}),
+      entries: result.entries,
       source: "pi-native"
     };
   });
@@ -243,23 +297,25 @@ function nativeQueueSteer(params) {
   const itemId = String(params?.itemId || params?.id || "").trim();
   if (!itemId) throw new Error("queue steer without itemId");
   return withNativeQueueLock(sessionId, () => {
-    const rows = nativeQueueRows(sessionId);
-    const row = rows.find((entry) => String(entry.id) === itemId);
-    if (!row) throw new Error("queue item not found");
-    const db = nativeQueueDb();
-    try {
-      const next = db.prepare("SELECT COALESCE(MAX(priority), 0) + 1 AS priority FROM turn_queue WHERE session_id = ?").get(sessionId);
-      db.prepare("UPDATE turn_queue SET priority = ? WHERE id = ?").run(Number(next?.priority || 1), itemId);
-    } finally {
-      db.close();
-    }
+    const result = nativeQueueWrite((db) => {
+      const rows = nativeQueueRows(sessionId, db);
+      const row = rows.find((entry) => String(entry.id) === itemId);
+      if (!row) throw new Error("queue item not found");
+      // PI 的 priority 小值先执行；把现有优先项整体后移一格，再把选中项置为 1。
+      db.prepare("UPDATE turn_queue SET priority = priority + 1 WHERE session_id = ? AND priority IS NOT NULL").run(sessionId);
+      db.prepare("UPDATE turn_queue SET priority = 1 WHERE session_id = ? AND id = ?").run(sessionId, itemId);
+      return {
+        text: String(row.content || ""),
+        entries: serializedNativeQueue(nativeQueueRows(sessionId, db), sessionId)
+      };
+    });
     return {
       ok: true,
       mode: "priority",
       turnId: null,
       itemId,
-      text: String(row.content || ""),
-      entries: serializedNativeQueue(nativeQueueRows(sessionId), sessionId),
+      text: result.text,
+      entries: result.entries,
       source: "pi-native"
     };
   });
@@ -339,7 +395,9 @@ function readPiSessions() {
       models: db
         .prepare(
           `SELECT p.id AS provider_id, p.name AS provider_name, p.enabled AS provider_enabled,
-                  m.model_id AS model_id, m.display_name AS display_name
+                  p.default_model_id AS provider_default_model_id,
+                  m.model_id AS model_id, m.display_name AS display_name,
+                  m.capabilities_json AS capabilities_json
              FROM models m INNER JOIN providers p ON p.id = m.provider_id
             ORDER BY p.name ASC, m.model_id ASC`,
         )
@@ -627,6 +685,20 @@ function codexModelTemplate() {
   return { visibility: "list", supported_in_api: true, shell_type: "unified_exec", support_verbosity: true, default_verbosity: "low" };
 }
 
+/** PI 的 capabilities_json 是 JSON 数组字符串；旧数据缺失时保守按纯文本处理。 */
+function modelCapabilities(raw) {
+  try {
+    const parsed = JSON.parse(String(raw || "[]"));
+    const items = Array.isArray(parsed) ? parsed.map((item) => String(item || "").trim()).filter(Boolean) : [];
+    return {
+      items,
+      vision: items.some((item) => /^(vision|image|images|attachments)$/i.test(item)),
+    };
+  } catch {
+    return { items: [], vision: false };
+  }
+}
+
 /** 把 PI 的 供应商 × 模型 写成 Codex 兼容的模型目录，手机端才能按 PI 的配置选模型。 */
 function writeModelCatalog(piModels = []) {
   try {
@@ -645,6 +717,10 @@ function writeModelCatalog(piModels = []) {
       seen.add(slug);
       const label = String(row.display_name || modelId).trim();
       const display = label === modelId ? `${modelId} · ${providerName}` : `${label} · ${providerName}`;
+      const capabilities = modelCapabilities(row.capabilities_json);
+      // 手机端要靠 input_modalities 判断「纯文本模型不能发图」。模板里原本
+      // 固定写成 ["text","image"]，会把仅支持 text 的 cn:hy4 等模型误标成多模态。
+      const inputModalities = capabilities.vision ? ["text", "image"] : ["text"];
       entries.push({
         ...template,
         slug,
@@ -654,6 +730,9 @@ function writeModelCatalog(piModels = []) {
           "You are Codex, a coding agent. You and the user share one workspace; keep working until the goal is genuinely handled. Read the codebase before changing it, prefer rg for search, and keep edits scoped.",
         visibility: "list",
         supported_in_api: true,
+        input_modalities: inputModalities,
+        supports_images: capabilities.vision,
+        pi_capabilities: capabilities.items,
         supported_reasoning_levels: ["low", "medium", "high", "xhigh", "max"].map((effort) => ({
           effort,
           description: `PI-Desktop ${effort} reasoning`,
@@ -714,9 +793,8 @@ function syncOnce() {
 
     // 2) 只重建"变过"的会话 rollout；其余文件原样复用，不再每轮全量重写几十 MB。
     const changedIds = new Set();
-    for (const row of queueRows) changedIds.add(String(row.session_id));
     for (const s of sessions) {
-      const mark = `${s.last_seq}:${s.updated_at}:${s.project_id}:${s.running_turns}`;
+      const mark = `${s.last_seq}:${s.updated_at}:${s.project_id}:${s.running_turns}:${queueSignature}`;
       if (sessionMarks.get(s.id) !== mark) changedIds.add(s.id);
     }
     const liveIds = new Set(sessions.map((s) => s.id));
@@ -737,11 +815,11 @@ function syncOnce() {
     for (const s of sessions) {
       const file = rolloutFiles.get(s.id) || path.join(SESSIONS_DIR, rolloutFileName(s.id, s.created_at));
       if (changedIds.has(s.id)) {
+        const cwd = projectPath.get(String(s.project_id)) || "";
         fs.writeFileSync(file, buildRollout({ ...s, cwd }, bySession.get(s.id) || [], turns, queueRows), "utf8");
-        fs.writeFileSync(file, buildRollout({ ...s, cwd }, bySession.get(s.id) || [], turns), "utf8");
       }
+      rolloutFiles.set(s.id, file);
       sessionMarks.set(s.id, `${s.last_seq}:${s.updated_at}:${s.project_id}:${s.running_turns}:${queueSignature}`);
-      sessionMarks.set(s.id, `${s.last_seq}:${s.updated_at}:${s.project_id}:${s.running_turns}`);
       rollouts.set(s.id, file);
       keep.add(path.basename(file));
     }
@@ -845,9 +923,13 @@ function attachmentsFromTurnInput(input, sessionId) {
   return out;
 }
 
-async function invokeHostArgs(operation, args) {
+async function invokeHostArgs(operation, args, options = {}) {
   if (!pi?.desktop?.invoke) throw new Error("host desktop.invoke unavailable");
-  return pi.desktop.invoke({ operation, args });
+  // session/configure 在宿主契约里是 dangerous：input.confirm 必须为 true，
+  // 宿主随后仍会弹原生确认框。confirm 是契约标记，不是绕过用户授权。
+  const input = { operation, args };
+  if (options.confirm === true) input.confirm = true;
+  return pi.desktop.invoke(input);
 }
 
 async function invokeHost(operation, arg) {
@@ -881,6 +963,110 @@ function buildModelIndex(rows) {
 /** 会话当前生效的模型对（来自 pi.sqlite 快照）。 */
 function currentSessionModel(sessionId) {
   return sessionModels.get(String(sessionId)) || null;
+}
+
+/**
+ * 会话当前的 (provider, model) 在 PI 里是否还能用。
+ *
+ * 真机事故：会话被写成一个已禁用供应商的模型后，agent/prompt 每轮都从
+ * resolveAgentRuntimeLaunch 抛 "No provider configured"，普通消息也一起挂。
+ * 这类「会话本身已经坏了」的情况，光修模型切换并不够，必须在发送前识别。
+ */
+function modelPairUsable(pair) {
+  const providerId = String(pair?.providerId || "").trim();
+  const modelId = String(pair?.modelId || "").trim();
+  if (!providerId || !modelId) return false;
+  const db = new DatabaseSync(PI_DB, { readOnly: true });
+  try {
+    const row = db
+      .prepare(
+        `SELECT p.enabled AS provider_enabled, m.model_id AS model_id
+           FROM providers p LEFT JOIN models m
+             ON m.provider_id = p.id AND m.model_id = ?
+          WHERE p.id = ?`,
+      )
+      .get(modelId, providerId);
+    return Boolean(row && Number(row.provider_enabled) === 1 && row.model_id);
+  } catch {
+    return false;
+  } finally {
+    db.close();
+  }
+}
+
+/** 会话当前生效的模型对（直接读 pi.sqlite，不用可能过期的内存快照）。 */
+function sessionModelPair(sessionId) {
+  const id = String(sessionId || "").trim();
+  if (!id) return null;
+  const db = new DatabaseSync(PI_DB, { readOnly: true });
+  try {
+    const row = db.prepare(`SELECT provider_id, model_id FROM sessions WHERE id = ?`).get(id);
+    if (!row) return null;
+    return {
+      providerId: String(row.provider_id || ""),
+      modelId: String(row.model_id || ""),
+    };
+  } catch {
+    return null;
+  } finally {
+    db.close();
+  }
+}
+
+/**
+ * 给坏会话挑一个确定可用的模型对：
+ *   1) 这条会话最近一次成功轮次用过的模型（最贴近用户当时的意图）；
+ *   2) 任一启用供应商的默认模型；
+ *   3) 任一启用供应商的任一模型。
+ * 全都找不到就返回 null —— 绝不编造一个组合往会话里写。
+ */
+function fallbackModelPair(sessionId) {
+  const id = String(sessionId || "").trim();
+  const db = new DatabaseSync(PI_DB, { readOnly: true });
+  try {
+    if (id) {
+      const lastGood = db
+        .prepare(
+          `SELECT t.provider_id AS provider_id, t.model_id AS model_id
+             FROM turns t
+             JOIN providers p ON p.id = t.provider_id AND p.enabled = 1
+             JOIN models m ON m.provider_id = t.provider_id AND m.model_id = t.model_id
+            WHERE t.session_id = ? AND t.status = 'completed'
+            ORDER BY t.ended_at DESC LIMIT 1`,
+        )
+        .get(id);
+      if (lastGood?.provider_id && lastGood?.model_id) {
+        return { providerId: String(lastGood.provider_id), modelId: String(lastGood.model_id) };
+      }
+    }
+    const providerDefault = db
+      .prepare(
+        `SELECT p.id AS provider_id, p.default_model_id AS model_id
+           FROM providers p
+           JOIN models m ON m.provider_id = p.id AND m.model_id = p.default_model_id
+          WHERE p.enabled = 1 AND p.default_model_id IS NOT NULL AND trim(p.default_model_id) <> ''
+          ORDER BY p.name ASC LIMIT 1`,
+      )
+      .get();
+    if (providerDefault?.provider_id && providerDefault?.model_id) {
+      return { providerId: String(providerDefault.provider_id), modelId: String(providerDefault.model_id) };
+    }
+    const anyModel = db
+      .prepare(
+        `SELECT m.provider_id AS provider_id, m.model_id AS model_id
+           FROM models m JOIN providers p ON p.id = m.provider_id AND p.enabled = 1
+          ORDER BY m.model_id ASC LIMIT 1`,
+      )
+      .get();
+    if (anyModel?.provider_id && anyModel?.model_id) {
+      return { providerId: String(anyModel.provider_id), modelId: String(anyModel.model_id) };
+    }
+    return null;
+  } catch {
+    return null;
+  } finally {
+    db.close();
+  }
 }
 
 /**
@@ -982,9 +1168,12 @@ function turnSettingsFromRequest(params, preferredProviderId = "") {
 }
 
 /**
- * 切换模型只有 session/configure 一条路，而它在宿主里是 dangerous：每次调用都会弹一个
- * 「允许一次」的原生确认框。所以只在「确实要变」且没试过的情况下下发，正常聊天不弹；
- * 用户拒绝过的组合也记下来，免得每条消息都再弹一次。
+ * 切换模型只有 session/configure 一条路，宿主把它标为 dangerous：
+ *   1. desktop.invoke({operation,args,confirm:true}) 是合法契约；
+ *   2. 宿主还会弹原生确认框，由用户授权这次切换；
+ *   3. 授权失败/用户拒绝时，绝不能吞掉错误继续 agent/prompt。
+ * 旧实现缺 confirm 且吞掉拒绝，随后继续 prompt，最终把同一个坏
+ * provider/model 反复启动成 No provider configured（发图后普通消息也一起挂）。
  */
 async function applyModelIfChanged(sessionId, settings) {
   if (!sessionId || !settings.providerId || !settings.modelId) return;
@@ -992,36 +1181,90 @@ async function applyModelIfChanged(sessionId, settings) {
   if (current && current.providerId === settings.providerId && current.modelId === settings.modelId) return;
   const wanted = `${settings.providerId}/${settings.modelId}`;
   const key = `${sessionId}|${wanted}`;
-  if (configureApplied.has(key) || configureFailed.has(key)) return;
+  if (configureFailed.has(key)) {
+    throw new Error(
+      `模型切换为 ${wanted} 未被 PI 桌面端确认；为避免再次发送失败，本轮已停止。请在桌面端确认切换后重试，或保持当前模型。`,
+    );
+  }
+  if (configureApplied.has(key)) return;
   const config = { mode: "agent", providerId: settings.providerId, modelId: settings.modelId };
   if (settings.thinkingLevel) config.thinkingLevel = settings.thinkingLevel;
   try {
-    await invokeHostArgs("session/configure", [sessionId, config]);
+    await invokeHostArgs("session/configure", [sessionId, config], { confirm: true });
     configureApplied.add(key);
     sessionModels.set(String(sessionId), { providerId: settings.providerId, modelId: settings.modelId });
     log(`session ${sessionId} -> ${wanted}`);
   } catch (error) {
     configureFailed.add(key);
-    log(`session ${sessionId} model switch to ${wanted} refused:`, error?.message || error);
+    // 冷却 45 秒后再允许重试：用户可能刚在桌面端授权，或换了可用模型。
+    // 但绝不能让一次失败永久封锁这条会话。
+    setTimeout(() => configureFailed.delete(key), 45000).unref?.();
+    const reason = error?.message || String(error);
+    log(`session ${sessionId} model switch to ${wanted} refused:`, reason);
+    throw new Error(
+      `模型切换为 ${wanted} 未被 PI 桌面端确认：${reason}。本轮未发送，避免损坏会话；请在桌面端确认后重试，或保持当前模型。`,
+    );
+  }
+}
+
+/**
+ * 发送前的唯一模型闸门。
+ *
+ * 依次决定这一轮到底用哪个 (providerId, modelId)：
+ *   1) 手机端明确选中的模型，且它在 PI 里确实可用；
+ *   2) 会话当前模型，且仍可用；
+ *   3) 这条会话最近一次成功轮次 / 供应商默认模型；
+ *   4) 一个都没有 → 直接报错，不发送。
+ *
+ * 关键点：会话已经坏掉时（供应商被禁用、模型被删除），修好它是发送的前提；
+ * 旧实现只切「用户选的新模型」，会话本来坏着就每轮都 No provider configured。
+ */
+async function ensureSendableModel(sessionId, settings = {}) {
+  const desired = settings.providerId && settings.modelId
+    ? { providerId: settings.providerId, modelId: settings.modelId }
+    : null;
+  let target = desired && modelPairUsable(desired) ? desired : null;
+  if (!target) {
+    const currentPair = sessionModelPair(sessionId);
+    if (currentPair && modelPairUsable(currentPair)) target = currentPair;
+  }
+  if (!target) {
+    target = fallbackModelPair(sessionId);
+    if (!target) {
+      throw new Error(
+        "当前会话没有可用模型（供应商被禁用或模型已删除）。请在 PI 桌面端重新选择模型后重试。",
+      );
+    }
+    log(`session ${sessionId} model unusable -> repairing to ${target.providerId}/${target.modelId}`);
+  }
+  await applyModelIfChanged(sessionId, { ...settings, providerId: target.providerId, modelId: target.modelId });
+  const settled = sessionModelPair(sessionId);
+  if (settled && !modelPairUsable(settled)) {
+    throw new Error(
+      `模型 ${target.providerId}/${target.modelId} 在 PI 中不可用，本轮未发送。请在桌面端选择可用模型后重试。`,
+    );
   }
 }
 
 /** 返回 {result} 或抛错；Codex 侧直接代理。 */
 async function handleAction(method, params, version) {
   const conversationId = conversationIdOf(params);
+
+  // 队列是 PI 自身的权威状态，不能按会话来源代理到 Codex IPC。
+  if (method === "turnloom/queue/push") return nativeQueuePush(params);
+  if (method === "turnloom/queue/list") return nativeQueueList(params);
+  if (method === "turnloom/queue/remove") return nativeQueueRemove(params);
+  if (method === "turnloom/queue/steer") return nativeQueueSteer(params);
+
   if (conversationId && codexThreadIds.has(conversationId)) {
     const frame = await codexSide.proxyRequest(method, params, version);
     if (frame.resultType === "error") throw new Error(frame.error || `${method} failed in Codex`);
     return frame.result ?? {};
   }
 
-
-  // 手机端排队/取消/插入都直接操作 PI 宿主的权威 turn_queue。
-  // 桌面端自己的 Composer 也写同一张表，所以顺序只有一份。
-  if (method === "turnloom/queue/push") return nativeQueuePush(params);
-  if (method === "turnloom/queue/list") return nativeQueueList(params);
-  if (method === "turnloom/queue/remove") return nativeQueueRemove(params);
-  if (method === "turnloom/queue/steer") return nativeQueueSteer(params);
+  // The app-server handshake must be answered, otherwise the client reports
+  // "unsupported method: initialize" and silently falls back to spawning codex CLI.
+  if (method === "initialize") return { clientId: "pidesktop-bridge" };
   // The app-server handshake must be answered, otherwise the client reports
   // "unsupported method: initialize" and silently falls back to spawning codex CLI.
   if (method === "initialize") return { clientId: "pidesktop-bridge" };
@@ -1033,7 +1276,7 @@ async function handleAction(method, params, version) {
     if (!conversationId) throw new Error("start-turn without conversationId");
     if (!text && !attachments.length) throw new Error("start-turn without text");
     const current = currentSessionModel(conversationId);
-    await applyModelIfChanged(conversationId, turnSettingsFromRequest(params, current?.providerId || ""));
+    await ensureSendableModel(conversationId, turnSettingsFromRequest(params, current?.providerId || ""));
     // agent/prompt 的 schema 只有 sessionId/content/attachments：模型只能靠上面的
     // configure 落地，往这里塞模型字段会被静默忽略（历史上还因此写坏过会话）。
     await invokeHost("agent/prompt", {
@@ -1117,6 +1360,7 @@ async function handleAction(method, params, version) {
     const text = textFromTurnInput(input);
     const attachments = attachmentsFromTurnInput(input, conversationId);
     if (conversationId && (text || attachments.length)) {
+      await ensureSendableModel(conversationId, {});
       await invokeHost("agent/prompt", {
         sessionId: conversationId,
         content: text,
