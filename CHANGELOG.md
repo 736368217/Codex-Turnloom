@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.17.18 - 2026-11-05
+
+- **修复 App 更新提示「下载失败，无法更新」**（用户实测反馈）：旧链路把 APK 交给系统 `DownloadManager` 下载到公共 `Download` 目录；在 Android 10+ 分区存储、反向代理/自签 HTTPS、重定向丢失自定义请求头等场景下，系统下载服务会独立失败，而健康检查却正常。现在改为 App 内用与 `/api/health` 完全相同的 `HttpURLConnection` 下载到应用私有目录：访问码同时走 `x-access-token` 请求头与 `token` 查询参数，响应校验 HTTP 状态、`Content-Length` 与 APK ZIP 魔数，避免把登录页当作安装包；下载成功后通过 `FileProvider` 的 `content://` URI 调用系统安装器。整条链路不再依赖存储权限、系统下载服务或下载完成广播。
+- 新增 `UpdateDownload` 纯逻辑单测：覆盖 token 查询参数编码、已有 token 不重复、HTML 登录页拒绝、下载长度校验；Android 编译与单测通过。
+- 版本 1.17.18(39)。
+
 
 ## 1.17.17 - 2026-11-05
 
