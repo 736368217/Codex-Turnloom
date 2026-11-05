@@ -388,6 +388,71 @@ function nativeQueueSteer(params) {
   });
 }
 
+/**
+ * 软删除（从列表移除）。
+ *
+ * 为什么不用宿主的 `session/delete`：它在 CONTROL_OPERATION_SPECS 里是
+ * dangerous，插件一调用就会在**桌面**弹原生确认框——用户不在电脑前就删不掉，
+ * 这违背「手机端能独立管理会话」的设计目标。
+ *
+ * 软删除只写 `sessions.deleted_at`（PI 自己的删除语义），数据与 rollout 都保留，
+ * 可以 restore；宿主列表与我们门面都过滤 deleted_at，所以立刻消失。真正不可逆的
+ * 彻底删除仍然走宿主 `session/delete`（桌面确认），作为次要入口保留。
+ */
+function sessionHide(params) {
+  const id = String(params?.sessionId || params?.threadId || "").trim();
+  if (!id) throw new Error("hide without sessionId");
+  const db = piWriteDb();
+  try {
+    const now = Date.now();
+    const result = db
+      .prepare("UPDATE sessions SET deleted_at = ?, updated_at = ? WHERE id = ? AND deleted_at IS NULL")
+      .run(now, now, id);
+    return { ok: true, sessionId: id, hidden: Number(result.changes) > 0 };
+  } finally {
+    db.close();
+  }
+}
+
+function sessionRestore(params) {
+  const id = String(params?.sessionId || params?.threadId || "").trim();
+  if (!id) throw new Error("restore without sessionId");
+  const db = piWriteDb();
+  try {
+    const result = db
+      .prepare("UPDATE sessions SET deleted_at = NULL, updated_at = ? WHERE id = ? AND deleted_at IS NOT NULL")
+      .run(Date.now(), id);
+    return { ok: true, sessionId: id, restored: Number(result.changes) > 0 };
+  } finally {
+    db.close();
+  }
+}
+
+/** 已移除（软删除）的会话，供手机端撤销。 */
+function sessionHidden() {
+  const db = piWriteDb();
+  try {
+    const rows = db
+      .prepare("SELECT id, title, deleted_at FROM sessions WHERE deleted_at IS NOT NULL ORDER BY deleted_at DESC LIMIT 50")
+      .all();
+    return {
+      ok: true,
+      sessions: rows.map((row) => ({
+        id: String(row.id || ""),
+        title: String(row.title || ""),
+        deletedAt: Number(row.deleted_at) || 0,
+      })),
+    };
+  } finally {
+    db.close();
+  }
+}
+
+/** 可写数据库句柄（与队列共用同一套「拒绝空库」保护）。 */
+function piWriteDb() {
+  return nativeQueueDb();
+}
+
 // ── 宿主能力层：把 PI 的只读能力与显式确认的写能力开放给手机 ──────────────
 /**
  * 白名单是安全边界：手机端只能调用这里列出的操作。
@@ -426,7 +491,10 @@ const HOST_DANGEROUS_OPERATIONS = new Set([
 
 async function hostInvoke(params) {
   const operation = String(params?.operation || "").trim();
-  const args = Array.isArray(params?.args) ? params.args : [];
+  // 兼容标量 args：有的客户端（含 PowerShell 5.1 的 ConvertTo-Json）会把
+  // 单元素数组序列化成裸值，直接丢给宿主就会变成 "reading 'startsWith'" 报错。
+  const rawArgs = params?.args;
+  const args = Array.isArray(rawArgs) ? rawArgs : rawArgs === undefined ? [] : [rawArgs];
   const confirm = params?.confirm === true;
   if (!operation) throw new Error("host invoke without operation");
   const isRead = HOST_READ_OPERATIONS.has(operation);
@@ -1646,6 +1714,10 @@ async function handleAction(method, params, version) {
   if (method === "turnloom/notifications/read") return hostNotificationsRead(params);
   if (method === "turnloom/scheduled") return hostScheduled(params);
   if (method === "turnloom/usage") return hostUsage(params);
+  // 手机端「从列表移除」走软删除，不触发桌面确认框；restore 用于撤销。
+  if (method === "turnloom/session/hide") return sessionHide(params);
+  if (method === "turnloom/session/restore") return sessionRestore(params);
+  if (method === "turnloom/session/hidden") return sessionHidden(params);
 
   if (conversationId && codexThreadIds.has(conversationId)) {
     const frame = await codexSide.proxyRequest(method, params, version);

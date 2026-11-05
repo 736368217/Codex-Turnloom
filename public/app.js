@@ -4788,6 +4788,56 @@ async function deleteCurrentThread() {
   }
 }
 
+/**
+ * 从列表移除（软删除）。
+ *
+ * 宿主的 session/delete 是 dangerous，会在桌面弹原生确认框 —— 人不在电脑前就
+ * 删不掉。这里只写 sessions.deleted_at（PI 自己的删除语义），数据保留、可恢复，
+ * 不触发桌面弹窗，符合「手机端能独立整理会话」的设计。
+ */
+async function hideCurrentThread() {
+  const threadId = state.contextThreadId;
+  const thread = (state.threads || []).find((entry) => entry.id === threadId);
+  if (!threadId || !thread) return;
+  const ok = await appConfirm(`把「${thread.title || "这条会话"}」从列表移除？数据会保留，可在「更多能力 → 已移除的会话」里恢复。`, {
+    title: "从列表移除",
+    confirmText: "移除",
+    cancelText: "取消"
+  });
+  if (!ok) return;
+  try {
+    await postJson("/api/host/session/hide", { threadId });
+    closeThreadContextMenu();
+    state.threads = (state.threads || []).filter((entry) => entry.id !== threadId);
+    if (state.selectedId === threadId) {
+      state.selectedId = null;
+      state.messagesSignature = "";
+      state.threadStatus = null;
+    }
+    renderThreads();
+    await loadThreads(false);
+    hostNotice("已从列表移除，可在「更多能力 → 已移除的会话」恢复。");
+  } catch (error) {
+    hostNotice(`移除失败：${error.message}`);
+  }
+}
+
+async function showHiddenSessions() {
+  openHostSheet("已移除的会话", `<p class="host-empty">加载中…</p>`);
+  try {
+    const data = await fetchJson("/api/host/hidden");
+    const items = Array.isArray(data?.sessions) ? data.sessions : [];
+    const rows = items.map((item) => {
+      const time = Number(item.deletedAt) || 0;
+      return `<li><span>${escapeHtml(item.title || item.id)}</span><span class="host-muted">${time ? escapeHtml(new Date(time).toLocaleString()) : ""}</span><button type="button" class="host-secondary" data-host-restore="${escapeHtml(item.id)}">恢复</button></li>`;
+    });
+    openHostSheet("已移除的会话", hostRows(rows, "没有已移除的会话。"));
+  } catch (error) {
+    openHostSheet("已移除的会话", `<p class="host-empty">读取失败：${escapeHtml(error.message)}</p>`);
+  }
+}
+
+
 // ── 用量 ────────────────────────────────────────────────────────────────
 async function showUsage(threadId = state.contextThreadId) {
   if (!threadId) return;
@@ -4900,15 +4950,18 @@ async function showWorkspaceDiff(threadId) {
     openHostSheet("工作区改动", `<p class="host-empty">${escapeHtml(error.message)}</p>`);
   }
 }
-// ── 更多能力（通知 / 定时 / 技能与命令 / 供应商 / 浏览器） ───────────────
+// ── 更多能力（文件 / 用量 / 通知 / 定时 / 技能命令 / 供应商 / 浏览器） ──
 async function showHostTools() {
   openHostSheet("更多能力", `
     <div class="host-tools">
+      <button type="button" data-host-tool="files">文件与改动</button>
+      <button type="button" data-host-tool="usage">本会话用量</button>
       <button type="button" data-host-tool="notifications">通知</button>
       <button type="button" data-host-tool="scheduled">定时任务</button>
       <button type="button" data-host-tool="commands">技能与命令</button>
       <button type="button" data-host-tool="providers">供应商与模型</button>
       <button type="button" data-host-tool="browser">浏览器状态</button>
+      <button type="button" data-host-tool="hidden">已移除的会话</button>
     </div>`);
 }
 
@@ -5014,6 +5067,7 @@ function initHostTools() {
     threadFilesAction: () => showFiles(state.contextThreadId, ""),
     threadRevisionsAction: () => showRevisions(state.contextThreadId),
     threadOpenAction: openThreadOnDesktop,
+    threadHideAction: hideCurrentThread,
     threadDeleteAction: deleteCurrentThread
   };
   for (const [id, handler] of Object.entries(actions)) {
@@ -5033,6 +5087,18 @@ function initHostTools() {
     }
     if (event.target.closest("[data-host-diff]")) {
       showWorkspaceDiff(state.selectedId);
+      return;
+    }
+    const restoreButton = event.target.closest("[data-host-restore]");
+    if (restoreButton) {
+      const threadId = restoreButton.dataset.hostRestore || "";
+      postJson("/api/host/session/restore", { threadId })
+        .then(async () => {
+          await loadThreads(false);
+          await showHiddenSessions();
+          hostNotice("已恢复。");
+        })
+        .catch((error) => hostNotice(`恢复失败：${error.message}`));
       return;
     }
     if (event.target.closest("[data-host-notif-read]")) {
@@ -5059,6 +5125,9 @@ function initHostTools() {
       if (name === "commands") showCommands();
       if (name === "providers") showProviders();
       if (name === "browser") showBrowserState();
+      if (name === "hidden") showHiddenSessions();
+      if (name === "files") showFiles(state.selectedId, "");
+      if (name === "usage") showUsage(state.selectedId);
     }
   });
 
