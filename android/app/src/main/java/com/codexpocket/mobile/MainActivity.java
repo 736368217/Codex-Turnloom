@@ -4,13 +4,11 @@ import android.app.AlertDialog;
 import android.app.DownloadManager;
 import android.app.NotificationManager;
 import android.app.PendingIntent;
-import android.content.BroadcastReceiver;
 import android.content.ClipData;
 import android.content.ClipboardManager;
 import android.content.Context;
 import android.content.DialogInterface;
 import android.content.Intent;
-import android.content.IntentFilter;
 import android.content.res.Configuration;
 import android.graphics.Color;
 import android.graphics.Typeface;
@@ -53,6 +51,7 @@ import android.widget.Space;
 import android.widget.TextView;
 import android.widget.Toast;
 
+import androidx.core.content.FileProvider;
 import androidx.activity.ComponentActivity;
 import androidx.activity.result.PickVisualMediaRequest;
 import androidx.activity.result.ActivityResultLauncher;
@@ -152,6 +151,7 @@ public class MainActivity extends ComponentActivity {
     public static final String EXTRA_THREAD_ID = "codex_pocket_thread_id";
     private static final String REMINDERS_KEY = "thread_reminders";
     private static final String ONBOARDING_KEY = "turnloom_onboarding_seen_v1";
+    private volatile boolean updateDownloadRunning = false;
     private static final int NOTIFICATION_PERMISSION_REQUEST = 7102;
 
     private static final int INK = Color.rgb(17, 24, 39);
@@ -185,36 +185,6 @@ public class MainActivity extends ComponentActivity {
     private String pendingNotificationDeviceUrl;
     private String pendingNotificationThreadId;
     private ValueCallback<Uri[]> fileChooserCallback;
-    private long updateDownloadId = -1L;
-    private final BroadcastReceiver updateDownloadReceiver = new BroadcastReceiver() {
-        @Override
-        public void onReceive(Context context, Intent intent) {
-            if (!DownloadManager.ACTION_DOWNLOAD_COMPLETE.equals(intent.getAction())) return;
-            long id = intent.getLongExtra(DownloadManager.EXTRA_DOWNLOAD_ID, -1L);
-            if (id != updateDownloadId) return;
-            DownloadManager manager = (DownloadManager) getSystemService(DOWNLOAD_SERVICE);
-            if (manager == null) return;
-            DownloadManager.Query query = new DownloadManager.Query().setFilterById(id);
-            try (android.database.Cursor cursor = manager.query(query)) {
-                if (cursor == null || !cursor.moveToFirst()) return;
-                int status = cursor.getInt(cursor.getColumnIndexOrThrow(DownloadManager.COLUMN_STATUS));
-                if (status != DownloadManager.STATUS_SUCCESSFUL) {
-                    Toast.makeText(MainActivity.this, "更新下载失败，请稍后重试", Toast.LENGTH_LONG).show();
-                    return;
-                }
-                // 用 DownloadManager 自己的 content:// URI，而不是 COLUMN_LOCAL_URI
-                // 的 file://，否则 Android 7+ 的安装器会拒绝。
-                Uri downloaded = manager.getUriForDownloadedFile(id);
-                if (downloaded == null) {
-                    Toast.makeText(MainActivity.this, "更新已下载，请从系统下载通知打开安装", Toast.LENGTH_LONG).show();
-                    return;
-                }
-                installApk(downloaded);
-            } catch (Exception error) {
-                Toast.makeText(MainActivity.this, "更新文件已下载，请从系统下载通知打开", Toast.LENGTH_LONG).show();
-            }
-        }
-    };
 
     private final ActivityResultLauncher<Intent> fileChooser = registerForActivityResult(
             new ActivityResultContracts.StartActivityForResult(), result -> {
@@ -277,13 +247,6 @@ public class MainActivity extends ComponentActivity {
         root.setOrientation(LinearLayout.VERTICAL);
         root.setBackgroundColor(PAPER);
         setContentView(root);
-        if (Build.VERSION.SDK_INT >= 33) {
-            registerReceiver(updateDownloadReceiver,
-                    new IntentFilter(DownloadManager.ACTION_DOWNLOAD_COMPLETE),
-                    Context.RECEIVER_EXPORTED);
-        } else {
-            registerReceiver(updateDownloadReceiver, new IntentFilter(DownloadManager.ACTION_DOWNLOAD_COMPLETE));
-        }
         showMachinePicker();
         if (!getSharedPreferences(PREFS, MODE_PRIVATE).getBoolean(ONBOARDING_KEY, false)) {
             root.post(() -> showWelcomeGuide(true));
@@ -997,28 +960,80 @@ public class MainActivity extends ComponentActivity {
         }).start();
     }
 
+    // 系统 DownloadManager 在 Android 10+ 分区存储、反向代理/自签 HTTPS 等场景下
+    // 会独立报「下载失败」，而健康检查明明可达。改用与 /api/health 完全相同的
+    // HttpURLConnection + token 头部/查询参数链路，把 APK 直接下载到应用私有目录，
+    // 再用 FileProvider 交给系统安装器。整条链路不再依赖存储权限或系统下载服务。
     private void downloadUpdate(Device device, String url) {
-        try {
-            DownloadManager.Request request = new DownloadManager.Request(Uri.parse(url));
-            request.setTitle("Codex-Turnloom " + appVersionName() + " 更新");
-            request.setDescription("正在下载应用更新");
-            request.setMimeType("application/vnd.android.package-archive");
-            request.setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED);
-            request.setDestinationInExternalPublicDir(Environment.DIRECTORY_DOWNLOADS, "Codex-Turnloom-update.apk");
-            if (!device.token.isBlank()) request.addRequestHeader("x-access-token", device.token);
-            DownloadManager manager = (DownloadManager) getSystemService(DOWNLOAD_SERVICE);
-            if (manager == null) throw new IllegalStateException("DownloadManager unavailable");
-            updateDownloadId = manager.enqueue(request);
-            Toast.makeText(this, "正在下载更新，完成后会打开安装界面", Toast.LENGTH_SHORT).show();
-        } catch (Exception error) {
-            Toast.makeText(this, "无法下载更新，请稍后重试", Toast.LENGTH_LONG).show();
+        if (updateDownloadRunning) {
+            Toast.makeText(this, "更新正在下载中", Toast.LENGTH_SHORT).show();
+            return;
         }
+        updateDownloadRunning = true;
+        Toast.makeText(this, "正在下载更新，完成后会打开安装界面", Toast.LENGTH_SHORT).show();
+        String token = device.token == null ? "" : device.token;
+        String downloadUrl = UpdateDownload.downloadUrl(url, token);
+        new Thread(() -> {
+            java.io.File outFile = null;
+            try {
+                java.io.File outDir = getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS);
+                if (outDir == null) throw new IllegalStateException("没有可用的应用下载目录");
+                if (!outDir.exists() && !outDir.mkdirs()) throw new IllegalStateException("无法创建应用下载目录");
+                outFile = new java.io.File(outDir, "Codex-Turnloom-update.apk");
+                java.io.File partial = new java.io.File(outDir, "Codex-Turnloom-update.apk.part");
+                if (partial.exists() && !partial.delete()) throw new IllegalStateException("无法清理旧下载文件");
+
+                HttpURLConnection connection = (HttpURLConnection) new URL(downloadUrl).openConnection();
+                connection.setRequestMethod("GET");
+                connection.setConnectTimeout(15000);
+                connection.setReadTimeout(60000);
+                connection.setInstanceFollowRedirects(true);
+                connection.setRequestProperty("Accept", "application/vnd.android.package-archive");
+                if (!token.isBlank()) connection.setRequestProperty("x-access-token", token);
+                int code = connection.getResponseCode();
+                if (code < 200 || code >= 300) throw new Exception("HTTP " + code);
+                long expected = connection.getHeaderFieldLong("Content-Length", 0L);
+                byte[] buffer = new byte[64 * 1024];
+                long total = 0L;
+                try (InputStream input = connection.getInputStream();
+                     java.io.FileOutputStream output = new java.io.FileOutputStream(partial)) {
+                    int read;
+                    while ((read = input.read(buffer)) != -1) {
+                        output.write(buffer, 0, read);
+                        total += read;
+                    }
+                } finally {
+                    connection.disconnect();
+                }
+                String sizeProblem = UpdateDownload.sizeProblem(total, expected);
+                if (sizeProblem != null) throw new Exception(sizeProblem);
+                try (java.io.FileInputStream input = new java.io.FileInputStream(partial)) {
+                    byte[] header = new byte[2];
+                    if (input.read(header) != 2 || !UpdateDownload.hasApkMagic(header)) {
+                        throw new Exception("下载内容不是 APK（可能返回了登录页）");
+                    }
+                }
+                if (outFile.exists() && !outFile.delete()) throw new IllegalStateException("无法替换旧更新文件");
+                if (!partial.renameTo(outFile)) throw new IllegalStateException("无法保存更新文件");
+
+                Uri apkUri = FileProvider.getUriForFile(this, getPackageName() + ".fileprovider", outFile);
+                runOnUiThread(() -> {
+                    Toast.makeText(this, "更新下载完成，正在打开安装界面", Toast.LENGTH_SHORT).show();
+                    installApk(apkUri);
+                });
+            } catch (Exception error) {
+                String message = error.getMessage() == null || error.getMessage().isBlank()
+                        ? "网络或存储不可用" : error.getMessage();
+                runOnUiThread(() -> Toast.makeText(this, "更新下载失败：" + message, Toast.LENGTH_LONG).show());
+            } finally {
+                updateDownloadRunning = false;
+            }
+        }, "turnloom-update-download").start();
     }
 
     private void installApk(Uri uri) {
-        // DownloadManager.COLUMN_LOCAL_URI 在 Android 7+ 常是 file://，直接
-        // ACTION_VIEW 会抛 FileUriExposedException，导致"下载完了却装不上"。
-        // 改用系统安装器 action + 授权读 URI；content:// 由 DownloadManager 自己给。
+        // 私有目录下的 APK 必须经 FileProvider 生成 content:// URI；直接使用
+        // file:// 会在 Android 7+ 触发 FileUriExposedException。
         try {
             Intent intent = new Intent(Intent.ACTION_INSTALL_PACKAGE);
             intent.setData(uri);
@@ -1034,7 +1049,7 @@ public class MainActivity extends ComponentActivity {
                 fallback.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION | Intent.FLAG_ACTIVITY_NEW_TASK);
                 startActivity(fallback);
             } catch (Exception ignored) {
-                Toast.makeText(this, "更新已下载，请从系统下载通知打开安装", Toast.LENGTH_LONG).show();
+                Toast.makeText(this, "更新已下载，请打开文件管理器的应用下载目录安装", Toast.LENGTH_LONG).show();
             }
         }
     }
@@ -1278,10 +1293,6 @@ public class MainActivity extends ComponentActivity {
 
     @Override
     protected void onDestroy() {
-        try {
-            unregisterReceiver(updateDownloadReceiver);
-        } catch (Exception ignored) {
-        }
         destroyWebView();
         super.onDestroy();
     }
