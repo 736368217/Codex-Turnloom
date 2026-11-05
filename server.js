@@ -7521,6 +7521,20 @@ const server = http.createServer(async (req, res) => {
       await hostReply(res, () => requestBridge("approvals/resolve", body));
       return;
     }
+    // 手机端「从列表移除 / 恢复」：只写 sessions.deleted_at，不触发桌面确认框。
+    if (req.method === "POST" && (url.pathname === "/api/host/session/hide" || url.pathname === "/api/host/session/restore")) {
+      if (!requireAuthorized(req, res, url)) return;
+      const body = await readJsonBody(req);
+      const threadId = String(body.threadId || body.sessionId || "").trim();
+      if (!threadId) {
+        sendJson(res, 400, { error: "threadId is required" });
+        return;
+      }
+      const method = url.pathname.endsWith("/hide") ? "session/hide" : "session/restore";
+      await hostReply(res, () => requestBridge(method, { threadId }));
+      return;
+    }
+
 
     if (req.method === "POST" && url.pathname === "/api/host/notifications/read") {
       if (!requireAuthorized(req, res, url)) return;
@@ -7552,6 +7566,10 @@ const server = http.createServer(async (req, res) => {
       }
       if (name === "usage") {
         await hostReply(res, async () => assertHostShape(await requestBridge("usage", { threadId }), "turns", "usage"));
+        return;
+      }
+      if (name === "hidden") {
+        await hostReply(res, async () => assertHostShape(await requestBridge("session/hidden", {}), "sessions", "session/hidden"));
         return;
       }
       if (name === "files") {

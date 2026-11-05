@@ -47,6 +47,9 @@ db.exec(`
     error_code TEXT, input_tokens INTEGER, output_tokens INTEGER, usage_json TEXT,
     started_at INTEGER, ended_at INTEGER
   );
+  CREATE TABLE sessions (
+    id TEXT PRIMARY KEY, title TEXT, deleted_at INTEGER, updated_at INTEGER
+  );
 `);
 db.prepare(
   `INSERT INTO plan_approvals (request_id,session_id,turn_id,tool_call_id,kind,title,question,status,created_at,updated_at,version)
@@ -57,6 +60,8 @@ db.prepare(
 ).run("s-1", 1, "复现问题", "completed", "high", 1000);
 db.prepare("INSERT INTO session_todo (session_id,position,content,status,priority,updated_at) VALUES (?,?,?,?,?,?)")
   .run("s-1", 2, "修复并验收", "in_progress", "high", 1001);
+db.prepare("INSERT INTO sessions (id,title,deleted_at,updated_at) VALUES (?,?,?,?)").run("s-keep", "保留会话", null, 1000);
+db.prepare("INSERT INTO sessions (id,title,deleted_at,updated_at) VALUES (?,?,?,?)").run("s-gone", "待移除会话", null, 1000);
 db.prepare("INSERT INTO notifications (id,kind,session_id,session_title,created_at) VALUES (?,?,?,?,?)")
   .run("n-1", "task.completed", "s-1", "登录修复", 1002);
 db.prepare("INSERT INTO notifications (id,kind,session_id,session_title,created_at,read_at) VALUES (?,?,?,?,?,?)")
@@ -79,7 +84,7 @@ if (source === before) throw new Error("could not redirect PIPE_PATH");
 source = source.replace("const PI_DB = resolvePiDb();", `const PI_DB = ${JSON.stringify(dbPath)};`);
 if (!source.includes(JSON.stringify(dbPath))) throw new Error("could not redirect PI_DB");
 source +=
-  "\nmodule.exports = { hostInvoke, hostApprovals, hostApprovalsResolve, hostTodos, hostNotifications, hostNotificationsRead, hostScheduled, hostUsage };\n";
+  "\nmodule.exports = { hostInvoke, hostApprovals, hostApprovalsResolve, hostTodos, hostNotifications, hostNotificationsRead, hostScheduled, hostUsage, sessionHide, sessionRestore, sessionHidden };\n";
 for (const name of ["codex-side.cjs", "manifest.json"]) {
   fs.copyFileSync(path.join(path.dirname(SRC), name), path.join(outDir, name));
 }
@@ -203,6 +208,24 @@ const check = (label, condition, detail) => {
   const usage = plugin.hostUsage({ threadId: "s-1" });
   check("用量按会话聚合", usage.totals.turns === 2 && usage.totals.inputTokens === 300 && usage.totals.outputTokens === 60, JSON.stringify(usage.totals));
   check("用量返回最近轮次", usage.turns.length === 2 && usage.turns[0].id === "t-2", JSON.stringify(usage.turns.map((t) => t.id)));
+
+  // 6. 软删除：手机端「从列表移除」不触发桌面确认框，可恢复
+  const hiddenResult = plugin.sessionHide({ threadId: "s-gone" });
+  check("软删除写 deleted_at", hiddenResult.hidden === true, JSON.stringify(hiddenResult));
+  const hiddenList = plugin.sessionHidden({});
+  check(
+    "已移除列表只包含被移除的会话",
+    hiddenList.sessions.length === 1 && hiddenList.sessions[0].id === "s-gone",
+    JSON.stringify(hiddenList.sessions),
+  );
+  const keepList = plugin.sessionHidden({}).sessions.some((s) => s.id === "s-keep");
+  check("未移除的会话不在已移除列表里", keepList === false);
+  const restored = plugin.sessionRestore({ threadId: "s-gone" });
+  check("恢复清空 deleted_at", restored.restored === true, JSON.stringify(restored));
+  check("恢复后已移除列表为空", plugin.sessionHidden({}).sessions.length === 0);
+  const hiddenAgain = plugin.sessionHide({ threadId: "s-gone" });
+  const twice = plugin.sessionHide({ threadId: "s-gone" });
+  check("重复移除是幂等的（第二次不改行）", hiddenAgain.hidden === true && twice.hidden === false, JSON.stringify(twice));
 
   fs.rmSync(outDir, { recursive: true, force: true });
   console.log(`\n${fails.length} failure(s)`);
