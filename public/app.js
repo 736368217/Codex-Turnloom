@@ -257,7 +257,7 @@ const els = {
   sidebarCloseButton: document.querySelector("#sidebarCloseButton"),
   searchInput: document.querySelector("#searchInput"),
   newThreadButton: document.querySelector("#newThreadButton"),
-  toolToggle: document.querySelector("#toolToggle"),
+  toolToggle: document.querySelector("#hostSheetBody [data-host-tool-toggle]"),
   composerForm: document.querySelector("#composerForm"),
   composerInput: document.querySelector("#composerInput"),
   pluginMentionTray: document.querySelector("#pluginMentionTray"),
@@ -525,7 +525,7 @@ const I18N = {
     welcomeStepTwoTitle: "直接在手机上继续",
     welcomeStepTwoCopy: "发送文字、图片或文件，并按需选择模型和思考强度。",
     welcomeStepThreeTitle: "只看需要的细节",
-    welcomeStepThreeCopy: "工具记录默认收起，点击右上角工具按钮后显示。",
+    welcomeStepThreeCopy: "工具记录默认收起，需要时在「更多」里打开。",
     welcomePrivacy: "所有内容仍保存在你的电脑上",
     welcomeStart: "开始使用",
     networkUnreachable: "连不上这台电脑。请确认电脑上的 Codex 仍在运行、网络可达，然后重试。",
@@ -742,7 +742,7 @@ const I18N = {
     welcomeStepTwoTitle: "Keep working from your phone",
     welcomeStepTwoCopy: "Send text, images, or files and choose a model and reasoning effort when needed.",
     welcomeStepThreeTitle: "Reveal details when needed",
-    welcomeStepThreeCopy: "Tool records stay hidden until you enable them from the top-right control.",
+    welcomeStepThreeCopy: "Tool records stay hidden until you enable them from More.",
     welcomePrivacy: "Your content remains on your computer",
     welcomeStart: "Get started",
     networkUnreachable: "Can't reach this computer. Check that Codex is still running on it and the network is reachable, then try again.",
@@ -817,9 +817,7 @@ function applyStaticText() {
   els.threadMeta.textContent = t("syncEvery");
   els.goalDetailBackButton.textContent = t("goalBack");
   els.goalEditButton.textContent = t("goalEdit");
-  document.querySelector(".toggle").setAttribute("title", t("tool"));
-  document.querySelector(".toggle").setAttribute("aria-label", t("tool"));
-  els.toolToggle.checked = state.showTools;
+  // 工具记录开关已收进「更多能力」；顶栏不再保留小扳手。
   els.messageList.innerHTML = `<div class="empty-state">${escapeHtml(t("pickThread"))}</div>`;
   els.modelSummary.setAttribute("title", t("modelSettings"));
   els.modelSummary.setAttribute("aria-label", t("modelSettings"));
@@ -4303,11 +4301,16 @@ els.searchInput.addEventListener("search", () => {
   renderThreads();
 });
 
-els.toolToggle.addEventListener("change", (event) => {
-  state.showTools = event.target.checked;
+function setShowTools(enabled) {
+  state.showTools = Boolean(enabled);
   state.messagesSignature = "";
+  const toggle = document.querySelector("#hostSheetBody [data-host-tool-toggle]");
+  if (toggle) {
+    toggle.checked = state.showTools;
+    toggle.closest("label")?.classList.toggle("active", state.showTools);
+  }
   loadMessages(true);
-});
+}
 function selectProvider(key) {
   state.modelProvider = providerKey(key) || "all";
   // 只过滤第二级模型，绝不改 state.model / state.effort。
@@ -5396,9 +5399,16 @@ async function showWorkspaceDiff(threadId) {
     openHostSheet("工作区改动", `<p class="host-empty">${escapeHtml(error.message)}</p>`);
   }
 }
-// ── 更多能力（文件 / 用量 / 通知 / 定时 / 技能命令 / 供应商 / 浏览器） ──
-async function showHostTools() {
+// ── 更多能力（工具记录 / 切换电脑 / 文件 / 用量 / 通知 / 定时 / 技能命令 / 供应商 / 浏览器） ──
+function showHostTools() {
   openHostSheet("更多能力", `
+    <div class="host-utility-row">
+      <label class="host-tool-toggle ${state.showTools ? "active" : ""}">
+        <input type="checkbox" data-host-tool-toggle ${state.showTools ? "checked" : ""} />
+        <span>显示工具 / 内部记录</span>
+      </label>
+      <button type="button" class="host-switch-computer" data-host-switch-computer>切换电脑</button>
+    </div>
     <div class="host-tools">
       <button type="button" data-host-tool="files">文件与改动</button>
       <button type="button" data-host-tool="usage">本会话用量</button>
@@ -5524,6 +5534,21 @@ function initHostTools() {
   }
 
   document.querySelector("#hostSheetBody")?.addEventListener("click", (event) => {
+    const toggleLabel = event.target.closest(".host-tool-toggle");
+    if (toggleLabel) {
+      const toggle = toggleLabel.querySelector("[data-host-tool-toggle]");
+      if (toggle) setShowTools(toggle.checked);
+      return;
+    }
+    if (event.target.closest("[data-host-switch-computer]")) {
+      if (globalThis.CodexPocket?.showMachinePicker) {
+        globalThis.CodexPocket.showMachinePicker();
+        closeHostSheet();
+      } else {
+        hostNotice("请在 App 顶部使用「切换电脑」。");
+      }
+      return;
+    }
     const fileButton = event.target.closest("[data-host-file]");
     if (fileButton) {
       const target = fileButton.dataset.hostFile || "";

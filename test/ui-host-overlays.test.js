@@ -33,6 +33,9 @@ test("host sheet markup starts hidden and has a backdrop + close buttons", () =>
   assert.match(html, /id="hostToolsButton"/);
   assert.match(html, /id="threadHideAction"/);
   assert.match(html, /id="threadDeleteAction"/);
+  // 小扳手不再占顶栏；工具开关收进「更多」。
+  assert.doesNotMatch(html, /id="toolToggle"/);
+  assert.doesNotMatch(html, /class="toggle"/);
 });
 
 test("host sheet has explicit high-contrast colors and bounded code preview", () => {
@@ -236,4 +239,16 @@ test("bridge queue remains authoritative, atomic and principal-safe", () => {
   assert.match(bridge, /scopeOwnPrincipal = !itemId && params\?\.ownPrincipalOnly !== false/);
   assert.match(bridge, /function nativeQueueClaim[\s\S]*DELETE FROM turn_queue WHERE session_id = \? AND principal = \? AND id = \?/);
   assert.match(bridge, /function nativeQueuePush[\s\S]*restoreId/);
+});
+
+test("tool toggle and switch computer live inside the More sheet", () => {
+  assert.match(app, /data-host-tool-toggle/);
+  assert.match(app, /function setShowTools[\s\S]*state\.showTools = Boolean\(enabled\)/);
+  assert.match(app, /data-host-switch-computer/);
+  assert.match(app, /globalThis\.CodexPocket\?\.showMachinePicker/);
+  assert.match(app, /welcomeStepThreeCopy: "工具记录默认收起，需要时在「更多」里打开。"/);
+  assert.match(html, /工具记录默认收起，需要时在「更多」里打开。/);
+  assert.match(css, /#shell \.host-tool-toggle\s*\{[^}]*min-height:\s*44px/s);
+  assert.match(css, /#shell \.host-switch-computer\s*\{[^}]*min-height:\s*44px/s);
+  assert.match(css, /#shell \.conversation-header \.toggle\s*\{\s*display:\s*none\s*!important/s);
 });

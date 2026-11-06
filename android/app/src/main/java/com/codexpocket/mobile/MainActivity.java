@@ -183,10 +183,11 @@ public class MainActivity extends ComponentActivity {
     private TextView connectionDot;
     private Device activeDevice;
     private volatile String currentMainFrameUrl = "";
+    private boolean clearMachinePickerMode = false;
     private String pendingNotificationDeviceUrl;
     private String pendingNotificationThreadId;
-    private ValueCallback<Uri[]> fileChooserCallback;
 
+    private ValueCallback<Uri[]> fileChooserCallback;
     private final ActivityResultLauncher<Intent> fileChooser = registerForActivityResult(
             new ActivityResultContracts.StartActivityForResult(), result -> {
                 Uri[] uris = null;
@@ -299,8 +300,17 @@ public class MainActivity extends ComponentActivity {
     }
 
     private void showMachinePicker() {
-        activeDevice = null;
-        getSharedPreferences(PREFS, MODE_PRIVATE).edit().remove(ACTIVE_DEVICE_URL_KEY).apply();
+        showMachinePicker(true);
+    }
+
+    /** false 表示用户主动从聊天页进来；取消时回到原电脑，不把它当首页。 */
+    private void showMachinePicker(boolean clearActiveDevice) {
+        Device previousDevice = activeDevice;
+        clearMachinePickerMode = clearActiveDevice;
+        if (clearActiveDevice) {
+            activeDevice = null;
+            getSharedPreferences(PREFS, MODE_PRIVATE).edit().remove(ACTIVE_DEVICE_URL_KEY).apply();
+        }
         destroyWebView();
         root.removeAllViews();
         getWindow().setStatusBarColor(Color.WHITE);
@@ -311,6 +321,11 @@ public class MainActivity extends ComponentActivity {
         appBar.setGravity(Gravity.CENTER_VERTICAL);
         appBar.setPadding(dp(18), dp(8), dp(10), dp(8));
         appBar.setBackgroundColor(Color.WHITE);
+        if (!clearActiveDevice && previousDevice != null) {
+            Button back = headerButton("‹", "返回聊天", v -> openDevice(previousDevice));
+            back.setTextSize(28);
+            appBar.addView(back, new LinearLayout.LayoutParams(dp(44), dp(44)));
+        }
         TextView title = label("Codex-Turnloom", 18, INK);
         title.setTypeface(Typeface.DEFAULT, Typeface.BOLD);
         appBar.addView(title, new LinearLayout.LayoutParams(0, dp(48), 1));
@@ -524,6 +539,7 @@ public class MainActivity extends ComponentActivity {
             return;
         }
         activeDevice = device;
+        clearMachinePickerMode = false;
         getSharedPreferences(PREFS, MODE_PRIVATE).edit().putString(ACTIVE_DEVICE_URL_KEY, device.url).apply();
         root.removeAllViews();
         // The WebView is the primary workspace, so keep the native chrome quiet and light.
@@ -537,10 +553,19 @@ public class MainActivity extends ComponentActivity {
         topBar.setGravity(Gravity.CENTER_VERTICAL);
         topBar.setPadding(dp(8), dp(2), dp(8), dp(2));
         topBar.setBackgroundColor(Color.WHITE);
-        Button back = iconButton("‹", "切换电脑", v -> showMachinePicker());
-        back.setTextSize(30);
-        back.setTextColor(INK);
-        topBar.addView(back, new LinearLayout.LayoutParams(dp(44), dp(44)));
+        Button switchComputer = new Button(this);
+        switchComputer.setText("切换电脑");
+        switchComputer.setAllCaps(false);
+        switchComputer.setTextSize(14);
+        switchComputer.setTextColor(ACCENT);
+        switchComputer.setTypeface(Typeface.DEFAULT, Typeface.BOLD);
+        switchComputer.setBackground(rounded(ACCENT_SOFT, 1, ACCENT_BORDER, 18));
+        switchComputer.setMinHeight(0);
+        switchComputer.setMinimumHeight(0);
+        switchComputer.setPadding(dp(14), 0, dp(14), 0);
+        switchComputer.setContentDescription("切换电脑");
+        switchComputer.setOnClickListener(v -> showMachinePicker(false));
+        topBar.addView(switchComputer, new LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, dp(44)));
         connectionDot = label("●", 10, ONLINE);
         connectionDot.setGravity(Gravity.CENTER);
         topBar.addView(connectionDot, new LinearLayout.LayoutParams(dp(22), dp(44)));
@@ -1302,10 +1327,12 @@ public class MainActivity extends ComponentActivity {
             );
             return;
         }
-        if (activeDevice == null && !devices.isEmpty()) {
-            Device startupDevice = findActiveDevice();
-            if (startupDevice != null) openDevice(startupDevice, null);
-            return;
+        if (!clearMachinePickerMode) {
+            Device startupDevice = activeDevice != null ? activeDevice : findActiveDevice();
+            if (startupDevice != null) {
+                openDevice(startupDevice, null);
+                return;
+            }
         }
         super.onBackPressed();
     }
@@ -1454,6 +1481,11 @@ public class MainActivity extends ComponentActivity {
                 ClipboardManager manager = (ClipboardManager) getSystemService(CLIPBOARD_SERVICE);
                 if (manager != null) manager.setPrimaryClip(ClipData.newPlainText("Codex-Turnloom", text));
             });
+        }
+
+        @JavascriptInterface
+        public void showMachinePicker() {
+            runOnUiThread(() -> MainActivity.this.showMachinePicker(false));
         }
 
         @JavascriptInterface
