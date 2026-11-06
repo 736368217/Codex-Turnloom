@@ -286,6 +286,7 @@ const I18N = {
     pickPhoto: "相册",
     pickFile: "文件浏览",
     removeImage: "移除图片",
+    attachedImages: "已添加 {count} 张图片",
     imageTooLarge: "图片过大，单张不能超过 {size} MB。",
     imageUnsupported: "不支持此图片格式，请换 JPEG、PNG、WebP、GIF、HEIC 或 BMP。",
     imageDimensionsInvalid: "图片尺寸不支持，宽高需在 {min}-{max}px 之间。",
@@ -502,6 +503,7 @@ const I18N = {
     pickPhoto: "Photos",
     pickFile: "Files",
     removeImage: "Remove image",
+    attachedImages: "{count} image(s) attached",
     imageTooLarge: "Image is too large. Each image must be under {size} MB.",
     imageUnsupported: "Unsupported image format. Use JPEG, PNG, WebP, GIF, HEIC, or BMP.",
     imageDimensionsInvalid: "Unsupported image dimensions. Width and height must be {min}-{max}px.",
@@ -938,12 +940,17 @@ function renderModelSettings() {
     option.textContent = effortLabel(effort);
     return option;
   }));
-  els.effortSelect.value = state.effort;
-  // The trigger pill is narrow, so show the model alone and keep the provider in the
-  // tooltip. Clipping "model · provider" mid-word read like a rendering fault.
+  // catalog label; keep the full "model · provider" string in the tooltip.
   const modelLabel = selectedModel.label || selectedModel.id;
-  els.modelName.textContent = modelLabel.split(" · ")[0];
-  els.modelSummary.setAttribute("title", modelLabel);
+  const [modelTitle, providerTitle = ""] = modelLabel.split(" · ");
+  const friendlyName = /^[a-z]{2}:[a-z0-9._-]+$/i.test(modelTitle)
+    ? `模型 · ${modelTitle.split(":")[1]?.toUpperCase() || modelTitle}`
+    : modelTitle;
+  els.modelName.textContent = friendlyName;
+  els.modelSummary.setAttribute("title", `${modelLabel} · ${effortLabel(state.effort)}`);
+  els.modelSummary.setAttribute("aria-label", `${t("modelSettings")}：${modelLabel}，${effortLabel(state.effort)}`);
+  if (providerTitle) els.modelName.setAttribute("title", providerTitle);
+  else els.modelName.removeAttribute("title");
   els.modelEffort.textContent = effortLabel(state.effort);
   els.modelSummary.setAttribute("aria-expanded", String(state.modelPanelOpen));
   els.modelSummary.classList.toggle("expanded", state.modelPanelOpen);
@@ -1451,7 +1458,12 @@ async function fileToImageAttachment(file) {
 }
 
 function renderImageAttachments() {
-  els.attachmentTray.hidden = state.imageAttachments.length === 0;
+  const hasAttachments = state.imageAttachments.length > 0;
+  els.attachmentTray.hidden = !hasAttachments;
+  // The keyboard-state CSS used to hide every attachment preview. Keep a class
+  // on the composer so an image remains visible while the user types a caption.
+  els.composerForm.classList.toggle("has-attachments", hasAttachments);
+  els.attachmentTray.setAttribute("aria-label", t("attachedImages", { count: state.imageAttachments.length }));
   els.attachmentTray.innerHTML = state.imageAttachments
     .map(
       (image) => `
@@ -1645,23 +1657,25 @@ function renderThreads() {
     chip.classList.toggle("has-items", n > 0);
   }
 
-  // 主标题栏常驻徽标：抽屉关着也能看见有几条在跑 / 要不要处理。
+  // 主标题栏状态条独立占一行，避免大字模式下压住工具栏/消息列表。
   const headerBtn = document.querySelector("#headerStatusButton");
   const headerText = document.querySelector("#headerStatusText");
+  const statusRow = document.querySelector(".conversation-status-row");
   if (headerBtn && headerText) {
     const urgent = counts.waiting + counts.stale;
-    if (urgent > 0) {
+    if (urgent > 0 || counts.running > 0) {
       headerBtn.hidden = false;
-      headerBtn.className = "header-status-button urgent";
-      headerText.textContent = `${counts.waiting ? `${counts.waiting} 待处理` : `${counts.stale} 疑似停滞`} · ${counts.running} 运行中`;
-    } else if (counts.running > 0) {
-      headerBtn.hidden = false;
-      headerBtn.className = "header-status-button running";
-      headerText.textContent = `${counts.running} 个任务运行中`;
+      headerBtn.className = `header-status-button${urgent > 0 ? " urgent" : " running"}`;
+      const parts = [];
+      if (counts.waiting) parts.push(`${counts.waiting} 待处理`);
+      if (counts.stale) parts.push(`${counts.stale} 需关注`);
+      if (counts.running) parts.push(`${counts.running} 运行中`);
+      headerText.textContent = parts.join(" · ");
     } else {
       headerBtn.hidden = true;
       headerText.textContent = "";
     }
+    if (statusRow) statusRow.hidden = headerBtn.hidden;
   }
 
   const renderThread = (thread) => {
