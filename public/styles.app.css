@@ -1784,3 +1784,276 @@ html.keyboard-open #shell .composer-pod {
   font-size: 0.72em;
   line-height: 1;
 }
+
+/* ══════════════════════════════════════════════════════════════════════════
+   真机截图修复（2026-11-06）：大字 + 软键盘 + 图片 + 长模型名
+   根因：状态徽标挤在标题块、键盘态无条件隐藏附件、模型条被旧层压成透明裸条。
+   这里是最后加载的权威层，只覆盖这四个具体症状。
+   ══════════════════════════════════════════════════════════════════════════ */
+
+#shell .conversation {
+  min-height: 0;
+  overflow: hidden;
+}
+
+#shell .conversation-header {
+  flex: 0 0 auto;
+  flex-wrap: nowrap;
+  align-items: center;
+  gap: 8px;
+  min-height: 56px;
+  max-height: 56px;
+  overflow: visible;
+  padding: 6px 10px;
+}
+
+#shell .conversation-title {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+#shell .conversation-title > h2,
+#shell .conversation-title > p {
+  min-width: 0;
+  max-width: 100%;
+  margin: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+#shell .conversation-title > p {
+  display: none;
+}
+
+#shell .conversation-actions {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  flex-wrap: nowrap;
+  gap: 2px;
+}
+
+#shell .conversation-header .icon-button,
+#shell .conversation-header .toggle {
+  flex: 0 0 40px;
+}
+
+#shell .host-tools-button {
+  width: auto;
+  min-width: 58px;
+  max-width: 72px;
+  padding: 0 8px;
+  white-space: nowrap;
+}
+
+#shell .host-tools-button span {
+  display: inline-block;
+  font-size: 0.78em;
+  line-height: 1;
+  writing-mode: horizontal-tb;
+  text-orientation: mixed;
+}
+
+#shell .conversation-status-row {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  min-height: 0;
+  padding: 0 10px 6px;
+  background: rgba(255, 255, 255, 0.94);
+  border-bottom: 1px solid var(--app-line);
+}
+
+#shell .conversation-status-row[hidden] {
+  display: none !important;
+}
+
+#shell .header-status-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  width: auto;
+  max-width: 100%;
+  min-height: 32px;
+  height: auto;
+  padding: 5px 12px;
+  border: 1px solid #FBD3B5;
+  border-radius: 999px;
+  background: #FFF7ED;
+  color: #9A3412;
+  font-size: clamp(12px, 0.82em, 16px);
+  font-weight: 700;
+  line-height: 1.35;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  text-align: left;
+  box-shadow: 0 1px 2px rgba(120, 53, 15, 0.05);
+}
+
+#shell .header-status-button.running {
+  border-color: rgba(37, 99, 235, 0.2);
+  background: var(--app-brand-soft);
+  color: var(--app-brand-deep);
+}
+
+#shell .header-status-button[hidden] {
+  display: none !important;
+}
+
+#shell .header-status-dot {
+  flex: 0 0 8px;
+}
+
+/* 键盘打开时也不再藏状态徽标：独立一行不会挡住工具栏。 */
+html.keyboard-open #shell .conversation-header .header-status-button,
+html.keyboard-open #shell .conversation-header #threadMeta,
+html.keyboard-open #shell .conversation-header .goal-panel {
+  display: revert;
+}
+
+html.keyboard-open #shell .conversation-header #threadMeta,
+html.keyboard-open #shell .conversation-header .goal-panel {
+  display: none;
+}
+
+html.keyboard-open #shell .conversation-status-row {
+  padding: 0 8px 4px;
+}
+
+html.keyboard-open #shell .header-status-button {
+  min-height: 30px;
+  padding: 4px 10px;
+  font-size: clamp(11px, 0.76em, 14px);
+}
+
+/* 先选图、再点输入框打字时，附件缩略图必须留在可视区。 */
+html.keyboard-open #shell .attachment-tray {
+  display: none;
+}
+
+html.keyboard-open #shell .composer.has-attachments .attachment-tray {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 8px;
+  max-height: 76px;
+  overflow-x: auto;
+  overflow-y: hidden;
+  padding: 4px 2px 6px;
+  border-bottom: 1px solid var(--app-line);
+  scrollbar-width: thin;
+}
+
+#shell .composer.has-attachments .attachment-tray {
+  order: -1;
+}
+
+html.keyboard-open #shell .composer.has-attachments .attachment-item {
+  flex: 0 0 auto;
+  min-width: 0;
+  max-width: 180px;
+  height: 60px;
+}
+
+html.keyboard-open #shell .composer.has-attachments .attachment-item img {
+  width: 52px;
+  height: 52px;
+  object-fit: cover;
+}
+
+html.keyboard-open #shell .composer.has-attachments .attachment-item span {
+  display: none;
+}
+
+html.keyboard-open #shell .composer.has-attachments .composer-input {
+  max-height: 64px !important;
+}
+
+/* 模型选择：明确的可点卡片，主名 + 强度徽标，不再显示裸 slug。 */
+#shell .composer-left {
+  min-width: 0;
+}
+
+#shell .model-widget {
+  min-width: 0;
+}
+
+#shell .model-summary {
+  display: inline-flex !important;
+  align-items: center;
+  justify-content: space-between;
+  flex: 0 1 auto !important;
+  width: auto;
+  min-width: 128px;
+  max-width: min(58vw, 250px);
+  min-height: 40px;
+  padding: 5px 8px 5px 12px;
+  border: 1px solid #D8E1EF !important;
+  border-radius: 999px;
+  background: #F8FAFE !important;
+  color: #26354C !important;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.9), 0 1px 2px rgba(20, 32, 51, 0.04);
+  font-size: clamp(12px, 0.8em, 15px);
+  font-weight: 650;
+  gap: 6px;
+  overflow: visible !important;
+}
+
+#shell .model-summary::after {
+  display: none !important;
+}
+
+#shell .model-summary.expanded {
+  border-color: #A9C2F5 !important;
+  background: #EEF4FF !important;
+  color: #1D4ED8 !important;
+}
+
+#shell .model-name {
+  flex: 0 1 auto;
+  min-width: 0;
+  max-width: 150px;
+  overflow: hidden !important;
+  text-overflow: ellipsis;
+  white-space: nowrap !important;
+  color: #26354C;
+  font-size: 0.95em;
+  letter-spacing: 0;
+}
+
+#shell .model-effort {
+  flex: 0 0 auto;
+  padding: 2px 8px;
+  border: 1px solid #C7D8F7;
+  border-radius: 999px;
+  background: #E8F0FF;
+  color: #1D4ED8;
+  font-size: 0.78em;
+  font-weight: 750;
+  line-height: 1.5;
+  white-space: nowrap;
+}
+
+#shell .composer-buttons {
+  margin-left: auto;
+}
+
+html.large-text #shell .model-summary {
+  min-height: 44px;
+  max-width: min(62vw, 280px);
+}
+
+html.keyboard-open #shell .model-summary {
+  min-height: 40px !important;
+  height: 40px !important;
+  max-width: min(54vw, 230px);
+}
+
+html.keyboard-open #shell .model-name {
+  max-width: 118px;
+  font-size: 0.9em;
+}

@@ -85,3 +85,34 @@ test("new users get a visible more button and thread action button", () => {
   assert.match(app, /const more = event\.target\.closest\("\[data-thread-more\]"\)/);
   assert.match(css, /#shell \.thread-more-button/);
 });
+
+test("status badge has its own row and never covers the toolbar", () => {
+  // 真机截图：大字模式下「2 疑似停滞 · 1 运行中」压到工具栏和消息列表上。
+  assert.match(html, /<\/header>\s*<div id="approvalBanner"[^>]*><\/div>\s*<div class="conversation-status-row"/);
+  assert.match(html, /id="headerStatusButton"[^>]*hidden/);
+  assert.match(css, /#shell \.conversation-status-row\s*\{[^}]*flex:\s*0 0 auto/s);
+  assert.match(css, /#shell \.conversation-status-row\[hidden\]\s*\{\s*display:\s*none\s*!important/s);
+  assert.match(css, /#shell \.conversation-header\s*\{[^}]*flex-wrap:\s*nowrap/s);
+  assert.match(css, /#shell \.host-tools-button span\s*\{[^}]*writing-mode:\s*horizontal-tb/s);
+  assert.match(app, /statusRow\.hidden = headerBtn\.hidden/);
+});
+
+test("typing after image upload keeps the attachment thumbnail visible", () => {
+  // 旧 CSS 无条件 `html.keyboard-open .attachment-tray { display:none }`；
+  // 用户先选图再点输入框，图片就凭空消失。
+  assert.match(app, /composerForm\.classList\.toggle\("has-attachments", hasAttachments\)/);
+  assert.match(app, /attachedImages/);
+  assert.match(css, /html\.keyboard-open #shell \.composer\.has-attachments \.attachment-tray\s*\{[^}]*display:\s*flex/s);
+  assert.match(css, /html\.keyboard-open #shell \.composer\.has-attachments \.attachment-item img\s*\{[^}]*width:\s*52px/s);
+  assert.match(css, /#shell \.composer\.has-attachments \.attachment-tray\s*\{[^}]*order:\s*-1/s);
+});
+
+test("model summary shows a readable card and effort badge, not a bare slug", () => {
+  assert.match(app, /friendlyName[\s\S]*modelTitle\.split\(":"\)\[1\]\?\.toUpperCase/);
+  assert.match(app, /t\("modelSettings"\)/);
+  assert.match(css, /#shell \.model-summary\s*\{[^}]*border:\s*1px solid #D8E1EF\s*!important/s);
+  assert.match(css, /#shell \.model-summary\s*\{[^}]*background:\s*#F8FAFE\s*!important/s);
+  assert.match(css, /#shell \.model-effort\s*\{[^}]*border-radius:\s*999px/s);
+  assert.match(css, /#shell \.model-summary::after\s*\{\s*display:\s*none\s*!important/s);
+  assert.match(css, /html\.keyboard-open #shell \.model-summary\s*\{[^}]*height:\s*40px\s*!important/s);
+});

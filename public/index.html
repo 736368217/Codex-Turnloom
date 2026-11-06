@@ -109,9 +109,6 @@
           <div class="conversation-title">
             <h2 id="threadTitle">选择一个对话</h2>
             <p id="threadMeta">每 3 秒自动同步</p>
-            <button id="headerStatusButton" class="header-status-button" type="button" title="查看会话状态总览" hidden>
-              <span class="header-status-dot"></span><span id="headerStatusText"></span>
-            </button>
             <section id="goalPanel" class="goal-panel" hidden>
               <button class="goal-view" id="goalView" type="button" aria-haspopup="dialog">
                 <span class="goal-heading"><span id="goalLabel">目标</span><span id="goalObjective" class="goal-objective"></span><span id="goalStatus" class="goal-status"></span></span>
@@ -140,6 +137,11 @@
           </div>
         </header>
         <div id="approvalBanner" class="approval-banner" hidden></div>
+        <div class="conversation-status-row" aria-live="polite">
+          <button id="headerStatusButton" class="header-status-button" type="button" title="查看会话状态总览" hidden>
+            <span class="header-status-dot"></span><span id="headerStatusText"></span>
+          </button>
+        </div>
         <div id="hostSheet" class="host-sheet" role="dialog" aria-modal="true" aria-labelledby="hostSheetTitle" hidden>
           <div class="host-sheet-backdrop" data-host-sheet-close></div>
           <div class="host-sheet-card" role="document">
