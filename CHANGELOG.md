@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.17.25 - 2026-11-06
+
+- **修复点击任务栏控制台提示「启动失败：端口 8787 已被 node.exe (PID 18008) 占用」**：旧控制台启动时只检查端口空闲，没有识别由 `Codex-Turnloom Link Watchdog` 在登录时拉起的健康分发器。现在 `ServiceController.start()` 先带正确访问码请求 `/api/health`；`ok:true` 即复用外部服务并记录真实 PID，绝不重复 spawn。只有健康探测失败且端口仍被占用时，才保留原来的端口占用错误。
+- 控制台同时复用守护已建立的同一条 SSH 隧道（按 `127.0.0.1:18786:127.0.0.1:8787` 精确匹配），不再重复拉起 ssh.exe；守护托管的服务与隧道在「停止 / 退出 / 重启」时只解除控制台显示，不会 `taskkill` 掉 8787、两个后端或公网入口。界面文案改为「断开显示 / 重新检查服务 / 守护运行」，不再虚假承诺退出会停服务。
+- 修复后的控制台状态显示 `managed:false, external:true`，健康巡检与进程指标继续工作；`--smoke-test` 会等待完整启动链并输出服务/隧道状态到可选文件。新增 `test/desktop-console-reuse.test.cjs`：覆盖健康复用、先健康后端口、不健康占用仍报错、外部服务不可被误杀、隧道复用、运行时状态和文案契约。
+- 实测：独立 Electron smoke-test `state=running`、`service.pid=18008/external=true`、`tunnel.pid=18304/external=true`、`lastError=null`；重启用户实际点击的 `dist-desktop\win-unpacked\Codex-Turnloom Console.exe` 后日志写入「复用已运行的健康服务」与「复用已建立的 SSH 隧道」；8787/18788/8799 和公网仍健康，watchdog 4/4 healthy，无可见 node 窗口。版本 1.17.25(46)。
+
 ## 1.17.24 - 2026-11-06
 
 - **修复开机弹出 node 黑框**（会话间任务投诉）：旧的 `Codex-Turnloom Link Watchdog` 登录自启直接 Exec `node.exe ... --loop`；node.exe 是控制台程序，`Settings.Hidden=true` 只隐藏任务本身，仍会创建可见控制台 + conhost（实测 PID 10480，开机 10:00:27，窗口 255,247–1248,766）。违反全局 `AGENTS.md` 的 User Notification Preference。

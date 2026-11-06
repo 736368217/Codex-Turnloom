@@ -531,6 +531,7 @@
     const serviceState = snap?.state || "stopped";
     const running = serviceState === "running" || serviceState === "degraded";
     const busy = ["starting", "restarting", "stopping"].includes(serviceState);
+    const external = Boolean(snap?.service?.external);
     const power = $("#btn-power");
     const powerLabel = power?.querySelector("span");
     if (power) {
@@ -538,7 +539,7 @@
       if (running) {
         power.classList.add("danger");
         setButtonIcon(power, "square");
-        if (powerLabel) setText(powerLabel, "停止服务");
+        if (powerLabel) setText(powerLabel, external ? "断开显示" : "停止服务");
         power.disabled = false;
       } else if (busy) {
         power.classList.add("btn");
@@ -556,7 +557,7 @@
     if (restart) {
       restart.disabled = !running;
       const label = restart.querySelector("span");
-      if (label) setText(label, serviceState === "restarting" ? "重启中…" : "重启服务");
+      if (label) setText(label, external ? "重新检查服务" : serviceState === "restarting" ? "重启中…" : "重启服务");
       setButtonIcon(restart, serviceState === "restarting" ? "loader" : "refresh");
     }
     const preview = $("#btn-preview");
@@ -603,18 +604,20 @@
   async function restartService() {
     await runServiceAction(() => api.restartService(), "正在重启服务…");
   }
-
   async function stopServiceWithConfirm() {
+    const external = Boolean(state.runtime?.service?.external);
     const confirmed = await openModal({
-      title: "停止本机服务",
-      message: "停止后，手机端将立即无法访问这台电脑。Codex Desktop 和正在执行的任务不受影响。",
-      confirmLabel: "停止服务",
+      title: external ? "断开控制台与服务" : "停止本机服务",
+      message: external
+        ? "服务由后台守护运行。断开后控制台不再显示其状态，手机端服务仍会继续运行。Codex Desktop 和正在执行的任务不受影响。"
+        : "停止后，手机端将立即无法访问这台电脑。Codex Desktop 和正在执行的任务不受影响。",
+      confirmLabel: external ? "断开显示" : "停止服务",
       cancelLabel: "取消",
       tone: "danger",
       icon: "square"
     });
     if (!confirmed) return;
-    await runServiceAction(() => api.stopService(), "正在停止服务…");
+    await runServiceAction(() => api.stopService(), external ? "正在断开服务显示…" : "正在停止服务…");
   }
 
   async function runServiceAction(action, pendingMessage) {
@@ -2000,14 +2003,14 @@
   function bindAbout() {
     $("#btn-about-open-config")?.addEventListener("click", () => openPathSafe("config", "配置目录"));
     $("#btn-about-open-logs")?.addEventListener("click", () => openPathSafe("logs", "日志目录"));
-    $("#btn-about-copy-config")?.addEventListener("click", () => {
-      copyText(state.app?.configPath, "配置路径已复制");
-    });
     $("#btn-about-quit")?.addEventListener("click", async () => {
+      const external = Boolean(state.runtime?.service?.external);
       const confirmed = await openModal({
         title: "退出 Codex-Turnloom 控制台",
-        message: "退出后将停止本机服务和 SSH 隧道，手机端会立即断开。Codex Desktop 和正在执行的任务不受影响。",
-        confirmLabel: "退出并停止服务",
+        message: external
+          ? "退出控制台不会停止后台守护的服务与 SSH 隧道，手机端仍可访问。Codex Desktop 和正在执行的任务不受影响。"
+          : "退出后将停止本机服务和 SSH 隧道，手机端会立即断开。Codex Desktop 和正在执行的任务不受影响。",
+        confirmLabel: "退出控制台",
         cancelLabel: "取消",
         tone: "danger",
         icon: "power"
