@@ -4066,6 +4066,11 @@ els.modelSummary.addEventListener("click", () => {
   if (els.modelFilter) els.modelFilter.value = "";
   closePluginMentionMenu();
   closeSkillMentionMenu();
+  // Keep the disclosure state truthful even when the model catalog has not
+  // loaded yet (offline preview, first paint, or a failed health request).
+  els.modelSummary.setAttribute("aria-expanded", String(state.modelPanelOpen));
+  els.modelSummary.classList.toggle("expanded", state.modelPanelOpen);
+  els.modelPanel.hidden = !state.modelPanelOpen;
   renderModelSettings();
 });
 

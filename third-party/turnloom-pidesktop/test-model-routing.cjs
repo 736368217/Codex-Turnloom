@@ -188,9 +188,14 @@ check(
   plugin.modelVisionFromRow({ model_id: "m", capabilities_json: '["text","vision"]' }) === true,
 );
 
+
+
+// 2026-11-06 新契约：普通发送绝不触发危险的 session/configure。
+// 用户截图里连续 3 个 PI-Desktop 原生确认框，就是旧桥每轮自动切模型造成的。
 (async () => {
-  // ── 3. 新建会话只走 session/create ─────────────────────────────────────
+  // 新建会话仍按手机端选择的 (providerId, modelId, thinkingLevel) 一次建对。
   calls.length = 0;
+  refuseConfigure = null;
   await plugin.handleAction(
     "start-conversation",
     { input: [{ type: "text", text: "new", text_elements: [] }], model: "77625 free/x-deepseek-v4.1-flash", effort: "high" },
@@ -214,9 +219,8 @@ check(
     JSON.stringify(firstPrompt && firstPrompt.args),
   );
 
-  // ── 4. 换模型：confirm:true 契约成立 ───────────────────────────────────
+  // 普通发送即使带不同模型 slug，也不得弹 configure；会话沿用当前模型。
   calls.length = 0;
-  refuseConfigure = null;
   await plugin.handleAction(
     "thread-follower-start-turn",
     {
@@ -225,51 +229,22 @@ check(
     },
     2,
   );
-  const configure = calls.filter((c) => c.operation === "session/configure");
-  check("换模型走 session/configure", configure.length === 1, JSON.stringify(opsOf()));
-  check(
-    "session/configure 以 [id, config] 调用且用 id",
-    configure[0] &&
-      configure[0].args.length === 2 &&
-      configure[0].args[0] === "sess-healthy" &&
-      configure[0].args[1].providerId === "P2" &&
-      configure[0].args[1].modelId === "deepseek-v4.1-flash" &&
-      configure[0].args[1].mode === "agent" &&
-      configure[0].args[1].thinkingLevel === "high",
-    JSON.stringify(configure[0] && configure[0].args),
-  );
-  check("dangerous 操作带 confirm:true（宿主契约）", configure[0] && configure[0].confirm === true, JSON.stringify(configure[0]));
+  check("普通发送绝不触发 session/configure", calls.every((c) => c.operation !== "session/configure"), JSON.stringify(opsOf()));
+  check("普通发送仍调用 agent/prompt", Boolean(calls.find((c) => c.operation === "agent/prompt")), JSON.stringify(opsOf()));
 
-  // ── 5. 同一模型不重复 configure ────────────────────────────────────────
-  calls.length = 0;
-  await plugin.handleAction(
-    "thread-follower-start-turn",
-    {
-      conversationId: "sess-healthy",
-      turnStart: { request: { threadId: "sess-healthy", input: [{ type: "text", text: "again" }], model: "U2/deepseek-v4.1-flash" } },
-    },
-    2,
-  );
-  check("同一模型不重复 configure（不重复弹确认框）", calls.every((c) => c.operation !== "session/configure"), JSON.stringify(opsOf()));
-
-  // ── 5b. 桥刚重载、内存无快照：数据库已同模型时不能弹确认框 ─────────────
+  // 同一模型 / 桥刚重载 / 解析不出模型：全部保持发送，不弹确认框。
   calls.length = 0;
   await plugin.handleAction(
     "thread-follower-start-turn",
     {
       conversationId: "sess-same",
-      turnStart: { request: { threadId: "sess-same", input: [{ type: "text", text: "first after reload" }], model: "77625 free/x-deepseek-v4.1-flash" } },
+      turnStart: { request: { threadId: "sess-same", input: [{ type: "text", text: "after reload" }], model: "77625 free/x-deepseek-v4.1-flash" } },
     },
     2,
   );
-  check(
-    "内存无快照时按数据库判断，同模型不弹确认框",
-    calls.every((c) => c.operation !== "session/configure"),
-    JSON.stringify(opsOf()),
-  );
-  check("这一轮仍然正常发送", Boolean(calls.find((c) => c.operation === "agent/prompt")), JSON.stringify(opsOf()));
+  check("重载后同模型不弹确认框", calls.every((c) => c.operation !== "session/configure"), JSON.stringify(opsOf()));
+  check("重载后这一轮正常发送", Boolean(calls.find((c) => c.operation === "agent/prompt")), JSON.stringify(opsOf()));
 
-  // ── 6. 解析不出的模型不阻断、也不写坏会话 ─────────────────────────────
   calls.length = 0;
   let threw = null;
   try {
@@ -284,35 +259,10 @@ check(
   } catch (error) {
     threw = error.message;
   }
-  check("解析不出的模型不阻断这一轮", threw === null, String(threw));
+  check("解析不出的模型不阻断发送", threw === null, String(threw));
   check("解析不出的模型不触发 configure", calls.every((c) => c.operation !== "session/configure"), JSON.stringify(opsOf()));
 
-  // ── 7. 级联事故本体：configure 被拒 → 必须中止，绝不 prompt ────────────
-  calls.length = 0;
-  refuseConfigure = "confirm=true is required for session/configure";
-  let refused = null;
-  try {
-    await plugin.handleAction(
-      "thread-follower-start-turn",
-      {
-        conversationId: "sess-healthy",
-        turnStart: { request: { threadId: "sess-healthy", input: [{ type: "text", text: "after-image" }], model: "77625 free/x-deepseek-v4.1-flash" } },
-      },
-      2,
-    );
-  } catch (error) {
-    refused = error.message;
-  }
-  check("configure 被拒时本轮抛错（不再假装发送成功）", Boolean(refused), String(refused));
-  check(
-    "configure 被拒后绝不调用 agent/prompt（级联污染被切断）",
-    calls.every((c) => c.operation !== "agent/prompt"),
-    JSON.stringify(opsOf()),
-  );
-  check("错误里点名模型切换未确认", /未.*确认|confirm/i.test(String(refused)), String(refused));
-  refuseConfigure = null;
-
-  // ── 8. 会话本身已坏：发送前自动修复到可用模型 ──────────────────────────
+  // 坏会话（供应商被禁用）也不在发送时偷偷改配置；只发，避免桌面确认框轰炸。
   calls.length = 0;
   await plugin.handleAction(
     "thread-follower-start-turn",
@@ -322,37 +272,49 @@ check(
     },
     2,
   );
-  const repair = calls.filter((c) => c.operation === "session/configure");
-  const repairPrompt = calls.find((c) => c.operation === "agent/prompt");
-  check("坏会话在发送前被修复（configure 一次）", repair.length === 1, JSON.stringify(opsOf()));
-  check(
-    "修复目标落在启用供应商的可用模型上",
-    repair[0] && plugin.modelPairUsable({ providerId: repair[0].args[1].providerId, modelId: repair[0].args[1].modelId }),
-    JSON.stringify(repair[0] && repair[0].args),
-  );
-  check("修复后普通消息仍可发送", Boolean(repairPrompt), JSON.stringify(opsOf()));
-  check("修复也遵守 confirm:true", repair[0] && repair[0].confirm === true);
+  check("坏会话发送不自动 configure", calls.every((c) => c.operation !== "session/configure"), JSON.stringify(opsOf()));
+  check("坏会话发送不阻断 prompt", Boolean(calls.find((c) => c.operation === "agent/prompt")), JSON.stringify(opsOf()));
 
-  // ── 9. 找不到任何可用模型 → 明确拒绝，不发 prompt ──────────────────────
-  const noModelDb = new DatabaseSync(dbPath);
-  noModelDb.exec("UPDATE providers SET enabled = 0");
-  noModelDb.close();
+  // 显式模型切换仍走 session/configure + confirm:true；这是唯一允许弹框的路径。
   calls.length = 0;
-  let noModelError = null;
+  refuseConfigure = null;
+  await plugin.applyModelIfChanged("sess-healthy", {
+    providerId: "P2",
+    modelId: "deepseek-v4.1-flash",
+    thinkingLevel: "high",
+  });
+  const configure = calls.filter((c) => c.operation === "session/configure");
+  check("显式切换走 session/configure", configure.length === 1, JSON.stringify(opsOf()));
+  check("显式切换以 [id, config] 调用", configure[0] && configure[0].args[0] === "sess-healthy" && configure[0].args[1].modelId === "deepseek-v4.1-flash", JSON.stringify(configure[0] && configure[0].args));
+  check("显式切换遵守 confirm:true", configure[0] && configure[0].confirm === true, JSON.stringify(configure[0]));
+
+  calls.length = 0;
+  await plugin.applyModelIfChanged("sess-healthy", { providerId: "P2", modelId: "deepseek-v4.1-flash" });
+  check("同一模型不重复 configure", calls.every((c) => c.operation !== "session/configure"), JSON.stringify(opsOf()));
+
+  calls.length = 0;
+  refuseConfigure = "confirm=true is required for session/configure";
+  let refused = null;
   try {
-    await plugin.handleAction(
-      "thread-follower-start-turn",
-      {
-        conversationId: "sess-broken",
-        turnStart: { request: { threadId: "sess-broken", input: [{ type: "text", text: "no model" }] } },
-      },
-      2,
-    );
+    await plugin.applyModelIfChanged("sess-same", { providerId: "P3", modelId: "deepseek-v4.1-flash" });
   } catch (error) {
-    noModelError = error.message;
+    refused = error.message;
   }
-  check("无可用模型时明确报错", /没有可用模型|不可用/.test(String(noModelError)), String(noModelError));
-  check("无可用模型时绝不 prompt", calls.every((c) => c.operation !== "agent/prompt"), JSON.stringify(opsOf()));
+  check("显式切换被拒时抛错", Boolean(refused), String(refused));
+  check("显式切换被拒不 prompt", calls.every((c) => c.operation !== "agent/prompt"), JSON.stringify(opsOf()));
+  check("错误里点名未确认", /未.*确认|confirm/i.test(String(refused)), String(refused));
+
+  // 拒绝后 10 分钟冷却：连续发送不得再次触发确认框。
+  calls.length = 0;
+  let cooldownError = null;
+  try {
+    await plugin.applyModelIfChanged("sess-same", { providerId: "P3", modelId: "deepseek-v4.1-flash" });
+  } catch (error) {
+    cooldownError = error.message;
+  }
+  check("拒绝冷却内不再弹 configure", calls.every((c) => c.operation !== "session/configure"), JSON.stringify(opsOf()));
+  check("拒绝冷却给出明确错误", Boolean(cooldownError), String(cooldownError));
+  refuseConfigure = null;
 
   fs.rmSync(outDir, { recursive: true, force: true });
   console.log(`\n${fails.length} failure(s)`);

@@ -141,3 +141,11 @@ test("model panel separates provider/model and effort, and balances composer con
   assert.match(css, /html\.keyboard-open #shell \.effort-chip\s*\{[^}]*min-width:\s*56px/s);
   assert.match(css, /#shell \.composer-left \.icon-button\.attach-button[\s\S]{0,220}width:\s*40px/s);
 });
+
+test("hidden model panel is invisible on initial load and never eats the center tap", () => {
+  assert.match(html, /id="modelPanel"[^>]*hidden/);
+  assert.match(css, /#shell \[hidden\]\s*\{\s*display:\s*none\s*!important/s);
+  assert.match(css, /#shell \.model-panel\[hidden\][\s\S]{0,500}display:\s*none\s*!important/s);
+  assert.match(app, /els\.modelPanel\.hidden = !state\.modelPanelOpen/);
+  assert.match(app, /state\.modelPanelOpen = !state\.modelPanelOpen/);
+});
