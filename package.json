@@ -1,6 +1,6 @@
 {
   "name": "codex-turnloom",
-  "version": "1.17.25",
+  "version": "1.17.26",
   "private": true,
   "main": "desktop/main.cjs",
   "description": "Private, self-hosted mobile control desk for Codex Desktop.",
@@ -29,6 +29,7 @@
   "scripts": {
     "check": "node --check server.js && node --check backends/http-backend.js && node --check public/app.js && node --check public/auth.js && node --check public/markdown.js && node --check public/threads.js",
     "test": "node --test",
+    "verify:ci": "node scripts/verify-ci.mjs",
     "start": "node server.js",
     "start:readonly": "node server.js --readonly",
     "device:qr": "node scripts/print-device-qr.js",
