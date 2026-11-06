@@ -1621,7 +1621,7 @@ async function applyModelIfChanged(sessionId, settings) {
     configureFailed.add(key);
     // 冷却 45 秒后再允许重试：用户可能刚在桌面端授权，或换了可用模型。
     // 但绝不能让一次失败永久封锁这条会话。
-    setTimeout(() => configureFailed.delete(key), 45000).unref?.();
+    setTimeout(() => configureFailed.delete(key), 600000).unref?.();
     const reason = error?.message || String(error);
     log(`session ${sessionId} model switch to ${wanted} refused:`, reason);
     throw new Error(
@@ -1711,8 +1711,10 @@ async function handleAction(method, params, version) {
     const attachments = attachmentsFromTurnInput(input, conversationId);
     if (!conversationId) throw new Error("start-turn without conversationId");
     if (!text && !attachments.length) throw new Error("start-turn without text");
-    const current = currentSessionModel(conversationId);
-    await ensureSendableModel(conversationId, turnSettingsFromRequest(params, current?.providerId || ""));
+    // Never auto-run session/configure here. It is a dangerous host operation
+    // and PI Desktop shows a native confirm dialog on every change. The phone
+    // already sends the selected model for new sessions; existing sessions must
+    // keep their current model unless the user explicitly requests a switch.
     // agent/prompt 的 schema 只有 sessionId/content/attachments：模型只能靠上面的
     // configure 落地，往这里塞模型字段会被静默忽略（历史上还因此写坏过会话）。
     await invokeHost("agent/prompt", {
@@ -1796,7 +1798,7 @@ async function handleAction(method, params, version) {
     const text = textFromTurnInput(input);
     const attachments = attachmentsFromTurnInput(input, conversationId);
     if (conversationId && (text || attachments.length)) {
-      await ensureSendableModel(conversationId, {});
+      // Intentionally no ensureSendableModel(): no dangerous configure on send.
       await invokeHost("agent/prompt", {
         sessionId: conversationId,
         content: text,
@@ -1808,7 +1810,7 @@ async function handleAction(method, params, version) {
   // 真调用宿主压缩；旧实现只回 ok，手机端按了没有任何效果。
   if (method === "thread-follower-compact-thread") {
     if (!conversationId) throw new Error("compact without conversationId");
-    await ensureSendableModel(conversationId, {});
+    // Intentionally no ensureSendableModel(): no dangerous configure on send.
     const result = await invokeHost("agent/compact", { sessionId: conversationId });
     return { ok: true, result };
   }
