@@ -12,7 +12,8 @@ import {
   renameSync,
   statSync,
   unlinkSync,
-  writeFileSync
+  writeFileSync,
+  rmSync
 } from "node:fs";
 import http from "node:http";
 import net from "node:net";
@@ -4456,7 +4457,7 @@ async function getMessages(id, { limit = DEFAULT_MESSAGE_LIMIT, fullHistory = fa
   if (!liveMessages.length) {
     const messages = await decorateMessageFiles(parsed.messages, id, thread);
     const limited = limitMessagesForClient(messages, parsedStatus, limit, before);
-    return await finalizeMessagesResponse(id, { thread, goal, ...parsed, status: parsedStatus, messages, ...includePartialHistoryAvailability(limited, parsed.partial) });
+    return await finalizeMessagesResponse(id, { thread, goal, ...parsed, status: parsedStatus, ...limited });
   }
   const status = {
     ...parsedStatus,
@@ -5255,6 +5256,25 @@ function queueUnavailableStatus(error) {
   };
 }
 
+/** IPC 抖动时保留上一次成功读到的共享队列，绝不偷偷写第二套影子队列。 */
+const lastKnownNativeQueue = new Map();
+function nativeQueueFallbackStatus(threadId, error, store = lastKnownNativeQueue) {
+  const previous = store.get(String(threadId || ""));
+  if (!previous) return queueUnavailableStatus(error);
+  return {
+    ...previous,
+    queueError: error?.message || String(error),
+    queueUnavailable: true,
+    queueStale: true,
+    queueSource: "pi-native"
+  };
+}
+
+function normalizedDeliveryState(value) {
+  const state = String(value || "").toLowerCase();
+  return ["queued", "sending", "awaitingConfirmation", "failed"].includes(state) ? state : "queued";
+}
+
 function nativeQueuedSendStatusFromEntries(threadId, entries) {
   const rows = Array.isArray(entries) ? entries : [];
   return {
@@ -5274,8 +5294,12 @@ function nativeQueuedSendStatusFromEntries(threadId, entries) {
         imageCount: images.length,
         images,
         enqueuedAt: entry?.createdAt || new Date().toISOString(),
-        lastError: null,
-        deliveryState: "queued",
+        lastError: entry?.lastError ? String(entry.lastError) : null,
+        deliveryState: normalizedDeliveryState(entry?.deliveryState),
+        nextAttemptAtMs: Number(entry?.nextAttemptAtMs) || 0,
+        model: String(entry?.model || ""),
+        effort: String(entry?.effort || ""),
+        principal: String(entry?.principal || ""),
         position: Number(entry?.position) || index + 1,
         priority: entry?.priority == null ? null : Number(entry.priority),
         source: "pi-native"
@@ -5289,21 +5313,46 @@ async function queuedSendStatus(threadId) {
   if (!PI_NATIVE_QUEUE || legacyQueueMode) return localQueuedSendStatus(threadId);
   try {
     const result = await requestNativeQueue("list", threadId, {}, 8000);
-    return nativeQueuedSendStatusFromEntries(threadId, result.entries);
+    const status = nativeQueuedSendStatusFromEntries(threadId, result.entries);
+    lastKnownNativeQueue.set(String(threadId), status);
+    return status;
   } catch (error) {
     if (useLegacyQueueFallback(error)) {
       markLegacyQueueMode();
       return localQueuedSendStatus(threadId);
     }
     logError(`[queue] PI native queue unavailable: ${error?.message || error}`);
-    return queueUnavailableStatus(error);
+    return nativeQueueFallbackStatus(threadId, error);
   }
+}
+
+const drainingNativeQueues = new Set();
+const nativeQueuedSendDrainTimers = new Map();
+const nativeQueueIdleObservations = new Map();
+
+function scheduleNativeQueuedSendDrain(threadId, delayMs = 250) {
+  const key = String(threadId || "");
+  if (!PI_NATIVE_QUEUE || legacyQueueMode || !key || drainingNativeQueues.has(key) || nativeQueuedSendDrainTimers.has(key)) return;
+  const timer = setTimeout(() => {
+    nativeQueuedSendDrainTimers.delete(key);
+    void drainNativeQueuedSend(key);
+  }, Math.max(0, Number(delayMs) || 0));
+  nativeQueuedSendDrainTimers.set(key, timer);
+  timer.unref?.();
 }
 
 async function finalizeMessagesResponse(threadId, response) {
   const queueStatus = await queuedSendStatus(threadId);
+  // 服务端持久回显：只要该会话存在 receipt，就把暂存附件补到对应纯文本用户消息。
+  // 不消费、不删 receipt；刷新和换设备读到的是同一份本地文件。
+  let messages = Array.isArray(response?.messages) ? response.messages : null;
+  if (messages) {
+    const restored = restoreLocalImages(messages, readImageReceipts(threadId), threadId);
+    messages = restored.messages;
+  }
   const result = {
     ...response,
+    ...(messages ? { messages } : {}),
     status: {
       ...(response.status || {}),
       ...queueStatus
@@ -5311,6 +5360,8 @@ async function finalizeMessagesResponse(threadId, response) {
   };
   if (localQueueDrainEnabled() && !result.status.thinking && queueStatus.queueLength) {
     scheduleLocalQueuedSendDrain(threadId);
+  } else if (!localQueueDrainEnabled() && !result.status.thinking && queueStatus.queueLength && !result.status.queueStale) {
+    scheduleNativeQueuedSendDrain(threadId);
   }
   return result;
 }
@@ -5328,6 +5379,7 @@ async function enqueueSend(threadId, text, images = [], turnSettings = {}, clien
         effort: turnSettings?.effort || ""
       });
       const status = await queuedSendStatus(key);
+      scheduleNativeQueuedSendDrain(key);
       const item = status.queuedMessages.find((entry) => entry.id === String(result?.id || "")) || status.queuedMessages.at(-1) || null;
       return {
         ok: true,
@@ -5711,6 +5763,109 @@ async function drainQueuedSend(threadId) {
     }
   }
 }
+/** 权威队列的附件只允许本会话 scratch 下的 turnloom-* 图片。 */
+function safeQueuedNativeAttachment(threadId, attachment, root = PI_DATA_ROOT) {
+  const name = path.basename(String(attachment?.path || ""));
+  if (!/^turnloom-[A-Za-z0-9._-]+\.(jpg|jpeg|png|webp)$/i.test(name)) return null;
+  const sessionRoot = path.resolve(root, "scratch", String(threadId || ""));
+  const candidate = path.resolve(sessionRoot, name);
+  if (!candidate.startsWith(sessionRoot + path.sep) || !existsSync(candidate)) return null;
+  const mimeType = String(attachment?.mimeType || "").trim().toLowerCase();
+  if (!SUPPORTED_SEND_IMAGE_MIME_TYPES.has(mimeType)) return null;
+  return { path: candidate, name: String(attachment?.name || name), mimeType };
+}
+
+function nativeQueueImages(threadId, attachments) {
+  const images = [];
+  for (const attachment of Array.isArray(attachments) ? attachments : []) {
+    const safe = safeQueuedNativeAttachment(threadId, attachment);
+    if (!safe) continue;
+    const bytes = readFileSync(safe.path);
+    images.push({ name: safe.name, mimeType: safe.mimeType, data: bytes.toString("base64"), size: bytes.byteLength });
+  }
+  return images;
+}
+
+async function drainNativeQueuedSend(threadId) {
+  const key = String(threadId || "");
+  if (!key || drainingNativeQueues.has(key) || legacyQueueMode) return;
+  drainingNativeQueues.add(key);
+  try {
+    const current = await getMessages(key, { limit: 20, fullHistory: true });
+    const idleDecision = queuedSendIdleDecision(
+      Boolean(current.status?.thinking),
+      nativeQueueIdleObservations.get(key),
+      Date.now()
+    );
+    if (current.status?.thinking) {
+      nativeQueueIdleObservations.delete(key);
+      return;
+    }
+    nativeQueueIdleObservations.set(key, idleDecision.idleSinceMs);
+    if (!idleDecision.ready) {
+      scheduleNativeQueuedSendDrain(key, idleDecision.retryAfterMs);
+      return;
+    }
+    nativeQueueIdleObservations.delete(key);
+    const claim = await requestNativeQueue("claim", key, {}, 12000);
+    if (!claim?.claimed || !claim?.entry) return;
+    const entry = claim.entry;
+    const images = nativeQueueImages(key, entry.attachments);
+    try {
+      const result = await sendToCodex(entry.content, key, images, {
+        mode: "start",
+        model: entry.model,
+        effort: entry.effort,
+        clientRequestId: `native-queue-${entry.id}`
+      });
+      await requestNativeQueue("state", key, {
+        itemId: entry.id,
+        deliveryState: "queued",
+        lastError: "",
+        nextAttemptAtMs: 0
+      }, 8000).catch(() => {});
+      logInfo(`[queue] native item sent: ${entry.id} turn=${result?.turnId || "-"}`);
+    } catch (error) {
+      const message = String(error?.message || error || "排队发送失败");
+      const nextAttemptAtMs = Date.now() + 30_000;
+      // claim 已原子 DELETE。失败时以原 id 幂等写回权威表，再把失败原因标到同一 id；
+      // 消息绝不丢，也不会由两个消费者重复下发。
+      let restoredId = entry.id;
+      try {
+        const restored = await requestNativeQueue("push", key, {
+          content: entry.content,
+          images,
+          clientRequestId: `native-queue-${entry.id}`,
+          restoreId: entry.id,
+          model: entry.model || "",
+          effort: entry.effort || ""
+        }, 12000);
+        restoredId = String(restored?.id || restored?.entry?.id || entry.id);
+      } catch (restoreError) {
+        logError(`[queue] native item restore failed: ${entry.id}: ${restoreError?.message || restoreError}`);
+      }
+      await requestNativeQueue("state", key, {
+        itemId: restoredId,
+        deliveryState: "failed",
+        lastError: message,
+        nextAttemptAtMs
+      }, 8000).catch(() => {});
+      recordNotice(key, { severity: "error", title: "排队发送失败", content: message, source: "queue" });
+    }
+  } catch (error) {
+    logError(`[queue] native drain ${key}: ${error?.message || error}`);
+  } finally {
+    drainingNativeQueues.delete(key);
+    try {
+      const status = await queuedSendStatus(key);
+      if (status.queueLength && !status.queueStale) {
+        const next = Math.max(1500, (status.queuedMessages[0]?.nextAttemptAtMs || 0) - Date.now());
+        scheduleNativeQueuedSendDrain(key, Math.min(next, 30_000));
+      }
+    } catch {}
+  }
+}
+
 
 function normalizeSendImages(images) {
   if (!Array.isArray(images)) return [];
@@ -7667,6 +7822,33 @@ const server = http.createServer(async (req, res) => {
       sendJson(res, 200, await steerQueuedSend(body.threadId, body.itemId));
       return;
     }
+    if (req.method === "POST" && url.pathname === "/api/queue/retry") {
+      if (!requireAuthorized(req, res, url)) return;
+      const body = await readJsonBody(req);
+      const threadId = String(body?.threadId || "").trim();
+      const itemId = String(body?.itemId || "").trim();
+      if (!threadId || !itemId) {
+        sendJson(res, 400, { error: "threadId and itemId are required" });
+        return;
+      }
+      if (PI_NATIVE_QUEUE && !legacyQueueMode) {
+        await requestNativeQueue("retry", threadId, { itemId }, 8000);
+        scheduleNativeQueuedSendDrain(threadId, 250);
+      } else {
+        const item = setQueuedSendDeliveryState(threadId, itemId, {
+          deliveryState: "queued",
+          lastError: null,
+          nextAttemptAtMs: 0
+        });
+        if (!item) {
+          sendJson(res, 409, { error: "排队消息已发送或已移除，请刷新后查看。" });
+          return;
+        }
+        scheduleLocalQueuedSendDrain(threadId, 250);
+      }
+      sendJson(res, 200, { ok: true, threadId, itemId, ...(await queuedSendStatus(threadId)) });
+      return;
+    }
     if (req.method === "GET" && url.pathname === "/api/queue/image") {
       if (!requireAuthorized(req, res, url)) return;
       const threadId = String(url.searchParams.get("threadId") || "");
@@ -7699,6 +7881,20 @@ const server = http.createServer(async (req, res) => {
         }
       }
       return sendJson(res, 404, { error: "Queued image not found" });
+    }
+    if (req.method === "GET" && url.pathname === "/api/thread-image") {
+      if (!requireAuthorized(req, res, url)) return;
+      const threadId = String(url.searchParams.get("threadId") || "");
+      const name = String(url.searchParams.get("name") || "");
+      const safePath = safeThreadScratchPath(threadId, name);
+      if (!safePath || !existsSync(safePath)) {
+        sendJson(res, 404, { error: "Image not found" });
+        return;
+      }
+      const mimeType = imageMimeTypeFromName(name);
+      res.writeHead(200, { "content-type": mimeType, "cache-control": "private, no-store", "x-content-type-options": "nosniff" });
+      createReadStream(safePath).pipe(res);
+      return;
     }
     if (req.method === "POST" && url.pathname === "/api/new-thread") {
       if (!requireAuthorized(req, res, url)) return;
@@ -7980,8 +8176,132 @@ if (IS_MAIN) {
   }
   });
 }
+/* ── 带图消息持久回显 ────────────────────────────────────────────────────
+ * 宿主先写纯文本 rollout、后异步补附件时，刷新/换设备会看到 images=0。
+ * 发送成功后只在会话 scratch 留一份不含 base64/token 的 receipt，读取历史时
+ * 按 turnId / 文本 / 时间把本地暂存图片补回用户消息。
+ */
+const IMAGE_RECEIPTS_FILE = "turnloom-image-receipts.json";
+const IMAGE_RECEIPT_LIMIT = 200;
+const IMAGE_RECEIPT_MAX_BYTES = 1024 * 1024;
+const IMAGE_RECEIPT_MATCH_WINDOW_MS = 10 * 60 * 1000;
+
+function safeThreadScratchPath(threadId, name, root = PI_DATA_ROOT) {
+  const safeThreadId = String(threadId || "");
+  const safeName = path.basename(String(name || ""));
+  if (!/^[A-Za-z0-9._-]+$/.test(safeThreadId)) return null;
+  if (!/^turnloom-[A-Za-z0-9._-]+\.(jpg|jpeg|png|webp|gif|bmp|heic)$/i.test(safeName)) return null;
+  const sessionRoot = path.resolve(root, "scratch", safeThreadId);
+  const candidate = path.resolve(sessionRoot, safeName);
+  if (!candidate.startsWith(sessionRoot + path.sep)) return null;
+  return candidate;
+}
+function imageMimeTypeFromName(name) {
+  const ext = path.extname(String(name || "")).toLowerCase();
+  if (ext === ".jpg" || ext === ".jpeg") return "image/jpeg";
+  if (ext === ".png") return "image/png";
+  if (ext === ".webp") return "image/webp";
+  if (ext === ".gif") return "image/gif";
+  if (ext === ".bmp") return "image/bmp";
+  if (ext === ".heic") return "image/heic";
+  return "application/octet-stream";
+}
+
+
+function imageReceiptsPath(threadId, root = PI_DATA_ROOT) {
+  const dir = path.resolve(root, "scratch", String(threadId || ""));
+  return path.join(dir, IMAGE_RECEIPTS_FILE);
+}
+
+function readImageReceipts(threadId, root = PI_DATA_ROOT) {
+  try {
+    const parsed = JSON.parse(readFileSync(imageReceiptsPath(threadId, root), "utf8"));
+    return Array.isArray(parsed) ? parsed.slice(-IMAGE_RECEIPT_LIMIT) : [];
+  } catch {
+    return [];
+  }
+}
+
+function appendImageReceipt(threadId, text, images, turnId = null, root = PI_DATA_ROOT) {
+  if (!Array.isArray(images) || !images.length) return null;
+  const dir = path.dirname(imageReceiptsPath(threadId, root));
+  mkdirSync(dir, { recursive: true });
+  const receipt = {
+    id: `${Date.now()}-${randomUUID().slice(0, 8)}`,
+    turnId: String(turnId || ""),
+    text: String(text || "").slice(0, 120),
+    createdAtMs: Date.now(),
+    images: images.slice(0, MAX_SEND_IMAGES).map((image) => ({
+      name: path.basename(String(image?.name || "")),
+      mimeType: String(image?.mimeType || ""),
+      size: Number(image?.size) || 0
+    }))
+  };
+  const receipts = [...readImageReceipts(threadId, root), receipt].slice(-IMAGE_RECEIPT_LIMIT);
+  const data = JSON.stringify(receipts);
+  if (Buffer.byteLength(data, "utf8") > IMAGE_RECEIPT_MAX_BYTES) return null;
+  const target = imageReceiptsPath(threadId, root);
+  const temp = `${target}.${process.pid}.${Date.now()}.tmp`;
+  try {
+    writeFileSync(temp, data, "utf8");
+    renameSync(temp, target);
+  } finally {
+    try { rmSync(temp, { force: true }); } catch {}
+  }
+  return receipt;
+}
+
+function messageTextForRestore(message) {
+  const content = message?.content ?? message?.text ?? "";
+  return String(Array.isArray(content) ? content.map((part) => part?.text || "").join("\n") : content).trim().slice(0, 120);
+}
+
+function restoreLocalImages(messages, receipts, threadId) {
+  const source = Array.isArray(messages) ? messages : [];
+  const pending = Array.isArray(receipts) ? receipts.slice() : [];
+  const consumedIds = new Set();
+  const output = source.map((message) => {
+    if (message?.role !== "user") return message;
+    if (message?.images?.length || message?.localImages?.length) return message;
+    const messageTime = Date.parse(message?.timestamp || "") || 0;
+    const text = messageTextForRestore(message);
+    let index = pending.findIndex((receipt) => receipt?.turnId && String(receipt.turnId) === String(message?.turnId || ""));
+    if (index < 0) {
+      index = pending.findIndex((receipt) => {
+        const sameText = String(receipt?.text || "") === text;
+        const delta = messageTime && Number(receipt?.createdAtMs) ? Math.abs(messageTime - Number(receipt.createdAtMs)) : 0;
+        return sameText && delta <= IMAGE_RECEIPT_MATCH_WINDOW_MS;
+      });
+    }
+    if (index < 0) return message;
+    const [receipt] = pending.splice(index, 1);
+    // images 是前端期待的 data URL 形状；localImages 保留文件名/路径元数据。
+    // 服务端不可访问客户端 token，URL 只写到此处，客户端渲染时再 withAuthToken。
+    const images = (Array.isArray(receipt.images) ? receipt.images : []).map((image) => {
+      const url = `/api/thread-image?threadId=${encodeURIComponent(threadId)}&name=${encodeURIComponent(image?.name || "")}`;
+      return {
+        name: String(image?.name || ""),
+        mimeType: String(image?.mimeType || ""),
+        size: Number(image?.size) || 0,
+        url,
+        dataUrl: url
+      };
+    });
+    if (!images.length) return message;
+    consumedIds.add(String(receipt.id || ""));
+    return { ...message, images, localImages: images, restoredAttachments: true };
+  });
+  return { messages: output, consumedIds: [...consumedIds], remainingReceipts: pending };
+}
+
 
 export {
+  nativeQueueFallbackStatus,
+  safeQueuedNativeAttachment,
+  restoreLocalImages,
+  safeThreadScratchPath,
+  appendImageReceipt,
+  readImageReceipts,
   attemptCodexDesktopRefresh,
   withAssetVersions,
   authProfileFromRaw,

@@ -137,6 +137,92 @@ const TURNLOOM_QUEUE_PRINCIPAL = "turnloom-mobile";
 const MAX_NATIVE_QUEUE_ITEMS = 50;
 const nativeQueueLocks = new Map();
 
+/**
+ * `turn_queue` 没有冗余状态列，排队项的 model / effort / 失败原因 / 下次重试时间
+ * 写在会话 scratch 的 sidecar 中。它只记录元数据，不保存图片 base64，也不改变
+ * PI 的权威表结构；宿主升级或迁移数据库都不会丢字段。
+ */
+const NATIVE_QUEUE_META_FILE = "turnloom-queue-meta.json";
+const NATIVE_QUEUE_META_LIMIT = 200;
+const MAX_NATIVE_QUEUE_META_BYTES = 1024 * 1024;
+const NATIVE_QUEUE_BUSY_RETRIES = 5;
+const nativeQueueMetaLocks = new Map();
+
+function nativeQueueMetaPath(sessionId) {
+  return path.join(PI_DATA_ROOT, "scratch", String(sessionId || ""), NATIVE_QUEUE_META_FILE);
+}
+
+function nativeQueueMetaLock(sessionId, execute) {
+  const key = String(sessionId || "");
+  const previous = nativeQueueMetaLocks.get(key) || Promise.resolve();
+  const operation = previous.catch(() => {}).then(execute);
+  nativeQueueMetaLocks.set(key, operation);
+  operation.finally(() => {
+    if (nativeQueueMetaLocks.get(key) === operation) nativeQueueMetaLocks.delete(key);
+  }).catch(() => {});
+  return operation;
+}
+
+function readNativeQueueMeta(sessionId) {
+  try {
+    const parsed = JSON.parse(fs.readFileSync(nativeQueueMetaPath(sessionId), "utf8"));
+    return parsed && typeof parsed === "object" && !Array.isArray(parsed) ? parsed : {};
+  } catch {
+    return {};
+  }
+}
+
+function writeNativeQueueMeta(sessionId, value) {
+  const dir = path.join(PI_DATA_ROOT, "scratch", String(sessionId || ""));
+  fs.mkdirSync(dir, { recursive: true });
+  const target = nativeQueueMetaPath(sessionId);
+  const temp = `${target}.${process.pid}.${Date.now()}.tmp`;
+  const data = JSON.stringify(value);
+  if (Buffer.byteLength(data, "utf8") > MAX_NATIVE_QUEUE_META_BYTES) {
+    throw new Error("queue metadata is too large");
+  }
+  try {
+    fs.writeFileSync(temp, data, "utf8");
+    fs.renameSync(temp, target);
+  } finally {
+    try { fs.rmSync(temp, { force: true }); } catch {}
+  }
+}
+
+function nativeQueueMetaFor(sessionId, itemId) {
+  const meta = readNativeQueueMeta(sessionId)[String(itemId || "")];
+  return meta && typeof meta === "object" && !Array.isArray(meta) ? meta : {};
+}
+
+function putNativeQueueMeta(sessionId, itemId, patch) {
+  return nativeQueueMetaLock(sessionId, () => {
+    const all = readNativeQueueMeta(sessionId);
+    const key = String(itemId || "");
+    const next = { ...(all[key] || {}), ...patch };
+    const entries = Object.entries({ ...all, [key]: next }).slice(-NATIVE_QUEUE_META_LIMIT);
+    writeNativeQueueMeta(sessionId, Object.fromEntries(entries));
+    return next;
+  });
+}
+
+function dropNativeQueueMeta(sessionId, itemIds) {
+  const ids = new Set((Array.isArray(itemIds) ? itemIds : [itemIds]).map((id) => String(id || "")));
+  return nativeQueueMetaLock(sessionId, () => {
+    const all = readNativeQueueMeta(sessionId);
+    for (const id of ids) delete all[id];
+    writeNativeQueueMeta(sessionId, all);
+  });
+}
+
+function isSqliteBusy(error) {
+  const message = String(error?.message || error || "");
+  return /SQLITE_BUSY|database is locked/i.test(message);
+}
+
+function sleepSync(ms) {
+  Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, Math.max(1, ms | 0));
+}
+
 function nativeQueueSessionId(params) {
   const value = String(params?.sessionId || params?.threadId || params?.conversationId || "").trim();
   if (!value) throw new Error("queue request without sessionId");
@@ -186,7 +272,12 @@ function nativeQueueRows(sessionId = "", db = null) {
   }
 }
 
-function nativeQueueEntry(row, index = 0) {
+function normalizedQueueMetaState(value) {
+  const state = String(value || "").toLowerCase();
+  return ["queued", "sending", "failed"].includes(state) ? state : "queued";
+}
+
+function nativeQueueEntry(row, index = 0, meta = null) {
   let attachments = [];
   try {
     const parsed = JSON.parse(row.attachments_json || "[]");
@@ -194,20 +285,28 @@ function nativeQueueEntry(row, index = 0) {
   } catch {
     attachments = [];
   }
+  const itemMeta = meta && typeof meta === "object" && !Array.isArray(meta) ? meta : {};
   return {
     id: String(row.id),
     sessionId: String(row.session_id),
+    principal: String(row.principal || ""),
     content: String(row.content || ""),
     attachments,
     position: index + 1,
     ...(row.priority == null ? {} : { priority: Number(row.priority) }),
     createdAt: new Date(Number(row.created_at) || Date.now()).toISOString(),
+    model: String(itemMeta.model || ""),
+    effort: String(itemMeta.effort || ""),
+    deliveryState: normalizedQueueMetaState(itemMeta.deliveryState),
+    lastError: itemMeta.lastError ? String(itemMeta.lastError) : null,
+    nextAttemptAtMs: Number(itemMeta.nextAttemptAtMs) || 0,
     source: "pi-native"
   };
 }
 
 function serializedNativeQueue(rows, sessionId = "") {
-  return orderNativeQueueRows(rows).map((row, index) => nativeQueueEntry(row, index));
+  const metas = readNativeQueueMeta(sessionId);
+  return orderNativeQueueRows(rows).map((row, index) => nativeQueueEntry(row, index, metas[String(row.id)]));
 }
 
 function withNativeQueueLock(key, execute) {
@@ -222,25 +321,38 @@ function withNativeQueueLock(key, execute) {
 
 /** 写 pi.sqlite 时用 BEGIN IMMEDIATE 把「读位置 → 写行」变成一个原子事务。 */
 function nativeQueueWrite(execute) {
-  const db = nativeQueueDb();
-  try {
-    db.exec("BEGIN IMMEDIATE");
-    const result = execute(db);
-    db.exec("COMMIT");
-    return result;
-  } catch (error) {
-    try { db.exec("ROLLBACK"); } catch {}
-    throw error;
-  } finally {
-    db.close();
+  let lastError = null;
+  for (let attempt = 0; attempt <= NATIVE_QUEUE_BUSY_RETRIES; attempt += 1) {
+    const db = nativeQueueDb();
+    let transactionOpen = false;
+    try {
+      db.exec("BEGIN IMMEDIATE");
+      transactionOpen = true;
+      const result = execute(db);
+      db.exec("COMMIT");
+      transactionOpen = false;
+      return result;
+    } catch (error) {
+      if (transactionOpen) {
+        try { db.exec("ROLLBACK"); } catch {}
+      }
+      lastError = error;
+      // SQLITE_BUSY 是并发写队列的正常瞬时错误：busy_timeout 之外再指数退避，
+      // 而不是让手机端误以为消息没有入队。其他错误立即抛出。
+      if (!isSqliteBusy(error) || attempt >= NATIVE_QUEUE_BUSY_RETRIES) throw error;
+    } finally {
+      db.close();
+    }
+    sleepSync(Math.min(240, 20 * (2 ** attempt)));
   }
+  throw lastError || new Error("queue write failed");
 }
 
 async function nativeQueuePush(params) {
   const sessionId = nativeQueueSessionId(params);
   const content = nativeQueueText(params);
   const idempotencyKey = String(params?.clientRequestId || params?.idempotencyKey || "").trim() || crypto.randomUUID();
-  return withNativeQueueLock(sessionId, () => nativeQueueWrite((db) => {
+  const result = await withNativeQueueLock(sessionId, () => nativeQueueWrite((db) => {
     const existing = db.prepare(
       "SELECT * FROM turn_queue WHERE session_id = ? AND principal = ? AND idempotency_key = ?"
     ).get(sessionId, TURNLOOM_QUEUE_PRINCIPAL, idempotencyKey);
@@ -250,14 +362,16 @@ async function nativeQueuePush(params) {
     const count = db.prepare("SELECT COUNT(*) AS count, COALESCE(MAX(position), 0) AS position FROM turn_queue WHERE session_id = ?").get(sessionId);
     if (Number(count?.count) >= MAX_NATIVE_QUEUE_ITEMS) throw new Error("QUEUE_FULL");
     const attachments = nativeQueueAttachments(params, sessionId);
+    const model = String(params?.model || "");
+    const effort = String(params?.effort || "");
     const inputHash = crypto.createHash("sha256").update(JSON.stringify({
       content,
       attachments,
       sessionId,
-      model: String(params?.model || ""),
-      effort: String(params?.effort || "")
+      model,
+      effort
     })).digest("hex");
-    const id = crypto.randomUUID();
+    const id = String(params?.restoreId || "").trim() || crypto.randomUUID();
     const position = Number(count?.position || 0) + 1;
     const createdAt = Date.now();
     db.prepare(`INSERT INTO turn_queue (
@@ -275,9 +389,15 @@ async function nativeQueuePush(params) {
       content,
       position,
       createdAt: new Date(createdAt).toISOString(),
-      source: "pi-native"
+      source: "pi-native",
+      meta: { model, effort, deliveryState: "queued", nextAttemptAtMs: 0 }
     };
   }));
+  if (result?.meta) {
+    await putNativeQueueMeta(sessionId, result.id, result.meta);
+    delete result.meta;
+  }
+  return result;
 }
 
 function nativeQueueList(params) {
@@ -289,14 +409,20 @@ function nativeQueueList(params) {
   };
 }
 
-function nativeQueueRemove(params) {
+async function nativeQueueRemove(params) {
   const sessionId = nativeQueueSessionId(params);
   const itemId = String(params?.itemId || params?.id || "").trim();
   const wantsDraft = Boolean(params?.edit);
-  return withNativeQueueLock(sessionId, () => {
+  // 「取消全部」只允许清掉手机端自己排的项；桌面端 principal 的队列不能被手机误删。
+  // 显式单条取消保留跨 principal 能力，因为手机端能看见那一整份共享队列。
+  const scopeOwnPrincipal = !itemId && params?.ownPrincipalOnly !== false;
+  return withNativeQueueLock(sessionId, async () => {
     const result = nativeQueueWrite((db) => {
       const rows = nativeQueueRows(sessionId, db);
-      const selected = itemId ? rows.filter((row) => String(row.id) === itemId) : rows;
+      const selected = rows.filter((row) => {
+        if (scopeOwnPrincipal && String(row.principal || "") !== TURNLOOM_QUEUE_PRINCIPAL) return false;
+        return itemId ? String(row.id) === itemId : true;
+      });
       if (selected.length) {
         const ids = selected.map((row) => String(row.id));
         const placeholders = ids.map(() => "?").join(",");
@@ -321,17 +447,18 @@ function nativeQueueRemove(params) {
         entries: serializedNativeQueue(nativeQueueRows(sessionId, db), sessionId)
       };
     });
+    await dropNativeQueueMeta(sessionId, result.selected.map((row) => String(row.id)));
     return {
       ok: true,
       cancelled: result.selected.length,
       cancelledIds: result.selected.map((row) => String(row.id)),
+      ownPrincipalOnly: scopeOwnPrincipal,
       ...(result.draft ? { draft: result.draft } : {}),
       entries: result.entries,
       source: "pi-native"
     };
   });
 }
-
 function nativeQueueSteer(params) {
   const sessionId = nativeQueueSessionId(params);
   const itemId = String(params?.itemId || params?.id || "").trim();
@@ -344,10 +471,7 @@ function nativeQueueSteer(params) {
       // PI 的 priority 小值先执行；把现有优先项整体后移一格，再把选中项置为 1。
       db.prepare("UPDATE turn_queue SET priority = priority + 1 WHERE session_id = ? AND priority IS NOT NULL").run(sessionId);
       db.prepare("UPDATE turn_queue SET priority = 1 WHERE session_id = ? AND id = ?").run(sessionId, itemId);
-      return {
-        text: String(row.content || ""),
-        entries: serializedNativeQueue(nativeQueueRows(sessionId, db), sessionId)
-      };
+      return { text: String(row.content || ""), entries: serializedNativeQueue(nativeQueueRows(sessionId, db), sessionId) };
     });
     return {
       ok: true,
@@ -360,6 +484,27 @@ function nativeQueueSteer(params) {
     };
   });
 }
+
+/** 服务端 drain 在确认发送 / 失败 / 重试时更新权威队列可见的 sidecar 状态。 */
+function nativeQueueSetState(params) {
+  const sessionId = nativeQueueSessionId(params);
+  const itemId = String(params?.itemId || params?.id || "").trim();
+  if (!itemId) throw new Error("queue state without itemId");
+  const state = normalizedQueueMetaState(params?.deliveryState || "queued");
+  return putNativeQueueMeta(sessionId, itemId, {
+    deliveryState: state,
+    lastError: state === "failed" ? String(params?.lastError || "排队发送失败").slice(0, 500) : null,
+    nextAttemptAtMs: Number(params?.nextAttemptAtMs) || 0,
+    ...(params?.model ? { model: String(params.model).slice(0, 120) } : {}),
+    ...(params?.effort ? { effort: String(params.effort).slice(0, 40) } : {})
+  });
+}
+
+/** 显式重试：清掉失败原因，让服务端 drain 下一次立即处理这一条。 */
+function nativeQueueRetry(params) {
+  return nativeQueueSetState({ ...params, deliveryState: "queued", lastError: "", nextAttemptAtMs: Date.now() });
+}
+
 
 /**
  * 软删除（从列表移除）。
@@ -1311,6 +1456,50 @@ function textFromTurnInput(input) {
  * 第二步又试过只传 {kind,data,mimeType}，宿主读 attachment.path.trim() 直接抛
  * "Cannot read properties of undefined (reading 'trim')"。两条都记在这里。
  */
+function imageReceiptsPath(sessionId) {
+  return path.join(PI_DATA_ROOT, "scratch", String(sessionId || ""), "turnloom-image-receipts.json");
+}
+
+/**
+ * 宿主 agent/prompt 先把纯文本写进 rollout，附件可能只存在于模型的本轮输入。
+ * 在真正落盘的桥里记一份 receipt：图片的真实暂存文件名、文本与 turnId，
+ * 不含 base64 / token；服务端读历史时据此把图片补回对应用户消息。
+ */
+function appendImageReceipt(sessionId, text, attachments, turnId = "") {
+  if (!attachments.length) return;
+  const dir = path.join(PI_DATA_ROOT, "scratch", String(sessionId || ""));
+  fs.mkdirSync(dir, { recursive: true });
+  const target = imageReceiptsPath(sessionId);
+  let receipts = [];
+  try {
+    const parsed = JSON.parse(fs.readFileSync(target, "utf8"));
+    if (Array.isArray(parsed)) receipts = parsed.slice(-199);
+  } catch {}
+  receipts.push({
+    id: `${Date.now()}-${crypto.randomUUID().slice(0, 8)}`,
+    turnId: String(turnId || ""),
+    text: String(text || "").slice(0, 120),
+    createdAtMs: Date.now(),
+    images: attachments.map((attachment) => {
+      const name = path.basename(String(attachment.path || ""));
+      return {
+        name,
+        mimeType: String(attachment.mimeType || ""),
+        size: (() => { try { return fs.statSync(path.join(dir, name)).size; } catch { return 0; } })()
+      };
+    })
+  });
+  const data = JSON.stringify(receipts.slice(-200));
+  if (Buffer.byteLength(data, "utf8") > 1024 * 1024) return;
+  const temp = `${target}.${process.pid}.${Date.now()}.tmp`;
+  try {
+    fs.writeFileSync(temp, data, "utf8");
+    fs.renameSync(temp, target);
+  } finally {
+    try { fs.rmSync(temp, { force: true }); } catch {}
+  }
+}
+
 function attachmentsFromTurnInput(input, sessionId) {
   if (!Array.isArray(input)) return [];
   const out = [];
@@ -1669,6 +1858,40 @@ async function ensureSendableModel(sessionId, settings = {}) {
   }
 }
 
+/**
+ * 原子认领权威队列首条。宿主插件没有官方 queuePush API，直接写 DB 不会发
+ * agentQueueChanged；Turnloom 服务端负责 drain。认领即 DELETE + sidecar 锁，
+ * 保证同一条消息不会被宿主与 Turnloom 两个消费者重复发送。
+ */
+function nativeQueueClaim(params) {
+  const sessionId = nativeQueueSessionId(params);
+  return withNativeQueueLock(sessionId, () => {
+    const claimed = nativeQueueWrite((db) => {
+      const rows = nativeQueueRows(sessionId, db).filter((row) => String(row.principal || "") === TURNLOOM_QUEUE_PRINCIPAL);
+      const row = rows.find((entry) => {
+        const meta = nativeQueueMetaFor(sessionId, entry.id);
+        return normalizedQueueMetaState(meta.deliveryState) !== "failed"
+          && (!Number(meta.nextAttemptAtMs) || Number(meta.nextAttemptAtMs) <= Date.now());
+      });
+      if (!row) return null;
+      const entry = nativeQueueEntry(row, 0, nativeQueueMetaFor(sessionId, row.id));
+      db.prepare("DELETE FROM turn_queue WHERE session_id = ? AND principal = ? AND id = ?").run(
+        sessionId,
+        TURNLOOM_QUEUE_PRINCIPAL,
+        entry.id
+      );
+      return { entry, entries: serializedNativeQueue(nativeQueueRows(sessionId, db), sessionId) };
+    });
+    if (!claimed) return { ok: true, claimed: false, entry: null, entries: [], source: "pi-native" };
+    void putNativeQueueMeta(sessionId, claimed.entry.id, {
+      deliveryState: "sending",
+      claimedAtMs: Date.now(),
+      lastError: null
+    }).catch(() => {});
+    return { ok: true, claimed: true, entry: claimed.entry, entries: claimed.entries, source: "pi-native" };
+  });
+}
+
 /** 返回 {result} 或抛错；Codex 侧直接代理。 */
 async function handleAction(method, params, version) {
   const conversationId = conversationIdOf(params);
@@ -1678,6 +1901,9 @@ async function handleAction(method, params, version) {
   if (method === "turnloom/queue/list") return nativeQueueList(params);
   if (method === "turnloom/queue/remove") return nativeQueueRemove(params);
   if (method === "turnloom/queue/steer") return nativeQueueSteer(params);
+  if (method === "turnloom/queue/state") return nativeQueueSetState(params);
+  if (method === "turnloom/queue/retry") return nativeQueueRetry(params);
+  if (method === "turnloom/queue/claim") return nativeQueueClaim(params);
   // 宿主能力：手机端经白名单访问 PI 的只读能力与显式确认的写能力。
   if (method === "turnloom/host/invoke") return hostInvoke(params);
   if (method === "turnloom/approvals/list") return hostApprovals(params);
@@ -1701,27 +1927,18 @@ async function handleAction(method, params, version) {
   // The app-server handshake must be answered, otherwise the client reports
   // "unsupported method: initialize" and silently falls back to spawning codex CLI.
   if (method === "initialize") return { clientId: "pidesktop-bridge" };
-  // The app-server handshake must be answered, otherwise the client reports
-  // "unsupported method: initialize" and silently falls back to spawning codex CLI.
-  if (method === "initialize") return { clientId: "pidesktop-bridge" };
 
   if (method === "thread-follower-start-turn") {
     const input = params?.turnStart?.request?.input;
     const text = textFromTurnInput(input);
     const attachments = attachmentsFromTurnInput(input, conversationId);
     if (!conversationId) throw new Error("start-turn without conversationId");
-    if (!text && !attachments.length) throw new Error("start-turn without text");
-    // Never auto-run session/configure here. It is a dangerous host operation
-    // and PI Desktop shows a native confirm dialog on every change. The phone
-    // already sends the selected model for new sessions; existing sessions must
-    // keep their current model unless the user explicitly requests a switch.
-    // agent/prompt 的 schema 只有 sessionId/content/attachments：模型只能靠上面的
-    // configure 落地，往这里塞模型字段会被静默忽略（历史上还因此写坏过会话）。
     await invokeHost("agent/prompt", {
       sessionId: conversationId,
       content: text,
       ...(attachments.length ? { attachments } : {}),
     });
+    appendImageReceipt(conversationId, text, attachments);
     return { conversationId, turnId: null };
   }
   // 新建对话：先让 PI-Desktop 建会话，再把首条消息发进去。
@@ -1754,6 +1971,7 @@ async function handleAction(method, params, version) {
         content: text,
         ...(attachments.length ? { attachments } : {}),
       });
+      appendImageReceipt(id, text, attachments);
     }
     return { conversationId: id, turnId: null };
   }
@@ -1804,6 +2022,7 @@ async function handleAction(method, params, version) {
         content: text,
         ...(attachments.length ? { attachments } : {}),
       });
+      appendImageReceipt(conversationId, text, attachments);
     }
     return { ok: true };
   }
