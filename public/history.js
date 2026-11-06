@@ -48,15 +48,56 @@ function messageImageCount(message) {
     (Array.isArray(message?.localImages) ? message.localImages.length : 0);
 }
 
+function pendingMessageForRealUser(pendingMessages, message, threadId) {
+  return (Array.isArray(pendingMessages) ? pendingMessages : []).find((pending) => {
+    if (pending?.threadId !== threadId) return false;
+    if (!visibleContentMatches(pending.sentContent || pending.content, message.content)) return false;
+    return normalizedMessageContent(message.content) || messageImageCount(message) > 0;
+  });
+}
+
+function restorePendingImages(realMessage, pendingMessage) {
+  if (!pendingMessage) return realMessage;
+  const pendingImages = [
+    ...(Array.isArray(pendingMessage.images) ? pendingMessage.images : []),
+    ...(Array.isArray(pendingMessage.localImages) ? pendingMessage.localImages : [])
+  ];
+  if (!pendingImages.length) return realMessage;
+  const realImages = [
+    ...(Array.isArray(realMessage.images) ? realMessage.images : []),
+    ...(Array.isArray(realMessage.localImages) ? realMessage.localImages : [])
+  ];
+  if (realImages.length >= pendingImages.length) return realMessage;
+  // PI rollout can persist the text before it persists the staged attachment.
+  // Keep the optimistic preview attached to the real user row until the host
+  // reports its own image, otherwise a successfully sent photo disappears.
+  return {
+    ...realMessage,
+    images: [...(Array.isArray(realMessage.images) ? realMessage.images : []), ...pendingImages],
+    localImages: Array.isArray(realMessage.localImages) ? realMessage.localImages : [],
+    restoredAttachments: true
+  };
+}
+
 export function reconcilePendingMessages(pendingMessages, messages, threadId) {
-  const realUsers = (Array.isArray(messages) ? messages : []).filter((message) => message?.role === "user");
+  const realMessages = Array.isArray(messages) ? messages : [];
+  const realUsers = realMessages.filter((message) => message?.role === "user");
+  const restored = realMessages.map((message) => message?.role === "user"
+    ? restorePendingImages(message, pendingMessageForRealUser(pendingMessages, message, threadId))
+    : message);
+  Object.defineProperty(restored, "restoredPendingImages", { value: true, enumerable: false });
   return (Array.isArray(pendingMessages) ? pendingMessages : []).filter((pendingMessage) => {
     if (pendingMessage?.threadId !== threadId) return true;
     const pendingContent = pendingMessage.sentContent || pendingMessage.content;
     const pendingImages = messageImageCount(pendingMessage);
     return !realUsers.some((message) => {
       if (!visibleContentMatches(pendingContent, message.content)) return false;
-      return normalizedMessageContent(message.content) ? true : messageImageCount(message) >= pendingImages;
+      if (normalizedMessageContent(message.content)) {
+        // A text-only rollout row is not enough to discard an image-bearing
+        // optimistic message; PI may write the image separately.
+        return pendingImages === 0 || messageImageCount(message) >= pendingImages;
+      }
+      return messageImageCount(message) >= pendingImages;
     });
   });
 }

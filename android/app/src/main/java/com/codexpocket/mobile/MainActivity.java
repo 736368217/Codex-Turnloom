@@ -151,6 +151,7 @@ public class MainActivity extends ComponentActivity {
     public static final String EXTRA_THREAD_ID = "codex_pocket_thread_id";
     private static final String REMINDERS_KEY = "thread_reminders";
     private static final String ONBOARDING_KEY = "turnloom_onboarding_seen_v1";
+    private static final String ACTIVE_DEVICE_URL_KEY = "turnloom_active_device_url_v1";
     private volatile boolean updateDownloadRunning = false;
     private static final int NOTIFICATION_PERMISSION_REQUEST = 7102;
 
@@ -247,12 +248,27 @@ public class MainActivity extends ComponentActivity {
         root.setOrientation(LinearLayout.VERTICAL);
         root.setBackgroundColor(PAPER);
         setContentView(root);
-        showMachinePicker();
+        Device startupDevice = findActiveDevice();
+        if (startupDevice != null) {
+            openDevice(startupDevice, pendingNotificationThreadId);
+            pendingNotificationThreadId = null;
+        } else {
+            showMachinePicker();
+        }
         if (!getSharedPreferences(PREFS, MODE_PRIVATE).getBoolean(ONBOARDING_KEY, false)) {
             root.post(() -> showWelcomeGuide(true));
         }
         clearLegacyReminderNotification();
         ReminderScheduler.sync(this);
+    }
+
+    private Device findActiveDevice() {
+        String activeUrl = getSharedPreferences(PREFS, MODE_PRIVATE).getString(ACTIVE_DEVICE_URL_KEY, "");
+        if (activeUrl.isEmpty()) return null;
+        for (Device device : devices) {
+            if (device.url.equalsIgnoreCase(activeUrl) && device.token != null && !device.token.isBlank()) return device;
+        }
+        return null;
     }
 
     @Override
@@ -284,6 +300,7 @@ public class MainActivity extends ComponentActivity {
 
     private void showMachinePicker() {
         activeDevice = null;
+        getSharedPreferences(PREFS, MODE_PRIVATE).edit().remove(ACTIVE_DEVICE_URL_KEY).apply();
         destroyWebView();
         root.removeAllViews();
         getWindow().setStatusBarColor(Color.WHITE);
@@ -507,6 +524,7 @@ public class MainActivity extends ComponentActivity {
             return;
         }
         activeDevice = device;
+        getSharedPreferences(PREFS, MODE_PRIVATE).edit().putString(ACTIVE_DEVICE_URL_KEY, device.url).apply();
         root.removeAllViews();
         // The WebView is the primary workspace, so keep the native chrome quiet and light.
         getWindow().setStatusBarColor(Color.WHITE);
@@ -519,7 +537,7 @@ public class MainActivity extends ComponentActivity {
         topBar.setGravity(Gravity.CENTER_VERTICAL);
         topBar.setPadding(dp(8), dp(2), dp(8), dp(2));
         topBar.setBackgroundColor(Color.WHITE);
-        Button back = iconButton("‹", "返回电脑列表", v -> showMachinePicker());
+        Button back = iconButton("‹", "切换电脑", v -> showMachinePicker());
         back.setTextSize(30);
         back.setTextColor(INK);
         topBar.addView(back, new LinearLayout.LayoutParams(dp(44), dp(44)));
@@ -1272,20 +1290,21 @@ public class MainActivity extends ComponentActivity {
     @Override
     public void onBackPressed() {
         if (webView != null) {
-            final boolean[] handled = {false};
             webView.evaluateJavascript(
                 "(typeof window.codexPocketHandleBack === 'function' && window.codexPocketHandleBack()) ? 'true' : 'false'",
                 value -> {
-                    if (!"true".equals(value) && !"\"true\"".equals(value)) {
-                        showMachinePicker();
-                    }
+                    if ("true".equals(value) || "\"true\"".equals(value)) return;
+                    // Chat is the home page. A normal back press keeps the selected
+                    // computer and backgrounds the app; the picker is only reached
+                    // through the explicit switch-computer button or first-run setup.
+                    moveTaskToBack(true);
                 }
             );
             return;
         }
-        BackNavigation.Action action = BackNavigation.action(activeDevice != null);
-        if (action == BackNavigation.Action.SHOW_COMPUTER_PICKER) {
-            showMachinePicker();
+        if (activeDevice == null && !devices.isEmpty()) {
+            Device startupDevice = findActiveDevice();
+            if (startupDevice != null) openDevice(startupDevice, null);
             return;
         }
         super.onBackPressed();

@@ -2057,3 +2057,166 @@ html.keyboard-open #shell .model-name {
   max-width: 118px;
   font-size: 0.9em;
 }
+
+/* 队列默认只占一行：展开后才显示逐条预览/图片/操作。 */
+#shell .queue-status-bar {
+  max-height: 44px;
+  overflow: hidden;
+  padding: 3px 8px;
+  border-radius: 12px;
+}
+
+#shell .queue-status-bar.is-expanded {
+  max-height: min(32dvh, 260px);
+  overflow-y: auto;
+}
+
+#shell .queue-status-header {
+  min-height: 36px;
+  gap: 6px;
+}
+
+#shell .queue-toggle-button {
+  display: inline-flex;
+  flex: 1 1 auto;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  max-width: 100%;
+  min-height: 36px;
+  padding: 0 4px;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-weight: 700;
+  text-align: left;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+#shell .queue-toggle-button > span {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+#shell .queue-toggle-chevron {
+  flex: 0 0 auto;
+  font-size: 13px;
+  transition: transform 160ms ease;
+}
+
+#shell .queue-status-bar.is-expanded .queue-toggle-chevron {
+  transform: rotate(90deg);
+}
+
+#shell .queue-status-list {
+  max-height: min(24dvh, 210px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+html.keyboard-open #shell .queue-status-bar {
+  display: flex;
+  max-height: 40px;
+  overflow: hidden;
+}
+
+html.keyboard-open #shell .queue-status-bar.is-expanded {
+  max-height: 24dvh;
+  overflow-y: auto;
+}
+
+/* 模型面板：供应商/模型 → 强度，分段标题让层级一眼可读。 */
+#shell .model-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-height: min(62dvh, 520px);
+  overflow-y: auto;
+}
+
+#shell .model-step-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 28px;
+  color: #26354C;
+  font-size: 0.82em;
+  font-weight: 800;
+  letter-spacing: 0.02em;
+}
+
+#shell .model-step-title b {
+  display: inline-grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 999px;
+  background: #E8F0FF;
+  color: #1D4ED8;
+  font-size: 12px;
+}
+
+#shell .model-row {
+  display: grid !important;
+  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-areas: "name capability" "provider capability";
+  align-items: center;
+  column-gap: 8px;
+  min-height: 58px;
+}
+
+#shell .model-row-name { grid-area: name; min-width: 0; }
+#shell .model-row-provider { grid-area: provider; min-width: 0; }
+#shell .model-row-capability {
+  grid-area: capability;
+  margin-left: 0 !important;
+  align-self: center;
+  transform: none !important;
+}
+
+#shell .effort-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  max-height: none;
+  overflow: visible;
+}
+
+html.keyboard-open #shell .model-panel {
+  max-height: min(38dvh, 300px);
+}
+
+html.keyboard-open #shell .effort-chip {
+  min-width: 56px;
+}
+
+/* 输入区：附件、@、发送/停止同尺寸层级。 */
+#shell .composer-left .icon-button.attach-button,
+#shell .composer-left .plugin-picker-button,
+#shell .composer-left .mention-button {
+  flex: 0 0 40px;
+  width: 40px;
+  min-width: 40px;
+  height: 40px;
+  min-height: 40px;
+}
+
+#shell .composer-buttons .send-button,
+#shell .composer-buttons .stop-button {
+  flex: 0 0 44px;
+  width: 44px;
+  min-width: 44px;
+  height: 44px;
+  min-height: 44px;
+}
+
+#shell .composer-left .attach-icon,
+#shell .composer-left .plugin-picker-button svg,
+#shell .composer-left .mention-button svg {
+  width: 20px;
+  height: 20px;
+}
