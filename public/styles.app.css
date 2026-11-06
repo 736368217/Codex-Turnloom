@@ -2232,6 +2232,106 @@ html.keyboard-open #shell .effort-chip {
   height: 20px;
 }
 
+/* 新增规则放在权威 [hidden] 层之前；末尾那条 #shell [hidden] 仍最后生效。 */
+/* 新增规则放在权威 [hidden] 层之前；末尾那条 #shell [hidden] 仍最后生效。 */
+
+/* 三级选择第一级：供应商 chips 横向滚动，44px 触控高度。
+   大字/键盘态仍可滚动，绝不撑破窄屏 composer，也不覆盖 [hidden] 契约。 */
+#shell .provider-chips {
+  display: flex;
+  flex-wrap: nowrap;
+  gap: 6px;
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  margin-top: 2px;
+  padding: 2px 1px 6px;
+  overflow-x: auto;
+  overflow-y: hidden;
+  overscroll-behavior-x: contain;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: thin;
+}
+
+#shell .provider-chip {
+  flex: 0 0 auto;
+  min-height: 44px;
+  max-width: min(52vw, 190px);
+  padding: 0 14px;
+  border: 1px solid var(--app-line);
+  border-radius: 999px;
+  background: var(--app-surface);
+  color: var(--app-ink-2);
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 650;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  cursor: pointer;
+}
+
+#shell .provider-chip.active {
+  background: var(--app-brand-soft);
+  border-color: rgba(37, 99, 235, 0.25);
+  color: var(--app-brand-deep);
+}
+
+#shell .model-filter-note {
+  margin: 0 0 4px;
+  color: var(--app-ink-3);
+  font-size: 11px;
+  line-height: 1.4;
+}
+
+html.large-text #shell .provider-chips,
+html.keyboard-open #shell .provider-chips {
+  max-width: 100%;
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+  -webkit-overflow-scrolling: touch;
+}
+
+html.large-text #shell .provider-chip {
+  min-height: 44px;
+  max-width: min(62vw, 220px);
+}
+
+html.keyboard-open #shell .provider-chip {
+  min-height: 44px;
+}
+
+/* 队列失败原因与显式重试：折叠一行也要看见「N 条 · 1 失败」。 */
+#shell .queue-status-bar.has-failure {
+  border-color: rgba(220, 38, 38, 0.34);
+  background: rgba(254, 242, 242, 0.96);
+}
+
+#shell .queue-status-error {
+  display: block;
+  margin-top: 2px;
+  color: #991b1b;
+  font-size: 11px;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+
+#shell .queue-retry-button {
+  min-height: 40px;
+  padding: 0 10px;
+  border: 1px solid rgba(37, 99, 235, 0.25);
+  border-radius: 10px;
+  background: var(--app-brand-soft);
+  color: var(--app-brand-deep);
+  font-size: 12px;
+  font-weight: 650;
+  white-space: nowrap;
+}
+
+html.large-text #shell .queue-status-error {
+  font-size: 12px;
+}
+
 /* P0：最后加载的权威层再次钉死 hidden 契约。
    2026-11-06 真机事故：模型面板 HTML 带 hidden，但上一轮追加的
    #shell .model-panel { display:flex } 覆盖了浏览器默认隐藏，

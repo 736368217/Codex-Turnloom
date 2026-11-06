@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.17.30 - 2026-11-07
+
+- **逐项审计后的剩余 feat 全部落地，不再用文案冒充完成**：真正“供应商 → 模型 → 思考强度”三级选择（供应商 chips 实际过滤模型、搜索跨供应商、当前模型/供应商写入会话草稿）；草稿文字/图片/插件/技能/模型/强度/供应商持久化到 localStorage，限制 30 个会话、1.5MB 与单图 300KB，pagehide/visibilitychange 保存，发送成功后清理。
+- **网页分级返回栈**：聊天页为根，`hostSheet / modelPanel / goalEditDialog / threadContextMenu / imagePickerMenu / mention / plugin / skill / queueExpanded / sidebar` 逐层返回；Android 硬件返回由 `codexPocketHandleBack()` 统一消费，栈空才后台化。CDP 真鼠标验证：加载态 panel `hidden=true / display:none / 0 by 0`、中心命中 `#messageList`、输入框命中 `textarea`；真实点击打开 `display:flex / aria-expanded=true`；硬件返回后关闭且中心/输入框恢复。新增空模型目录时同步隐藏状态的回归，防止弹层被提前 return 钉住。
+- **共享队列执行闭环**：复核宿主 asar / Rust host-core 后确认 `session.queuePush` / `agentQueuePush` 不在插件 `CONTROL_OPERATION_SPECS`，且 `agentQueueChanged` 来自宿主内部 onQueueChange，直接写 SQLite 不保证当前 Composer 即时 UI。因此保持 `turn_queue` 单一权威，由桥 `turnloom/queue/claim` 在 `BEGIN IMMEDIATE` 事务内原子出队、服务端安全 drain 调用真实 `sendToCodex()`；失败以原 id/幂等键写回并标记失败，避免双发/丢消息。`claim/state/retry` 均经 IPC 回归。
+- **队列状态可见与审查项收口**：`model/effort/失败原因/下次重试时间/principal` 经会话 scratch sidecar 持久化；手机端折叠摘要显示“N 条 · 1 失败 / 连接中断”，展开显示错误、下次重试时间与显式「重试」按钮，`/api/queue/retry` 清失败并重调度；`nativeQueueRemove` 清空全部只清 `turnloom-mobile`；`SQLITE_BUSY` 指数退避；IPC 抖动保留上次已知队列且绝不写第二套影子队列。普通发送继续不触发 dangerous `configure`。
+- **带图消息服务端持久回显**：桥在真实暂存 `turnloom-*.jpg` 成功后写原子、限量、无 base64/token 的 receipt；服务端 `/api/threads/:id/messages` 统一按 turnId / 文本 / 10 分钟窗口补 `/api/thread-image` 图片，严格限制会话 scratch 路径与图片扩展名，前端支持本地 URL 图片渲染；刷新/换设备不再只依赖客户端乐观状态。
+- 回归：`test/server.test.js` 新增队列字段/抖动/路径安全/receipt 匹配与原子写入，`test/ui-host-overlays.test.js` 钉住三级选择、草稿、返回栈、hidden、失败重试与桥契约；六套桥测试 + `test-shared-queue-v2.cjs` 全绿；CDP 真鼠标/盒模型检定通过。
+
 ## 1.17.29 - 2026-11-06
 
 - **P0：修复巨大模型选择窗口从加载起挡住整个手机界面**。上一轮在最后加载的 styles.app.css 里追加了 #shell .model-panel { display:flex }，却没有给 [hidden] 例外，正好复犯了项目记忆中的 hidden 遮罩事故。CDP 加载态实测：隐藏面板 display:flex、638×292、屏幕中心命中 #modelPanel，输入框被压到下方。现在最后一层强制 #shell [hidden] { display:none !important }，并显式列出 model-panel 等所有浮层；修复后加载态 display:none / 0×0，中心命中 #messageList，输入框中心命中 #composerInput。真实鼠标四步：加载隐藏 → 点模型按钮打开 → 再点关闭 → 输入框恢复可点，全部通过。新增 test/ui-host-overlays.test.js 契约，共 14/14。

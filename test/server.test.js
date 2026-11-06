@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
@@ -41,6 +41,12 @@ import {
   enqueueSend,
   localQueuedSendStatus,
   nativeQueuedSendStatusFromEntries,
+  nativeQueueFallbackStatus,
+  safeQueuedNativeAttachment,
+  restoreLocalImages,
+  safeThreadScratchPath,
+  appendImageReceipt,
+  readImageReceipts,
   ipcVersionForMethod,
   ipcVersionForRequest,
   interruptTurnAndConfirm,
@@ -1739,3 +1745,102 @@ test("system font scaling keeps text readable and layout scrollable", () => {
   assert.match(css, /#shell \.message-list \{\s*flex: 1 1 auto/, "content area must remain scrollable");
 });
 
+
+test("native queue preserves failure metadata and last known state during IPC jitter", () => {
+  const status = nativeQueuedSendStatusFromEntries("thread-a", [{
+    id: "q1",
+    content: "带图排队",
+    attachments: [{ name: "a.jpg", path: "D:/x/a.jpg", mimeType: "image/jpeg" }],
+    model: "cn:hy4",
+    effort: "high",
+    deliveryState: "failed",
+    lastError: "No provider configured",
+    nextAttemptAtMs: 1790000000000,
+    principal: "turnloom-mobile"
+  }]);
+  assert.equal(status.queueLength, 1);
+  assert.equal(status.queuedMessages[0].deliveryState, "failed");
+  assert.match(status.queuedMessages[0].lastError, /No provider configured/);
+  assert.equal(status.queuedMessages[0].model, "cn:hy4");
+  assert.equal(status.queuedMessages[0].effort, "high");
+  assert.equal(status.queuedMessages[0].nextAttemptAtMs, 1790000000000);
+  const store = new Map([["thread-a", status]]);
+  const stale = nativeQueueFallbackStatus("thread-a", new Error("IPC timeout"), store);
+  assert.equal(stale.queueLength, 1, "IPC 抖动不能把已知队列清零");
+  assert.equal(stale.queueStale, true);
+  assert.match(stale.queueError, /IPC timeout/);
+  const missing = nativeQueueFallbackStatus("thread-b", new Error("IPC timeout"), store);
+  assert.equal(missing.queueLength, 0);
+  assert.equal(missing.queueStale, undefined);
+});
+
+test("queued native attachments are restricted to this session scratch directory", () => {
+  const root = mkdtempSync(path.join(os.tmpdir(), "turnloom-native-image-"));
+  const dir = path.join(root, "scratch", "thread-a");
+  mkdirSync(dir, { recursive: true });
+  const file = path.join(dir, "turnloom-1.jpg");
+  writeFileSync(file, Buffer.from([0xff, 0xd8, 0xff, 0xd9]));
+  const safe = safeQueuedNativeAttachment("thread-a", { path: file, name: "photo.jpg", mimeType: "image/jpeg" }, root);
+  assert.equal(safe?.path, path.resolve(file));
+  assert.equal(safeQueuedNativeAttachment("thread-a", { path: path.join(root, "secret.jpg") }, root), null);
+  assert.equal(safeQueuedNativeAttachment("thread-a", { path: file, mimeType: "application/pdf" }, root), null);
+  assert.equal(safeThreadScratchPath("../escape", "turnloom-1.jpg", root), null);
+  assert.equal(safeThreadScratchPath("thread-a", "../../etc/passwd", root), null);
+  rmSync(root, { recursive: true, force: true });
+});
+
+test("image receipts restore attachments once and respect time, text and existing images", () => {
+  const now = Date.now();
+  const receipts = [
+    { id: "r1", turnId: "turn-1", text: "请看图", createdAtMs: now, images: [{ name: "turnloom-1.jpg", mimeType: "image/jpeg", size: 4 }] },
+    { id: "r2", turnId: "", text: "另一张", createdAtMs: now + 1000, images: [{ name: "turnloom-2.png", mimeType: "image/png", size: 4 }] }
+  ];
+  const messages = [
+    { role: "user", turnId: "turn-1", content: "请看图", images: [], localImages: [] },
+    { role: "user", content: "另一张", timestamp: new Date(now + 1500).toISOString(), images: [], localImages: [] },
+    { role: "user", content: "已有图", images: ["data:image/png;base64,AAAA"], localImages: [] }
+  ];
+  const restored = restoreLocalImages(messages, receipts, "thread-a");
+  assert.equal(restored.messages[0].restoredAttachments, true);
+  assert.match(restored.messages[0].images[0].url, /\/api\/thread-image\?threadId=thread-a&name=turnloom-1\.jpg/);
+  assert.equal(restored.messages[1].images.length, 1);
+  assert.equal(restored.messages[2].images.length, 1, "已有图片不能被覆盖");
+  assert.deepEqual(restored.consumedIds.sort(), ["r1", "r2"]);
+  assert.equal(restored.remainingReceipts.length, 0);
+  const again = restoreLocalImages(restored.messages, receipts, "thread-a");
+  assert.equal(again.consumedIds.length, 0, "每个 receipt 在结果里只消耗一次，已带图消息不再匹配");
+  const tooLate = restoreLocalImages(
+    [{ role: "user", content: "另一张", timestamp: new Date(now + 11 * 60 * 1000).toISOString(), images: [], localImages: [] }],
+    [receipts[1]],
+    "thread-a"
+  );
+  assert.equal(tooLate.messages[0].images.length, 0, "超过 10 分钟不能错配");
+  assert.equal(tooLate.remainingReceipts.length, 1);
+});
+
+test("image receipts are atomic, bounded and never contain base64 payloads", () => {
+  const root = mkdtempSync(path.join(os.tmpdir(), "turnloom-image-receipt-"));
+  const receipt = appendImageReceipt(
+    "thread-a",
+    "请看图",
+    [{ name: "turnloom-1.jpg", mimeType: "image/jpeg", size: 4, data: "AAAA" }],
+    "turn-1",
+    root
+  );
+  assert.ok(receipt?.id);
+  const stored = readFileSync(path.join(root, "scratch", "thread-a", "turnloom-image-receipts.json"), "utf8");
+  assert.doesNotMatch(stored, /AAAA/);
+  assert.doesNotMatch(stored, /684271/);
+  assert.equal(readImageReceipts("thread-a", root).length, 1);
+  rmSync(root, { recursive: true, force: true });
+});
+
+test("native queue drains through the authoritative claim/retry contract", () => {
+  const serverSource = readFileSync(fileURLToPath(new URL("../server.js", import.meta.url)), "utf8");
+  assert.match(serverSource, /scheduleNativeQueuedSendDrain\(threadId/);
+  assert.match(serverSource, /requestNativeQueue\("claim", key/);
+  assert.match(serverSource, /sendToCodex\(entry\.content, key, images/);
+  assert.match(serverSource, /requestNativeQueue\("state", key, \{[\s\S]*deliveryState: "failed"/);
+  assert.match(serverSource, /\/api\/queue\/retry/);
+  assert.match(serverSource, /requestNativeQueue\("retry", threadId/);
+});
