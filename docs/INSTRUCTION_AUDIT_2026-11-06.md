@@ -105,3 +105,10 @@
 - ✅ 对话标题栏的小扳手已删除；工具/内部记录开关移入「更多」，功能保留且引导文案同步。
 - ✅ 真鼠标 CDP：加载态无小扳手、更多面板可命中、开关/切换按钮 44px、返回栈关闭后中心与输入框恢复。
 - ✅ `verify:ci` Node 24/22 172/172，Android test/build，版本 `1.17.31(52)`，APK `3411705 / PK`。
+
+## 八、带图对比报告
+
+- 完整报告：[`docs/MOBILE-BEFORE-AFTER-REPORT-2026-11-07.md`](./MOBILE-BEFORE-AFTER-REPORT-2026-11-07.md)
+- 证据目录：`docs/evidence/mobile-before-after/`
+- 4 张历史真机/CDP 截图 + 2 张明确标注为图示占位的 SVG；本轮 CDP screenshot 超时已如实记录。
+- 报告核对结论：`HEAD=7613914` 无仍可在本仓库实现的用户 feat；余项为 PI 运行时重载与官方 API 边界。

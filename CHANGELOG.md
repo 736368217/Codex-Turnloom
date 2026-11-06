@@ -7,6 +7,7 @@
 - **小扳手彻底移出顶栏**：旧 `#toolToggle` 从标题栏删除，工具/内部记录显示开关收进「更多」面板，带 44px 触控区、选中态和实时刷新；引导文案同步改为「需要时在更多里打开」。
 - 细节回归：加载态无旧扳手占位、hidden 模型面板仍为 `display:none / 0 by 0`；CDP 真鼠标打开「更多」面板、命中 44px 切换电脑按钮、真鼠标切换工具开关、返回栈关闭面板并恢复消息列表/输入框命中。
 - 契约回归：`test/ui-host-overlays.test.js` 20/20、`test/server.test.js` 100/100、Android Java 编译与单测、`npm run verify:ci`、Android APK 构建。
+- 文档：新增 [`docs/MOBILE-BEFORE-AFTER-REPORT-2026-11-07.md`](docs/MOBILE-BEFORE-AFTER-REPORT-2026-11-07.md) 带图前后对比报告；真实历史截图 + CDP 盒模型/真鼠标证据，截图超时如实标注，不伪造图片。
 
 ## 1.17.30 - 2026-11-07
 
