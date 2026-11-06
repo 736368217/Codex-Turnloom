@@ -1844,3 +1844,20 @@ test("native queue drains through the authoritative claim/retry contract", () =>
   assert.match(serverSource, /\/api\/queue\/retry/);
   assert.match(serverSource, /requestNativeQueue\("retry", threadId/);
 });
+
+test("Android starts in chat and the picker is not the home page", () => {
+  const root = fileURLToPath(new URL("..", import.meta.url));
+  const main = readFileSync(path.join(root, "android", "app", "src", "main", "java", "com", "codexpocket", "mobile", "MainActivity.java"), "utf8");
+
+  assert.match(main, /Device startupDevice = findActiveDevice\(\);[\s\S]{0,180}openDevice\(startupDevice, pendingNotificationThreadId\)/);
+  assert.match(main, /else \{\s*showMachinePicker\(\);\s*\}/, "first run still opens the picker once");
+  assert.match(main, /switchComputer\.setText\("切换电脑"\)/, "explicit large switch-computer button");
+  assert.match(main, /switchComputer\.setMinHeight\(0\)/);
+  assert.match(main, /switchComputer\.setOnClickListener\(v -> showMachinePicker\(false\)\)/, "switching preserves active computer");
+  assert.match(main, /@JavascriptInterface[\s\S]{0,120}public void showMachinePicker\(\)/, "web More menu can request the picker");
+  assert.match(main, /MainActivity\.this\.showMachinePicker\(false\)/);
+  assert.match(main, /private boolean clearMachinePickerMode = false;/);
+  assert.match(main, /if \(!clearMachinePickerMode\) \{[\s\S]{0,180}activeDevice != null \? activeDevice : findActiveDevice\(\)/);
+  assert.match(main, /moveTaskToBack\(true\)/, "chat root never jumps to picker on Back");
+  assert.match(main, /Button back = headerButton\("‹", "返回聊天", v -> openDevice\(previousDevice\)\)/);
+});

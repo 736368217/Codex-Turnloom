@@ -97,3 +97,11 @@
 - 调用 `codexPocketHandleBack()`：栈 `["modelPanel"] → []`，`modelPanelOpen=true → false`，`hidden=false → true`，中心回 `#messageList`，输入中心仍 `#composerInput`。
 - 桥源码 / 安装目录 / 仓库快照 SHA256 一致 `CCFF166AA622…`；六套桥测试 + `test-shared-queue-v2.cjs` 全绿。
 - `test/server.test.js` 99/99、`test/ui-host-overlays.test.js` 19/19；`npm run verify:ci`、Android、远端 CI 结果见最终交付记录。
+
+## 首页与低频入口（2026-11-07 后续指令）
+
+- ✅ 首页不再显示电脑选择：有活动设备时 Android 开机直接打开聊天；仅首次启动 / 无活动设备 / 用户主动切换时显示选择页。
+- ✅ 提供带文字、44px 命中区的「切换电脑」大按钮；「更多能力」里也有同名入口，系统返回不会把电脑列表当首页。
+- ✅ 对话标题栏的小扳手已删除；工具/内部记录开关移入「更多」，功能保留且引导文案同步。
+- ✅ 真鼠标 CDP：加载态无小扳手、更多面板可命中、开关/切换按钮 44px、返回栈关闭后中心与输入框恢复。
+- ✅ `verify:ci` Node 24/22 172/172，Android test/build，版本 `1.17.31(52)`，APK `3411705 / PK`。
