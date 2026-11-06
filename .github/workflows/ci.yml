@@ -2,10 +2,23 @@ name: Verify
 
 on:
   push:
+    branches:
+      - main
+    tags-ignore:
+      - '**'
   pull_request:
+    branches:
+      - main
+  workflow_dispatch:
 
 permissions:
   contents: read
+
+# A newer push to the same branch makes the previous run obsolete. This keeps
+# GitHub from completing and mailing a failure for code that is already stale.
+concurrency:
+  group: verify-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   server:
@@ -14,11 +27,24 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: 22
+          node-version: 22.23.4
           cache: npm
       - run: npm ci
-      - run: npm test
+      - name: Test suite (fail on cancelled subtests)
+        shell: pwsh
+        run: |
+          $log = Join-Path $env:RUNNER_TEMP "node-test.tap"
+          node --test *>&1 | Tee-Object -FilePath $log
+          $code = $LASTEXITCODE
+          $text = Get-Content $log -Raw
+          $failed = if ($text -match '(?m)^# fail (\d+)') { [int]$Matches[1] } else { 0 }
+          $cancelled = if ($text -match '(?m)^# cancelled (\d+)') { [int]$Matches[1] } else { 0 }
+          if ($code -ne 0 -or $failed -ne 0 -or $cancelled -ne 0) {
+            Write-Error "Node tests: exit=$code fail=$failed cancelled=$cancelled"
+            exit 1
+          }
       - run: npm run check
+      - run: npm run desktop:check
       - name: Parse Windows deployment scripts
         shell: powershell
         run: |
