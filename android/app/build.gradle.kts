@@ -10,8 +10,8 @@ android {
         applicationId = "com.codexpocket.mobile"
         minSdk = 23
         targetSdk = 35
-        versionCode = 51
-        versionName = "1.17.30"
+        versionCode = 52
+        versionName = "1.17.31"
     }
 
     buildTypes {

@@ -2336,6 +2336,55 @@ html.large-text #shell .queue-status-error {
    2026-11-06 真机事故：模型面板 HTML 带 hidden，但上一轮追加的
    #shell .model-panel { display:flex } 覆盖了浏览器默认隐藏，
    面板从加载起盖住屏幕并吃掉中心点击。任何 display 规则都不能赢过 [hidden]。 */
+
+/* 小扳手收进「更多能力」：工具记录开关与切换电脑都在二级面板里。 */
+#shell .host-utility-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+#shell .host-tool-toggle {
+  display: inline-flex;
+  flex: 1 1 170px;
+  align-items: center;
+  gap: 8px;
+  min-height: 44px;
+  padding: 0 12px;
+  border: 1px solid var(--app-line);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.06);
+  color: #f4f6fb;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+#shell .host-tool-toggle.active {
+  border-color: var(--app-brand);
+  background: rgba(37, 99, 235, 0.2);
+}
+
+#shell .host-switch-computer {
+  flex: 0 0 auto;
+  min-height: 44px;
+  padding: 0 16px;
+  border: 1px solid rgba(37, 99, 235, 0.4);
+  border-radius: 12px;
+  background: var(--app-brand-soft);
+  color: var(--app-brand-deep);
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+/* 顶栏只保留「更多」和刷新；移除旧小扳手的占位。 */
+#shell .conversation-header .toggle {
+  display: none !important;
+}
+
+/* P0：最后加载的权威层再次钉死 hidden 契约。
+   任何 display 规则都不能赢过 [hidden]。 */
 #shell [hidden] {
   display: none !important;
 }
