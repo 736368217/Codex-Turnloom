@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.17.29 - 2026-11-06
+
+- **P0：修复巨大模型选择窗口从加载起挡住整个手机界面**。上一轮在最后加载的 styles.app.css 里追加了 #shell .model-panel { display:flex }，却没有给 [hidden] 例外，正好复犯了项目记忆中的 hidden 遮罩事故。CDP 加载态实测：隐藏面板 display:flex、638×292、屏幕中心命中 #modelPanel，输入框被压到下方。现在最后一层强制 #shell [hidden] { display:none !important }，并显式列出 model-panel 等所有浮层；修复后加载态 display:none / 0×0，中心命中 #messageList，输入框中心命中 #composerInput。真实鼠标四步：加载隐藏 → 点模型按钮打开 → 再点关闭 → 输入框恢复可点，全部通过。新增 test/ui-host-overlays.test.js 契约，共 14/14。
+- **P0：消除连续 PI-Desktop session/configure 原生确认框**。运行桥在每轮发送前调用 ensureSendableModel()，目标会话供应商被禁用时反复尝试危险模型切换，用户一拒绝又因 45 秒冷却/多次发送连续弹框。现在普通发送、插入、压缩一律不自动 configure，沿用会话当前模型直接 agent/prompt；模型切换只在显式调用 applyModelIfChanged() 时发生并保留 confirm:true / 拒绝中止 / 10 分钟冷却。桥测试改为新契约：普通发送绝不触发 configure；显式切换仍验证 confirm:true、拒绝不 prompt、冷却内不连弹。桥源码 / 安装目录 / 仓库快照哈希一致，六套桥测试全绿。
+- 说明：安装插件文件不等于 PI 宿主运行时已加载；dev watcher 本次没有产生新的 reload 记录，因此桥修复需要用户在 PI 插件页手动重载 cn.star.turnloom-bridge（或下次启动 PI）才完全生效。没有强杀 PI 主程序，也没有伪称运行时已重载。
+
 ## 1.17.28 - 2026-11-06
 
 - **逐步修复用户连续反馈的核心链路**：带图发送后消息气泡不再丢图。现网证据显示桥的 agent/prompt 已成功把图片落到会话 scratch，但宿主 rollout 先写纯文本消息；旧 reconcilePendingMessages() 仅凭文本匹配就删掉带图乐观气泡，造成「实际发送没图」。现在纯文本 rollout 会继承待发图片，直到宿主自己也返回图片；新增 Node 24/22 回归。发送确认超时但宿主已开始 turn、返回 accepted 或 turnId 时，不再误标未发送，避免手动重发造成重复。

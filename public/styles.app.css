@@ -1637,7 +1637,18 @@ html.keyboard-open #shell .composer-pod {
 #shell .thread-context-menu[hidden],
 #shell .goal-edit-dialog[hidden],
 #shell .app-dialog[hidden],
-#shell .app-dialog-backdrop[hidden] {
+#shell .app-dialog-backdrop[hidden],
+#shell .model-panel[hidden],
+#shell .image-picker-menu[hidden],
+#shell .plugin-mention-menu[hidden],
+#shell .skill-mention-menu[hidden],
+#shell .queue-status-bar[hidden],
+#shell .queue-status-header[hidden],
+#shell .queue-status-list[hidden],
+#shell .follow-up-mode[hidden],
+#shell .attachment-tray[hidden],
+#shell .conversation-status-row[hidden],
+#shell .header-status-button[hidden] {
   display: none !important;
 }
 
@@ -2219,4 +2230,12 @@ html.keyboard-open #shell .effort-chip {
 #shell .composer-left .mention-button svg {
   width: 20px;
   height: 20px;
+}
+
+/* P0：最后加载的权威层再次钉死 hidden 契约。
+   2026-11-06 真机事故：模型面板 HTML 带 hidden，但上一轮追加的
+   #shell .model-panel { display:flex } 覆盖了浏览器默认隐藏，
+   面板从加载起盖住屏幕并吃掉中心点击。任何 display 规则都不能赢过 [hidden]。 */
+#shell [hidden] {
+  display: none !important;
 }
