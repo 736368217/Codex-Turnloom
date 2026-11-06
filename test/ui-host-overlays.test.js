@@ -116,3 +116,28 @@ test("model summary shows a readable card and effort badge, not a bare slug", ()
   assert.match(css, /#shell \.model-summary::after\s*\{\s*display:\s*none\s*!important/s);
   assert.match(css, /html\.keyboard-open #shell \.model-summary\s*\{[^}]*height:\s*40px\s*!important/s);
 });
+
+test("queued messages collapse to one compact row by default", () => {
+  assert.match(html, /id="queueToggleButton"/);
+  assert.match(app, /queueExpanded: safeStorageGet\(localStorage, "codex-queue-expanded"\)/);
+  assert.match(app, /queueToggleButton\?\.addEventListener\("click"/);
+  assert.match(app, /els\.queueStatusList\.hidden = !expanded \|\| count <= 0/);
+  assert.match(css, /#shell \.queue-status-bar\s*\{[^}]*max-height:\s*44px/s);
+  assert.match(css, /html\.keyboard-open #shell \.queue-status-bar\s*\{[^}]*display:\s*flex/s);
+});
+test("switching conversations keeps drafts and attachments per thread", () => {
+  assert.match(app, /threadDrafts: \{\}/);
+  assert.match(app, /function saveCurrentThreadDraft/);
+  assert.match(app, /function restoreThreadDraft/);
+  assert.match(app, /saveCurrentThreadDraft\(\);[\s\S]{0,500}restoreThreadDraft\(nextId\)/);
+  assert.match(app, /renderImageAttachments\(\);[\s\S]{0,120}autoResizeComposerInput\(\)/);
+});
+
+test("model panel separates provider/model and effort, and balances composer controls", () => {
+  assert.match(html, /model-step-title[\s\S]*供应商 \/ 模型/);
+  assert.match(html, /model-step-title[\s\S]*思考强度/);
+  assert.match(css, /#shell \.model-row\s*\{[^}]*grid-template-areas/s);
+  assert.match(css, /#shell \.model-row-capability\s*\{[^}]*margin-left:\s*0\s*!important/s);
+  assert.match(css, /html\.keyboard-open #shell \.effort-chip\s*\{[^}]*min-width:\s*56px/s);
+  assert.match(css, /#shell \.composer-left \.icon-button\.attach-button[\s\S]{0,220}width:\s*40px/s);
+});
