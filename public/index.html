@@ -190,7 +190,10 @@
           <div id="skillMentionTray" class="plugin-mention-tray skill-mention-tray" hidden></div>
           <div id="queueStatusBar" class="queue-status-bar" hidden>
             <div id="queueStatusHeader" class="queue-status-header">
-              <span id="queueStatusText"></span>
+              <button id="queueToggleButton" class="queue-toggle-button" type="button" aria-expanded="false" title="展开/收起排队消息">
+                <span class="queue-toggle-chevron" aria-hidden="true">▸</span>
+                <span id="queueStatusText"></span>
+              </button>
               <button id="clearQueueButton" class="queue-clear-button" type="button" title="取消全部排队消息" aria-label="取消全部排队消息">
                 <svg viewBox="0 0 24 24" aria-hidden="true">
                   <path d="M6 6l12 12"></path>
@@ -259,6 +262,7 @@
                   <span id="modelEffort" class="model-effort">中</span>
                 </button>
                 <div id="modelPanel" class="model-panel" hidden>
+                  <div class="model-step-title"><b>1</b><span>供应商 / 模型</span></div>
                   <div class="model-field">
                     <span id="modelSelectLabel">模型</span>
                     <input id="modelFilter" class="model-filter" type="search" placeholder="搜索模型或供应商" autocomplete="off" />
@@ -270,6 +274,7 @@
                     <select id="modelSelect" class="model-select-hidden" aria-hidden="true" tabindex="-1" hidden></select>
                     <p id="modelEmpty" class="model-empty" hidden>没有匹配的模型</p>
                   </div>
+                  <div class="model-step-title"><b>2</b><span>思考强度</span></div>
                   <div class="model-field">
                     <span id="effortSelectLabel">思考强度</span>
                     <div id="effortChips" class="effort-chips" role="group" aria-label="思考强度"></div>

@@ -367,6 +367,22 @@ test("a real user message replaces a stale optimistic bubble with generated prom
 
   assert.deepEqual(reconcilePendingMessages(pending, messages, "thread-1"), []);
 });
+
+test("a text-only host rollout does not discard a successfully sent image", () => {
+  const pending = [{
+    id: "pending-image",
+    threadId: "thread-image",
+    role: "user",
+    sentContent: "请看这张图",
+    content: "请看这张图",
+    images: ["data:image/jpeg;base64,AAAA"],
+    deliveryStatus: "sending"
+  }];
+  const hostMessages = [{ role: "user", content: "请看这张图", images: [] }];
+  assert.equal(reconcilePendingMessages(pending, hostMessages, "thread-image").length, 1);
+  const confirmedMessages = [{ role: "user", content: "请看这张图", images: ["data:image/jpeg;base64,AAAA"] }];
+  assert.deepEqual(reconcilePendingMessages(pending, confirmedMessages, "thread-image"), []);
+});
 test("one queued message can be cancelled without clearing the rest", async () => {
   const threadId = `queue-test-${Date.now()}`;
   const first = await enqueueSend(threadId, "first", [], { model: "gpt-5.6-sol", effort: "medium" });

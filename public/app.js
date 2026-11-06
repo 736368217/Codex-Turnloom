@@ -14,6 +14,8 @@ const state = {
   statusFilter: "",
   showTools: false,
   expandedNotices: {},
+  threadDrafts: {},
+  queueExpanded: safeStorageGet(localStorage, "codex-queue-expanded") === "1",
   sidebarCollapsed: false,
   modelFilter: "",
   showAllModels: false,
@@ -154,6 +156,7 @@ const els = {
   stopButton: document.querySelector("#stopButton"),
   followUpMode: document.querySelector("#followUpMode"),
   queueStatusBar: document.querySelector("#queueStatusBar"),
+  queueToggleButton: document.querySelector("#queueToggleButton"),
   queueStatusHeader: document.querySelector("#queueStatusHeader"),
   queueStatusText: document.querySelector("#queueStatusText"),
   queueStatusList: document.querySelector("#queueStatusList"),
@@ -1948,10 +1951,39 @@ function pendingMessagesForThread(threadId) {
 
 function mergePendingMessages(data) {
   const threadId = data.thread?.id || state.selectedId;
-  state.pendingMessages = reconcilePendingMessages(state.pendingMessages, data.messages, threadId);
+  const hostMessages = Array.isArray(data.messages) ? data.messages : [];
+  // The host may persist a text-only rollout row before its staged image. Keep
+  // the optimistic attachment visible on that real row instead of showing a
+  // "sent without image" message.
+  const withRestoredImages = hostMessages.map((message) => {
+    if (message?.role !== "user" || !Array.isArray(message.images) || message.images.length) return message;
+    const pending = state.pendingMessages.find((entry) =>
+      entry?.threadId === threadId &&
+      entry?.role === "user" &&
+      Array.isArray(entry.images) &&
+      entry.images.length &&
+      String(entry.sentContent || entry.content || "").trim() === String(message.content || "").trim()
+    );
+    return pending ? { ...message, images: [...pending.images], restoredAttachments: true } : message;
+  });
+  state.pendingMessages = reconcilePendingMessages(state.pendingMessages, withRestoredImages, threadId);
   const pending = pendingMessagesForThread(threadId).filter((message) => message.deliveryStatus !== "queued");
-  if (!pending.length) return data.messages;
-  return [...data.messages, ...pending];
+  if (!pending.length) return withRestoredImages;
+  return [...withRestoredImages, ...pending];
+}
+
+function mergeRestoredPendingImages(messages, restoredMessages) {
+  if (!Array.isArray(messages) || !Array.isArray(restoredMessages)) return messages || [];
+  const byIndex = new Map();
+  restoredMessages.forEach((message, index) => {
+    if (message?.restoredAttachments && Array.isArray(message.images)) byIndex.set(index, message.images);
+  });
+  if (!byIndex.size) return messages;
+  return messages.map((message, index) => {
+    const images = byIndex.get(index);
+    if (!images || !Array.isArray(message?.images) || message.images.length >= images.length) return message;
+    return { ...message, images, restoredAttachments: true };
+  });
 }
 
 function pendingDeliveryHtml(message) {
@@ -3178,9 +3210,15 @@ function renderQueueStatus(status = state.threadStatus) {
   const queueError = String(status?.queueError || "").trim();
   const queueUnavailable = Boolean(status?.queueUnavailable);
   const showError = Boolean(queueError || queueUnavailable);
+  const expanded = Boolean(state.queueExpanded);
   els.queueStatusBar.hidden = count <= 0 && !showError;
+  els.queueStatusBar.classList.toggle("is-expanded", expanded);
   els.queueStatusHeader.hidden = count <= 0 && !showError;
-  els.queueStatusList.hidden = count <= 0;
+  els.queueStatusList.hidden = !expanded || count <= 0;
+  if (els.queueToggleButton) {
+    els.queueToggleButton.hidden = count <= 0;
+    els.queueToggleButton.setAttribute("aria-expanded", String(expanded));
+  }
   const compactPreview = (value, maxLength = 120) => {
     const text = String(value || "").replace(/[\r\n\t]+/g, " ").replace(/\s{2,}/g, " ").trim();
     return text.length > maxLength ? `${text.slice(0, maxLength - 1)}…` : text;
@@ -3570,6 +3608,35 @@ function shouldRefocusComposer() {
   return window.matchMedia("(hover: hover) and (pointer: fine)").matches;
 }
 
+function saveCurrentThreadDraft() {
+  const id = String(state.selectedId || "");
+  if (!id) return;
+  state.threadDrafts = state.threadDrafts || {};
+  state.threadDrafts[id] = {
+    message: els.composerInput.value,
+    images: [...state.imageAttachments],
+    selectedPlugins: [...state.selectedPlugins],
+    selectedSkills: [...state.selectedSkills],
+    model: state.model,
+    effort: state.effort,
+    modelPreferences: { ...(state.modelPreferences || {}) }
+  };
+}
+
+function restoreThreadDraft(id) {
+  const draft = state.threadDrafts?.[String(id || "")];
+  els.composerInput.value = draft?.message || "";
+  state.imageAttachments = draft?.images ? [...draft.images] : [];
+  state.selectedPlugins = draft?.selectedPlugins ? [...draft.selectedPlugins] : [];
+  state.selectedSkills = draft?.selectedSkills ? [...draft.selectedSkills] : [];
+  if (draft?.model) state.model = draft.model;
+  if (draft?.effort) state.effort = draft.effort;
+  renderSelectedPlugins();
+  renderSelectedSkills();
+  renderImageAttachments();
+  autoResizeComposerInput();
+}
+
 els.threadList.addEventListener("click", (event) => {
   const more = event.target.closest("[data-thread-more]");
   if (more) {
@@ -3585,20 +3652,24 @@ els.threadList.addEventListener("click", (event) => {
     event.preventDefault();
     return;
   }
+  const nextId = button.dataset.id;
+  if (!nextId || nextId === state.selectedId) return;
   closeThreadContextMenu();
   closeGoalEditDialog();
   stopMessageStream();
-  state.selectedId = button.dataset.id;
+  saveCurrentThreadDraft();
+  state.selectedId = nextId;
   state.messageLimit = MESSAGE_PAGE_SIZE;
   state.messageBeforeCursor = "";
   state.messageHistoryLoading = false;
+  restoreThreadDraft(nextId);
   adoptSelectedThreadModel();
   if (state.selectedId !== DRAFT_THREAD_ID) clearDraftThread();
-  clearSelectedPlugins();
   state.messagesSignature = "";
   state.threadStatus = null;
   state.lastMessagesData = null;
   els.sendStatus.textContent = "";
+  renderModelSettings();
   renderComposerMode();
   renderThreads();
   loadMessages(true, state.selectedId);
@@ -4400,7 +4471,9 @@ els.composerForm.addEventListener("submit", async (event) => {
       };
       els.sendStatus.textContent = result.accepted ? t("sendUncertainAccepted") : t("sendUncertain");
       await refresh(true);
-      if (hasDisplayedUserMessage(sendMessage) || state.threadStatus?.thinking) {
+      // A host turn that started before the confirmation timeout is proof
+      // that the prompt reached the desktop; do not mark it as unsent.
+      if (hasDisplayedUserMessage(sendMessage) || state.threadStatus?.thinking || result.accepted || result.turnId) {
         sendAccepted = true;
         state.uncertainSend = null;
         if (pendingMessageId) updatePendingMessage(pendingMessageId, { deliveryStatus: "sent", kind: "message" });
@@ -4578,6 +4651,12 @@ els.queueStatusList.addEventListener("click", async (event) => {
     state.composerBusy = false;
     renderComposerMode();
   }
+});
+
+els.queueToggleButton?.addEventListener("click", () => {
+  state.queueExpanded = !state.queueExpanded;
+  safeStorageSet(localStorage, "codex-queue-expanded", state.queueExpanded ? "1" : "0");
+  renderQueueStatus(state.threadStatus);
 });
 
 els.clearQueueButton.addEventListener("click", async () => {
