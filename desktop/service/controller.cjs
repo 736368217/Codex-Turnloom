@@ -16,7 +16,14 @@ function healthSummary(data) {
   };
 }
 const { splitLines } = require("./logger.cjs");
-const { checkHealth, checkPortAvailable, findPortOwner, getProcessMetrics, execFileAsync } = require("./health.cjs");
+const {
+  checkHealth,
+  checkPortAvailable,
+  findPortOwner,
+  getProcessMetrics,
+  getProcessStart,
+  execFileAsync
+} = require("./health.cjs");
 
 const MAX_RESTARTS = 5;
 
@@ -25,15 +32,25 @@ function backoffDelay(attempt) {
 }
 
 class ServiceController extends EventEmitter {
-  constructor({ config, logger }) {
+  constructor({ config, logger, health = {}, processControl = {} } = {}) {
     super();
     this.config = config;
     this.logger = logger;
+    this.healthApi = {
+      check: health.check || checkHealth,
+      checkPortAvailable: health.checkPortAvailable || checkPortAvailable,
+      findPortOwner: health.findPortOwner || findPortOwner
+    };
+    this.processControl = {
+      getProcessStart: processControl.getProcessStart || getProcessStart,
+      getProcessMetrics: processControl.getProcessMetrics || getProcessMetrics
+    };
     this.state = "stopped";
     this.detail = "服务未启动";
     this.child = null;
     this.pid = 0;
     this.startedAt = 0;
+    this.managed = false;
     this.health = { ok: false, lastCheckAt: 0, latencyMs: 0, ipcConnected: false, ipcCheckedAt: 0, info: null };
     this.lastError = null;
     this.restartAttempt = 0;
@@ -77,6 +94,8 @@ class ServiceController extends EventEmitter {
         startedAt: this.startedAt || null,
         uptimeMs: this.startedAt ? Math.max(0, now - this.startedAt) : 0,
         memoryBytes: this.memoryBytes || 0,
+        managed: Boolean(this.managed),
+        external: Boolean(this.pid && !this.managed),
         restartCount: this.restartCount,
         restartAttempt: this.restartAttempt
       },
@@ -94,12 +113,32 @@ class ServiceController extends EventEmitter {
 
   async start({ manual = true } = {}) {
     if (this.child || this.starting) return { ok: this.state === "running", state: this.state };
+    if (this.state === "running" || this.state === "degraded") {
+      return { ok: true, reused: true, state: this.state };
+    }
     this.starting = true;
     this.intendedStop = false;
     this.lastError = null;
-    this.setState(manual ? "starting" : "restarting", manual ? "正在启动本机服务…" : "正在重新启动服务…");
+    clearTimeout(this.restartTimer);
+    this.restartTimer = null;
+    this.setState(manual ? "starting" : "restarting", "正在检查已运行的服务…");
 
     try {
+      if (!this.config) {
+        this.starting = false;
+        this.lastError = "配置文件不存在。";
+        this.setState("error", this.lastError);
+        return { ok: false, error: this.lastError };
+      }
+
+      // The watchdog starts 8787 and its SSH tunnel at logon. An authenticated
+      // health reply means this is *our* service, not a random port squatter:
+      // adopt it instead of raising EADDRINUSE or spawning a second instance.
+      // This must happen before local runtime validation too: a healthy phone
+      // service should stay visible even if its configured source path moved.
+      const existing = await this.healthApi.check(this.config, { timeoutMs: 2000 });
+      if (existing.ok) return await this.adoptExternal(existing);
+
       const validationError = this.validateRuntime();
       if (validationError) {
         this.starting = false;
@@ -108,9 +147,12 @@ class ServiceController extends EventEmitter {
         return { ok: false, error: validationError };
       }
 
-      const port = await checkPortAvailable(this.config.port, this.config.host === "0.0.0.0" ? "0.0.0.0" : "127.0.0.1");
+      const port = await this.healthApi.checkPortAvailable(
+        this.config.port,
+        this.config.host === "0.0.0.0" ? "0.0.0.0" : "127.0.0.1"
+      );
       if (!port.available) {
-        const owner = await findPortOwner(this.config.port);
+        const owner = await this.healthApi.findPortOwner(this.config.port);
         const message = owner
           ? `端口 ${this.config.port} 已被 ${owner.name || "其他程序"}（PID ${owner.pid}）占用。`
           : `端口 ${this.config.port} 已被其他程序占用。`;
@@ -121,6 +163,7 @@ class ServiceController extends EventEmitter {
       }
 
       this.spawnChild();
+      this.managed = true;
       this.startedAt = Date.now();
       const healthy = await this.waitForHealthy(15000);
       if (!healthy.ok) {
@@ -128,19 +171,13 @@ class ServiceController extends EventEmitter {
         this.lastError = message;
         await this.killChild();
         this.startedAt = 0;
+        this.managed = false;
         this.setState("error", message);
         this.starting = false;
         return { ok: false, error: message };
       }
 
-      this.health = {
-        ok: true,
-        lastCheckAt: Date.now(),
-        latencyMs: healthy.latencyMs || 0,
-        ipcConnected: this.health.ipcConnected || false,
-        ipcCheckedAt: this.health.ipcCheckedAt || null,
-        info: healthSummary(healthy.data)
-      };
+      this.applyHealthy(healthy);
       this.restartAttempt = 0;
       this.healthFailures = 0;
       this.setState("running", "手机端可以访问");
@@ -155,6 +192,39 @@ class ServiceController extends EventEmitter {
       this.setState("error", `启动失败：${error.message}`);
       return { ok: false, error: error.message };
     }
+  }
+
+  applyHealthy(result) {
+    this.health = {
+      ok: true,
+      lastCheckAt: Date.now(),
+      latencyMs: result.latencyMs || 0,
+      ipcConnected: this.health.ipcConnected || false,
+      ipcCheckedAt: this.health.ipcCheckedAt || null,
+      info: healthSummary(result.data)
+    };
+  }
+
+  async adoptExternal(result) {
+    const owner = await this.healthApi.findPortOwner(this.config.port);
+    this.pid = Number(owner?.pid) || 0;
+    this.managed = false;
+    this.child = null;
+    const started = this.pid ? await this.processControl.getProcessStart(this.pid) : 0;
+    this.startedAt = Number(started) || Date.now();
+    this.applyHealthy(result);
+    this.restartAttempt = 0;
+    this.healthFailures = 0;
+    this.setState("running", "服务已由守护运行，手机端可以访问", { lastError: null });
+    this.startHealthLoop();
+    this.startMetricsLoop();
+    this.starting = false;
+    if (this.pid) {
+      this.logger.info("service", `复用已运行的健康服务（PID ${this.pid}，端口 ${this.config.port}），不重复启动。`);
+    } else {
+      this.logger.warn("service", `复用已运行的健康服务（端口 ${this.config.port}），未能读取进程 PID。`);
+    }
+    return { ok: true, adopted: true, external: true, pid: this.pid || null };
   }
 
   validateRuntime() {
@@ -220,7 +290,9 @@ class ServiceController extends EventEmitter {
         return;
       }
       if (this.state === "running" || this.state === "degraded") {
+        this.managed = false;
         this.logger.warn("service", `服务进程意外退出（code ${code ?? "?"}），准备重启。`);
+        this.setState("restarting", "服务进程意外退出，准备重启…");
         this.scheduleRestart();
       }
     });
@@ -231,7 +303,7 @@ class ServiceController extends EventEmitter {
     let last = null;
     while (Date.now() < deadline) {
       if (!this.child) return { ok: false, error: this.lastError || "服务进程已退出。" };
-      last = await checkHealth(this.config, { timeoutMs: 1500 });
+      last = await this.healthApi.check(this.config, { timeoutMs: 1500 });
       if (last.ok) return last;
       await new Promise((resolve) => setTimeout(resolve, 250));
     }
@@ -244,15 +316,17 @@ class ServiceController extends EventEmitter {
   }
 
   async probeHealth() {
-    if (!this.child || this.intendedStop) return;
-    const result = await checkHealth(this.config, { timeoutMs: 2500 });
+    if ((!this.child && !this.pid) || this.intendedStop) return;
+    const result = await this.healthApi.check(this.config, { timeoutMs: 2500 });
     this.health.lastCheckAt = Date.now();
     this.health.latencyMs = result.latencyMs || 0;
     this.health.info = healthSummary(result.data) || this.health.info;
     if (result.ok) {
       this.healthFailures = 0;
       this.health.ok = true;
-      if (this.state === "degraded") this.setState("running", "手机端可以访问");
+      if (this.state === "degraded") {
+        this.setState("running", this.managed ? "手机端可以访问" : "服务已由守护运行，手机端可以访问");
+      }
       return;
     }
     this.healthFailures += 1;
@@ -262,8 +336,8 @@ class ServiceController extends EventEmitter {
       this.logger.warn("service", `健康检查连续失败：${result.error || result.status}`);
     }
     if (this.healthFailures >= 6) {
-      this.logger.error("service", "健康检查连续失败，重启服务。");
-      this.restart();
+      this.logger.error("service", "健康检查连续失败，刷新服务状态。");
+      this.restart().catch(() => {});
     }
   }
 
@@ -271,7 +345,7 @@ class ServiceController extends EventEmitter {
     clearInterval(this.metricsTimer);
     const tick = async () => {
       if (!this.pid) return;
-      const metrics = await getProcessMetrics(this.pid);
+      const metrics = await this.processControl.getProcessMetrics(this.pid);
       if (metrics) {
         this.memoryBytes = metrics.memoryBytes;
         this.emit("changed", this.snapshot());
@@ -301,7 +375,18 @@ class ServiceController extends EventEmitter {
   }
 
   async restart() {
-    await this.stop({ silent: true });
+    if (this.state === "running" || this.state === "degraded") {
+      const refreshed = await this.healthApi.check(this.config, { timeoutMs: 2500 });
+      if (refreshed.ok) {
+        this.applyHealthy(refreshed);
+        this.healthFailures = 0;
+        this.setState("running", this.managed ? "手机端可以访问" : "服务已由守护运行，手机端可以访问");
+        return { ok: true, refreshed: true, external: !this.managed };
+      }
+      await this.stop({ silent: true });
+    } else if (this.managed) {
+      await this.stop({ silent: true });
+    }
     this.restartAttempt = 0;
     return this.start({ manual: true });
   }
@@ -321,16 +406,24 @@ class ServiceController extends EventEmitter {
       this.stopping = false;
       return;
     }
+    const wasExternal = !this.managed && Boolean(this.pid);
     this.setState("stopping", "正在停止服务…");
-    await this.killChild();
-    this.pid = 0;
+    // Only children spawned by this console may be killed. The watchdog-owned
+    // dispatcher owns two backends and an SSH tunnel; detaching from it must not
+    // terminate the user's live phone connection.
+    if (this.managed) await this.killChild();
+    else {
+      this.child = null;
+      this.pid = 0;
+    }
+    this.managed = false;
     this.startedAt = 0;
     this.memoryBytes = 0;
     this.health = { ok: false, lastCheckAt: 0, latencyMs: 0, ipcConnected: false, ipcCheckedAt: 0, info: null };
     this.healthFailures = 0;
     this.restartAttempt = 0;
     this.stopping = false;
-    if (!silent) this.logger.info("service", "服务已停止。");
+    if (!silent) this.logger.info("service", wasExternal ? "控制台已断开服务显示。" : "服务已停止。");
     this.setState("stopped", "服务未启动", { lastError: null });
   }
 
