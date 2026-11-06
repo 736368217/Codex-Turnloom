@@ -36,6 +36,11 @@ const LOG_DIR = path.join(process.env.LOCALAPPDATA || "", "CodexPocket", "logs")
 const WATCHDOG_LOG = path.join(LOG_DIR, "watchdog.log");
 const TASK_NAME = "Codex-Turnloom Link Watchdog";
 const NODE = process.execPath;
+// 登录自启绝不能直接 Exec node.exe：node.exe 是控制台程序，即便任务 Hidden，
+// 它仍会创建可见控制台 + conhost。正解与 Turnloom PI Sidecar 一致：
+// Task Scheduler -> wscript.exe //B //Nologo -> VBS -> shell.Run(cmd,0,False)。
+const LAUNCHER = path.join(path.dirname(SCRIPT), "link-watchdog-launcher.vbs");
+const WSCRIPT = path.join(process.env.WINDIR || "C:\\WINDOWS", "System32", "wscript.exe");
 
 fs.mkdirSync(LOG_DIR, { recursive: true });
 
@@ -138,24 +143,33 @@ function startDispatcher(main) {
 }
 
 function install() {
-  // 用 Register-ScheduledTask（当前用户 Interactive/Limited），不需要管理员；
-  // 与现有「Codex-Turnloom Console」任务同一套注册方式。
+  // 用 Register-ScheduledTask（当前用户 Interactive/Limited），不需要管理员。
+  // 动作只跑 wscript.exe：它 //B //Nologo 启动 VBS，VBS 再用
+  // shell.Run(command, 0, False) 拉起 node，全链路都不会出现控制台窗口。
+  if (!fs.existsSync(LAUNCHER)) {
+    log("error", `launcher missing: ${LAUNCHER}`);
+    process.exitCode = 1;
+    return;
+  }
   const q = (s) => String(s).replace(/'/g, "''");
   const ps = [
     "$ErrorActionPreference = 'Stop'",
-    `$node = '${q(NODE)}'`,
-    `$script = '${q(SCRIPT)}'`,
-    `$action = New-ScheduledTaskAction -Execute $node -Argument ('"' + $script + '" --loop')`,
-    `$trigger = New-ScheduledTaskTrigger -AtLogOn -User "$env:USERDOMAIN\\$env:USERNAME"`,
+    `$wscript = '${q(WSCRIPT)}'`,
+    `$launcher = '${q(LAUNCHER)}'`,
+    // //B 批量模式不会弹 WScript 错误框；//Nologo 不显示脚本宿主横幅。
+    `$action = New-ScheduledTaskAction -Execute $wscript -Argument ('//B //Nologo \"' + $launcher + '\"')`,
+    `$trigger = New-ScheduledTaskTrigger -AtLogOn -User \"$env:USERDOMAIN\\\\$env:USERNAME\"`,
     "$settings = New-ScheduledTaskSettingsSet -RestartCount 3 -RestartInterval (New-TimeSpan -Minutes 1) -ExecutionTimeLimit ([TimeSpan]::Zero) -MultipleInstances IgnoreNew -Hidden -StartWhenAvailable -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -DontStopOnIdleEnd",
-    `$principal = New-ScheduledTaskPrincipal -UserId "$env:USERDOMAIN\\$env:USERNAME" -LogonType Interactive -RunLevel Limited`,
+    `$principal = New-ScheduledTaskPrincipal -UserId \"$env:USERDOMAIN\\\\$env:USERNAME\" -LogonType Interactive -RunLevel Limited`,
+    // 先停旧任务，避免旧的 node.exe 窗口与新的 VBS 链同时常驻。
+    `Stop-ScheduledTask -TaskName '${q(TASK_NAME)}' -ErrorAction SilentlyContinue`,
     `Register-ScheduledTask -TaskName '${q(TASK_NAME)}' -Action $action -Trigger $trigger -Settings $settings -Principal $principal -Force | Out-Null`,
     `Start-ScheduledTask -TaskName '${q(TASK_NAME)}'`,
-    `Write-Output 'installed ${q(TASK_NAME)}'`,
+    `Write-Output 'installed ${q(TASK_NAME)} (windowless wscript launcher)'`,
   ].join("; ");
   try {
-    const out = execFileSync("powershell.exe", ["-NoProfile", "-NonInteractive", "-Command", ps], { encoding: "utf8" });
-    log("action", `registered scheduled task: ${TASK_NAME}`);
+    const out = execFileSync("powershell.exe", ["-NoProfile", "-NonInteractive", "-WindowStyle", "Hidden", "-Command", ps], { encoding: "utf8" });
+    log("action", `registered windowless scheduled task: ${TASK_NAME}`);
     process.stdout.write(out);
   } catch (error) {
     log("error", `install failed: ${error.message}`);
@@ -165,9 +179,13 @@ function install() {
 
 function uninstall() {
   const q = (s) => String(s).replace(/'/g, "''");
+  const ps = [
+    `Stop-ScheduledTask -TaskName '${q(TASK_NAME)}' -ErrorAction SilentlyContinue`,
+    `Unregister-ScheduledTask -TaskName '${q(TASK_NAME)}' -Confirm:$false`,
+  ].join("; ");
   try {
-    execFileSync("powershell.exe", ["-NoProfile", "-NonInteractive", "-Command", `Unregister-ScheduledTask -TaskName '${q(TASK_NAME)}' -Confirm:$false`], { encoding: "utf8" });
-    log("action", `removed scheduled task: ${TASK_NAME}`);
+    execFileSync("powershell.exe", ["-NoProfile", "-NonInteractive", "-WindowStyle", "Hidden", "-Command", ps], { encoding: "utf8" });
+    log("action", `removed windowless scheduled task: ${TASK_NAME}`);
   } catch (error) {
     log("error", `uninstall failed: ${error.message}`);
     process.exitCode = 1;

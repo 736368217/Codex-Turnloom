@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.17.24 - 2026-11-06
+
+- **修复开机弹出 node 黑框**（会话间任务投诉）：旧的 `Codex-Turnloom Link Watchdog` 登录自启直接 Exec `node.exe ... --loop`；node.exe 是控制台程序，`Settings.Hidden=true` 只隐藏任务本身，仍会创建可见控制台 + conhost（实测 PID 10480，开机 10:00:27，窗口 255,247–1248,766）。违反全局 `AGENTS.md` 的 User Notification Preference。
+- 新增 `scripts/link-watchdog-launcher.vbs`：全链路无窗口 `Task Scheduler → wscript.exe //B //Nologo → WScript.Shell.Run(command, 0, False) → cmd /d /s /c node.exe --loop`，stdout/stderr 重定向到 `%LOCALAPPDATA%\CodexPocket\logs\watchdog-out.log` / `watchdog-err.log`。
+- `scripts/link-watchdog.mjs --install` 改为先 `Stop-ScheduledTask` 再 `Register-ScheduledTask -Force` 注册唯一 wscript 动作；`--uninstall` 先停后注销。守护逻辑（每 10 秒带鉴权 HTTP 4/4 健康检查、挂谁重启谁）完全保留。
+- 实测：新任务 XML `Command=C:\WINDOWS\System32\wscript.exe`、`Arguments=//B //Nologo "…link-watchdog-launcher.vbs"`、Actions=1；启动后 watchdog node 进程存在但**无可见 MainWindow / conhost**；`watchdog-out.log` 有启动记录、`watchdog-err.log` 为空；`watchdog.log` 每 10 秒 4/4 healthy；杀掉 18788 (pid 18032) 后 20 秒内监听恢复、health 200。
+- 项目记忆 `AGENTS.md`「二·补、离线/守护」补写「登录自启必须走无窗口启动器链，直接跑 node.exe 会弹黑框」；回归测试钉住 install/uninstall 与 VBS 启动链。版本 1.17.24(45)。
 ## 1.17.23 - 2026-11-05
 
 - **独立视觉 + 新手易用性检定**（用户要求再独立跑一轮）：两个专职检定员因 PI 未配置其绑定模型无法启动，已如实说明并由主会话亲自分两轮完成；报告见 `docs/UX-AUDIT-2026-11-05-ROUND2.md`。视觉 4.7/5、新手任务 11/11、阻塞 0。
