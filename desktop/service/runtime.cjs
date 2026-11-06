@@ -65,7 +65,9 @@ class RuntimeManager extends EventEmitter {
     const state = overallState(service, tunnel);
     let detail = service.detail;
     if (state === "running") {
-      detail = tunnel.enabled ? "本机服务与 SSH 隧道均正常" : "本机服务正常，手机端可以访问";
+      detail = tunnel.enabled
+        ? (tunnel.external ? "服务与 SSH 隧道由守护运行" : "本机服务与 SSH 隧道均正常")
+        : "本机服务正常，手机端可以访问";
     } else if (state === "degraded") {
       detail = tunnel.enabled && tunnel.state !== "connected"
         ? (tunnel.error || "SSH 隧道断开，局域网仍可访问")

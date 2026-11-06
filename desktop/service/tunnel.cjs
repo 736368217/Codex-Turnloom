@@ -13,14 +13,33 @@ function tunnelBackoff(attempt) {
   return Math.min(MAX_BACKOFF_MS, Math.pow(2, safeAttempt) * 1000);
 }
 
+function forwardMarker(config) {
+  const tunnel = config?.tunnel || {};
+  return `127.0.0.1:${Number(tunnel.remotePort) || 0}:127.0.0.1:${Number(config?.port) || 8787}`;
+}
+
+async function findExternalTunnel(config) {
+  const marker = forwardMarker(config);
+  const script = `$m = '${marker.replace(/'/g, "''")}'; $p = Get-CimInstance Win32_Process -Filter "Name='ssh.exe'" | Where-Object { $_.CommandLine -and $_.CommandLine.Contains($m) } | Select-Object -First 1; if ($p) { $p.ProcessId }`;
+  const result = await execFileAsync(
+    "powershell.exe",
+    ["-NoProfile", "-NonInteractive", "-Command", script],
+    { timeout: 5000 }
+  );
+  const pid = Number(String(result.stdout || "").trim().split(/\r?\n/)[0]);
+  return Number.isInteger(pid) && pid > 0 ? pid : 0;
+}
+
 class TunnelController extends EventEmitter {
-  constructor({ config, logger }) {
+  constructor({ config, logger, findExternal = findExternalTunnel }) {
     super();
     this.config = config;
     this.logger = logger;
+    this.findExternal = findExternal;
     this.state = config?.tunnel?.enabled ? "stopped" : "disabled";
     this.child = null;
     this.pid = 0;
+    this.external = false;
     this.attempts = 0;
     this.nextRetryAt = 0;
     this.lastError = null;
@@ -43,6 +62,7 @@ class TunnelController extends EventEmitter {
       enabled: Boolean(this.config?.tunnel?.enabled),
       state: this.state,
       pid: this.pid || null,
+      external: Boolean(this.pid && this.external),
       attempts: this.attempts,
       nextRetryAt: this.nextRetryAt || null,
       error: this.lastError
@@ -65,7 +85,18 @@ class TunnelController extends EventEmitter {
       return { ok: true, disabled: true };
     }
     if (this.child) return { ok: this.state === "connected" };
+    if (this.external && this.pid) return { ok: true, adopted: true, external: true };
     this.stopping = false;
+    const existingPid = await this.findExternal(this.config);
+    if (existingPid) {
+      this.pid = existingPid;
+      this.external = true;
+      this.attempts = 0;
+      this.nextRetryAt = 0;
+      this.setState("connected", null);
+      this.logger.info("tunnel", `复用已建立的 SSH 隧道（PID ${existingPid}），不重复启动。`);
+      return { ok: true, adopted: true, external: true, pid: existingPid };
+    }
     this.setState("connecting", null);
     try {
       const ssh = this.sshPath();
@@ -96,6 +127,7 @@ class TunnelController extends EventEmitter {
         stdio: ["ignore", "pipe", "pipe"]
       });
       this.pid = this.child.pid || 0;
+      this.external = false;
       this._stdoutBuffer = "";
       this._stderrBuffer = "";
       this.child.stdout?.setEncoding("utf8");
@@ -163,14 +195,23 @@ class TunnelController extends EventEmitter {
       this.stopping = false;
       return;
     }
-    try { child?.kill(); } catch {}
-    await new Promise((resolve) => setTimeout(resolve, 800));
-    if (pid) await execFileAsync("taskkill.exe", ["/PID", String(pid), "/T", "/F"], { timeout: 4000 });
-    this.child = null;
-    this.pid = 0;
+    const wasExternal = this.external;
+    // Detaching from a watchdog-owned tunnel must never kill the live remote
+    // forwarding. Only an ssh.exe child created here belongs to the console.
+    if (wasExternal) {
+      this.child = null;
+      this.pid = 0;
+      this.external = false;
+    } else {
+      try { child?.kill(); } catch {}
+      await new Promise((resolve) => setTimeout(resolve, 800));
+      if (pid) await execFileAsync("taskkill.exe", ["/PID", String(pid), "/T", "/F"], { timeout: 4000 });
+      this.child = null;
+      this.pid = 0;
+    }
     this.attempts = 0;
     this.nextRetryAt = 0;
-    if (!silent) this.logger.info("tunnel", "SSH 隧道已停止。");
+    if (!silent) this.logger.info("tunnel", wasExternal ? "控制台已断开隧道显示。" : "SSH 隧道已停止。");
     this.setState(this.config?.tunnel?.enabled ? "stopped" : "disabled", null);
     this.stopping = false;
   }
@@ -186,4 +227,4 @@ class TunnelController extends EventEmitter {
   }
 }
 
-module.exports = { TunnelController, tunnelBackoff, MAX_BACKOFF_MS };
+module.exports = { TunnelController, tunnelBackoff, MAX_BACKOFF_MS, forwardMarker };

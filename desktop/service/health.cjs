@@ -120,6 +120,21 @@ async function findPortOwner(port) {
   return null;
 }
 
+async function getProcessStart(pid) {
+  if (!pid) return 0;
+  const target = Number(pid);
+  if (!Number.isInteger(target) || target < 1) return 0;
+  const script = `$p = Get-CimInstance Win32_Process -Filter 'ProcessId=${target}'; if ($p) { $p.CreationDate.ToUniversalTime().ToString('o') }`;
+  const result = await execFileAsync(
+    "powershell.exe",
+    ["-NoProfile", "-NonInteractive", "-Command", script],
+    { timeout: 5000 }
+  );
+  if (!result.ok) return 0;
+  const ms = Date.parse(String(result.stdout || "").trim());
+  return Number.isFinite(ms) ? ms : 0;
+}
+
 async function getProcessMetrics(pid) {
   if (!pid) return null;
   const result = await execFileAsync("tasklist.exe", ["/FI", `PID eq ${pid}`, "/FO", "CSV", "/NH"], { timeout: 3000 });
@@ -139,6 +154,7 @@ module.exports = {
   waitForHealth,
   checkPortAvailable,
   findPortOwner,
+  getProcessStart,
   getProcessMetrics,
   execFileAsync
 };

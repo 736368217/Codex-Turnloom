@@ -153,17 +153,22 @@ async function bootstrap() {
   applyTheme(configState.config.console?.theme || "system");
   applyLoginItem(configState.config);
 
+  let startupPromise = null;
   if (configState.config.console?.autoStart) {
-    runtime.start().catch((error) => logger.error("service", `自动启动失败：${error.message}`));
+    startupPromise = runtime.start().catch((error) => {
+      logger.error("service", `自动启动失败：${error.message}`);
+      return { ok: false, error: error.message };
+    });
   }
 
-  if (!startHidden || smokeTest) {
+  if (!startHidden && !smokeTest) {
     createMainWindow();
     showWindow("overview");
   }
 
   if (smokeTest) {
-    setTimeout(() => finishSmokeTest("ready"), 1200);
+    if (startupPromise) await startupPromise;
+    finishSmokeTest("ready");
   }
 }
 
@@ -416,12 +421,15 @@ async function guardServiceAction(action) {
 
 async function confirmStop() {
   const win = mainWindow && !mainWindow.isDestroyed() ? mainWindow : null;
+  const external = Boolean(runtimeSnapshot().service?.external);
   const result = await dialog.showMessageBox(win, {
     type: "warning",
-    title: "停止本机服务",
-    message: "停止后，手机端将立即无法访问这台电脑。",
+    title: external ? "断开控制台与服务" : "停止本机服务",
+    message: external
+      ? "服务由后台守护运行。断开后控制台不再显示其状态，手机端服务仍会继续运行。"
+      : "停止后，手机端将立即无法访问这台电脑。",
     detail: "Codex Desktop 和正在执行的任务不受影响。",
-    buttons: ["停止服务", "取消"],
+    buttons: [external ? "断开显示" : "停止服务", "取消"],
     defaultId: 1,
     cancelId: 1,
     noLink: true
@@ -431,12 +439,15 @@ async function confirmStop() {
 
 async function confirmQuit() {
   const win = mainWindow && !mainWindow.isDestroyed() ? mainWindow : null;
+  const external = Boolean(runtimeSnapshot().service?.external);
   const result = await dialog.showMessageBox(win, {
     type: "warning",
     title: "退出 Codex-Turnloom 控制台",
-    message: "退出后将停止本机服务和 SSH 隧道，手机端会立即断开。",
+    message: external
+      ? "退出控制台不会停止后台守护的服务与 SSH 隧道，手机端仍可访问。"
+      : "退出后将停止本机服务和 SSH 隧道，手机端会立即断开。",
     detail: "Codex Desktop 和正在执行的任务不受影响。",
-    buttons: ["退出并停止服务", "取消"],
+    buttons: ["退出控制台", "取消"],
     defaultId: 1,
     cancelId: 1,
     noLink: true
@@ -596,14 +607,26 @@ async function quitApp() {
 }
 
 async function finishSmokeTest(label) {
-  console.log(JSON.stringify({
+  const snapshot = runtimeSnapshot();
+  const result = {
     smoke: label,
     configPath: configPath(),
     hasConfig: Boolean(currentConfig()),
-    state: runtimeSnapshot().state,
+    state: snapshot.state,
+    detail: snapshot.detail,
+    service: snapshot.service,
+    tunnel: snapshot.tunnel,
+    health: snapshot.health,
+    lastError: snapshot.lastError,
     platform: process.platform,
     electron: process.versions.electron
-  }));
+  };
+  const text = JSON.stringify(result);
+  console.log(text);
+  const output = process.env.TURNLOOM_SMOKE_OUTPUT;
+  if (output) {
+    try { fs.writeFileSync(output, text, "utf8"); } catch (error) { console.error(`[smoke] write failed: ${error.message}`); }
+  }
   setTimeout(() => quitApp(), 250);
 }
 
