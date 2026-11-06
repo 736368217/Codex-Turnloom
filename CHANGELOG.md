@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.17.26 - 2026-11-06
+
+- **修复 GitHub Actions 连续失败与失败邮件轰炸**：复盘最近 40 次运行后发现 11 月起每次 `main` push 的 `Verify / server` 都在 `npm test` 失败，Android job 一直成功。根因不是产品代码，而是 `test/server.test.js` 中 `.jsonl.zst` 测试的 `finally` 被插错位置，导致后续 6 个 UI 契约测试被嵌套进异步父测试；CI 的 Node 22 把它们判为 `cancelledByParent`，本地 Node 24 因调度时序不同而显示全绿。这条结构错误自 `da6a7d2` 起持续存在，之后每次新提交都重复同一封失败邮件。
+- 把 `rmSync` / `finally` / `});` 移回 zst 测试内部，恢复所有被吞入的测试为顶层；Node 22.23.4 与本地 Node 24 完整测试均为 152/152、`0 fail / 0 cancelled`。用故障注入把旧结构还原后，Node 22 能重新复现 `fail 1 / cancelled 5`，证明门禁确实能挡住复发。
+- 工作流收窄为仅 `main`、指向 `main` 的 PR 与手动触发，忽略 tag；同分支新 push 通过 `concurrency.cancel-in-progress` 取消过时运行，避免同一提交/旧提交继续贡献失败通知。`server` job 固定到 Node 22.23.4，显式检查 TAP 的 `# fail` 与 `# cancelled` 都为 0，并补跑 `desktop:check`。
+- 新增 `scripts/verify-ci.mjs` 与 `npm run verify:ci`：语法检查、当前 Node 与 CI Node 22 双版本完整测试、`npm run check`、`npm run desktop:check`，并要求两个 Node 版本都输出 `0 fail / 0 cancelled`。以后 push 前必须先跑这个命令，不能只信开发者机器上的 Node 版本。
 ## 1.17.25 - 2026-11-06
 
 - **修复点击任务栏控制台提示「启动失败：端口 8787 已被 node.exe (PID 18008) 占用」**：旧控制台启动时只检查端口空闲，没有识别由 `Codex-Turnloom Link Watchdog` 在登录时拉起的健康分发器。现在 `ServiceController.start()` 先带正确访问码请求 `/api/health`；`ok:true` 即复用外部服务并记录真实 PID，绝不重复 spawn。只有健康探测失败且端口仍被占用时，才保留原来的端口占用错误。

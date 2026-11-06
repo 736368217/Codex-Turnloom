@@ -1472,6 +1472,9 @@ test("a .jsonl.zst transcript is decompressed and parsed like a plain one", asyn
       "a compressed transcript must not produce parse errors",
     );
   } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
 
 test("copy and branch live behind a long-press sheet, not per-message buttons", () => {
   const root = fileURLToPath(new URL("..", import.meta.url));
@@ -1593,9 +1596,6 @@ test("the time-ordered list still shows which folder each conversation belongs t
   assert.match(app, /function threadFolderLabel\(thread\) \{/);
   assert.match(app, /const segment = cwd\.split\(\/\[\\\\\/\]\+\/\)\.filter\(Boolean\)\.pop\(\)/);
   assert.match(v3, /#shell \.thread-folder\s*\{[^}]*text-overflow:\s*ellipsis/);
-});
-    rmSync(dir, { recursive: true, force: true });
-  }
 });
 
 test("a stalled messages request cannot leave the list loading forever", () => {
