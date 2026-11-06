@@ -5,8 +5,10 @@ import test from "node:test";
 const css = readFileSync(new URL("../public/styles.app.css", import.meta.url), "utf8");
 const html = readFileSync(new URL("../public/index.html", import.meta.url), "utf8");
 const app = readFileSync(new URL("../public/app.js", import.meta.url), "utf8");
+const bridge = readFileSync(new URL("../third-party/turnloom-pidesktop/plugin/main.js", import.meta.url), "utf8");
 
 test("hidden overlays stay hidden: CSS must not override [hidden]", () => {
+
   // 真机事故：#shell .host-sheet { display:flex } 覆盖了 [hidden] 的
   // display:none，结果页面一加载就被全屏 backdrop 盖住，点哪里都没反应。
   const block = css.match(/#shell \.host-sheet\[hidden\][\s\S]*?\{([^}]*)\}/);
@@ -134,7 +136,7 @@ test("switching conversations keeps drafts and attachments per thread", () => {
 });
 
 test("model panel separates provider/model and effort, and balances composer controls", () => {
-  assert.match(html, /model-step-title[\s\S]*供应商 \/ 模型/);
+  assert.match(html, /model-step-title[\s\S]*<b>1<\/b><span>供应商<\/span>/);
   assert.match(html, /model-step-title[\s\S]*思考强度/);
   assert.match(css, /#shell \.model-row\s*\{[^}]*grid-template-areas/s);
   assert.match(css, /#shell \.model-row-capability\s*\{[^}]*margin-left:\s*0\s*!important/s);
@@ -148,4 +150,90 @@ test("hidden model panel is invisible on initial load and never eats the center 
   assert.match(css, /#shell \.model-panel\[hidden\][\s\S]{0,500}display:\s*none\s*!important/s);
   assert.match(app, /els\.modelPanel\.hidden = !state\.modelPanelOpen/);
   assert.match(app, /state\.modelPanelOpen = !state\.modelPanelOpen/);
+  // 空模型目录 / health 失败时不能因为提前 return 而留下打开的弹层。
+  assert.match(app, /function syncModelPanelDisclosure[\s\S]*els\.modelPanel\.hidden = !state\.modelPanelOpen/);
+  assert.match(app, /function renderModelSettings\(\) \{\s*syncModelPanelDisclosure\(\);\s*const models = availableModels\(\);\s*if \(!models\.length\) return;/);
+});
+
+test("three-level model chooser filters models by provider, not by changing the model", () => {
+  assert.match(html, /id="modelPanel"[\s\S]*id="providerChips"[\s\S]*id="modelList"[\s\S]*id="effortChips"/);
+  assert.match(html, /id="providerFilterNote"[^>]*hidden>搜索会跨全部供应商显示匹配模型/);
+  assert.match(html, /<b>2<\/b><span>模型<\/span>/);
+  assert.match(html, /<b>3<\/b><span>思考强度<\/span>/);
+  assert.match(app, /modelProvider: "all"/);
+  assert.match(app, /function modelProviderName[\s\S]* · [\s\S]*model\?\.provider[\s\S]*lastIndexOf\("\/"\)/);
+  assert.match(app, /function providerFilteredModels[\s\S]*models\.filter\(\(model\) => matchesProvider/);
+  assert.match(app, /function filteredModels[\s\S]*搜索永远跨供应商[\s\S]*providerName/);
+  assert.match(app, /providerFilteredModels\(filteredModels\(scoped, state\.modelFilter, state\.modelProvider\)\)/);
+  assert.match(app, /function selectProvider\(key\)[\s\S]*state\.modelProvider = providerKey\(key\)/);
+  assert.match(app, /function selectProvider\(key\)[\s\S]*renderModelSettings\(\)[\s\S]*saveCurrentThreadDraft\(\)/);
+  assert.match(app, /providerChips\?\.addEventListener\("click"[\s\S]*data-provider/);
+  assert.match(app, /modelProvider: providerKey\(state\.modelProvider\)/);
+  assert.match(app, /function adoptSelectedThreadModel[\s\S]*thread\?\.model \|\| state\.model/);
+  assert.match(app, /function renderProviderChips[\s\S]*\["all", "全部"\]/);
+  assert.doesNotMatch(app, /return row;\s*return row;/);
+  assert.match(css, /#shell \.provider-chips\s*\{[^}]*overflow-x:\s*auto/s);
+  assert.match(css, /#shell \.provider-chip\s*\{[^}]*min-height:\s*44px/s);
+  assert.match(css, /html\.large-text #shell \.provider-chips[\s\S]*overflow-x:\s*auto/);
+  assert.match(css, /html\.keyboard-open #shell \.provider-chips[\s\S]*overflow-x:\s*auto/);
+  assert.match(css, /#shell \[hidden\]\s*\{\s*display:\s*none\s*!important/);
+});
+
+test("thread drafts persist safely across pagehide and visibility changes", () => {
+  assert.match(app, /const THREAD_DRAFTS_STORAGE_KEY = "codex-thread-drafts-v1"/);
+  assert.match(app, /THREAD_DRAFTS_MAX_BYTES = 1\.5 \* 1024 \* 1024/);
+  assert.match(app, /THREAD_DRAFTS_MAX_THREADS = 30/);
+  assert.match(app, /THREAD_DRAFT_IMAGE_MAX_BYTES = 300 \* 1024/);
+  assert.match(app, /function loadPersistedThreadDrafts[\s\S]*safeStorageGet\(localStorage, THREAD_DRAFTS_STORAGE_KEY\)/);
+  assert.match(app, /function loadPersistedThreadDrafts[\s\S]*try \{[\s\S]*JSON\.parse[\s\S]*catch/);
+  assert.match(app, /function compactDraftImage[\s\S]*dataUrl\.length > THREAD_DRAFT_IMAGE_MAX_BYTES[\s\S]*name[\s\S]*mimeType[\s\S]*size/);
+  assert.match(app, /function persistThreadDrafts[\s\S]*JSON\.stringify\(bounded\)[\s\S]*safeStorageSet\(localStorage, THREAD_DRAFTS_STORAGE_KEY/);
+  assert.match(app, /function saveCurrentThreadDraft[\s\S]*persistThreadDrafts\(\)/);
+  assert.match(app, /window\.addEventListener\("pagehide", saveCurrentThreadDraft\)/);
+  assert.match(app, /document\.addEventListener\("visibilitychange"[\s\S]*document\.hidden[\s\S]*saveCurrentThreadDraft\(\)/);
+  assert.match(app, /async function bootstrap[\s\S]*loadPersistedThreadDrafts\(\);[\s\S]*restoreThreadDraft\(state\.selectedId\)[\s\S]*adoptSelectedThreadModel\(\)/);
+  assert.match(app, /modelExplicit: previous\.modelExplicit === true/);
+  assert.match(app, /draft\?\.modelExplicit && draft\.model/);
+  assert.match(app, /forgetThreadDraft\(sentThreadId\)/);
+});
+
+test("web views pop one layer at a time with chat as the root", () => {
+  assert.match(app, /viewStack: \[\]/);
+  assert.match(app, /function viewLayerActive[\s\S]*case "hostSheet"[\s\S]*case "modelPanel"[\s\S]*case "goalEditDialog"[\s\S]*case "queueExpanded"[\s\S]*case "sidebar"/);
+  assert.match(app, /function pushViewLayer[\s\S]*removeViewLayer\(id\)[\s\S]*viewStack\.push/);
+  assert.match(app, /function popViewLayer[\s\S]*viewLayerActive\(layer\.id\)[\s\S]*layer\.close\(\)/);
+  assert.match(app, /globalThis\.codexPocketHandleBack = \(\) => popViewLayer\(\)/);
+  assert.match(app, /pushViewLayer\("hostSheet"[\s\S]*closeHostSheet/);
+  assert.match(app, /pushViewLayer\("modelPanel"[\s\S]*closeModelPanel/);
+  assert.match(app, /pushViewLayer\("queueExpanded"[\s\S]*collapseQueueLayer/);
+  assert.match(app, /pushViewLayer\("threadContextMenu"/);
+  assert.match(app, /pushViewLayer\("imagePickerMenu"/);
+  assert.match(app, /pushViewLayer\("mentionMenu"/);
+  assert.match(app, /pushViewLayer\("sidebar"/);
+  assert.doesNotMatch(app, /history\.pushState\([^\n]*viewStack/);
+});
+
+test("queued failures expose the reason, retry time and an explicit retry action", () => {
+  assert.match(app, /failedCount = queuedMessages\.filter\(\(item\) => item\.deliveryState === "failed"\)\.length/);
+  assert.match(app, /queueStatusBar\.classList\.toggle\("has-failure"/);
+  assert.match(app, /queueStatusText\.textContent = `\$\{t\("queuedCount"[\s\S]*失败/);
+  assert.match(app, /queue-status-error[\s\S]*escapeHtml\(item\.lastError\)/);
+  assert.match(app, /data-queue-action="retry"/);
+  assert.match(app, /postJson\("\/api\/queue\/retry"/);
+  assert.match(app, /nextAttemptAtMs[\s\S]*自动重试/);
+  assert.match(css, /#shell \.queue-status-bar\.has-failure/);
+  assert.match(css, /#shell \.queue-retry-button\s*\{[^}]*min-height:\s*40px/);
+});
+
+test("bridge queue remains authoritative, atomic and principal-safe", () => {
+  assert.match(bridge, /const TURNLOOM_QUEUE_PRINCIPAL = "turnloom-mobile"/);
+  assert.match(bridge, /NATIVE_QUEUE_BUSY_RETRIES = 5/);
+  assert.match(bridge, /function nativeQueueWrite[\s\S]*BEGIN IMMEDIATE[\s\S]*isSqliteBusy\(error\)/);
+  assert.match(bridge, /function imageReceiptsPath[\s\S]*turnloom-image-receipts\.json/);
+  assert.match(bridge, /if \(method === "turnloom\/queue\/claim"\) return nativeQueueClaim\(params\)/);
+  assert.match(bridge, /if \(method === "turnloom\/queue\/retry"\) return nativeQueueRetry\(params\)/);
+  assert.match(bridge, /DELETE FROM turn_queue WHERE session_id = \? AND id IN/);
+  assert.match(bridge, /scopeOwnPrincipal = !itemId && params\?\.ownPrincipalOnly !== false/);
+  assert.match(bridge, /function nativeQueueClaim[\s\S]*DELETE FROM turn_queue WHERE session_id = \? AND principal = \? AND id = \?/);
+  assert.match(bridge, /function nativeQueuePush[\s\S]*restoreId/);
 });

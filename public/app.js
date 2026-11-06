@@ -5,6 +5,123 @@ import { resolveAuthToken } from "./auth.js";
 import { runningTimeLabel } from "./runtime.js";
 import { clearConversationCache, conversationCacheKey, isConversationCacheFresh, readConversationCache, writeConversationCache } from "./conversation-cache.js";
 
+const THREAD_DRAFTS_STORAGE_KEY = "codex-thread-drafts-v1";
+const THREAD_DRAFTS_MAX_BYTES = 1.5 * 1024 * 1024;
+const THREAD_DRAFTS_MAX_THREADS = 30;
+const THREAD_DRAFT_IMAGE_MAX_BYTES = 300 * 1024;
+
+function safeStorageGet(storage, key) {
+  try {
+    return storage.getItem(key) || "";
+  } catch {
+    return "";
+  }
+}
+
+function safeStorageSet(storage, key, value) {
+  try {
+    storage.setItem(key, value);
+  } catch {
+    // Storage can be unavailable or full in some mobile privacy modes.
+  }
+}
+
+function safeStorageRemove(storage, key) {
+  try {
+    storage.removeItem(key);
+  } catch {
+    // Storage can be unavailable in some mobile privacy modes.
+  }
+}
+
+function compactDraftImage(image) {
+  const dataUrl = String(image?.dataUrl || "");
+  const data = String(image?.data || "");
+  const size = Number(image?.size) || 0;
+  const tooLarge = dataUrl.length > THREAD_DRAFT_IMAGE_MAX_BYTES || data.length > THREAD_DRAFT_IMAGE_MAX_BYTES || size > THREAD_DRAFT_IMAGE_MAX_BYTES;
+  if (tooLarge) {
+    return {
+      id: String(image?.id || ""),
+      name: String(image?.name || "image"),
+      mimeType: String(image?.mimeType || ""),
+      size,
+      stripped: true
+    };
+  }
+  return {
+    id: String(image?.id || ""),
+    name: String(image?.name || "image"),
+    mimeType: String(image?.mimeType || ""),
+    size,
+    dataUrl,
+    data
+  };
+}
+
+function sanitizePersistedDraft(raw) {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return null;
+  const images = Array.isArray(raw.images) ? raw.images.slice(0, 4).map(compactDraftImage) : [];
+  return {
+    message: String(raw.message || "").slice(0, 100000),
+    images,
+    selectedPlugins: Array.isArray(raw.selectedPlugins) ? raw.selectedPlugins.slice(0, 40) : [],
+    selectedSkills: Array.isArray(raw.selectedSkills) ? raw.selectedSkills.slice(0, 40) : [],
+    model: String(raw.model || ""),
+    effort: String(raw.effort || ""),
+    modelProvider: String(raw.modelProvider || "all"),
+    modelExplicit: raw.modelExplicit === true,
+    modelPreferences: raw.modelPreferences && typeof raw.modelPreferences === "object" && !Array.isArray(raw.modelPreferences)
+      ? raw.modelPreferences
+      : {}
+  };
+}
+
+function loadPersistedThreadDrafts() {
+  const json = safeStorageGet(localStorage, THREAD_DRAFTS_STORAGE_KEY);
+  if (json.length > THREAD_DRAFTS_MAX_BYTES) {
+    state.threadDrafts = {};
+    return state.threadDrafts;
+  }
+  let parsed = {};
+  try {
+    parsed = JSON.parse(json || "{}");
+  } catch {
+    parsed = {};
+  }
+  const drafts = {};
+  if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+    for (const [id, raw] of Object.entries(parsed).slice(0, THREAD_DRAFTS_MAX_THREADS)) {
+      const draft = sanitizePersistedDraft(raw);
+      if (draft) drafts[String(id)] = draft;
+    }
+  }
+  state.threadDrafts = drafts;
+  return drafts;
+}
+
+function persistThreadDrafts() {
+  const entries = Object.entries(state.threadDrafts || {}).slice(0, THREAD_DRAFTS_MAX_THREADS);
+  const bounded = {};
+  for (const [id, draft] of entries) {
+    const clean = sanitizePersistedDraft(draft);
+    if (clean) bounded[String(id)] = clean;
+  }
+  state.threadDrafts = bounded;
+  const json = JSON.stringify(bounded);
+  if (json.length <= THREAD_DRAFTS_MAX_BYTES) {
+    safeStorageSet(localStorage, THREAD_DRAFTS_STORAGE_KEY, json);
+  } else {
+    // 超限时保留当前会话，丢掉最旧条目再试一次，绝不写入 >1.5MB 的字符串。
+    const selectedId = String(state.selectedId || "");
+    const keep = Object.entries(bounded).filter(([id]) => id === selectedId).slice(-1);
+    const smaller = JSON.stringify(Object.fromEntries(keep));
+    if (smaller.length <= THREAD_DRAFTS_MAX_BYTES) {
+      state.threadDrafts = Object.fromEntries(keep);
+      safeStorageSet(localStorage, THREAD_DRAFTS_STORAGE_KEY, smaller);
+    }
+  }
+}
+
 const state = {
   threads: [],
   selectedId: null,
@@ -15,9 +132,11 @@ const state = {
   showTools: false,
   expandedNotices: {},
   threadDrafts: {},
+  viewStack: [],
   queueExpanded: safeStorageGet(localStorage, "codex-queue-expanded") === "1",
   sidebarCollapsed: false,
   modelFilter: "",
+  modelProvider: "all",
   showAllModels: false,
     threadSortMode: (() => { const saved = safeStorageGet(localStorage, "codex-thread-sort-mode"); return saved === "recent" ? "recent" : "project"; })(),
   /** Projects (folders) a new conversation can be filed into, and the remembered choice. */
@@ -175,6 +294,8 @@ const els = {
   effortSelect: document.querySelector("#effortSelect"),
   modelSelectLabel: document.querySelector("#modelSelectLabel"),
   modelFilter: document.querySelector("#modelFilter"),
+  providerChips: document.querySelector("#providerChips"),
+  providerFilterNote: document.querySelector("#providerFilterNote"),
   effortSelectLabel: document.querySelector("#effortSelectLabel"),
   pluginPickerButton: document.querySelector("#pluginPickerButton"),
   skillPickerButton: document.querySelector("#skillPickerButton"),
@@ -744,36 +865,7 @@ function applyStaticText() {
   document.querySelector("#welcomeDescription").textContent = t("welcomeDescription");
   document.querySelector("#welcomeStepOneTitle").textContent = t("welcomeStepOneTitle");
   document.querySelector("#welcomeStepOneCopy").textContent = t("welcomeStepOneCopy");
-  document.querySelector("#welcomeStepTwoTitle").textContent = t("welcomeStepTwoTitle");
-  document.querySelector("#welcomeStepTwoCopy").textContent = t("welcomeStepTwoCopy");
-  document.querySelector("#welcomeStepThreeTitle").textContent = t("welcomeStepThreeTitle");
-  document.querySelector("#welcomeStepThreeCopy").textContent = t("welcomeStepThreeCopy");
-  document.querySelector("#welcomePrivacy").textContent = t("welcomePrivacy");
-  els.welcomeStart.textContent = t("welcomeStart");
-}
-
-function safeStorageGet(storage, key) {
-  try {
-    return storage.getItem(key) || "";
-  } catch {
-    return "";
-  }
-}
-
-function safeStorageSet(storage, key, value) {
-  try {
-    storage.setItem(key, value);
-  } catch {
-    // Storage can be unavailable in some mobile privacy modes.
-  }
-}
-
-function safeStorageRemove(storage, key) {
-  try {
-    storage.removeItem(key);
-  } catch {
-    // Storage can be unavailable in some mobile privacy modes.
-  }
+  document.querySelector("#welcomeStart").textContent = t("welcomeStart");
 }
 
 state.followUpMode = safeStorageGet(localStorage, "codex-follow-up-mode") === "steer" ? "steer" : "queue";
@@ -796,12 +888,50 @@ function availableModels() {
 
 const MODEL_FILTER_THRESHOLD = 20;
 
-function filteredModels(models, term) {
+// 目录里的模型 id 常见三种写法：`provider/model`、`provider:model` 或裸 slug，
+// label 也可能带「 · 供应商」。三级选择的供应商归类优先用显式字段/label，
+// 然后才从 id 的供应商段推导；统一小写比较，但 chip 展示保留原始拼写。
+function modelProviderName(model) {
+  const label = String(model?.label || "");
+  if (label.includes(" · ")) return label.split(" · ").slice(1).join(" · ").trim();
+  const explicit = String(model?.provider || model?.providerName || "").trim();
+  if (explicit) return explicit;
+  const id = String(model?.id || "").trim();
+  const separator = Math.max(id.lastIndexOf("/"), id.lastIndexOf(":"));
+  return separator > 0 ? id.slice(0, separator).trim() : "";
+}
+
+function providerKey(name) {
+  return String(name || "").trim().toLowerCase();
+}
+
+function providerFilterActive() {
+  return providerKey(state.modelProvider) !== "all" && !String(state.modelFilter || "").trim();
+}
+
+function matchesProvider(model, wanted) {
+  if (!wanted) return true;
+  const key = providerKey(modelProviderName(model)) || "other";
+  return key === wanted;
+}
+
+// 供应商是第一级：无搜索词时按 state.modelProvider 真实过滤第二级列表。
+function providerFilteredModels(models) {
+  return providerFilterActive()
+    ? models.filter((model) => matchesProvider(model, providerKey(state.modelProvider)))
+    : models;
+}
+
+function filteredModels(models, term, provider = "all") {
   const needle = String(term || "").trim().toLowerCase();
-  if (!needle) return models;
-  return models.filter((model) =>
-    `${model.label || ""} ${model.id || ""}`.toLowerCase().includes(needle)
-  );
+  // 搜索永远跨供应商：有搜索词时忽略单供应商选择，避免搜到却被隐藏。
+  const wanted = needle || providerKey(provider) === "all" ? "" : providerKey(provider);
+  return models.filter((model) => {
+    if (!matchesProvider(model, wanted)) return false;
+    if (!needle) return true;
+    const providerName = modelProviderName(model);
+    return `${model.label || ""} ${model.id || ""} ${providerName}`.toLowerCase().includes(needle);
+  });
 }
 
 function effortLabel(effort) {
@@ -837,9 +967,54 @@ function normalizeModelSettings(preferredModel = state.model) {
   renderModelSettings();
 }
 
+function renderProviderChips(models) {
+  const names = new Map();
+  for (const model of models) {
+    const name = modelProviderName(model);
+    const key = providerKey(name) || "other";
+    if (!names.has(key)) names.set(key, name || "其他");
+  }
+  // 当前会话的 thread.model / selectedModel 若不在目录里，也要能从会话推导供应商。
+  const thread = state.threads.find((entry) => entry.id === state.selectedId);
+  const inferred = modelProviderName({ id: thread?.model || state.modelPreferences[state.selectedId]?.model || "" });
+  if (inferred && !names.has(providerKey(inferred))) names.set(providerKey(inferred), inferred);
+  const entries = [["all", "全部"], ...names];
+  if (!entries.some(([key]) => key === providerKey(state.modelProvider))) state.modelProvider = "all";
+  const current = providerKey(state.modelProvider);
+  const chips = els.providerChips;
+  if (chips) {
+    chips.replaceChildren(...entries.map(([key, label]) => {
+      const chip = document.createElement("button");
+      chip.type = "button";
+      chip.className = "provider-chip" + (current === key ? " active" : "");
+      chip.dataset.provider = key;
+      chip.textContent = label;
+      chip.setAttribute("aria-pressed", String(current === key));
+      chip.title = label;
+      return chip;
+    }));
+  }
+  if (els.providerFilterNote) {
+    // 搜索时自动解除单供应商过滤，用文案说明结果来自全部供应商。
+    els.providerFilterNote.hidden = !(
+      Boolean(String(state.modelFilter || "").trim()) && providerKey(state.modelProvider) !== "all"
+    );
+  }
+}
+
+/** 目录未加载 / 离线 / health 失败时也必须保持 hidden 与 aria 状态一致。 */
+function syncModelPanelDisclosure() {
+  els.modelSummary.setAttribute("aria-expanded", String(state.modelPanelOpen));
+  els.modelSummary.classList.toggle("expanded", state.modelPanelOpen);
+  els.modelPanel.hidden = !state.modelPanelOpen;
+}
+
 function renderModelSettings() {
+  syncModelPanelDisclosure();
   const models = availableModels();
   if (!models.length) return;
+  // 三级：供应商 → 模型 → 强度。供应商 chip 只过滤下面这一级，不改当前模型。
+  renderProviderChips(models);
   const selectedModel = models.find((model) => model.id === state.model) || models[0];
   // usedModelIds 是会话里记录的裸 slug（deepseek-v4.1-flash），目录 id 是
   // 「供应商/模型」。两种写法都要认，否则常用列表会空掉。
@@ -857,7 +1032,7 @@ function renderModelSettings() {
   const isUsed = (model) => Number.isFinite(rankOf(model));
   // 供应商自动发现的模型可能上百个，默认只列这台电脑上真正在用的，
   // 并按使用频次排序取前 20；同名模型散落在多个供应商时不再全部铺开。
-  const scopeAll = state.showAllModels || Boolean(String(state.modelFilter || "").trim());
+  const scopeAll = state.showAllModels || Boolean(String(state.modelFilter || "").trim()) || providerFilterActive();
   const scoped = usedSet.size && !scopeAll
     ? (() => {
         const seen = new Set();
@@ -872,15 +1047,23 @@ function renderModelSettings() {
             seen.add(key);
             return true;
           })
-          .slice(0, 20);
+          .slice(0, MODEL_FILTER_THRESHOLD);
       })()
     : models;
-  const filtered = filteredModels(scoped, state.modelFilter);
-  const rows = filtered.length && !filtered.some((model) => model.id === selectedModel.id)
+  // 第一级筛选后再到第二级模型；搜索时 filteredModels 自动跨全部供应商。
+  const filtered = providerFilteredModels(filteredModels(scoped, state.modelFilter, state.modelProvider));
+  const selectedInFilter = !providerFilterActive() || matchesProvider(selectedModel, providerKey(state.modelProvider));
+  // 供应商筛选时当前模型若属于别的供应商，不从列表外面偷偷插回来。
+  const rows = filtered.length && selectedInFilter && !filtered.some((model) => model.id === selectedModel.id)
     ? [selectedModel, ...filtered]
     : filtered.length
       ? filtered
-      : [selectedModel];
+      : selectedInFilter
+        ? [selectedModel]
+        : [];
+  const selectRows = rows.some((model) => model.id === selectedModel.id)
+    ? rows
+    : [selectedModel, ...rows];
 
   const list = document.querySelector("#modelList");
   const empty = document.querySelector("#modelEmpty");
@@ -899,18 +1082,15 @@ function renderModelSettings() {
       name.textContent = String(model.label || model.id).split(" · ")[0];
       const provider = document.createElement("span");
       provider.className = "model-row-provider";
-      provider.textContent = String(model.label || "").includes(" · ")
-        ? String(model.label).split(" · ").slice(1).join(" · ")
-        : model.id;
+      provider.textContent = modelProviderName(model) || model.id;
       const capability = document.createElement("span");
       capability.className = "model-row-capability";
       capability.textContent = model.supportsImages === false ? t("modelTextOnly") : "";
       row.append(name, provider, capability);
       return row;
-      return row;
     }));
   }
-  if (empty) empty.hidden = rows.length > 0 || !String(state.modelFilter || "").trim();
+  if (empty) empty.hidden = rows.length > 0 || (!String(state.modelFilter || "").trim() && !providerFilterActive());
   if (count) count.textContent = scopeAll ? `共 ${rows.length} 个` : `常用 ${rows.length} 个`;
   if (scopeButton) {
     scopeButton.textContent = state.showAllModels ? "只看常用模型" : "显示全部模型";
@@ -918,7 +1098,7 @@ function renderModelSettings() {
   }
 
   // 隐藏 select 保留给表单/兼容路径，但不作为用户可见控件。
-  els.modelSelect.replaceChildren(...rows.map((model) => {
+  els.modelSelect.replaceChildren(...selectRows.map((model) => {
     const option = document.createElement("option");
     option.value = model.id;
     option.textContent = model.label || model.id;
@@ -954,13 +1134,11 @@ function renderModelSettings() {
   els.modelSummary.setAttribute("aria-label", `${t("modelSettings")}：${modelLabel}，${effortLabel(state.effort)}`);
   if (providerTitle) els.modelName.setAttribute("title", providerTitle);
   else els.modelName.removeAttribute("title");
-  els.modelEffort.textContent = effortLabel(state.effort);
-  els.modelSummary.setAttribute("aria-expanded", String(state.modelPanelOpen));
-  els.modelSummary.classList.toggle("expanded", state.modelPanelOpen);
-  els.modelPanel.hidden = !state.modelPanelOpen;
+  syncModelPanelDisclosure();
 }
 
 function closeModelPanel() {
+  removeViewLayer("modelPanel");
   if (!state.modelPanelOpen) return;
   state.modelPanelOpen = false;
   state.modelFilter = "";
@@ -971,9 +1149,20 @@ function closeModelPanel() {
 function adoptSelectedThreadModel() {
   const thread = state.threads.find((entry) => entry.id === state.selectedId);
   const preference = state.modelPreferences[state.selectedId];
+  const draft = state.threadDrafts?.[String(state.selectedId || "")];
   state.modelThreadId = state.selectedId;
   if (preference?.effort) state.effort = preference.effort;
-  normalizeModelSettings(preference?.model || thread?.model || state.model);
+  const preferredModel = draft?.modelExplicit && draft.model
+    ? draft.model
+    : preference?.model || thread?.model || state.model;
+  normalizeModelSettings(preferredModel);
+  // 从 thread.model / selectedModel 推导供应商，仅作为第一级的默认归类；
+  // 会话草稿里显式记住的供应商优先，且不会覆盖 thread.model 的优先级。
+  const inferred = modelProviderName({ id: preferredModel, provider: thread?.modelProvider }) || "";
+  state.modelProvider = draft?.modelProvider
+    ? providerKey(draft.modelProvider)
+    : providerKey(inferred) || "all";
+  if (state.modelPanelOpen) renderModelSettings();
 }
 
 
@@ -1291,13 +1480,22 @@ function renderMessageImages(message) {
   const fileImages = (Array.isArray(message.files) ? message.files : []).filter((file) => file.inline && !markdownPaths.has(file.path));
   if (!inlineImages.length && !localImages.length && !fileImages.length) return "";
   const inlineHtml = inlineImages
-    .map((src) => {
-      if (typeof src !== "string" || !src.startsWith("data:image/")) return "";
-      return `<img class="message-image" src="${escapeHtml(src)}" alt="" loading="lazy" />`;
+    .map((image) => {
+      if (typeof image === "string") {
+        if (image.startsWith("data:image/")) return `<img class="message-image" src="${escapeHtml(image)}" alt="" loading="lazy" />`;
+        if (/^\/api\/(?:thread-image|local-image|queue\/image)\?/.test(image)) {
+          return `<img class="message-image" src="${escapeHtml(withAuthToken(image))}" alt="" loading="lazy" />`;
+        }
+        return "";
+      }
+      const src = String(image?.dataUrl || image?.url || "");
+      if (!src || !(src.startsWith("data:image/") || /^\/api\/(?:thread-image|local-image|queue\/image)\?/.test(src))) return "";
+      return `<img class="message-image" src="${escapeHtml(src.startsWith("/api/") ? withAuthToken(src) : src)}" alt="${escapeHtml(image?.name || "")}" loading="lazy" />`;
     })
     .join("");
   const localHtml = localImages
     .map((imagePath) => {
+      if (imagePath && typeof imagePath === "object") return ""; // 对象形状的附件已在 inlineImages 中渲染。
       const name = imageNameFromPath(imagePath);
       if (!/\.(?:png|jpe?g|webp|gif|bmp|svg)$/i.test(name)) return `<span class="message-image-pill">${escapeHtml(name)}</span>`;
       const src = localAssetUrl("/api/local-image", imagePath);
@@ -1372,6 +1570,7 @@ function configureImageInput() {
 }
 
 function closeImagePickerMenu() {
+  removeViewLayer("imagePickerMenu");
   if (!els.imagePickerMenu) return;
   els.imagePickerMenu.hidden = true;
   els.attachButton.setAttribute("aria-expanded", "false");
@@ -1382,6 +1581,8 @@ function toggleImagePickerMenu() {
   const nextOpen = els.imagePickerMenu.hidden;
   els.imagePickerMenu.hidden = !nextOpen;
   els.attachButton.setAttribute("aria-expanded", String(nextOpen));
+  if (nextOpen) pushViewLayer("imagePickerMenu", closeImagePickerMenu);
+  else removeViewLayer("imagePickerMenu");
 }
 
 function loadImageFromFile(file) {
@@ -1526,6 +1727,7 @@ function openWelcomeDialog() {
   if (!els.welcomeDialog) return;
   els.welcomeDialog.hidden = false;
   document.body.classList.add("welcome-open");
+  pushViewLayer("welcomeDialog", () => closeWelcomeDialog());
   // Focus the dialog itself, not the primary button. Focusing the button painted a
   // focus ring around it on every touch open, which read as a stray double border;
   // Tab still reaches the button and shows the ring when it is actually keyboard focus.
@@ -1533,6 +1735,7 @@ function openWelcomeDialog() {
 }
 
 function closeWelcomeDialog({ remember = true } = {}) {
+  removeViewLayer("welcomeDialog");
   if (!els.welcomeDialog) return;
   els.welcomeDialog.hidden = true;
   document.body.classList.remove("welcome-open");
@@ -1575,6 +1778,7 @@ async function setThreadPin(thread, pinned) {
 }
 
 function closeThreadContextMenu() {
+  removeViewLayer("threadContextMenu");
   state.contextThreadId = null;
   els.threadContextMenu.hidden = true;
 }
@@ -1586,6 +1790,7 @@ function openThreadContextMenu(threadId, clientX, clientY) {
   els.threadContextTitle.textContent = thread.title || t("untitled");
   els.threadPinAction.textContent = thread.pinned ? t("unpinThread") : t("pinThread");
   els.threadReminderAction.textContent = reminderEnabled(threadId) ? t("reminderOn") : t("reminderOff");
+  pushViewLayer("threadContextMenu", closeThreadContextMenu);
   els.threadCopyLinkAction.textContent = t("copyThreadLink");
   els.threadContextMenu.hidden = false;
 
@@ -1818,10 +2023,21 @@ function isCompactPortrait() {
   return window.matchMedia("(max-width: 760px)").matches;
 }
 
-function closeSidebarOnCompact() {
-  if (!isCompactPortrait()) return;
+function collapseSidebarLayer() {
+  removeViewLayer("sidebar");
   state.sidebarCollapsed = true;
   renderSidebarState();
+}
+
+function openSidebarLayer() {
+  state.sidebarCollapsed = false;
+  renderSidebarState();
+  pushViewLayer("sidebar", collapseSidebarLayer);
+}
+
+function closeSidebarOnCompact() {
+  if (!isCompactPortrait()) return;
+  collapseSidebarLayer();
 }
 
 // On a phone the drawer toggle must live *inside* the conversation header: a
@@ -1997,36 +2213,65 @@ function pendingDeliveryHtml(message) {
   return `<div class="message-delivery sending">${escapeHtml(t("messageSending"))}</div>`;
 }
 
-// Native Android back first dismisses the active web surface instead of
-// destroying the workspace and losing the current draft.
-globalThis.codexPocketHandleBack = () => {
-  if (els.goalEditDialog && !els.goalEditDialog.hidden) {
-    closeGoalEditDialog();
-    return true;
+// ── 网页分级返回栈 ────────────────────────────────────────────────────────
+// 不引入 history.pushState：Android WebView 的硬件返回由原生桥统一消费，
+// 再加 popstate 会出现一次返回关两层。聊天页永远是根，栈空返回 false。
+const VIEW_LAYER_MAX = 12;
+
+function viewLayerActive(id) {
+  switch (id) {
+    case "hostSheet": return !hostSheetEl()?.hidden;
+    case "modelPanel": return state.modelPanelOpen;
+    case "goalEditDialog": return Boolean(els.goalEditDialog && !els.goalEditDialog.hidden);
+    case "goalDetailView": return Boolean(els.goalDetailView && !els.goalDetailView.hidden && !els.goalEditDialog?.hidden === false);
+    case "threadContextMenu": return !els.threadContextMenu.hidden;
+    case "imagePickerMenu": return !els.imagePickerMenu.hidden;
+    case "mentionMenu": return !els.mentionMenu?.hidden;
+    case "pluginMenu": return state.pluginMenuOpen;
+    case "skillMenu": return state.skillMenuOpen;
+    case "queueExpanded": return Boolean(state.queueExpanded) && !els.queueStatusBar.hidden;
+    case "sidebar": return state.sidebarCollapsed === false && isCompactPortrait();
+    case "goalContextMenu": return !els.goalContextMenu?.hidden;
+    case "messageActions": return !els.messageActionSheet?.hidden;
+    case "welcomeDialog": return !els.welcomeDialog?.hidden;
+    default: return false;
   }
-  if (state.modelPanelOpen) {
-    closeModelPanel();
-    return true;
-  }
-  if (state.pluginMenuOpen) {
-    closePluginMentionMenu();
-    return true;
-  }
-  if (state.skillMenuOpen) {
-    closeSkillMentionMenu();
-    return true;
-  }
-  if (els.imagePickerMenu && !els.imagePickerMenu.hidden) {
-    closeImagePickerMenu();
-    return true;
-  }
-  if (state.sidebarCollapsed === false && isCompactPortrait()) {
-    state.sidebarCollapsed = true;
-    renderSidebarState();
-    return true;
+}
+
+function pushViewLayer(id, close) {
+  if (!id || typeof close !== "function") return;
+  state.viewStack = Array.isArray(state.viewStack) ? state.viewStack : [];
+  removeViewLayer(id);
+  state.viewStack.push({ id, close });
+  if (state.viewStack.length > VIEW_LAYER_MAX) state.viewStack.shift();
+}
+
+function removeViewLayer(id) {
+  if (!Array.isArray(state.viewStack)) return;
+  state.viewStack = state.viewStack.filter((layer) => layer?.id !== id);
+}
+
+function popViewLayer() {
+  if (!Array.isArray(state.viewStack)) return false;
+  while (state.viewStack.length) {
+    const layer = state.viewStack.pop();
+    if (layer && viewLayerActive(layer.id)) {
+      try {
+        layer.close();
+      } finally {
+        // 关闭函数本身也会 removeViewLayer；这里保证异常时同样不残留。
+        removeViewLayer(layer.id);
+      }
+      return true;
+    }
+    // 已经关闭的层（比如点击别处自动关掉）直接丢弃，不消费这次返回。
   }
   return false;
-};
+}
+
+// Native Android back dismisses the top active web surface one layer at a time.
+// An empty stack returns false, letting Android moveTaskToBack().
+globalThis.codexPocketHandleBack = () => popViewLayer();
 
 function renderCurrentMessages(scrollToBottom = true) {
   const data =
@@ -2163,6 +2408,8 @@ function openGoalDetailDialog() {
   els.goalForm.hidden = true;
   els.goalEditDialog.hidden = false;
   document.body.classList.add("goal-dialog-open");
+  removeViewLayer("goalEditDialog");
+  pushViewLayer("goalDetailView", closeGoalEditDialog);
   els.goalDetailBackButton.focus();
 }
 
@@ -2176,6 +2423,8 @@ function openGoalEditDialog() {
   els.goalStatusInput.value = state.goal.status || "active";
   els.goalEditDialog.hidden = false;
   document.body.classList.add("goal-dialog-open");
+  removeViewLayer("goalDetailView");
+  pushViewLayer("goalEditDialog", closeGoalEditDialog);
   requestAnimationFrame(() => {
     els.goalObjectiveInput.focus();
     els.goalObjectiveInput.setSelectionRange(els.goalObjectiveInput.value.length, els.goalObjectiveInput.value.length);
@@ -2183,6 +2432,8 @@ function openGoalEditDialog() {
 }
 
 function closeGoalEditDialog() {
+  removeViewLayer("goalEditDialog");
+  removeViewLayer("goalDetailView");
   const wasOpen = els.goalEditDialog && !els.goalEditDialog.hidden;
   state.goalEditing = false;
   if (els.goalEditDialog) els.goalEditDialog.hidden = true;
@@ -2204,6 +2455,7 @@ async function requestContextCompaction() {
 function openGoalContextMenu() {
   if (!state.goal?.objective || !els.goalContextMenu) return;
   els.goalContextMenu.hidden = false;
+  pushViewLayer("goalContextMenu", () => { els.goalContextMenu.hidden = true; });
 }
 
 async function updateGoalStatus(status) {
@@ -2393,6 +2645,7 @@ const messageActionState = { target: null };
 const LONG_PRESS_MS = 450;
 
 function closeMessageActions() {
+  removeViewLayer("messageActions");
   if (els.messageActionSheet) els.messageActionSheet.hidden = true;
   if (els.messageActionBackdrop) els.messageActionBackdrop.hidden = true;
   messageActionState.target = null;
@@ -2411,6 +2664,7 @@ function openMessageActions(target) {
   if (els.messageCopyItem) els.messageCopyItem.disabled = !target.text;
   if (els.messageSelectItem) els.messageSelectItem.disabled = !target.text;
   els.messageActionBackdrop.hidden = false;
+  pushViewLayer("messageActions", closeMessageActions);
   els.messageActionSheet.hidden = false;
 }
 
@@ -2826,6 +3080,7 @@ function filteredSkills() {
 }
 
 function closePluginMentionMenu() {
+  removeViewLayer("pluginMenu");
   state.pluginMenuOpen = false;
   state.pluginQuery = "";
   state.pluginTriggerStart = -1;
@@ -2839,6 +3094,7 @@ function closePluginMentionMenu() {
 }
 
 function closeSkillMentionMenu() {
+  removeViewLayer("skillMenu");
   state.skillMenuOpen = false;
   state.skillQuery = "";
   state.skillTriggerStart = -1;
@@ -3038,6 +3294,7 @@ function updatePluginMentionMenu() {
   state.pluginTriggerStart = match.start;
   renderPluginMentionMenu();
   loadPlugins().catch(() => {});
+  pushViewLayer("pluginMenu", closePluginMentionMenu);
 }
 
 function updateSkillMentionMenu() {
@@ -3055,6 +3312,7 @@ function updateSkillMentionMenu() {
   state.skillTriggerStart = match.start;
   renderSkillMentionMenu();
   loadSkills().catch(() => {});
+  pushViewLayer("skillMenu", closeSkillMentionMenu);
 }
 
 function openPluginPickerMenu() {
@@ -3069,6 +3327,7 @@ function openPluginPickerMenu() {
   els.pluginPickerButton?.classList.add("active");
   renderPluginMentionMenu();
   loadPlugins().catch(() => {});
+  pushViewLayer("pluginMenu", closePluginMentionMenu);
 }
 
 function openSkillPickerMenu() {
@@ -3083,6 +3342,7 @@ function openSkillPickerMenu() {
   els.skillPickerButton?.classList.add("active");
   renderSkillMentionMenu();
   loadSkills().catch(() => {});
+  pushViewLayer("skillMenu", closeSkillMentionMenu);
 }
 
 function insertPluginMention(plugin) {
@@ -3209,10 +3469,13 @@ function renderQueueStatus(status = state.threadStatus) {
   const count = Number(status?.queueLength) || queuedMessages.length;
   const queueError = String(status?.queueError || "").trim();
   const queueUnavailable = Boolean(status?.queueUnavailable);
-  const showError = Boolean(queueError || queueUnavailable);
+  const queueStale = Boolean(status?.queueStale);
+  const showError = Boolean(queueError || queueUnavailable || queueStale);
+  const failedCount = queuedMessages.filter((item) => item.deliveryState === "failed").length;
   const expanded = Boolean(state.queueExpanded);
   els.queueStatusBar.hidden = count <= 0 && !showError;
   els.queueStatusBar.classList.toggle("is-expanded", expanded);
+  els.queueStatusBar.classList.toggle("has-failure", failedCount > 0 || showError);
   els.queueStatusHeader.hidden = count <= 0 && !showError;
   els.queueStatusList.hidden = !expanded || count <= 0;
   if (els.queueToggleButton) {
@@ -3223,12 +3486,17 @@ function renderQueueStatus(status = state.threadStatus) {
     const text = String(value || "").replace(/[\r\n\t]+/g, " ").replace(/\s{2,}/g, " ").trim();
     return text.length > maxLength ? `${text.slice(0, maxLength - 1)}…` : text;
   };
+  const retryLabel = (item) => {
+    const at = Number(item?.nextAttemptAtMs) || 0;
+    if (!at || at <= Date.now()) return "可立即重试";
+    try { return `${new Date(at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })} 后自动重试`; } catch { return "稍后自动重试"; }
+  };
   if (count <= 0) {
     els.queueStatusText.textContent = queueError || (queueUnavailable ? t("queueUnavailableStatus") : "");
     els.queueStatusList.innerHTML = "";
     return;
   }
-  els.queueStatusText.textContent = t("queuedCount", { count });
+  els.queueStatusText.textContent = `${t("queuedCount", { count })}${failedCount ? ` · ${failedCount} 失败` : ""}${queueStale ? " · 连接中断，显示上次队列" : ""}${queueError && !queueStale ? ` · ${queueError}` : ""}`;
   els.queueStatusList.innerHTML = queuedMessages
     .map(
       (item, index) => `
@@ -3236,9 +3504,11 @@ function renderQueueStatus(status = state.threadStatus) {
           <div class="queue-status-copy">
             <span class="queue-status-label">#${Number(item.position) || index + 1} · ${escapeHtml(item.priority != null ? t("queuedItemPriority") : item.deliveryState === "failed" ? t("messageFailed") : item.deliveryState === "awaitingConfirmation" || item.deliveryState === "sending" ? t("messageSending") : t("queuedItem"))}</span>
             <span class="queue-status-preview">${escapeHtml(compactPreview(item.preview || item.text))}</span>
+            ${item.lastError ? `<span class="queue-status-error">${escapeHtml(item.lastError)}${item.deliveryState === "failed" ? ` · ${escapeHtml(retryLabel(item))}` : ""}</span>` : ""}
             ${Array.isArray(item.images) && item.images.length ? `<div class="queue-status-images">${item.images.map((image) => `<img src="${escapeHtml(withAuthToken(image.url))}" alt="${escapeHtml(image.name || t("addImage"))}" loading="lazy" />`).join("")}</div>` : ""}
           </div>
           <div class="queue-status-actions">
+            ${item.deliveryState === "failed" ? `<button class="queue-retry-button" type="button" data-queue-action="retry">重试</button>` : ""}
             ${item.deliveryState === "queued" && item.priority == null ? `<button class="queue-steer-button" type="button" data-queue-action="steer">${escapeHtml(t("insertQueued"))}</button>` : ""}
             <button type="button" data-queue-action="edit">${escapeHtml(t("editQueued"))}</button>
             <button type="button" data-queue-action="cancel">${escapeHtml(t("cancelQueued"))}</button>
@@ -3253,7 +3523,11 @@ function applyQueueStatusResult(result) {
   state.threadStatus = {
     ...(state.threadStatus || {}),
     queueLength: Number(result?.queueLength) || 0,
-    queuedMessages: Array.isArray(result?.queuedMessages) ? result.queuedMessages : []
+    queuedMessages: Array.isArray(result?.queuedMessages) ? result.queuedMessages : [],
+    queueError: String(result?.queueError || ""),
+    queueUnavailable: Boolean(result?.queueUnavailable),
+    queueStale: Boolean(result?.queueStale),
+    queueSource: String(result?.queueSource || "")
   };
   renderComposerMode();
 }
@@ -3612,6 +3886,7 @@ function saveCurrentThreadDraft() {
   const id = String(state.selectedId || "");
   if (!id) return;
   state.threadDrafts = state.threadDrafts || {};
+  const previous = state.threadDrafts[id] || {};
   state.threadDrafts[id] = {
     message: els.composerInput.value,
     images: [...state.imageAttachments],
@@ -3619,18 +3894,30 @@ function saveCurrentThreadDraft() {
     selectedSkills: [...state.selectedSkills],
     model: state.model,
     effort: state.effort,
+    modelProvider: providerKey(state.modelProvider) || "all",
+    modelExplicit: previous.modelExplicit === true,
     modelPreferences: { ...(state.modelPreferences || {}) }
   };
+  persistThreadDrafts();
+}
+
+function forgetThreadDraft(id) {
+  const key = String(id || "");
+  if (!key || !state.threadDrafts?.[key]) return;
+  delete state.threadDrafts[key];
+  persistThreadDrafts();
 }
 
 function restoreThreadDraft(id) {
   const draft = state.threadDrafts?.[String(id || "")];
   els.composerInput.value = draft?.message || "";
-  state.imageAttachments = draft?.images ? [...draft.images] : [];
-  state.selectedPlugins = draft?.selectedPlugins ? [...draft.selectedPlugins] : [];
-  state.selectedSkills = draft?.selectedSkills ? [...draft.selectedSkills] : [];
-  if (draft?.model) state.model = draft.model;
+  state.imageAttachments = Array.isArray(draft?.images) ? [...draft.images] : [];
+  state.selectedPlugins = Array.isArray(draft?.selectedPlugins) ? [...draft.selectedPlugins] : [];
+  state.selectedSkills = Array.isArray(draft?.selectedSkills) ? [...draft.selectedSkills] : [];
+  // 只有用户明确选过模型才覆盖 adoptSelectedThreadModel() 的 thread.model 优先级。
+  if (draft?.modelExplicit && draft?.model) state.model = draft.model;
   if (draft?.effort) state.effort = draft.effort;
+  state.modelProvider = draft?.modelProvider ? providerKey(draft.modelProvider) : state.modelProvider;
   renderSelectedPlugins();
   renderSelectedSkills();
   renderImageAttachments();
@@ -3661,6 +3948,7 @@ els.threadList.addEventListener("click", (event) => {
   state.selectedId = nextId;
   state.messageLimit = MESSAGE_PAGE_SIZE;
   state.messageBeforeCursor = "";
+  state.modelProvider = "all";
   state.messageHistoryLoading = false;
   restoreThreadDraft(nextId);
   adoptSelectedThreadModel();
@@ -3859,20 +4147,11 @@ els.goalForm?.addEventListener("submit", async (event) => {
   }
 });
 
-els.sidebarCloseButton?.addEventListener("click", () => {
-  state.sidebarCollapsed = true;
-  renderSidebarState();
-});
+els.sidebarCloseButton?.addEventListener("click", collapseSidebarLayer);
 
-els.sidebarToggle.addEventListener("click", () => {
-  state.sidebarCollapsed = false;
-  renderSidebarState();
-});
+els.sidebarToggle.addEventListener("click", openSidebarLayer);
 
-els.drawerOverlay.addEventListener("click", () => {
-  state.sidebarCollapsed = true;
-  renderSidebarState();
-});
+els.drawerOverlay.addEventListener("click", collapseSidebarLayer);
 
 els.messageList.addEventListener("pointerdown", () => {
   closeSidebarOnCompact();
@@ -3962,6 +4241,7 @@ els.messageList.addEventListener("click", async (event) => {
 
 window.addEventListener("resize", () => {
   if (!isCompactPortrait()) {
+    removeViewLayer("sidebar");
     state.sidebarCollapsed = false;
     renderSidebarState();
   }
@@ -4028,6 +4308,18 @@ els.toolToggle.addEventListener("change", (event) => {
   state.messagesSignature = "";
   loadMessages(true);
 });
+function selectProvider(key) {
+  state.modelProvider = providerKey(key) || "all";
+  // 只过滤第二级模型，绝不改 state.model / state.effort。
+  renderModelSettings();
+  saveCurrentThreadDraft();
+}
+
+els.providerChips?.addEventListener("click", (event) => {
+  const chip = event.target.closest("[data-provider]");
+  if (chip) selectProvider(chip.dataset.provider);
+});
+
 
 function selectModel(modelId) {
   if (!modelId) return;
@@ -4035,6 +4327,11 @@ function selectModel(modelId) {
   state.effort = "";
   rememberModelSettingsForCurrentThread();
   normalizeModelSettings();
+  // 用户真正选了模型，草稿里的 model 才有权覆盖 thread.model。
+  saveCurrentThreadDraft();
+  const draft = state.threadDrafts?.[String(state.selectedId || "")];
+  if (draft) draft.modelExplicit = true;
+  persistThreadDrafts();
   closeModelPanel();
 }
 
@@ -4071,6 +4368,8 @@ els.modelSummary.addEventListener("click", () => {
   els.modelSummary.setAttribute("aria-expanded", String(state.modelPanelOpen));
   els.modelSummary.classList.toggle("expanded", state.modelPanelOpen);
   els.modelPanel.hidden = !state.modelPanelOpen;
+  if (state.modelPanelOpen) pushViewLayer("modelPanel", closeModelPanel);
+  else removeViewLayer("modelPanel");
   renderModelSettings();
 });
 
@@ -4113,6 +4412,7 @@ els.skillPickerButton.addEventListener("click", () => {
 // 手机输入区只留一个「@」入口：插件与技能在这里二选一（这两个按钮在窄屏被移到
 // 屏幕外，程序化点击仍然走原来的打开逻辑），省下的 44px 留给模型名。
 function closeMentionMenu() {
+  removeViewLayer("mentionMenu");
   if (!els.mentionMenu) return;
   els.mentionMenu.hidden = true;
   els.mentionButton?.setAttribute("aria-expanded", "false");
@@ -4124,6 +4424,8 @@ function toggleMentionMenu() {
   if (nextOpen) closeModelPanel();
   els.mentionMenu.hidden = !nextOpen;
   els.mentionButton?.setAttribute("aria-expanded", String(nextOpen));
+  if (nextOpen) pushViewLayer("mentionMenu", closeMentionMenu);
+  else removeViewLayer("mentionMenu");
 }
 
 els.mentionButton?.addEventListener("click", (event) => {
@@ -4149,7 +4451,10 @@ els.mentionSkillItem?.addEventListener("click", (event) => {
 
 document.addEventListener("click", (event) => {
   if (!els.threadContextMenu.hidden && !els.threadContextMenu.contains(event.target)) closeThreadContextMenu();
-  if (els.goalContextMenu && !els.goalContextMenu.hidden && !els.goalContextMenu.contains(event.target) && !els.goalPanel.contains(event.target)) els.goalContextMenu.hidden = true;
+  if (els.goalContextMenu && !els.goalContextMenu.hidden && !els.goalContextMenu.contains(event.target) && !els.goalPanel.contains(event.target)) {
+    els.goalContextMenu.hidden = true;
+    removeViewLayer("goalContextMenu");
+  }
   if (state.modelPanelOpen && !els.modelPanel.contains(event.target) && !els.modelSummary.contains(event.target)) {
     closeModelPanel();
   }
@@ -4403,6 +4708,7 @@ els.composerForm.addEventListener("submit", async (event) => {
   const thinking = Boolean(state.threadStatus?.thinking);
   if (state.composerBusy) return;
   const isDraftThread = state.selectedId === DRAFT_THREAD_ID;
+  const sentThreadId = String(state.selectedId || "");
   const message = els.composerInput.value.trim();
   const sendMessage = composerSendMessage(message);
   const images = [...state.imageAttachments];
@@ -4515,6 +4821,10 @@ els.composerForm.addEventListener("submit", async (event) => {
     } else {
       state.threadStatus = { ...(state.threadStatus || {}), thinking: true, turnId: result.turnId || state.threadStatus?.turnId || null };
     }
+    if (sendAccepted) {
+      forgetThreadDraft(sentThreadId);
+      if (isDraftThread && result.threadId) forgetThreadDraft(String(result.threadId));
+    }
     renderComposerMode();
     refreshSoon(sendMode === "queue" ? 400 : 1200);
   } catch (error) {
@@ -4618,6 +4928,14 @@ els.queueStatusList.addEventListener("click", async (event) => {
   state.composerBusy = true;
   renderComposerMode();
   try {
+    if (action === "retry") {
+      const result = await postJson("/api/queue/retry", { threadId: state.selectedId, itemId });
+      applyQueueStatusResult(result);
+      state.messagesSignature = "";
+      renderCurrentMessages(false);
+      refreshSoon(600);
+      return;
+    }
     if (action === "steer") {
       const result = await postJson("/api/queue/steer", { threadId: state.selectedId, itemId });
       applyQueueStatusResult(result);
@@ -4633,6 +4951,11 @@ els.queueStatusList.addEventListener("click", async (event) => {
     state.pendingMessages = state.pendingMessages.filter((message) => message.queueItemId !== itemId);
     state.messagesSignature = "";
     renderCurrentMessages(false);
+    if (action === "cancel" || edit) {
+      state.queueExpanded = false;
+      removeViewLayer("queueExpanded");
+      renderQueueStatus(state.threadStatus);
+    }
     if (edit) {
       state.followUpMode = "queue";
       safeStorageSet(localStorage, "codex-follow-up-mode", state.followUpMode);
@@ -4658,15 +4981,26 @@ els.queueStatusList.addEventListener("click", async (event) => {
   }
 });
 
+function collapseQueueLayer() {
+  state.queueExpanded = false;
+  safeStorageSet(localStorage, "codex-queue-expanded", "0");
+  removeViewLayer("queueExpanded");
+  renderQueueStatus(state.threadStatus);
+}
+
 els.queueToggleButton?.addEventListener("click", () => {
   state.queueExpanded = !state.queueExpanded;
   safeStorageSet(localStorage, "codex-queue-expanded", state.queueExpanded ? "1" : "0");
   renderQueueStatus(state.threadStatus);
+  if (state.queueExpanded) pushViewLayer("queueExpanded", collapseQueueLayer);
+  else removeViewLayer("queueExpanded");
 });
 
 els.clearQueueButton.addEventListener("click", async () => {
   if (!state.selectedId || state.composerBusy) return;
   try {
+  state.queueExpanded = false;
+  removeViewLayer("queueExpanded");
     const result = await postJson("/api/queue/cancel", { threadId: state.selectedId });
     applyQueueStatusResult(result);
     const cancelledIds = new Set(result.cancelledIds || []);
@@ -4698,8 +5032,6 @@ function maybeOpenWelcomeGuide() {
   if (guideMode === "1" || (!safeStorageGet(localStorage, WELCOME_STORAGE_KEY) && guideMode !== "0")) openWelcomeDialog();
 }
 
-async function bootstrap() {
-  wireMessageActions();
 // ── 手机端 · PI 宿主能力（审批 / 会话管理 / 文件 / 用量 / 通知 / 定时 / 技能）──
 const hostUi = { approvals: [], filePath: "", sheetTitle: "", busy: false };
 
@@ -4716,9 +5048,11 @@ function openHostSheet(title, html) {
   if (heading) heading.textContent = title;
   if (body) body.innerHTML = html;
   sheet.hidden = false;
+  pushViewLayer("hostSheet", closeHostSheet);
 }
 
 function closeHostSheet() {
+  removeViewLayer("hostSheet");
   const sheet = hostSheetEl();
   if (sheet) sheet.hidden = true;
 }
@@ -5250,7 +5584,20 @@ function initHostTools() {
 }
 
 initHostTools();
+
+window.addEventListener("pagehide", saveCurrentThreadDraft);
+document.addEventListener("visibilitychange", () => {
+  if (document.hidden) saveCurrentThreadDraft();
+});
+
+async function bootstrap() {
+  wireMessageActions();
   await refresh(true);
+  // 选中会话初始化完成后，先加载持久化草稿再恢复；adoptSelectedThreadModel
+  // 仍按 preference > thread.model > state.model 的既有优先级决定模型。
+  loadPersistedThreadDrafts();
+  if (state.selectedId) restoreThreadDraft(state.selectedId);
+  adoptSelectedThreadModel();
   // The project list only matters once the user starts a new conversation, but
   // loading it here keeps the picker instant when they do.
   void loadProjects();
