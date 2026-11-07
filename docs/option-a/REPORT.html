@@ -260,14 +260,61 @@
     <tr><td>六个下载 / 页面 URL</td><td class="ok">全 GET 200</td><td>127 + LAN × 页面 / Web APK / Native APK</td></tr>
     <tr><td>报告图片引用</td><td class="ok">0 断链</td><td>本报告全部图片经存在性核对</td></tr>
   </table>
-  <div class="note warnbox">
+  
+<div class="note warnbox">
     <b>如实记录的已知噪声（非产品缺陷）</b>：真实 8787 的 <code>/api/host/diff</code> 502 / 500 是桌面端 <code>codex-ipc</code> 管道未连（<code>connect ENOENT \\.\pipe\codex-ipc</code>），前端有空状态兜底；<code>net::ERR_ABORTED</code> 是组件卸载时取消请求；mock favicon 404。SKIP 均为环境态（无刷新按钮 / 非运行中 / 当前数据无待审批），未写成通过。
   </div>
 </section>
 
 <!-- 6 限制与边界 -->
 <section>
-  <h2><span class="num">7</span>已知限制与交付边界</h2>
+  <h2><span class="num">7</span>MuMu 模拟器真机测试（本机实装，非浏览器视口）</h2>
+  <p class="sub">此前所有「实机测试」都是 Chrome 手机视口，从没把 APK 装进模拟器——这正是聊天页底栏等问题测不出来的原因。本轮在本机 MuMu（Android 15，机型 V2203A，adb 127.0.0.1:16384）真实安装、启动、逐页点击、截图。</p>
+  <div class="grid g4" style="margin-top:14px">
+    <div class="tile"><div class="k">模拟器</div><div class="v">MuMu 15</div><div class="d">Android 15 / 1620×2880 / adb 16384</div></div>
+    <div class="tile"><div class="k">两个 APK 安装</div><div class="v ok">Success ×2</div><div class="d">web + native，旧包 com.codexpocket.mobile 未被覆盖</div></div>
+    <div class="tile"><div class="k">原生启动</div><div class="v ok">前台运行</div><div class="d">topResumedActivity = com.app.MainActivity</div></div>
+    <div class="tile"><div class="k">真机缺陷</div><div class="v warn">2 个已修</div><div class="d">冷启动死 Tab、切终端弹相机权限</div></div>
+  </div>
+  <h3>真机实拍（MuMu 截图，非浏览器模拟）</h3>
+  <div class="grid g4">
+    <figure><img src="report-assets/mumu-coldstart.png" alt="真机冷启动" /><figcaption>冷启动选终端：无死 Tab 底栏</figcaption></figure>
+    <figure><img src="report-assets/mumu-list.png" alt="真机会话列表" /><figcaption>一级「对话」= 真实 68 条会话列表，3 Tab 底栏</figcaption></figure>
+    <figure><img src="report-assets/mumu-chat-detail.png" alt="真机聊天详情" /><figcaption><b>聊天详情页：无底栏</b>，左上返回、消息流占满、输入舱贴底</figcaption></figure>
+    <figure><img src="report-assets/mumu-terminal.png" alt="真机终端页" /><figcaption>终端管理页：3 Tab，不再弹相机权限</figcaption></figure>
+  </div>
+  <div class="grid g3" style="margin-top:12px">
+    <figure><img src="report-assets/mumu-settings.png" alt="真机设置页" /><figcaption>设置页</figcaption></figure>
+    <figure><img src="report-assets/mumu-web-apk.png" alt="Web APK 真机" /><figcaption>Web APK 真机启动（WebView 加载 Option A）</figcaption></figure>
+    <figure><img src="report-assets/mumu-list2.png" alt="真机列表" /><figcaption>会话列表（真实 8787 数据）</figcaption></figure>
+  </div>
+  <h3>真机才暴露、已修的问题</h3>
+  <table>
+    <tr><th>问题</th><th>真机表现</th><th>修复</th></tr>
+    <tr><td>冷启动页有 3 Tab 底栏</td><td>未配对时底栏点了没反应，纯干扰</td><td><code>(tabs)/_layout.tsx</code> 用 <code>useTerminalSelection</code> 判定，未配对/检查中时 <code>tabBar</code> 返回 null</td></tr>
+    <tr><td>切「终端」Tab 弹相机权限</td><td>用户只是切 Tab，系统就弹「要允许拍摄照片和录制视频吗」</td><td><code>PairingSheet</code> 原在组件挂载即 <code>requestPermission()</code>；改为只在抽屉被 present 后申请，未打开时相机框显示「准备启用相机」</td></tr>
+    <tr><td>RN <code>Pressable</code> 文案在 <code>content-desc</code> 而非 <code>text</code></td><td>按 text 定位点击落空（测试脚本问题，非产品缺陷）</td><td>真机脚本改按 <code>content-desc</code> + 精确 bounds 点击，Node 直调 adb 规避 PowerShell 中文编码问题</td></tr>
+  </table>
+    <h3>真机已实测通过 vs 受工具限制未完成（如实，不粉饰）</h3>
+  <table>
+    <tr><th>项</th><th>状态</th><th>证据</th></tr>
+    <tr><td>双 APK 安装 / 启动 / 前台</td><td class="ok">通过</td><td>install Success ×2；topResumedActivity 原生 MainActivity</td></tr>
+    <tr><td>方案 A：列表有底栏、聊天详情无底栏</td><td class="ok">通过</td><td><code>mumu-chat-detail.png</code> 左上返回 / 输入舱贴底 / 0 Tab；<code>mumu-list.png</code> 3 Tab</td></tr>
+    <tr><td>冷启动无死 Tab、切终端不弹相机权限</td><td class="ok">通过</td><td>真机复验 <code>permissionDialog=false</code>，2 个缺陷已修并重编</td></tr>
+    <tr><td>终端 / 设置 / 对话 三个一级页切换</td><td class="ok">通过</td><td>uiautomator <code>tabHits=3</code> + 三张真机截图</td></tr>
+    <tr><td>WebView 内点按钮拉起扫码抽屉</td><td class="ok">通过</td><td><code>mumu-web-drawer.png</code>：真机点蓝色主按钮 → 扫码配对底部抽屉</td></tr>
+    <tr><td><b>真机上真点「发送 / 中断 / 审批」并查后端写日志</b></td><td class="bad">未完成（工具限制）</td><td>原生详情页是 RN FlashList/Animated 自定义视图，<code>uiautomator dump</code> 抓不到内部节点且偶发 <code>SIGSEGV</code>；Web APK 在 MuMu 走系统 Custom Tab / 窄栏 WebView，Accessibility 同样拿不到 DOM 按钮。已用截图证实详情页渲染正确，但未能完成真机写操作点击。</td></tr>
+  </table>
+  <div class="note">
+    <b>写操作链的实证来自隔离 mock 的 Chrome 手机视口</b>：<code>/__qa/log</code> 记录 <code>POST /api/send</code>（带 <code>mode:"queue"</code>）、<code>POST /api/interrupt</code>、<code>POST /api/approval</code>（<code>decision:"accept"</code>）全部到达后端；<code>qa-ux-queue</code> 9/9、<code>qa-full</code> mock 58 步 0 FAIL。这一条在 MuMu 真机上因上述工具限制未复现，<b>不写成真机通过</b>。测试后已把真机 <code>shared_prefs</code> 从临时 mock 18997 恢复为 <code>192.168.1.10:8787</code>，未留测试态连接。
+  </div>
+
+<div class="note warnbox">
+    <b>如实记录的真机限制</b>：Web APK（复用既有 <code>android/</code> WebView 壳）在 MuMu 1620px 宽屏下把手机视口渲染在屏幕中间一条约 430px 的窄栏，两侧为日光渐变（已把渐变铺满整个视口，不再是黑边）。内容居中窄栏属于既有壳的 WebView Surface 尺寸设置，约束禁止改 <code>android/</code>，故未擅自修改；真机主推独立原生 APK，其聊天详情页与三个一级页在 MuMu 上均全屏正常。<code>uiautomator dump</code> 在 RN 详情页（FlashList/Animated 自定义视图）偶发抓不到 Accessibility 节点，已用 <code>screencap</code> 截图作为硬证据交叉验证。
+  </div>
+</section>
+<section>
+  <h2><span class="num">8</span>已知限制与交付边界</h2>
   <div class="grid g2">
     <div>
       <h3>限制（不写成通过）</h3>
@@ -295,38 +342,6 @@
   </div>
 </section>
 
-<section>
-  <h2><span class="num">8</span>MuMu 模拟器真机测试（本机实装，非浏览器视口）</h2>
-  <p class="sub">此前所有「实机测试」都是 Chrome 手机视口，从没把 APK 装进模拟器——这正是聊天页底栏等问题测不出来的原因。本轮在本机 MuMu（Android 15，机型 V2203A，adb 127.0.0.1:16384）真实安装、启动、逐页点击、截图。</p>
-  <div class="grid g4" style="margin-top:14px">
-    <div class="tile"><div class="k">模拟器</div><div class="v">MuMu 15</div><div class="d">Android 15 / 1620×2880 / adb 16384</div></div>
-    <div class="tile"><div class="k">两个 APK 安装</div><div class="v ok">Success ×2</div><div class="d">web + native，旧包 com.codexpocket.mobile 未被覆盖</div></div>
-    <div class="tile"><div class="k">原生启动</div><div class="v ok">前台运行</div><div class="d">topResumedActivity = com.app.MainActivity</div></div>
-    <div class="tile"><div class="k">真机缺陷</div><div class="v warn">2 个已修</div><div class="d">冷启动死 Tab、切终端弹相机权限</div></div>
-  </div>
-  <h3>真机实拍（MuMu 截图，非浏览器模拟）</h3>
-  <div class="grid g4">
-    <figure><img src="report-assets/mumu-coldstart.png" alt="真机冷启动" /><figcaption>冷启动选终端：无死 Tab 底栏</figcaption></figure>
-    <figure><img src="report-assets/mumu-list.png" alt="真机会话列表" /><figcaption>一级「对话」= 真实 68 条会话列表，3 Tab 底栏</figcaption></figure>
-    <figure><img src="report-assets/mumu-chat-detail.png" alt="真机聊天详情" /><figcaption><b>聊天详情页：无底栏</b>，左上返回、消息流占满、输入舱贴底</figcaption></figure>
-    <figure><img src="report-assets/mumu-terminal.png" alt="真机终端页" /><figcaption>终端管理页：3 Tab，不再弹相机权限</figcaption></figure>
-  </div>
-  <div class="grid g3" style="margin-top:12px">
-    <figure><img src="report-assets/mumu-settings.png" alt="真机设置页" /><figcaption>设置页</figcaption></figure>
-    <figure><img src="report-assets/mumu-web-apk.png" alt="Web APK 真机" /><figcaption>Web APK 真机启动（WebView 加载 Option A）</figcaption></figure>
-    <figure><img src="report-assets/mumu-list2.png" alt="真机列表" /><figcaption>会话列表（真实 8787 数据）</figcaption></figure>
-  </div>
-  <h3>真机才暴露、已修的问题</h3>
-  <table>
-    <tr><th>问题</th><th>真机表现</th><th>修复</th></tr>
-    <tr><td>冷启动页有 3 Tab 底栏</td><td>未配对时底栏点了没反应，纯干扰</td><td><code>(tabs)/_layout.tsx</code> 用 <code>useTerminalSelection</code> 判定，未配对/检查中时 <code>tabBar</code> 返回 null</td></tr>
-    <tr><td>切「终端」Tab 弹相机权限</td><td>用户只是切 Tab，系统就弹「要允许拍摄照片和录制视频吗」</td><td><code>PairingSheet</code> 原在组件挂载即 <code>requestPermission()</code>；改为只在抽屉被 present 后申请，未打开时相机框显示「准备启用相机」</td></tr>
-    <tr><td>RN <code>Pressable</code> 文案在 <code>content-desc</code> 而非 <code>text</code></td><td>按 text 定位点击落空（测试脚本问题，非产品缺陷）</td><td>真机脚本改按 <code>content-desc</code> + 精确 bounds 点击，Node 直调 adb 规避 PowerShell 中文编码问题</td></tr>
-  </table>
-  <div class="note warnbox">
-    <b>如实记录的真机限制</b>：Web APK（复用既有 <code>android/</code> WebView 壳）在 MuMu 1620px 宽屏下把手机视口渲染在屏幕中间一条约 430px 的窄栏，两侧为日光渐变（已把渐变铺满整个视口，不再是黑边）。内容居中窄栏属于既有壳的 WebView Surface 尺寸设置，约束禁止改 <code>android/</code>，故未擅自修改；真机主推独立原生 APK，其聊天详情页与三个一级页在 MuMu 上均全屏正常。<code>uiautomator dump</code> 在 RN 详情页（FlashList/Animated 自定义视图）偶发抓不到 Accessibility 节点，已用 <code>screencap</code> 截图作为硬证据交叉验证。
-  </div>
-</section>
 <footer>
   Codex-Turnloom · Option A 交付报告 · 生成于 2026-11-07 · 图片与结果归档于 <code>docs/option-a/qa-shots/</code> 与 <code>docs/option-a/report-assets/</code>
 </footer>
