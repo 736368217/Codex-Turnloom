@@ -187,12 +187,18 @@ function diffLineClass(line: string): string {
 // ---------------------------------------------------------------------------
 
 function decodeEntities(value: string): string {
+  // renderMarkdown() 会给 <code> 内文本包上 <span class="tok-*"> 做即时着色。
+  // Shiki 接管时需要的是纯源码；这里剥掉这些装饰标签（保留其文本内容）并解码实体，
+  // 否则会把字面 "<span class=...>" 当成代码显示出来。
+  const withoutTokens = value
+    .replace(/<span\b[^>]*class="tok-[^"]*"[^>]*>/gi, '')
+    .replace(/<\/span>/gi, '');
   const el = document.createElement('textarea');
-  el.innerHTML = value;
+  el.innerHTML = withoutTokens;
   return el.value;
 }
 
-/** 官方 Shiki codeToHtml + github-light，本地 bundle，无 CDN。 */
+/** 官方 Shiki codeToHtml + github-light，本地 bundle，无 CDN、无 WASM。 */
 function ShikiCode({ code, lang }: { code: string; lang?: string }) {
   const [html, setHtml] = useState('');
   useEffect(() => {
@@ -205,7 +211,9 @@ function ShikiCode({ code, lang }: { code: string; lang?: string }) {
   if (html) {
     return <div className="shiki-block" dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(html) }} />;
   }
-  return <pre className="shiki-fallback"><code>{code}</code></pre>;
+  // 兜底同样剥掉装饰标签，避免降级时把 <span class="tok-*"> 当正文显示。
+  const plain = code.replace(/<[^>]*>/g, '');
+  return <pre className="shiki-fallback"><code>{plain}</code></pre>;
 }
 
 function MarkdownBody({ markdown }: { markdown: string }) {

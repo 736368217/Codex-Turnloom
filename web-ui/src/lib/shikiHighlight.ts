@@ -2,10 +2,12 @@ import {
   createHighlighterCore,
   type HighlighterCore,
 } from 'shiki/core';
-import { createOnigurumaEngine } from 'shiki/engine/oniguruma';
-import wasm from 'shiki/wasm';
-// 语言与主题都以静态 ESM import 打进本地 bundle（Vite 会拆成同源 chunk），
-// 不使用 CDN、不使用 fetch 外部资源，满足 CSP script-src 'self'。
+// 使用官方 JS 正则引擎：纯 JS RegExp，不实例化 WebAssembly。
+// 服务端 CSP 为 script-src 'self'（无 unsafe-eval / wasm-unsafe-eval），
+// oniguruma WASM 引擎会抛 CompileError 被吞掉，导致代码高亮永远停在 fallback。
+import { createJavaScriptRegexEngine } from 'shiki/engine/javascript';
+// 语言与主题都以静态 ESM import 打进本地 bundle（同源 chunk），零 CDN、零 fetch，
+// 满足 CSP script-src 'self'。
 import js from 'shiki/langs/javascript.mjs';
 import ts from 'shiki/langs/typescript.mjs';
 import jsx from 'shiki/langs/jsx.mjs';
@@ -27,7 +29,7 @@ async function getHighlighter(): Promise<HighlighterCore> {
     highlighterPromise = createHighlighterCore({
       themes: [githubLight],
       langs: LANGS,
-      engine: createOnigurumaEngine(wasm),
+      engine: createJavaScriptRegexEngine({ forgiving: true }),
     });
   }
   return highlighterPromise;
