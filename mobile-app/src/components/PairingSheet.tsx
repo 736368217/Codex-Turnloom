@@ -87,7 +87,7 @@ export const PairingSheet = forwardRef<PairingSheetHandle, Props>(function Pairi
         <BottomSheetBackdrop {...props} appearsOnIndex={0} disappearsOnIndex={-1} opacity={0.35} />
       )}>
       <BottomSheetView style={styles.content}>
-        <Text style={styles.title}>Scan QR to Pair</Text>
+        <Text style={styles.title}>扫码配对</Text>
         <Text style={styles.subtitle}>扫描电脑终端显示的 Codex-Turnloom 配对二维码</Text>
 
         <View style={styles.cameraFrame}>
@@ -114,11 +114,11 @@ export const PairingSheet = forwardRef<PairingSheetHandle, Props>(function Pairi
         </View>
 
         <Separator />
-        <Text style={styles.manualTitle}>手动输入服务器地址</Text>
+        <Text style={styles.manualTitle}>手动输入服务地址</Text>
         <RoundedInput
           value={manualUrl}
           onChangeText={setManualUrl}
-          placeholder="http://192.168.0.10:8799"
+          placeholder="http://192.168.0.10:8787"
           autoCapitalize="none"
           autoCorrect={false}
           keyboardType="url"

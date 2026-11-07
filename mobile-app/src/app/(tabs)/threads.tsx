@@ -13,5 +13,5 @@ function Placeholder({ title, hint }: { title: string; hint: string }) {
 }
 
 export default function ThreadsScreen() {
-  return <Placeholder title="Project · Threads" hint="会话列表在 Home 中展示" />;
+  return <Placeholder title="会话" hint="会话列表在首页中展示" />;
 }

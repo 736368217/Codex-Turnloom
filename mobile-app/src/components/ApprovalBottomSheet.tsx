@@ -117,8 +117,8 @@ export const ApprovalBottomSheet = forwardRef<ApprovalSheetHandle, Props>(functi
       )}>
       <BottomSheetView style={styles.content}>
         <BlurView tint={GLASS_TINT} intensity={GLASS_INTENSITY} style={styles.glass}>
-          <Text style={styles.title}>Approve</Text>
-          <Text style={styles.subtitle}>File / command changes</Text>
+          <Text style={styles.title}>待审批</Text>
+          <Text style={styles.subtitle}>文件 / 命令改动</Text>
 
           {!shown ? (
             <EmptyState
@@ -128,7 +128,7 @@ export const ApprovalBottomSheet = forwardRef<ApprovalSheetHandle, Props>(functi
           ) : (
             <View style={styles.requestCard}>
               <Text style={styles.requestTitle} numberOfLines={2}>
-                {shown.title || 'Approval requested'}
+                {shown.title || '待审批'}
               </Text>
               <Text style={styles.requestKind}>
                 {shown.approvalKind || 'command'} · {shown.requestId}
@@ -145,14 +145,14 @@ export const ApprovalBottomSheet = forwardRef<ApprovalSheetHandle, Props>(functi
           {pending ? <ActivityIndicator color={OptionA.green} /> : null}
 
           <PrimaryButton
-            label="Approve & Apply"
+            label="批准并应用"
             tone="green"
             disabled={!shown || pending || readOnly || resolved}
             onPress={() => void decide('accept')}
             style={styles.action}
           />
           <PrimaryButton
-            label="Reject"
+            label="拒绝"
             tone="neutral"
             disabled={!shown || pending || readOnly || resolved}
             onPress={() => void decide('decline')}

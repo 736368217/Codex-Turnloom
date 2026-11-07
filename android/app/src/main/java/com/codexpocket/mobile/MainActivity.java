@@ -152,6 +152,11 @@ public class MainActivity extends ComponentActivity {
     private static final String REMINDERS_KEY = "thread_reminders";
     private static final String ONBOARDING_KEY = "turnloom_onboarding_seen_v1";
     private static final String ACTIVE_DEVICE_URL_KEY = "turnloom_active_device_url_v1";
+    // Option A 独立包的首启兜底设备：新包名没有旧数据，首次启动直接连本机服务。
+    private static final String DEFAULT_DEVICE_SEEDED_KEY = "turnloom_option_a_default_seeded_v1";
+    private static final String DEFAULT_DEVICE_NAME = "我的电脑";
+    private static final String DEFAULT_DEVICE_URL = "http://192.168.0.10:8787/option-a/index.html";
+    private static final String DEFAULT_DEVICE_TOKEN = "test-code";
     private volatile boolean updateDownloadRunning = false;
     private static final int NOTIFICATION_PERMISSION_REQUEST = 7102;
 
@@ -243,8 +248,8 @@ public class MainActivity extends ComponentActivity {
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         handleNotificationIntent(getIntent());
-        getWindow().setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE);
         devices.addAll(loadDevices());
+        seedDefaultDeviceIfNeeded();
         root = new LinearLayout(this);
         root.setOrientation(LinearLayout.VERTICAL);
         root.setBackgroundColor(PAPER);
@@ -261,6 +266,27 @@ public class MainActivity extends ComponentActivity {
         }
         clearLegacyReminderNotification();
         ReminderScheduler.sync(this);
+    }
+
+    /**
+     * 独立新包首次启动（或删除全部设备后）注入默认电脑，免去扫码/手输。
+     * 保留原有扫码、手动添加、设备列表能力；用户删除后不会再次强行注入。
+     */
+    private void seedDefaultDeviceIfNeeded() {
+        android.content.SharedPreferences prefs = getSharedPreferences(PREFS, MODE_PRIVATE);
+        if (prefs.getBoolean(DEFAULT_DEVICE_SEEDED_KEY, false)) return;
+        if (!devices.isEmpty()) {
+            prefs.edit().putBoolean(DEFAULT_DEVICE_SEEDED_KEY, true).apply();
+            return;
+        }
+        Device builtin = new Device(DEFAULT_DEVICE_NAME, DEFAULT_DEVICE_URL, DEFAULT_DEVICE_TOKEN, "预置连接");
+        devices.add(builtin);
+        saveDevices();
+        prefs.edit()
+                .putBoolean(DEFAULT_DEVICE_SEEDED_KEY, true)
+                .putString(ACTIVE_DEVICE_URL_KEY, DEFAULT_DEVICE_URL)
+                .putBoolean(ONBOARDING_KEY, true)
+                .apply();
     }
 
     private Device findActiveDevice() {
@@ -943,7 +969,7 @@ public class MainActivity extends ComponentActivity {
         if (newer) {
             builder.setPositiveButton("下载更新", (dialog, which) -> {
                 String path = health.optString("apkUrl", "/api/apk");
-                downloadUpdate(device, trimTrailingSlash(device.url) + path);
+                downloadUpdate(device, apiBaseUrl(device) + path);
             });
         }
         builder.show();
@@ -1248,6 +1274,18 @@ public class MainActivity extends ComponentActivity {
         }
     }
 
+    /** API 请求必须使用服务根地址；预置设备的 URL 带 /option-a/index.html 页面路径。 */
+    private String apiBaseUrl(Device device) {
+        try {
+            Uri uri = Uri.parse(device.url);
+            String scheme = uri.getScheme() == null ? "http" : uri.getScheme();
+            String authority = uri.getAuthority() == null ? "" : uri.getAuthority();
+            return scheme + "://" + authority;
+        } catch (Exception ignored) {
+            return trimTrailingSlash(device.url);
+        }
+    }
+
     private String targetUrl(Device device) {
         return targetUrl(device, null);
     }
@@ -1269,7 +1307,7 @@ public class MainActivity extends ComponentActivity {
     }
 
     private String httpGet(Device device, String path) throws Exception {
-        HttpURLConnection connection = (HttpURLConnection) new URL(trimTrailingSlash(device.url) + path).openConnection();
+        HttpURLConnection connection = (HttpURLConnection) new URL(apiBaseUrl(device) + path).openConnection();
         connection.setRequestMethod("GET");
         connection.setConnectTimeout(8000);
         connection.setReadTimeout(10000);
