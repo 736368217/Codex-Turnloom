@@ -1,26 +1,23 @@
 import { Monitor } from 'lucide-react';
 import type { HealthResponse } from '../lib/turnloomApi';
 import { HIT_AREA_44, PRESS, cx } from '../lib/ui';
+import type { TabKey } from './GlassTabBar';
 
 export interface MachineHubHeaderProps {
   health: HealthResponse | null;
   machineName?: string;
   onManage: () => void;
-  /** 当前 Tab：大标题/副标题随页面变化，避免用户在四个页面分不清方位。 */
-  tab?: 'chat' | 'sessions' | 'terminal' | 'settings';
+  /** 当前一级页：大标题/副标题随页面变化。聊天详情页用 ChatDetailHeader，不用本组件。 */
+  tab?: TabKey;
 }
 
-const TAB_META: Record<NonNullable<MachineHubHeaderProps['tab']>, { title: string; subtitle: string }> = {
-  chat: { title: '会话总控', subtitle: '日光 · 苹果雾白 · 远程指挥你的电脑' },
-  sessions: { title: '会话列表', subtitle: '查看历史任务，或发起一条新任务' },
+const TAB_META: Record<TabKey, { title: string; subtitle: string }> = {
+  chat: { title: '对话', subtitle: '选择一条会话，查看实时任务流并继续指挥' },
   terminal: { title: '终端管理', subtitle: '切换电脑、添加终端与选择代理引擎' },
   settings: { title: '设置', subtitle: '访问码、权限与关于' },
 };
 
-/**
- * Option A · iOS 大标题 + 机器状态胶囊顶栏。
- * 标题随 Tab 变化；右上角是明确的「终端」入口（aria-label 保持「管理」以兼容验收脚本）。
- */
+/** Option A · 一级页 iOS 大标题 + 机器状态胶囊顶栏。 */
 export default function MachineHubHeader(props: MachineHubHeaderProps) {
   const { health, machineName, onManage, tab = 'chat' } = props;
   const online = health !== null;

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { MessageSquare, RefreshCw, ShieldCheck } from 'lucide-react';
+import { MessageSquare, ShieldCheck } from 'lucide-react';
 import {
   api,
   ApiError,
@@ -21,8 +21,9 @@ import {
   type StreamMessage,
   type Thread,
 } from './lib/turnloomApi';
-import { HIT_AREA_44, PRESS, cx, truncate } from './lib/ui';
+import { PRESS, cx, truncate } from './lib/ui';
 import MachineHubHeader from './components/MachineHubHeader';
+import ChatDetailHeader from './components/ChatDetailHeader';
 import TaskStreamView from './components/TaskStreamView';
 import ThumbGlassBar from './components/ThumbGlassBar';
 import GlassTabBar, { type TabKey } from './components/GlassTabBar';
@@ -65,6 +66,8 @@ export default function App() {
   const [engine, setEngine] = useState<Engine>('codex');
   const [sheet, setSheet] = useState<SheetKind>(null);
   const [tab, setTab] = useState<TabKey>('chat');
+  /** 方案 A：聊天是二级详情页，chatOpen 时整页不渲染一级底栏。 */
+  const [chatOpen, setChatOpen] = useState<boolean>(() => Boolean(loadSelectedThreadId()));
   const [draft, setDraft] = useState('');
   const [loading, setLoading] = useState(true);
   const [notice, setNotice] = useState('');
@@ -222,6 +225,7 @@ export default function App() {
     saveSelectedThreadId(id);
     setSheet(null);
     setNotice('');
+    setChatOpen(true);
     setTab('chat');
   }, []);
 
@@ -399,6 +403,23 @@ export default function App() {
     />
   );
 
+  const sheets = (
+    <CupertinoSheets
+      sheet={sheet}
+      onSheetChange={setSheet}
+      approvals={activeApproval ? [activeApproval] : approvals}
+      threads={threads}
+      selectedThreadId={selectedThreadId}
+      onSelectThread={selectThread}
+      onApprovalSubmit={handleApprovalSubmit}
+      onNewTask={handleNewTask}
+      onPairing={handlePairing}
+      onAccessCode={handleAccessCode}
+      health={health}
+      readOnly={Boolean(readOnly)}
+    />
+  );
+
   return (
     <div
       vaul-drawer-wrapper=""
@@ -411,106 +432,86 @@ export default function App() {
             onPick={(entry) => void chooseTerminal(entry)}
             onScanAdd={() => setSheet('scanQr')}
           />
-          {/* 冷启动只有「选终端」一件事：不显示点了没反应的 4 个 Tab。 */}
-          <CupertinoSheets
-            sheet={sheet}
-            onSheetChange={setSheet}
-            approvals={approvals}
-            threads={threads}
-            selectedThreadId={selectedThreadId}
-            onSelectThread={selectThread}
-            onApprovalSubmit={handleApprovalSubmit}
-            onNewTask={handleNewTask}
-            onPairing={handlePairing}
-            onAccessCode={handleAccessCode}
-            health={health}
-            readOnly={Boolean(readOnly)}
+          {sheets}
+        </>
+      ) : chatOpen ? (
+        <>
+          {/* 方案 A：聊天是全屏二级详情页。无底栏、无全局跳转，只有紧凑顶栏 + 消息流 + 输入舱。 */}
+          <ChatDetailHeader
+            title={selectedTitle}
+            subtitle={`${statusText(status)} · ${messages.length} 条消息`}
+            onBack={() => { setChatOpen(false); setTab('chat'); }}
+            onRefresh={() => { if (selectedThreadId) void loadMessages(selectedThreadId, false); }}
           />
+
+          <main className="min-h-0 flex-1 overflow-y-auto px-4 pt-4 pb-6">
+            {loading && (
+              <div className="mb-3 rounded-2xl bg-white px-4 py-3 text-center text-[13px] text-[#8E8E93]">
+                正在连接电脑…
+              </div>
+            )}
+
+            {!selectedThreadId && !loading && (
+              <div className="ios-card mb-4 flex items-center gap-3 px-4 py-3">
+                <MessageSquare size={18} className="shrink-0 text-[#007AFF]" />
+                <p className="min-w-0 flex-1 text-[13px] leading-relaxed text-[#8E8E93]">
+                  还没有选中会话。返回「对话」列表选一条，或在下方直接发送新建任务。
+                </p>
+              </div>
+            )}
+
+            <TaskStreamView
+              messages={messages}
+              status={status}
+              diff={diff}
+              busy={busy}
+              onStartTask={() => setSheet('newTask')}
+              onApprove={(item) => {
+                setActiveApproval(item);
+                setSheet('approval');
+              }}
+            />
+
+            {approvals.length > 1 && (
+              <button
+                type="button"
+                onClick={() => setSheet('approval')}
+                className={cx(
+                  'ios-card mt-3 flex min-h-[44px] w-full items-center justify-center gap-2 px-4 py-3 text-[14px] font-semibold text-[#248A3D]',
+                  PRESS,
+                )}
+              >
+                <ShieldCheck size={16} />
+                查看全部 {approvals.length} 条待审批
+              </button>
+            )}
+
+            {notice && (
+              <div className="mt-3 rounded-2xl border border-[#FF3B30]/20 bg-[#FF3B30]/5 px-4 py-3 text-[12px] leading-relaxed text-[#D70015]">
+                {notice}
+              </div>
+            )}
+          </main>
+
+          {/* 输入舱直接贴底，不再叠一层 Tab 栏。 */}
+          <div className="glass-chrome z-20 shrink-0 border-t px-2 pb-[max(0.5rem,env(safe-area-inset-bottom))] pt-1">
+            {composer}
+          </div>
+
+          {sheets}
         </>
       ) : (
         <>
-          <header className="z-20 shrink-0">
-            <MachineHubHeader
-              health={health}
-              machineName={terminalName}
-              tab={tab}
-              onManage={() => setTab('terminal')}
-            />
-          </header>
+          {/* 一级页：大标题 + 内容 + 3 Tab 底栏（对话=会话列表 / 终端 / 设置） */}
+          <MachineHubHeader
+            health={health}
+            machineName={terminalName}
+            tab={tab}
+            onManage={() => setTab('terminal')}
+          />
 
-          {/* 主内容区：flex-1 min-h-0，聊天区在首屏占主导 */}
           <main className="min-h-0 flex-1 overflow-y-auto px-4 pt-4 pb-8">
             {tab === 'chat' && (
-              <>
-                {loading && (
-                  <div className="mb-3 rounded-2xl bg-white px-4 py-3 text-center text-[13px] text-[#8E8E93]">
-                    正在连接电脑…
-                  </div>
-                )}
-
-                {selectedThreadId && (
-                  <div className="ios-card mb-4 flex items-center justify-between gap-3 px-4 py-3">
-                    <div className="flex min-w-0 items-center gap-3">
-                      <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-[13px] bg-[#007AFF]/12 text-[#007AFF]">
-                        <MessageSquare size={18} strokeWidth={2} aria-hidden="true" />
-                      </span>
-                      <div className="min-w-0">
-                        <p className="truncate text-[15px] font-semibold text-[#1C1C1E]">{selectedTitle}</p>
-                        <p className="text-[11px] text-[#8E8E93]">
-                          {statusText(status)} · {messages.length} 条消息
-                        </p>
-                      </div>
-                    </div>
-                    <button
-                      type="button"
-                      aria-label="刷新"
-                      onClick={() => void loadMessages(selectedThreadId, false)}
-                      className={cx(
-                        'flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[#EFEFF4] text-[#8E8E93]',
-                        HIT_AREA_44,
-                        PRESS,
-                      )}
-                    >
-                      <RefreshCw size={15} />
-                    </button>
-                  </div>
-                )}
-
-                <TaskStreamView
-                  messages={messages}
-                  status={status}
-                  diff={diff}
-                  busy={busy}
-                  onStartTask={() => setSheet('newTask')}
-                  onApprove={(item) => {
-                    setActiveApproval(item);
-                    setSheet('approval');
-                  }}
-                />
-
-                {approvals.length > 1 && (
-                  <button
-                    type="button"
-                    onClick={() => setSheet('approval')}
-                    className={cx(
-                      'ios-card mt-3 flex min-h-[44px] w-full items-center justify-center gap-2 px-4 py-3 text-[14px] font-semibold text-[#248A3D]',
-                      PRESS,
-                    )}
-                  >
-                    <ShieldCheck size={16} />
-                    查看全部 {approvals.length} 条待审批
-                  </button>
-                )}
-
-                {notice && (
-                  <div className="mt-3 rounded-2xl border border-[#FF3B30]/20 bg-[#FF3B30]/5 px-4 py-3 text-[12px] leading-relaxed text-[#D70015]">
-                    {notice}
-                  </div>
-                )}
-              </>
-            )}
-
-            {tab === 'sessions' && (
               <SessionsPage
                 threads={threads}
                 selectedThreadId={selectedThreadId}
@@ -544,22 +545,8 @@ export default function App() {
             )}
           </main>
 
-          <GlassTabBar active={tab} onChange={setTab} composer={tab === 'chat' ? composer : undefined} />
-
-          <CupertinoSheets
-            sheet={sheet}
-            onSheetChange={setSheet}
-            approvals={activeApproval ? [activeApproval] : approvals}
-            threads={threads}
-            selectedThreadId={selectedThreadId}
-            onSelectThread={selectThread}
-            onApprovalSubmit={handleApprovalSubmit}
-            onNewTask={handleNewTask}
-            onPairing={handlePairing}
-            onAccessCode={handleAccessCode}
-            health={health}
-            readOnly={Boolean(readOnly)}
-          />
+          <GlassTabBar active={tab} onChange={setTab} />
+          {sheets}
         </>
       )}
     </div>

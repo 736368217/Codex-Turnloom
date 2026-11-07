@@ -1,32 +1,27 @@
-import type { ReactNode } from 'react';
-import { List, MessageCircle, Monitor, Settings, type LucideIcon } from 'lucide-react';
+import { List, Monitor, Settings, type LucideIcon } from 'lucide-react';
 import { PRESS, cx } from '../lib/ui';
 
-export type TabKey = 'chat' | 'sessions' | 'terminal' | 'settings';
+/**
+ * 方案 A（微信/QQ 模型）：底栏只属于「一级页」，3 个 Tab。
+ * 「对话」= 会话列表（很多会话）；点某条会话进入全屏聊天详情页，
+ * 详情页完全不渲染本组件（无底栏），只有紧凑顶栏 + 消息流 + 输入舱。
+ */
+export type TabKey = 'chat' | 'terminal' | 'settings';
 
 export interface GlassTabBarProps {
   active: TabKey;
   onChange: (tab: TabKey) => void;
-  /** 输入舱：与导航行放在同一个毛玻璃容器里，只有一条顶部边框。 */
-  composer?: ReactNode;
 }
 
 const TABS: Array<{ key: TabKey; label: string; Icon: LucideIcon }> = [
-  { key: 'chat', label: '对话', Icon: MessageCircle },
-  { key: 'sessions', label: '会话', Icon: List },
+  { key: 'chat', label: '对话', Icon: List },
   { key: 'terminal', label: '终端', Icon: Monitor },
   { key: 'settings', label: '设置', Icon: Settings },
 ];
 
-/**
- * 底部拇指舱：输入舱 + 悬浮玻璃胶囊 4 Tab。
- * 玻璃背后是 daylight-canvas 的渐变，backdrop-blur 才有可折射的内容。
- * role=tab / data-tab / 按钮文字 / 44px 命中区保持不变，供 QA 断言。
- */
-export default function GlassTabBar({ active, onChange, composer }: GlassTabBarProps) {
+export default function GlassTabBar({ active, onChange }: GlassTabBarProps) {
   return (
     <div className="glass-chrome z-20 shrink-0 border-t px-3 pb-[max(0.5rem,env(safe-area-inset-bottom))] pt-2">
-      {composer}
       <nav aria-label="主导航" className="ios-floating-tabs mt-2 flex items-stretch p-1">
         {TABS.map(({ key, label, Icon }) => {
           const isActive = key === active;

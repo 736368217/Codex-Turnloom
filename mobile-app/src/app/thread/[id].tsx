@@ -278,7 +278,7 @@ export default function ThreadScreen() {
 
   return (
     <View style={[styles.screen, { paddingTop: 96 + insets.top }]}>
-      <Stack.Screen options={{ title: thread?.title || '会话详情' }} />
+      <Stack.Screen options={{ title: thread?.title || '会话详情', headerBackTitle: '会话' }} />
 
       <View style={styles.topRow}>
         <Badge label={busy ? '运行中' : '空闲'} tone={busy ? 'blue' : 'neutral'} />

@@ -1,9 +1,8 @@
 /**
- * (tabs) group layout: JS Tabs navigator with a custom BlurView tab bar.
- * Four entries: Home / Threads / Monitors / Settings, active #007AFF.
- *
- * Option A v6：整组套 DaylightBackdrop（日光雾白渐变），让 BlurView 玻璃
- * 在 Android 上也有可折射的底色；四个 Tab 视觉统一。
+ * (tabs) group layout — 方案 A（微信/QQ 模型）。
+ * 底栏只有 3 个一级页：对话(会话列表) / 终端 / 设置。
+ * 聊天是全屏二级详情页 `app/thread/[id].tsx`（在 Stack 内，不在 Tabs 内），
+ * 因此天然不带底栏；点列表行 router.push 进入，左上系统返回键回列表。
  */
 import { Tabs } from 'expo-router/tabs';
 
@@ -20,7 +19,6 @@ export default function TabsLayout() {
           sceneStyle: { backgroundColor: 'transparent' },
         }}>
         <Tabs.Screen name="index" options={{ title: '对话' }} />
-        <Tabs.Screen name="threads" options={{ title: '会话' }} />
         <Tabs.Screen name="monitors" options={{ title: '终端' }} />
         <Tabs.Screen name="settings" options={{ title: '设置' }} />
       </Tabs>

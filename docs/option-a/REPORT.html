@@ -133,13 +133,13 @@
         <div style="font-size:17px;font-weight:750;margin:6px 0">会话总控 · 原生版</div>
         <div class="kv"><span>包名</span><span>com.codexpocket.optiona.native</span></div>
         <div class="kv"><span>版本</span><span>1.19.0-native (71)</span></div>
-        <div class="kv"><span>大小 / SHA256</span><span>285,506,040 B<br><code>7D1D49FE…886C</code></span></div>
+        <div class="kv"><span>大小 / SHA256</span><span>281,632,239 B<br><code>EFE92D2D…C996</code></span></div>
         <a href="http://192.168.1.10:8787/downloads/Codex-Turnloom-Native.apk">下载 Codex-Turnloom-Native.apk</a>
       </div>
     </div>
   </div>
   <div class="note">
-    <b>原生包是真原生，不是 WebView 壳</b>：包内 24 个 <code>classes*.dex</code>、四 ABI（arm64-v8a / armeabi-v7a / x86 / x86_64）各 30 个 <code>.so</code>（含 <code>libreactnative.so</code> 24MB、<code>libhermesvm.so</code>、<code>libreanimated.so</code>、<code>libworklets.so</code>），自带 <code>assets/index.android.bundle</code>（3,873,744 B，Hermes 字节码 <code>C6 1F BC 03</code>），<b>断网 / 无 Metro 也能启动</b>，包内无任何内嵌 HTML。
+    <b>原生包是真原生，不是 WebView 壳</b>：包内 24 个 <code>classes*.dex</code>、四 ABI（arm64-v8a / armeabi-v7a / x86 / x86_64）各 30 个 <code>.so</code>（含 <code>libreactnative.so</code> 24MB、<code>libhermesvm.so</code>、<code>libreanimated.so</code>、<code>libworklets.so</code>），自带 <code>assets/index.android.bundle</code>（3,862,444 B，Hermes 字节码 <code>C6 1F BC 03</code>），<b>断网 / 无 Metro 也能启动</b>，包内无任何内嵌 HTML。
   </div>
   <p><a class="btn" href="http://192.168.1.10:8787/option-a/index.html">在手机浏览器打开中文版网页</a></p>
   <p class="small">127 与 LAN 六个下载/页面 URL 全部实测 GET 200。</p>
@@ -171,7 +171,24 @@
 
 <!-- 3 顶层体验优化 -->
 <section>
-  <h2><span class="num">3</span>顶层设计复核：修复核心任务链断口</h2>
+  <h2><span class="num">3</span>导航 IA 重构：方案 A（微信 / QQ 模型）</h2>
+  <p class="sub">用户复核指出：带输入框的聊天页还叠着一条底栏，是纯干扰。根因不只是样式，而是<b>把「聊天详情」错误地做成了一级 Tab</b>；更严重的是旧验收脚本把「4 Tab 齐全」写死成 PASS，等于把错误设计固化成标准，所以跑再多轮也测不出来。</p>
+  <table>
+    <tr><th>层</th><th>页面</th><th>底栏</th><th>顶栏</th></tr>
+    <tr><td>一级页</td><td><b>对话</b> = 会话列表（很多会话）<br>终端 / 设置</td><td class="ok">有，恰好 3 Tab</td><td>iOS 大标题 + 状态胶囊</td></tr>
+    <tr><td>二级详情页</td><td><b>聊天</b>（点某条会话进入）</td><td class="ok"><b>0 底栏 / 0 Tab</b></td><td>紧凑顶栏：左上「‹ 会话」返回 + 当前会话标题 + 刷新</td></tr>
+  </table>
+  <div class="grid g3" style="margin-top:16px">
+    <figure><img src="report-assets/ia-list.png" alt="一级对话列表" /><figcaption>一级「对话」= 会话列表，有 3 Tab 底栏</figcaption></figure>
+    <figure><img src="report-assets/ia-chat-detail.png" alt="全屏聊天详情" /><figcaption>点会话进入全屏聊天：<b>无底栏</b>，左上返回、输入舱贴底</figcaption></figure>
+    <figure><img src="report-assets/ia-chat-360.png" alt="360 聊天详情" /><figcaption>360 小屏同样无底栏，消息流占满</figcaption></figure>
+  </div>
+  <div class="note">
+    <b>测试标准也重写了</b>：新增 <code>qa-ia-ship.mjs</code>（26 项）按页面校验「该有的有、不该有的没有」——一级页必须有底栏且恰好 3 Tab、聊天详情必须 0 底栏 / 0 Tab / 有返回 / 有输入舱 / 消息流占比 ≥0.70；<code>qa-v5</code> 与 <code>qa-full</code> 里写死「4 Tab 齐全」的断言全部改为方案 A 断言。两端（Web 与 Expo/RN）同步：原生端把聊天从 Tabs 移入 <code>app/thread/[id]</code> 全屏 Stack 页，底栏改 3 Tab，并重编 APK。
+  </div>
+</section>
+<section>
+  <h2><span class="num">4</span>顶层设计复核：修复核心任务链断口</h2>
   <p class="sub">按真实用户旅程（冷启动 → 选终端 → 发指令 → 审批 → 中断 → 切 Tab → 异常态）在真实 Chrome + 手机视口逐屏走查 10 屏，发现的不是样式问题，而是 IA 问题。</p>
   <table>
     <tr><th>#</th><th>实测问题</th><th>优化</th></tr>
@@ -196,7 +213,7 @@
 
 <!-- 4 框架与缺陷修复 -->
 <section>
-  <h2><span class="num">4</span>框架落地与真实缺陷修复</h2>
+  <h2><span class="num">5</span>框架落地与真实缺陷修复</h2>
   <div class="grid g2">
     <div>
       <h3>成熟框架真实使用（双端不同框架，共用视觉宪法）</h3>
@@ -222,12 +239,13 @@
 
 <!-- 5 完整测试 -->
 <section>
-  <h2><span class="num">5</span>完整实机测试（跑完，无提前收口）</h2>
+  <h2><span class="num">6</span>完整实机测试（跑完，无提前收口）</h2>
   <p class="sub">真实 Chrome + Playwright，390×844 与 360×780 手机视口，真实点击、逐页截图、控制台/网络全采集。隔离 mock 18997 用于写操作验证，不污染真实 Codex 会话。</p>
   <div class="grid g4" style="margin-top:14px">
-    <div class="tile"><div class="k">qa-v5 源码/DOM 核对</div><div class="v ok">21 / 21</div><div class="d">两个 APK SHA256 与交付文件一致</div></div>
-    <div class="tile"><div class="k">qa-full · mock</div><div class="v ok">58 步 · 0 FAIL</div><div class="d">56 PASS / 1 SKIP / 18 页</div></div>
-    <div class="tile"><div class="k">qa-full · 真实 8787</div><div class="v ok">56 步 · 0 FAIL</div><div class="d">52 PASS / 3 SKIP / 16 页</div></div>
+    <div class="tile"><div class="k">qa-v5 源码/DOM 核对</div><div class="v ok">27 / 27</div><div class="d">含方案 A 导航_assert：聊天页 0 底栏</div></div>
+    <div class="tile"><div class="k">qa-full · mock</div><div class="v ok">58 步 · 0 FAIL</div><div class="d">54 PASS / 1 SKIP / 16 页</div></div>
+    <div class="tile"><div class="k">qa-full · 真实 8787</div><div class="v ok">56 步 · 0 FAIL</div><div class="d">50 PASS / 3 SKIP / 14 页</div></div>
+    <div class="tile"><div class="k">方案 A 导航 IA</div><div class="v ok">26 / 26</div><div class="d">聊天页 0 底栏 / 一级页 3 Tab</div></div>
     <div class="tile"><div class="k">核心任务链</div><div class="v ok">9 / 9</div><div class="d">排队发送 / 中断 / 审批全到达后端</div></div>
   </div>
   <table style="margin-top:18px">
@@ -248,7 +266,7 @@
 
 <!-- 6 限制与边界 -->
 <section>
-  <h2><span class="num">6</span>已知限制与交付边界</h2>
+  <h2><span class="num">7</span>已知限制与交付边界</h2>
   <div class="grid g2">
     <div>
       <h3>限制（不写成通过）</h3>
