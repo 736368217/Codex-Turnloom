@@ -1,27 +1,49 @@
 /**
- * Option A glass tab bar: BlurView `systemChromeMaterialLight` intensity 85,
- * four iOS-style entries, active tint #007AFF. Rendered via a custom `tabBar`
- * on the JS Tabs navigator so BlurView (not a native tab bar) owns the glass.
+ * 底部毛玻璃导航栏（信息架构 v4）。
+ * 四个 Tab 与 (tabs)/_layout.tsx 的 Tabs.Screen name 一一对应：
+ *   index=对话 / threads=会话 / monitors=终端 / settings=设置
+ * 图标使用真实字体图标（iOS SF Symbols、Android/Web Material Symbols），
+ * 不再使用 Unicode 字符，避免部分机型出现方框。
  */
 import { BlurView } from 'expo-blur';
 import type { BottomTabBarProps } from 'expo-router/tabs';
 import * as Haptics from 'expo-haptics';
+import { SymbolView } from 'expo-symbols';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { GLASS_INTENSITY, GLASS_TINT, OptionA } from '@/constants/optionA';
 
-export type TabIconName = 'home' | 'threads' | 'monitors' | 'settings';
+/** route key 必须与 _layout.tsx 的 Tabs.Screen name 完全一致，否则会 fallback 成英文 route 名。 */
+export type TabRouteName = 'index' | 'threads' | 'monitors' | 'settings';
 
-const TAB_META: Record<string, { label: string; icon: string }> = {
-  index: { label: '首页', icon: '⌂' },
-  threads: { label: '会话', icon: '☰' },
-  monitors: { label: '监控', icon: '◉' },
-  settings: { label: '设置', icon: '⚙' },
+type TabMeta = {
+  label: string;
+  /** iOS 走 SF Symbols，Android / Web 走 Material Symbols 字体图标。 */
+  ios: 'bubble.left.and.bubble.right.fill' | 'list.bullet' | 'desktopcomputer' | 'gearshape.fill';
+  android: 'chat' | 'list_alt' | 'desktop_windows' | 'settings';
 };
 
-function metaFor(routeName: string) {
-  return TAB_META[routeName] ?? { label: routeName, icon: '○' };
+const TAB_META: Record<TabRouteName, TabMeta> = {
+  index: { label: '对话', ios: 'bubble.left.and.bubble.right.fill', android: 'chat' },
+  threads: { label: '会话', ios: 'list.bullet', android: 'list_alt' },
+  monitors: { label: '终端', ios: 'desktopcomputer', android: 'desktop_windows' },
+  settings: { label: '设置', ios: 'gearshape.fill', android: 'settings' },
+};
+
+function metaFor(routeName: string): TabMeta {
+  return TAB_META[routeName as TabRouteName] ?? TAB_META.index;
+}
+
+function TabIcon({ meta, color }: { meta: TabMeta; color: string }) {
+  return (
+    <SymbolView
+      name={{ ios: meta.ios, android: meta.android, web: meta.android }}
+      size={21}
+      tintColor={color}
+      style={styles.icon}
+    />
+  );
 }
 
 export function GlassTabBar({ state, descriptors, navigateToTab }: BottomTabBarProps) {
@@ -50,7 +72,7 @@ export function GlassTabBar({ state, descriptors, navigateToTab }: BottomTabBarP
                   styles.tab,
                   { opacity: pressed ? 0.8 : 1, transform: [{ scale: pressed ? 0.98 : 1 }] },
                 ]}>
-                <Text style={[styles.icon, { color }]}>{meta.icon}</Text>
+                <TabIcon meta={meta} color={color} />
                 <Text style={[styles.label, { color }]} numberOfLines={1}>
                   {meta.label}
                 </Text>
@@ -81,7 +103,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-around',
     paddingHorizontal: 6,
-    paddingTop: 8,
+    paddingTop: 6,
   },
   tab: {
     flex: 1,
@@ -91,8 +113,8 @@ const styles = StyleSheet.create({
     gap: 2,
   },
   icon: {
-    fontSize: 19,
-    lineHeight: 22,
+    width: 22,
+    height: 22,
   },
   label: {
     fontSize: 10,
