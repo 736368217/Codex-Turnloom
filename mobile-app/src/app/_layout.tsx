@@ -1,7 +1,7 @@
 /**
  * Root Expo Router stack. Light-only by constitution.
- * The Home tab uses a native iOS large title with a system chrome material
- * light blur header; the thread detail uses a compact standard header.
+ * The Home tab group uses a native iOS large title with a translucent
+ * `systemChromeMaterialLight` blur header; thread detail uses a compact header.
  */
 import { BottomSheetModalProvider } from '@gorhom/bottom-sheet';
 import { DefaultTheme, Stack, ThemeProvider } from 'expo-router';
@@ -32,8 +32,8 @@ export default function RootLayout() {
               <Stack.Screen
                 name="(tabs)"
                 options={{
-                  headerShown: false,
-                  // Native large title + translucent chrome-material-light blur.
+                  title: 'Turnloom',
+                  // Native iOS large title + chrome-material-light glass header.
                   headerLargeTitle: true,
                   headerBlurEffect: 'systemChromeMaterialLight',
                   headerTransparent: true,
