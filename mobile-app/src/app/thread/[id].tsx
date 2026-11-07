@@ -339,10 +339,6 @@ export default function ThreadScreen() {
             setError(caught instanceof Error ? caught.message : String(caught));
           }
         }}
-        onQuickPrompt={(prompt) => {
-          // Shortcut chips only prefill the composer; no hidden send.
-          void prompt;
-        }}
       />
 
       <ApprovalBottomSheet

@@ -1,22 +1,16 @@
 /**
- * 「会话」Tab：真实会话列表（由 index.tsx 迁入）。
- * 高频的「切换对话」一次点击直达；所有数据来自验证过的 API 客户端，不伪造。
+ * 「会话」Tab：真实会话列表。v5 改用 NativeWind className +
+ * React Native Reusables 复制式 Card/Text/Badge 组件。
  */
 import { FlashList } from '@shopify/flash-list';
 import { router, useFocusEffect } from 'expo-router';
 import * as Haptics from 'expo-haptics';
 import { useCallback, useEffect, useState } from 'react';
-import {
-  ActivityIndicator,
-  RefreshControl,
-  StyleSheet,
-  Text,
-  View,
-} from 'react-native';
+import { ActivityIndicator, Pressable, RefreshControl, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { OptionA } from '@/constants/optionA';
-import { Badge, EmptyState, PressableCard } from '@/components/ui';
+import { Badge, Card, Text } from '@/components/ui/rnr';
 import { getTurnloomClient, AuthRequiredError } from '@/services/turnloomClient';
 import { threadStatusKind, type Thread } from '@/services/types';
 
@@ -30,12 +24,12 @@ const STATUS_LABEL = {
   unknown: '进行中',
 } as const;
 
-const STATUS_TONE = {
-  waiting: 'green',
-  running: 'blue',
-  stale: 'neutral',
-  ended: 'neutral',
-  unknown: 'blue',
+const BADGE_VARIANT = {
+  waiting: 'default',
+  running: 'default',
+  stale: 'secondary',
+  ended: 'secondary',
+  unknown: 'default',
 } as const;
 
 export default function ThreadsScreen() {
@@ -86,45 +80,53 @@ export default function ThreadsScreen() {
     ({ item, index }: { item: Thread; index: number }) => {
       const kind = threadStatusKind(item.status);
       return (
-        <PressableCard
+        <Pressable
           accessibilityRole="button"
           onPress={() => {
             void Haptics.selectionAsync();
             router.push({ pathname: '/thread/[id]', params: { id: item.id } });
           }}
-          style={styles.threadCard}>
-          <View style={styles.threadRow}>
-            <Text style={styles.threadTitle} numberOfLines={1}>
-              {item.title || '未命名会话'}
+          className="active:opacity-80">
+          <Card className="gap-[6px] p-[14px]">
+            <View className="flex-row items-center">
+              <Text className="flex-1 text-[15px] font-semibold text-[#1C1C1E]" numberOfLines={1}>
+                {item.title || '未命名会话'}
+              </Text>
+              <Text className="ml-2 text-[20px] text-[#8E8E93]">›</Text>
+            </View>
+            <Text className="text-[13px] leading-[18px] text-[#8E8E93]" numberOfLines={2}>
+              {item.preview || item.project?.name || item.cwd || '暂无预览'}
             </Text>
-            <Text style={styles.chevron}>›</Text>
-          </View>
-          <Text style={styles.threadPreview} numberOfLines={2}>
-            {item.preview || item.project?.name || item.cwd || '暂无预览'}
-          </Text>
-          <View style={styles.threadFooter}>
-            <Badge label={STATUS_LABEL[kind]} tone={STATUS_TONE[kind]} />
-            {item.status?.interactionRequired ? <Badge label="待合并" tone="green" /> : null}
-            <Text style={styles.threadMeta}>
-              {item.updatedAtMs ? relativeTime(item.updatedAtMs) : `#${index + 1}`}
-            </Text>
-          </View>
-        </PressableCard>
+            <View className="flex-row items-center gap-2 pt-[2px]">
+              <Badge variant={BADGE_VARIANT[kind]}>
+                <Text className="text-[12px] font-semibold text-[#007AFF]">{STATUS_LABEL[kind]}</Text>
+              </Badge>
+              {item.status?.interactionRequired ? (
+                <Badge variant="default">
+                  <Text className="text-[12px] font-semibold text-[#007AFF]">待合并</Text>
+                </Badge>
+              ) : null}
+              <Text className="ml-auto text-[12px] text-[#8E8E93]">
+                {item.updatedAtMs ? relativeTime(item.updatedAtMs) : `#${index + 1}`}
+              </Text>
+            </View>
+          </Card>
+        </Pressable>
       );
     },
     []
   );
 
   return (
-    <View style={styles.screen}>
-      <View style={[styles.heading, { paddingTop: insets.top + 12 }]}>
-        <Text style={styles.title}>会话</Text>
-        <Text style={styles.subtitle}>选择一个对话，查看实时任务流</Text>
+    <View className="flex-1 bg-[#F2F2F7]">
+      <View className="gap-[3px] px-4 pb-[10px]" style={{ paddingTop: insets.top + 12 }}>
+        <Text className="text-[28px] font-bold text-[#1C1C1E]">会话</Text>
+        <Text className="text-[13px] text-[#8E8E93]">选择一个对话，查看实时任务流</Text>
       </View>
-      {authGate ? <Text style={styles.error}>需要访问码，请到「终端」页重新输入</Text> : null}
-      {error ? <Text style={styles.error}>{error}</Text> : null}
+      {authGate ? <Text className="px-4 pb-[6px] text-[12px] text-[#D70015]">需要访问码，请到「终端」页重新输入</Text> : null}
+      {error ? <Text className="px-4 pb-[6px] text-[12px] text-[#D70015]">{error}</Text> : null}
       {loading && threads.length === 0 ? (
-        <View style={styles.centered}>
+        <View className="items-center justify-center p-6">
           <ActivityIndicator color={OptionA.blue} />
         </View>
       ) : null}
@@ -134,16 +136,20 @@ export default function ThreadsScreen() {
         keyExtractor={(item, index) => item.id || `thread-${index}`}
         showsVerticalScrollIndicator={false}
         contentContainerStyle={{ paddingTop: 8, paddingBottom: 112 + insets.bottom, paddingHorizontal: 16 }}
-        ItemSeparatorComponent={() => <View style={{ height: 10 }} />}
+        ItemSeparatorComponent={() => <View className="h-[10px]" />}
         refreshControl={
           <RefreshControl refreshing={refreshing} onRefresh={() => void load(true)} tintColor={OptionA.blue} />
         }
         ListEmptyComponent={
           loading ? null : (
-            <EmptyState
-              title={error ? '暂时无法加载会话' : '暂无会话'}
-              hint={error ? '下拉刷新重试，或到「终端」页检查连接' : '扫码配对或新建任务后，这里会显示真实会话'}
-            />
+            <View className="items-center py-7">
+              <Text className="text-[15px] font-semibold text-[#1C1C1E]">
+                {error ? '暂时无法加载会话' : '暂无会话'}
+              </Text>
+              <Text className="mt-2 text-center text-[13px] text-[#8E8E93]">
+                {error ? '下拉刷新重试，或到「终端」页检查连接' : '扫码配对或新建任务后，这里会显示真实会话'}
+              </Text>
+            </View>
           )
         }
       />
@@ -160,19 +166,3 @@ function relativeTime(ms: number): string {
   if (hours < 24) return `${hours} 小时前`;
   return `${Math.floor(hours / 24)} 天前`;
 }
-
-const styles = StyleSheet.create({
-  screen: { flex: 1, backgroundColor: OptionA.canvas },
-  heading: { paddingHorizontal: 16, paddingBottom: 10, gap: 3 },
-  title: { fontSize: 28, fontWeight: '700', color: OptionA.ink },
-  subtitle: { fontSize: 13, color: OptionA.inkSoft },
-  centered: { alignItems: 'center', justifyContent: 'center', padding: 24 },
-  error: { fontSize: 12, color: OptionA.redInk, paddingHorizontal: 16, paddingBottom: 6 },
-  threadCard: { padding: 14, gap: 6 },
-  threadRow: { flexDirection: 'row', alignItems: 'center' },
-  threadTitle: { flex: 1, fontSize: 15, fontWeight: '600', color: OptionA.ink },
-  chevron: { fontSize: 20, color: OptionA.inkSoft, marginLeft: 8 },
-  threadPreview: { fontSize: 13, lineHeight: 18, color: OptionA.inkSoft },
-  threadFooter: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingTop: 2 },
-  threadMeta: { marginLeft: 'auto', fontSize: 12, color: OptionA.inkSoft },
-});

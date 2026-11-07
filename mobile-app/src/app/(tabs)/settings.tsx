@@ -1,13 +1,12 @@
 /**
  * 「设置」Tab：访问码说明、只读模式、关于。
- * 低频的终端新增/切换/修改全部在「终端」Tab，这里只保留说明性内容。
+ * v5：NativeWind className + React Native Reusables 复制式 Card/Button/Text。
  */
 import { useCallback, useEffect, useState } from 'react';
-import { ScrollView, StyleSheet, Text, View } from 'react-native';
+import { ScrollView, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { OptionA } from '@/constants/optionA';
-import { Card, PrimaryButton, SectionLabel } from '@/components/ui';
+import { Button, Card, Text } from '@/components/ui/rnr';
 import { getTurnloomClient } from '@/services/turnloomClient';
 
 const client = getTurnloomClient();
@@ -44,48 +43,47 @@ export default function SettingsScreen() {
 
   return (
     <ScrollView
-      style={styles.screen}
-      contentContainerStyle={[styles.content, { paddingTop: insets.top + 16 }]}
+      className="flex-1 bg-[#F2F2F7]"
+      contentContainerStyle={{ paddingHorizontal: 20, paddingTop: insets.top + 16, paddingBottom: 120, gap: 10 }}
       showsVerticalScrollIndicator={false}>
-      <Text style={styles.title}>设置</Text>
+      <Text className="pb-[6px] text-[28px] font-bold text-[#1C1C1E]">设置</Text>
 
-      <SectionLabel>连接</SectionLabel>
-      <Card style={styles.card}>
-        <Text style={styles.rowLabel}>当前服务</Text>
-        <Text style={styles.value}>{paired ? '已配对终端' : '未配对'}</Text>
-        <Text style={styles.hint}>访问码将作为 x-access-token 请求头发送，只保存在本机。</Text>
+      <Text className="mb-2 text-[13px] font-semibold uppercase tracking-[0.6px] text-[#8E8E93]">连接</Text>
+      <Card className="gap-2 p-4">
+        <Text className="text-[15px] font-semibold text-[#1C1C1E]">当前服务</Text>
+        <Text className="text-[14px] text-[#8E8E93]">{paired ? '已配对终端' : '未配对'}</Text>
+        <Text className="text-[12px] leading-[18px] text-[#8E8E93]">
+          访问码将作为 x-access-token 请求头发送，只保存在本机。
+        </Text>
       </Card>
 
-      <SectionLabel>权限</SectionLabel>
-      <Card style={styles.card}>
-        <Text style={styles.rowLabel}>{readOnly ? '只读模式' : '写入权限'}</Text>
-        <Text style={styles.hint}>
+      <Text className="mb-2 text-[13px] font-semibold uppercase tracking-[0.6px] text-[#8E8E93]">权限</Text>
+      <Card className="gap-2 p-4">
+        <Text className="text-[15px] font-semibold text-[#1C1C1E]">{readOnly ? '只读模式' : '写入权限'}</Text>
+        <Text className="text-[12px] leading-[18px] text-[#8E8E93]">
           {readOnly
             ? '服务端处于只读模式，发送、中断、审批已禁用。'
             : '可发送消息、中断运行中的任务，并处理待审批项。'}
         </Text>
       </Card>
 
-      <SectionLabel>关于</SectionLabel>
-      <Card style={styles.card}>
-        <Text style={styles.rowLabel}>会话总控 · 日光版</Text>
-        <Text style={styles.hint}>浅色界面，中文优先。终端与会话数据均来自本机服务，不经过云端账号。</Text>
-        <Text style={styles.hint}>版本 1.18.0-option-a</Text>
+      <Text className="mb-2 text-[13px] font-semibold uppercase tracking-[0.6px] text-[#8E8E93]">关于</Text>
+      <Card className="gap-2 p-4">
+        <Text className="text-[15px] font-semibold text-[#1C1C1E]">会话总控 · 原生版</Text>
+        <Text className="text-[12px] leading-[18px] text-[#8E8E93]">
+          浅色界面，中文优先。终端与会话数据均来自本机服务，不经过云端账号。
+        </Text>
+        <Text className="text-[12px] leading-[18px] text-[#8E8E93]">版本 1.19.0-native</Text>
       </Card>
 
-      <PrimaryButton label="清除配对" tone="neutral" onPress={() => void clearPairing()} />
-      {message ? <Text style={styles.message}>{message}</Text> : null}
+      <Button variant="secondary" onPress={() => void clearPairing()}>
+        <Text className="text-[15px] font-semibold text-[#1C1C1E]">清除配对</Text>
+      </Button>
+      {message ? (
+        <View className="py-[6px]">
+          <Text className="text-[13px] text-[#248A3D]">{message}</Text>
+        </View>
+      ) : null}
     </ScrollView>
   );
 }
-
-const styles = StyleSheet.create({
-  screen: { flex: 1, backgroundColor: OptionA.canvas },
-  content: { paddingHorizontal: 20, paddingBottom: 120, gap: 10 },
-  title: { fontSize: 28, fontWeight: '700', color: OptionA.ink, paddingBottom: 6 },
-  card: { padding: 16, gap: 8 },
-  rowLabel: { fontSize: 15, fontWeight: '600', color: OptionA.ink },
-  value: { fontSize: 14, color: OptionA.inkSoft },
-  hint: { fontSize: 12, lineHeight: 18, color: OptionA.inkSoft },
-  message: { fontSize: 13, color: OptionA.greenInk, paddingVertical: 6 },
-});
