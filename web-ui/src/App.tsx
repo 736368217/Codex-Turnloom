@@ -1,146 +1,413 @@
-import { useEffect, useState } from 'react';
-import { Navbar } from 'konsta/react';
-import { Wifi, WifiOff, LockKeyhole } from 'lucide-react';
-import { api, ApiError, type HealthResponse } from './lib/turnloomApi';
-import { PRESS, cx } from './lib/ui';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Settings2, RefreshCw } from 'lucide-react';
+import {
+  api,
+  ApiError,
+  approvalItems,
+  loadConnection,
+  loadSelectedThreadId,
+  saveSelectedThreadId,
+  startChangePoller,
+  threadStatusKind,
+  conversationCacheKey,
+  readConversationCache,
+  writeConversationCache,
+  isConversationCacheFresh,
+  type ApprovalItem,
+  type ConnectionSettings,
+  type HealthResponse,
+  type MessagesResponse,
+  type MessagesStatus,
+  type StreamMessage,
+  type Thread,
+} from './lib/turnloomApi';
+import { PRESS, cx, truncate } from './lib/ui';
+import MachineHubHeader from './components/MachineHubHeader';
+import TaskStreamView from './components/TaskStreamView';
+import ThumbGlassBar from './components/ThumbGlassBar';
+import CupertinoSheets, { type SheetKind } from './components/CupertinoSheets';
 
-type Phase1State = 'loading' | 'online' | 'offline' | 'auth' | 'readonly';
+type Engine = 'codex' | 'pi';
 
-/**
- * Phase 1 shell: the Option A daylight-glass outer frame plus a live
- * health/auth/read-only probe against the REAL /api/health endpoint.
- * Phase 2 replaces the placeholder body with the four UI primitives.
- */
+const EMPTY_STATUS: MessagesStatus = { thinking: false, interactionRequired: false };
+
 export default function App() {
   const [health, setHealth] = useState<HealthResponse | null>(null);
-  const [phase, setPhase] = useState<Phase1State>('loading');
-  const [error, setError] = useState('');
+  const [connectionVersion, setConnectionVersion] = useState(0);
+  const [threads, setThreads] = useState<Thread[]>([]);
+  const [selectedThreadId, setSelectedThreadId] = useState<string>(() => loadSelectedThreadId());
+  const [messages, setMessages] = useState<StreamMessage[]>([]);
+  const [status, setStatus] = useState<MessagesStatus | null>(null);
+  const [diff, setDiff] = useState<unknown>(undefined);
+  const [engine, setEngine] = useState<Engine>('codex');
+  const [sheet, setSheet] = useState<SheetKind>(null);
+  const [draft, setDraft] = useState('');
   const [scrolled, setScrolled] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [notice, setNotice] = useState('');
+  const [activeApproval, setActiveApproval] = useState<ApprovalItem | null>(null);
+  const pollerRef = useRef<(() => void) | null>(null);
+  const threadIdRef = useRef(selectedThreadId);
+  threadIdRef.current = selectedThreadId;
+
+  const readOnly = health?.allowWrite === false;
+  const busy = Boolean(status?.thinking);
+
+  const showError = useCallback((error: unknown) => {
+    setNotice(error instanceof Error ? error.message : String(error));
+  }, []);
+
+  // --- Bootstrap: health → threads → cached conversation -------------------
+  const bootstrap = useCallback(async () => {
+    setLoading(true);
+    try {
+      const result = await api.getHealth();
+      setHealth(result);
+      const list = await api.getThreadsWithEtag({ limit: 60, selectedId: loadSelectedThreadId() });
+      setThreads(list.threads || []);
+      setNotice('');
+    } catch (error) {
+      showError(error);
+      if (error instanceof ApiError && error.isAuth) setSheet('accessCode');
+    } finally {
+      setLoading(false);
+    }
+  }, [showError]);
 
   useEffect(() => {
-    let cancelled = false;
-    const probe = async () => {
-      try {
-        const result = await api.getHealth();
-        if (cancelled) return;
-        setHealth(result);
-        setPhase(result.allowWrite === false ? 'readonly' : 'online');
-        setError('');
-      } catch (err) {
-        if (cancelled) return;
-        if (err instanceof ApiError && err.isAuth) {
-          setPhase('auth');
-          setError('需要访问码才能连接这台电脑。');
-        } else {
-          setPhase('offline');
-          setError(err instanceof Error ? err.message : String(err));
+    void bootstrap();
+  }, [bootstrap, connectionVersion]);
+
+  // --- Refresh threads (also used after writes) ----------------------------
+  const refreshThreads = useCallback(async () => {
+    try {
+      const list = await api.getThreadsWithEtag({ limit: 60, selectedId: threadIdRef.current });
+      setThreads(list.threads || []);
+    } catch (error) {
+      if (error instanceof ApiError && error.isAuth) {
+        setSheet('accessCode');
+        return;
+      }
+      showError(error);
+    }
+  }, [showError]);
+
+  // --- Load messages for the selected thread (cache-first) ----------------
+  const loadMessages = useCallback(
+    async (threadId: string, useCache = true) => {
+      if (!threadId) {
+        setMessages([]);
+        setStatus(null);
+        setDiff(undefined);
+        return;
+      }
+      const key = conversationCacheKey(threadId);
+      if (useCache) {
+        const cached = await readConversationCache(key);
+        const thread = threads.find((t) => t.id === threadId);
+        if (cached && isConversationCacheFresh(cached, thread)) {
+          setMessages(cached.data.messages || []);
+          setStatus(cached.data.status || EMPTY_STATUS);
         }
       }
+      try {
+        const result: MessagesResponse = await api.getMessages(threadId, { limit: 80 });
+        if (threadIdRef.current !== threadId) return;
+        setMessages(result.messages || []);
+        setStatus(result.status || EMPTY_STATUS);
+        void writeConversationCache(key, {
+          threadId,
+          thread: threads.find((t) => t.id === threadId),
+          data: result,
+        });
+        setNotice('');
+      } catch (error) {
+        if (error instanceof ApiError && error.isAuth) {
+          setSheet('accessCode');
+          return;
+        }
+        showError(error);
+      }
+    },
+    [threads, showError],
+  );
+
+  useEffect(() => {
+    if (!selectedThreadId) return;
+    void loadMessages(selectedThreadId);
+  }, [selectedThreadId, loadMessages]);
+
+  // --- Real-time refresh via /api/threads/:id/changes long poll -----------
+  useEffect(() => {
+    pollerRef.current?.();
+    pollerRef.current = null;
+    if (!selectedThreadId || !health) return;
+    pollerRef.current = startChangePoller({
+      threadId: selectedThreadId,
+      onChanged: async () => {
+        await loadMessages(selectedThreadId, false);
+        await refreshThreads();
+      },
+      onUnauthorized: () => setSheet('accessCode'),
+      onError: () => {
+        /* transient network error: the poller backs off by itself */
+      },
+    });
+    return () => {
+      pollerRef.current?.();
+      pollerRef.current = null;
     };
-    void probe();
+  }, [selectedThreadId, health, loadMessages, refreshThreads]);
+
+  // --- Optional diff payload (best effort, real endpoint) -----------------
+  useEffect(() => {
+    if (!selectedThreadId || !health) {
+      setDiff(undefined);
+      return;
+    }
+    let cancelled = false;
+    void api
+      .getHostDiff(selectedThreadId)
+      .then((result) => {
+        if (!cancelled) setDiff(result);
+      })
+      .catch(() => {
+        // /api/host/diff depends on the desktop bridge; absence is not an error.
+        if (!cancelled) setDiff(undefined);
+      });
     return () => {
       cancelled = true;
     };
+  }, [selectedThreadId, health]);
+
+  const approvals = useMemo(() => approvalItems(messages), [messages]);
+
+  const selectThread = useCallback((id: string) => {
+    setSelectedThreadId(id);
+    saveSelectedThreadId(id);
+    setSheet(null);
+    setNotice('');
   }, []);
+
+  // --- Write actions (all guarded by allowWrite in the API layer) ----------
+  const handleSend = useCallback(
+    async (message: string) => {
+      try {
+        const result = await api.sendMessage({
+          message,
+          threadId: selectedThreadId || undefined,
+          newThread: !selectedThreadId,
+        });
+        const nextId = result.threadId || selectedThreadId;
+        if (nextId && nextId !== selectedThreadId) {
+          setSelectedThreadId(nextId);
+          saveSelectedThreadId(nextId);
+        }
+        setNotice('');
+        await refreshThreads();
+        if (nextId) await loadMessages(nextId, false);
+      } catch (error) {
+        if (error instanceof ApiError && error.isAuth) setSheet('accessCode');
+        showError(error);
+        throw error;
+      }
+    },
+    [selectedThreadId, refreshThreads, loadMessages, showError],
+  );
+
+  const handleInterrupt = useCallback(async () => {
+    if (!selectedThreadId) {
+      setNotice('Select a conversation before interrupting.');
+      return;
+    }
+    try {
+      await api.interrupt(selectedThreadId);
+      setNotice('');
+      await loadMessages(selectedThreadId, false);
+      await refreshThreads();
+    } catch (error) {
+      if (error instanceof ApiError && error.isAuth) setSheet('accessCode');
+      showError(error);
+    }
+  }, [selectedThreadId, loadMessages, refreshThreads, showError]);
+
+  const handleQuickCommand = useCallback(
+    (command: string) => {
+      setDraft(command);
+      setNotice('');
+    },
+    [],
+  );
+
+  const handleApprovalSubmit = useCallback(
+    async (decision: 'accept' | 'decline', item: ApprovalItem) => {
+      await api.respondToApproval({
+        threadId: selectedThreadId,
+        requestId: item.requestId,
+        approvalKind: item.approvalKind,
+        decision,
+      });
+      setActiveApproval(null);
+      await loadMessages(selectedThreadId, false);
+      await refreshThreads();
+    },
+    [selectedThreadId, loadMessages, refreshThreads],
+  );
+
+  const handleNewTask = useCallback(
+    async (message: string) => {
+      await api.sendMessage({ message, newThread: true, threadId: null });
+      await refreshThreads();
+    },
+    [refreshThreads],
+  );
+
+  const handlePairing = useCallback(async (settings: ConnectionSettings) => {
+    api.setConnection(settings);
+    await api.createAuthSession(settings.token);
+    setConnectionVersion((v) => v + 1);
+  }, []);
+
+  const handleAccessCode = useCallback(async (token: string) => {
+    await api.createAuthSession(token);
+    const previous = api.getConnection();
+    api.setConnection({
+      url: previous.url,
+      token,
+      name: previous.name || loadConnection().name,
+    });
+    setConnectionVersion((v) => v + 1);
+  }, []);
+
+  const selectedTitle = useMemo(() => {
+    const thread = threads.find((t) => t.id === selectedThreadId);
+    return thread?.title ? truncate(thread.title, 28) : 'Project Overview';
+  }, [threads, selectedThreadId]);
 
   return (
     <div
       vaul-drawer-wrapper=""
       className="relative mx-auto flex h-[100dvh] w-full max-w-[430px] flex-col overflow-hidden bg-[#F2F2F7] text-[#1C1C1E] shadow-2xl select-none"
     >
-      {/* iOS large title → compact glass bar on scroll */}
-      <div
-        className={cx(
-          'z-20 shrink-0 border-b transition-all duration-300',
-          scrolled
-            ? 'border-[#E5E5EA] bg-white/80 backdrop-blur-xl'
-            : 'border-transparent bg-[#F2F2F7]',
-        )}
-      >
-        <Navbar
-          large
-          transparent
-          title="Project Overview"
-          subtitle="Codex-Turnloom"
-          className="!bg-transparent"
+      {/* Fixed top: large title → compact frosted bar on scroll */}
+      <header className="z-20 shrink-0">
+        <MachineHubHeader
+          health={health}
+          machineName={loadConnection().name || 'DESKTOP-PC'}
+          threads={threads}
+          selectedThreadId={selectedThreadId}
+          engine={engine}
+          onEngineChange={setEngine}
+          onScanQr={() => setSheet('scanQr')}
+          onSelectThread={selectThread}
+          onOpenThreads={() => setSheet('threads')}
+          onNewTask={() => setSheet('newTask')}
+          scrolled={scrolled}
         />
-        {!scrolled && (
-          <div className="px-4 pb-4">
-            <h1 className="text-3xl font-bold tracking-tight text-[#1C1C1E]">Project Overview</h1>
-            <p className="mt-1 text-[13px] text-[#8E8E93]">Option A · Cupertino Daylight Glass</p>
-          </div>
-        )}
-      </div>
+      </header>
 
+      {/* Scrollable task stream */}
       <main
-        className="min-h-0 flex-1 overflow-y-auto px-4 pt-4 pb-8"
+        className="min-h-0 flex-1 overflow-y-auto px-4 pt-4 pb-6"
         onScroll={(event) => setScrolled(event.currentTarget.scrollTop > 24)}
       >
-        <section className="rounded-2xl border border-[#E5E5EA]/60 bg-white p-4 shadow-[0_1px_3px_rgba(0,0,0,0.04)]">
-          <div className="flex items-center justify-between gap-3">
-            <span className="inline-flex items-center gap-2 rounded-full bg-[#34C759]/12 px-3 py-1 text-xs font-medium text-[#248A3D]">
-              <span className="h-2 w-2 rounded-full bg-[#34C759]" />
-              DESKTOP-PC {phase === 'online' || phase === 'readonly' ? 'CONNECTED' : 'OFFLINE'}
-            </span>
-            {phase === 'online' ? (
-              <Wifi size={18} className="text-[#34C759]" />
-            ) : phase === 'auth' ? (
-              <LockKeyhole size={18} className="text-[#FF9F0A]" />
-            ) : (
-              <WifiOff size={18} className="text-[#8E8E93]" />
+        {loading && (
+          <div className="mb-3 rounded-2xl bg-white px-4 py-3 text-center text-[13px] text-[#8E8E93]">
+            Connecting to the desktop…
+          </div>
+        )}
+
+        {selectedThreadId && (
+          <div className="mb-3 flex items-center justify-between gap-2 rounded-2xl bg-white px-4 py-2.5 shadow-[0_1px_3px_rgba(0,0,0,0.04)]">
+            <div className="min-w-0">
+              <p className="truncate text-[13px] font-semibold text-[#1C1C1E]">{selectedTitle}</p>
+              <p className="text-[11px] text-[#8E8E93]">
+                {threadStatusKind(status)} · {messages.length} messages
+              </p>
+            </div>
+            <button
+              type="button"
+              aria-label="Refresh"
+              onClick={() => void loadMessages(selectedThreadId, false)}
+              className={cx(
+                'flex h-8 w-8 items-center justify-center rounded-full bg-[#EFEFF4] text-[#8E8E93]',
+                PRESS,
+              )}
+            >
+              <RefreshCw size={15} />
+            </button>
+          </div>
+        )}
+
+        <TaskStreamView
+          messages={messages}
+          status={status}
+          diff={diff}
+          busy={busy}
+          onApprove={(item) => {
+            setActiveApproval(item);
+            setSheet('approval');
+          }}
+        />
+
+        {approvals.length > 0 && (
+          <button
+            type="button"
+            onClick={() => setSheet('approval')}
+            className={cx(
+              'mt-3 w-full rounded-2xl border border-[#34C759]/30 bg-[#34C759]/10 px-4 py-3 text-[14px] font-semibold text-[#248A3D]',
+              PRESS,
             )}
-          </div>
+          >
+            {approvals.length} pending approval{approvals.length > 1 ? 's' : ''} · Review
+          </button>
+        )}
 
-          <div className="mt-4 space-y-2 text-[13px] text-[#8E8E93]">
-            <div className="flex justify-between gap-3">
-              <span>Backend</span>
-              <span className="font-medium text-[#1C1C1E]">
-                {health?.backend?.kind ? String(health.backend.kind) : '—'}
-              </span>
-            </div>
-            <div className="flex justify-between gap-3">
-              <span>Write access</span>
-              <span
-                className={cx(
-                  'font-medium',
-                  health?.allowWrite === false ? 'text-[#D70015]' : 'text-[#248A3D]',
-                )}
-              >
-                {health ? (health.allowWrite ? 'Enabled' : 'Read-only') : '—'}
-              </span>
-            </div>
-            <div className="flex justify-between gap-3">
-              <span>Auth required</span>
-              <span className="font-medium text-[#1C1C1E]">
-                {health ? (health.authRequired ? 'Yes' : 'No') : '—'}
-              </span>
-            </div>
+        {notice && (
+          <div className="mt-3 rounded-2xl border border-[#FF3B30]/20 bg-[#FF3B30]/5 px-4 py-3 text-[12px] leading-relaxed text-[#D70015]">
+            {notice}
           </div>
-
-          {error && (
-            <p className="mt-4 rounded-xl bg-[#EFEFF4] px-3 py-2 text-[12px] leading-relaxed text-[#8E8E93]">
-              {error}
-            </p>
-          )}
-        </section>
+        )}
 
         <button
           type="button"
-          onClick={() => window.location.reload()}
+          onClick={() => setSheet('threads')}
           className={cx(
-            'mt-4 w-full rounded-2xl bg-[#007AFF] px-4 py-3 text-[15px] font-semibold text-white',
+            'mt-4 flex w-full items-center justify-center gap-2 rounded-2xl bg-white px-4 py-3 text-[13px] font-medium text-[#8E8E93]',
             PRESS,
           )}
         >
-          Retry connection
+          <Settings2 size={15} />
+          Switch conversation / pair device
         </button>
-
-        <p className="mt-6 text-center text-[11px] leading-relaxed text-[#8E8E93]">
-          Phase 1 · engineering + daylight shell + real API layer.
-          <br />
-          Phase 2 adds the four Cupertino interaction primitives.
-        </p>
       </main>
+
+      <ThumbGlassBar
+        value={draft}
+        onValueChange={setDraft}
+        onSend={handleSend}
+        onInterrupt={handleInterrupt}
+        onQuickCommand={handleQuickCommand}
+        onVoice={() => setNotice('Voice input is not available in the browser build yet.')}
+        busy={busy}
+        readOnly={readOnly}
+        disabled={loading}
+      />
+
+      <CupertinoSheets
+        sheet={sheet}
+        onSheetChange={setSheet}
+        approvals={activeApproval ? [activeApproval] : approvals}
+        threads={threads}
+        selectedThreadId={selectedThreadId}
+        onSelectThread={selectThread}
+        onApprovalSubmit={handleApprovalSubmit}
+        onNewTask={handleNewTask}
+        onPairing={handlePairing}
+        onAccessCode={handleAccessCode}
+        health={health}
+        readOnly={Boolean(readOnly)}
+      />
     </div>
   );
 }
