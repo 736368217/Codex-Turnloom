@@ -11,6 +11,7 @@
  */
 import { FlashList } from '@shopify/flash-list';
 import { Stack, useLocalSearchParams } from 'expo-router';
+import { SymbolView } from 'expo-symbols';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
@@ -266,7 +267,8 @@ export default function ThreadScreen() {
             <Pressable
               onPress={() => approvalRef.current?.present(message)}
               style={({ pressed }) => [styles.approvalLink, pressed && styles.pressed]}>
-              <Text style={styles.approvalLinkText}>打开审批抽屉 ›</Text>
+              <Text style={styles.approvalLinkText}>打开审批抽屉</Text>
+              <SymbolView name={{ ios: 'chevron.right', android: 'chevron_right', web: 'chevron_right' }} size={13} tintColor="#007AFF" />
             </Pressable>
           ) : null}
         </View>
@@ -436,6 +438,9 @@ const styles = StyleSheet.create({
   },
   approvalLink: {
     paddingTop: 4,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 2,
   },
   approvalLinkText: {
     color: OptionA.blue,

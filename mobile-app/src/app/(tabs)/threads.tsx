@@ -5,6 +5,7 @@
 import { FlashList } from '@shopify/flash-list';
 import { router, useFocusEffect } from 'expo-router';
 import * as Haptics from 'expo-haptics';
+import { SymbolView } from 'expo-symbols';
 import { useCallback, useEffect, useState } from 'react';
 import { ActivityIndicator, Pressable, RefreshControl, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -92,7 +93,7 @@ export default function ThreadsScreen() {
               <Text className="flex-1 text-[15px] font-semibold text-[#1C1C1E]" numberOfLines={1}>
                 {item.title || '未命名会话'}
               </Text>
-              <Text className="ml-2 text-[20px] text-[#8E8E93]">›</Text>
+              <SymbolView name={{ ios: 'chevron.right', android: 'chevron_right', web: 'chevron_right' }} size={18} tintColor="#8E8E93" />
             </View>
             <Text className="text-[13px] leading-[18px] text-[#8E8E93]" numberOfLines={2}>
               {item.preview || item.project?.name || item.cwd || '暂无预览'}
