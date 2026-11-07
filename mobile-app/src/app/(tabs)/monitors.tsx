@@ -102,9 +102,10 @@ export default function TerminalsScreen() {
       className="flex-1 bg-transparent"
       contentContainerStyle={{ paddingHorizontal: 16, paddingTop: insets.top + 16, paddingBottom: 120, gap: 10 }}
       showsVerticalScrollIndicator={false}>
-      <Text className="text-[28px] font-bold text-[#1C1C1E]">终端</Text>
-      <Text className="pb-[6px] text-[13px] leading-[19px] text-[#8E8E93]">
-        切换、新增、修改与连接设置都在这里，日常聊天无需再来。
+      <Text className="text-[11px] font-bold uppercase tracking-[2px] text-[#8E8E93]">Codex-Turnloom</Text>
+      <Text className="text-[30px] font-bold leading-[34px] tracking-[-1px] text-[#1C1C1E]">终端管理</Text>
+      <Text className="pb-[6px] text-[12px] leading-[19px] text-[#8E8E93]">
+        切换电脑、添加终端与选择代理引擎都在这里完成。
       </Text>
 
       <Card className="gap-[10px] p-[14px]">

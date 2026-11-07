@@ -46,8 +46,9 @@ export default function SettingsScreen() {
       className="flex-1 bg-transparent"
       contentContainerStyle={{ paddingHorizontal: 20, paddingTop: insets.top + 16, paddingBottom: 120, gap: 10 }}
       showsVerticalScrollIndicator={false}>
-      <Text className="pb-[6px] text-[28px] font-bold text-[#1C1C1E]">设置</Text>
-
+      <Text className="text-[11px] font-bold uppercase tracking-[2px] text-[#8E8E93]">Codex-Turnloom</Text>
+      <Text className="pb-[2px] text-[30px] font-bold leading-[34px] tracking-[-1px] text-[#1C1C1E]">设置</Text>
+      <Text className="pb-[6px] text-[12px] text-[#8E8E93]">访问码、权限与关于</Text>
       <Text className="mb-2 text-[13px] font-semibold uppercase tracking-[0.6px] text-[#8E8E93]">连接</Text>
       <Card className="gap-2 p-4">
         <Text className="text-[15px] font-semibold text-[#1C1C1E]">当前服务</Text>
