@@ -29,6 +29,15 @@ config.local.json
 
 # Private Codex/Codex-Turnloom working memory and deployment records.
 AGENTS.md
+# Option A design constitution is public documentation (the root private memory stays ignored).
+!docs/option-a/AGENTS.md
+# Option A front-end dependency / build artifacts (additive; never committed).
+web-ui/node_modules/
+public/option-a/assets/option-a-legacy/
+mobile-app/node_modules/
+mobile-app/.expo/
+mobile-app/dist/
+mobile-app/web-build/
 docs/PROJECT_MEMORY.md
 docs/OPERATIONS.md
 docs/OPERATIONS-CHANGELOG.md

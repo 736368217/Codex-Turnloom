@@ -1,0 +1,178 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Option A · Cupertino Daylight Glass — global light-only canvas.
+   No dark mode variants are emitted by Konsta (dark={false}) or Tailwind. */
+:root {
+  color-scheme: light;
+  -webkit-tap-highlight-color: transparent;
+  font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Segoe UI', system-ui,
+    sans-serif;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+  background: #f2f2f7;
+  color: #1c1c1e;
+  overscroll-behavior-y: none;
+}
+
+/* Global hidden scrollbars (visual constitution §3.3). */
+* {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+*::-webkit-scrollbar {
+  width: 0;
+  height: 0;
+  display: none;
+}
+
+/* Vaul background scale wrapper — the phone shell itself is scaled. */
+[vaul-drawer-wrapper] {
+  background: #f2f2f7;
+}
+
+/* Press feedback applies to every interactive element, including Konsta's
+   own components which don't ship Tailwind active: utilities. */
+button,
+a,
+[role='button'],
+[role='tab'],
+label[for] {
+  -webkit-user-select: none;
+  user-select: none;
+  transition: transform 150ms ease, opacity 150ms ease, background-color 150ms ease;
+}
+button:active:not(:disabled),
+a:active,
+[role='button']:active,
+[role='tab']:active {
+  transform: scale(0.98);
+  opacity: 0.8;
+}
+
+/* Markdown rendered from AI replies — light, high-contrast, copyable. */
+.md-body {
+  color: #1c1c1e;
+  font-size: 15px;
+  line-height: 1.6;
+  -webkit-user-select: text;
+  user-select: text;
+  overflow-wrap: anywhere;
+}
+.md-body > *:first-child {
+  margin-top: 0;
+}
+.md-body > *:last-child {
+  margin-bottom: 0;
+}
+.md-body p {
+  margin: 0 0 8px;
+}
+.md-body h1,
+.md-body h2,
+.md-body h3,
+.md-body h4 {
+  font-weight: 650;
+  margin: 14px 0 6px;
+  line-height: 1.3;
+}
+.md-body h1 {
+  font-size: 20px;
+}
+.md-body h2 {
+  font-size: 18px;
+}
+.md-body h3 {
+  font-size: 16px;
+}
+.md-body ul,
+.md-body ol {
+  margin: 0 0 8px;
+  padding-left: 20px;
+}
+.md-body li {
+  margin: 2px 0;
+}
+.md-body a {
+  color: #007aff;
+  text-decoration: underline;
+}
+.md-body strong {
+  font-weight: 650;
+}
+.md-body blockquote {
+  margin: 8px 0;
+  padding: 2px 0 2px 12px;
+  border-left: 3px solid #e5e5ea;
+  color: #6d6d72;
+}
+.md-body hr {
+  border: 0;
+  border-top: 1px solid #e5e5ea;
+  margin: 12px 0;
+}
+.md-body code {
+  font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace;
+  font-size: 12.5px;
+  background: #f2f2f7;
+  border: 1px solid #e5e5ea;
+  border-radius: 5px;
+  padding: 1px 4px;
+  color: #1c1c1e;
+}
+.md-body pre {
+  background: #f7f7fa;
+  border: 1px solid #e5e5ea;
+  border-radius: 12px;
+  padding: 10px 12px;
+  overflow-x: auto;
+  margin: 8px 0;
+  -webkit-user-select: text;
+  user-select: text;
+}
+.md-body pre code {
+  background: transparent;
+  border: 0;
+  padding: 0;
+  color: #1c1c1e;
+  font-size: 12px;
+  line-height: 1.55;
+}
+.md-body table {
+  border-collapse: collapse;
+  width: 100%;
+  margin: 8px 0;
+  font-size: 13px;
+}
+.md-body th,
+.md-body td {
+  border: 1px solid #e5e5ea;
+  padding: 5px 8px;
+  text-align: left;
+}
+.md-body th {
+  background: #f2f2f7;
+}
+/* Light-weight, dependency-free "github-light"-ish token colours. */
+.md-body .tok-kw {
+  color: #a626a4;
+}
+.md-body .tok-str {
+  color: #0a7d34;
+}
+.md-body .tok-num {
+  color: #986801;
+}
+.md-body .tok-com {
+  color: #8e8e93;
+  font-style: italic;
+}
+.md-body .tok-fn {
+  color: #005cc5;
+}
