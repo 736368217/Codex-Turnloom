@@ -1,6 +1,7 @@
 /**
- * 底部毛玻璃导航栏（IA v4 + v5）。
- * 四个 Tab 与 (tabs)/_layout.tsx 的 Tabs.Screen name 一一对应。
+ * 底部毛玻璃导航栏（方案 A · 微信/QQ 模型）。
+ * 3 个一级 Tab 与 (tabs)/_layout.tsx 的 Tabs.Screen name 一一对应；
+ * 聊天详情页不在 Tabs 内，因此该栏不会出现在聊天页。
  * v5：容器/行/Tab 改用 NativeWind className；文字用 Reusables 复制式 Text；
  * 图标仍是 expo-symbols 真字体图标（非 Unicode）。
  */
@@ -14,17 +15,16 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { GLASS_INTENSITY, GLASS_TINT, OptionA } from '@/constants/optionA';
 import { Text } from '@/components/ui/rnr';
 
-export type TabRouteName = 'index' | 'threads' | 'monitors' | 'settings';
+export type TabRouteName = 'index' | 'monitors' | 'settings';
 
 type TabMeta = {
   label: string;
-  ios: 'bubble.left.and.bubble.right.fill' | 'list.bullet' | 'desktopcomputer' | 'gearshape.fill';
-  android: 'chat' | 'list_alt' | 'desktop_windows' | 'settings';
+  ios: 'bubble.left.and.bubble.right.fill' | 'desktopcomputer' | 'gearshape.fill';
+  android: 'chat' | 'desktop_windows' | 'settings';
 };
 
 const TAB_META: Record<TabRouteName, TabMeta> = {
   index: { label: '对话', ios: 'bubble.left.and.bubble.right.fill', android: 'chat' },
-  threads: { label: '会话', ios: 'list.bullet', android: 'list_alt' },
   monitors: { label: '终端', ios: 'desktopcomputer', android: 'desktop_windows' },
   settings: { label: '设置', ios: 'gearshape.fill', android: 'settings' },
 };
