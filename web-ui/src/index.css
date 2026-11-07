@@ -77,6 +77,14 @@ a:active,
 .md-body p {
   margin: 0 0 8px;
 }
+/* AI 回复里的链接是 inline 元素，需在命中区上补到 44px（不改视觉排版）。 */
+.md-body a {
+  display: inline-flex;
+  align-items: center;
+  min-width: 44px;
+  min-height: 44px;
+  text-decoration: underline;
+}
 .md-body h1,
 .md-body h2,
 .md-body h3,

@@ -59,7 +59,7 @@ export default function ThumbGlassBar({
   };
 
   return (
-    <div className="z-20 shrink-0 border-t border-[#E5E5EA] bg-white/85 px-3 pt-2 backdrop-blur-xl pb-[max(0.5rem,env(safe-area-inset-bottom))]">
+    <div className="z-20 shrink-0 px-3 pt-2">
       {/* Quick-command capsule row — single-hand reachable, horizontally scrollable. */}
       <div className="-mx-1 mb-2 flex gap-2 overflow-x-auto px-1 py-0.5">
         {QUICK_COMMANDS.map((command) => (

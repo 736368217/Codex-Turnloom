@@ -17,6 +17,7 @@ export interface TaskStreamViewProps {
   status: MessagesStatus | null;
   diff?: unknown;
   onApprove: (item: ApprovalItem) => void;
+  onStartTask?: () => void;
   busy?: boolean;
 }
 
@@ -211,7 +212,7 @@ function DiffLines({ lines }: { lines: string[] }) {
 // ---------------------------------------------------------------------------
 
 export default function TaskStreamView(props: TaskStreamViewProps) {
-  const { messages, status, diff, onApprove, busy = false } = props;
+  const { messages, status, diff, onApprove, onStartTask, busy = false } = props;
   const [expanded, setExpanded] = useState<boolean>(false);
   const [now, setNow] = useState<number>(() => Date.now());
 
@@ -304,10 +305,22 @@ export default function TaskStreamView(props: TaskStreamViewProps) {
         </div>
       </section>
 
-      {/* (D) Empty state */}
+      {/* (D) 空状态：可操作，引导直接发送或新建对话 */}
       {messages.length === 0 ? (
-        <div className="rounded-2xl border border-[#E5E5EA]/60 bg-white p-5 text-[13px] text-[#8E8E93] shadow-[0_1px_3px_rgba(0,0,0,0.04)]">
-          选择会话查看实时任务流
+        <div className="rounded-2xl border border-[#E5E5EA]/60 bg-white p-5 text-center shadow-[0_1px_3px_rgba(0,0,0,0.04)]">
+          <p className="text-[15px] font-semibold text-[#1C1C1E]">开始聊天</p>
+          <p className="mt-1.5 text-[12px] leading-relaxed text-[#8E8E93]">
+            在下方输入框直接发送即可开始，或新建一条任务会话。
+          </p>
+          {onStartTask && (
+            <button
+              type="button"
+              onClick={onStartTask}
+              className={cx('mt-3 min-h-[44px] w-full rounded-xl bg-[#007AFF] px-4 text-[14px] font-semibold text-white', PRESS)}
+            >
+              开始新对话
+            </button>
+          )}
         </div>
       ) : (
         <div className="space-y-3">
