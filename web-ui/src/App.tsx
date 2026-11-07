@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { MessageSquare, RefreshCw } from 'lucide-react';
+import { MessageSquare, RefreshCw, ShieldCheck } from 'lucide-react';
 import {
   api,
   ApiError,
@@ -227,12 +227,14 @@ export default function App() {
 
   // --- Write actions (all guarded by allowWrite in the API layer) ----------
   const handleSend = useCallback(
-    async (message: string) => {
+    async (message: string, mode?: 'start' | 'queue') => {
       try {
         const result = await api.sendMessage({
           message,
           threadId: selectedThreadId || undefined,
           newThread: !selectedThreadId,
+          // 代理运行中把指令排队，而不是让用户填完字却发不出去。
+          ...(busy && mode !== 'start' ? { mode: 'queue' } : {}),
         });
         const nextId = result.threadId || selectedThreadId;
         if (nextId && nextId !== selectedThreadId) {
@@ -248,7 +250,7 @@ export default function App() {
         throw error;
       }
     },
-    [selectedThreadId, refreshThreads, loadMessages, showError],
+    [selectedThreadId, busy, refreshThreads, loadMessages, showError],
   );
 
   const handleInterrupt = useCallback(async () => {
@@ -409,7 +411,7 @@ export default function App() {
             onPick={(entry) => void chooseTerminal(entry)}
             onScanAdd={() => setSheet('scanQr')}
           />
-          <GlassTabBar active="terminal" onChange={() => undefined} />
+          {/* 冷启动只有「选终端」一件事：不显示点了没反应的 4 个 Tab。 */}
           <CupertinoSheets
             sheet={sheet}
             onSheetChange={setSheet}
@@ -431,6 +433,7 @@ export default function App() {
             <MachineHubHeader
               health={health}
               machineName={terminalName}
+              tab={tab}
               onManage={() => setTab('terminal')}
             />
           </header>
@@ -485,16 +488,17 @@ export default function App() {
                   }}
                 />
 
-                {approvals.length > 0 && (
+                {approvals.length > 1 && (
                   <button
                     type="button"
                     onClick={() => setSheet('approval')}
                     className={cx(
-                      'mt-3 min-h-[44px] w-full rounded-2xl border border-[#34C759]/30 bg-[#34C759]/10 px-4 py-3 text-[14px] font-semibold text-[#248A3D]',
+                      'ios-card mt-3 flex min-h-[44px] w-full items-center justify-center gap-2 px-4 py-3 text-[14px] font-semibold text-[#248A3D]',
                       PRESS,
                     )}
                   >
-                    {approvals.length} 条待审批 · 查看
+                    <ShieldCheck size={16} />
+                    查看全部 {approvals.length} 条待审批
                   </button>
                 )}
 

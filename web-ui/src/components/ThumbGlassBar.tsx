@@ -15,10 +15,11 @@ export interface ThumbGlassBarProps {
 }
 
 /**
- * 底部拇指输入舱。空闲 → 蓝色发送（POST /api/send），
- * 运行中 → 红色中断（POST /api/interrupt）。
- * 快捷指令胶囊排已按 v5 规范删减：规范只要求「提供胶囊」却未定义点击行为，
- * 现有实现仅回填文字属半成品，故整排移除，把空间还给聊天与输入。
+ * 底部拇指输入舱。
+ *
+ * 顶层 UX：代理运行中不再把「发送」整键换成「中断」——那样用户填完字会发不出去。
+ * busy 时保留发送键（App 层用 mode:'queue' 把指令排队），另给一个明确的
+ * 「中断」按钮，并附一行状态说明，让用户知道当前会发生什么。
  */
 export default function ThumbGlassBar({
   value,
@@ -54,6 +55,7 @@ export default function ThumbGlassBar({
       void submit();
     }
   };
+
   return (
     <div className="z-20 shrink-0 px-3 pt-2.5">
       <div className="flex items-end gap-2">
@@ -75,7 +77,7 @@ export default function ThumbGlassBar({
           rows={1}
           value={value}
           disabled={blocked}
-          placeholder={placeholder}
+          placeholder={busy ? '追加指令将排队，或点中断停止当前任务' : placeholder}
           onChange={(event) => onValueChange(event.target.value)}
           onKeyDown={onKeyDown}
           className={cx(
@@ -85,35 +87,42 @@ export default function ThumbGlassBar({
           )}
         />
 
-        {busy ? (
+        <button
+          type="button"
+          aria-label="发送"
+          disabled={blocked || !value.trim()}
+          onClick={() => void submit()}
+          className={cx(
+            'ios-btn-primary mb-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-white disabled:opacity-40',
+            HIT_AREA_44,
+            PRESS,
+          )}
+        >
+          {submitting ? <Sparkles size={17} className="animate-pulse" /> : <Send size={17} />}
+        </button>
+
+        {busy && (
           <button
             type="button"
+            aria-label="中断"
             disabled={readOnly || submitting}
             onClick={() => void onInterrupt()}
             className={cx(
-              'ios-btn-red mb-0.5 flex h-10 shrink-0 items-center gap-1.5 rounded-full px-4 text-[14px] font-semibold text-white disabled:opacity-50',
+              'ios-btn-red mb-0.5 flex h-10 shrink-0 items-center gap-1.5 rounded-full px-3 text-[13px] font-semibold text-white disabled:opacity-50',
               PRESS,
             )}
           >
-            <Square size={14} fill="currentColor" />
+            <Square size={13} fill="currentColor" />
             中断
-          </button>
-        ) : (
-          <button
-            type="button"
-            aria-label="发送"
-            disabled={blocked || !value.trim()}
-            onClick={() => void submit()}
-            className={cx(
-              'ios-btn-primary mb-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-white disabled:opacity-40',
-              HIT_AREA_44,
-              PRESS,
-            )}
-          >
-            {submitting ? <Sparkles size={17} className="animate-pulse" /> : <Send size={17} />}
           </button>
         )}
       </div>
+
+      {busy && !readOnly && (
+        <p className="mt-1.5 text-center text-[11px] text-[#8E8E93]">
+          代理运行中 · 发送的指令会排队，不会打断当前任务
+        </p>
+      )}
 
       {readOnly && (
         <p className="mt-1.5 text-center text-[11px] text-[#D70015]">

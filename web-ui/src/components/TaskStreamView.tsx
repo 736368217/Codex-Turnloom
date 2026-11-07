@@ -267,7 +267,7 @@ function DiffLines({ lines }: { lines: string[] }) {
 // ---------------------------------------------------------------------------
 
 export default function TaskStreamView(props: TaskStreamViewProps) {
-  const { messages, status, diff, onApprove, onStartTask, busy = false } = props;
+  const { messages, status, diff, onApprove, onStartTask } = props;
   const [expanded, setExpanded] = useState<boolean>(false);
   const [now, setNow] = useState<number>(() => Date.now());
 
@@ -397,7 +397,12 @@ export default function TaskStreamView(props: TaskStreamViewProps) {
               return (
                 <div
                   key={key}
-                  className="ios-card p-4"
+                  role="button"
+                  tabIndex={0}
+                  aria-label={`查看并批准：${item.title}`}
+                  onClick={() => onApprove(item)}
+                  onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onApprove(item); } }}
+                  className={cx('ios-card p-4', PRESS)}
                 >
                   <div className="flex items-center gap-2 text-[14px] font-semibold text-[#1C1C1E]">
                     <ShieldCheck size={16} className="text-[#34C759]" />
@@ -406,17 +411,9 @@ export default function TaskStreamView(props: TaskStreamViewProps) {
                   <p className="mt-2 line-clamp-2 text-[12px] leading-relaxed text-[#8E8E93]">
                     {truncate(item.content, 160)}
                   </p>
-                  <button
-                    type="button"
-                    disabled={busy}
-                    onClick={() => onApprove(item)}
-                    className={cx(
-                      'ios-btn-green mt-3 w-full rounded-[14px] px-4 py-2.5 text-[13px] font-semibold text-white disabled:opacity-50',
-                      PRESS,
-                    )}
-                  >
+                  <span className="ios-btn-green mt-3 flex min-h-[44px] w-full items-center justify-center rounded-[14px] px-4 text-[13px] font-semibold text-white">
                     查看并批准
-                  </button>
+                  </span>
                 </div>
               );
             }

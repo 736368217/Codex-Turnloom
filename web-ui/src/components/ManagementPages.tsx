@@ -134,25 +134,36 @@ export function TerminalPicker({
   onScanAdd: () => void;
 }) {
   return (
-    <main className="flex min-h-0 flex-1 flex-col overflow-y-auto px-5 pt-12 pb-6">
-      <h1 className="text-[26px] font-bold tracking-tight text-[#1C1C1E]">选择终端</h1>
-      <p className="mt-2 text-[13px] leading-relaxed text-[#8E8E93]">
-        选好终端即可开始聊天；之后可在「终端」里修改或切换。
+    <main className="flex min-h-0 flex-1 flex-col overflow-y-auto px-5 pb-8 pt-[max(3.5rem,env(safe-area-inset-top))]">
+      <p className="text-[11px] font-bold uppercase tracking-[2px] text-[#8E8E93]">Codex-Turnloom</p>
+      <h1 className="mt-1 text-[30px] font-bold leading-[34px] tracking-[-1px] text-[#1C1C1E]">会话总控</h1>
+      <p className="mt-1.5 text-[13px] leading-[20px] text-[#8E8E93]">
+        在手机上远程查看并指挥电脑端代理。先选一台要连接的电脑，之后即可收发指令、查看改动与审批。
       </p>
-      <div className="mt-7 space-y-2">
+
+      <div className="ios-card mt-6 px-4 py-3.5">
+        <p className="text-[13px] font-semibold text-[#1C1C1E]">选择要连接的电脑</p>
+        <p className="mt-1 text-[12px] leading-[18px] text-[#8E8E93]">
+          选好后直接进入最近一条会话；之后可在「终端」里随时切换或新增。
+        </p>
+      </div>
+
+      <div className="mt-3 space-y-2.5">
         {terminals.map((entry) => (
           <button
             key={entry.id}
             type="button"
             onClick={() => onPick(entry)}
             className={cx(
-              `flex min-h-[44px] w-full items-center gap-3 px-4 py-3 text-left ${CARD}`,
+              `flex min-h-[56px] w-full items-center gap-3 px-4 py-3 text-left ${CARD}`,
               PRESS,
             )}
           >
-            <Monitor size={18} className="shrink-0 text-[#007AFF]" />
+            <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-[12px] bg-[#007AFF]/12 text-[#007AFF]">
+              <Monitor size={18} />
+            </span>
             <span className="min-w-0 flex-1">
-              <span className="block truncate text-[15px] font-medium text-[#1C1C1E]">
+              <span className="block truncate text-[15px] font-semibold text-[#1C1C1E]">
                 {entry.name}
               </span>
               <span className="mt-0.5 block truncate text-[11px] text-[#8E8E93]">
@@ -163,16 +174,21 @@ export function TerminalPicker({
           </button>
         ))}
       </div>
+
       <button
         type="button"
         onClick={onScanAdd}
         className={cx(
-          'mt-3 flex min-h-[44px] items-center justify-center gap-2 rounded-2xl px-4 text-[14px] font-medium text-[#007AFF]',
+          'ios-btn-primary mt-4 flex min-h-[48px] items-center justify-center gap-2 rounded-[16px] px-4 text-[14px] font-semibold text-white',
           PRESS,
         )}
       >
-        <QrCode size={16} /> 扫码添加
+        <QrCode size={17} /> 扫码添加其他电脑
       </button>
+
+      <p className="mt-auto pt-8 text-center text-[11px] leading-[17px] text-[#8E8E93]">
+        配对码由电脑端 Codex-Turnloom 生成· 格式为 codexpocket://add?...
+      </p>
     </main>
   );
 }
