@@ -36,36 +36,52 @@ import type { Message, MessagesResponse } from '@/services/types';
 
 const client = getTurnloomClient();
 
-/** 轻量冷启动页：不是配对大卡片，只有「选一个终端进入」+ 一个文字入口。 */
+/** 冷启动：品牌大标题 + 「这是什么/要做什么」说明 + 引导卡 + 两个明确按钮。 */
 function TerminalPicker({ onChoose }: { onChoose: (option: TerminalOption) => void }) {
   return (
     <View className="gap-3 pt-3">
-      <Text className="text-[28px] font-bold text-[#1C1C1E]">选择终端</Text>
-      <Text className="text-[13px] leading-[19px] text-[#8E8E93]">
-        选好之后直接进入聊天，之后可在「终端」页随时修改或切换。
+      <Text className="text-[11px] font-bold uppercase tracking-[2px] text-[#8E8E93]">Codex-Turnloom</Text>
+      <Text className="text-[30px] font-bold leading-[34px] tracking-[-1px] text-[#1C1C1E]">会话总控</Text>
+      <Text className="text-[13px] leading-[20px] text-[#8E8E93]">
+        在手机上远程查看并指挥电脑端代理。先选一台要连接的电脑，之后即可收发指令、查看改动与审批。
       </Text>
+
+      <View className="mt-3 rounded-[20px] border border-white/90 bg-white/90 p-4">
+        <Text className="text-[14px] font-semibold text-[#1C1C1E]">选择要连接的电脑</Text>
+        <Text className="mt-1 text-[12px] leading-[18px] text-[#8E8E93]">
+          选好后直接进入最近一条会话；之后可在「终端」里随时切换或新增。
+        </Text>
+      </View>
+
       {BUILTIN_TERMINALS.map((item) => (
         <Pressable
           key={item.id}
           accessibilityRole="button"
           onPress={() => onChoose({ ...item })}
-          className="min-h-[68px] flex-row items-center gap-3 rounded-2xl border border-[#E5E5EA] bg-white p-4 active:opacity-80">
-          <View className="h-[9px] w-[9px] rounded-full bg-[#34C759]" />
+          className="min-h-[64px] flex-row items-center gap-3 rounded-[20px] border border-white/90 bg-white/95 p-4 active:opacity-80">
+          <View className="h-9 w-9 items-center justify-center rounded-[12px] bg-[#007AFF]/12">
+            <View className="h-[9px] w-[9px] rounded-full bg-[#34C759]" />
+          </View>
           <View className="flex-1 gap-[3px]">
-            <Text className="text-[16px] font-semibold text-[#1C1C1E]">{item.name}</Text>
-            <Text className="text-[12px] text-[#8E8E93]" numberOfLines={1}>
+            <Text className="text-[15px] font-semibold text-[#1C1C1E]">{item.name}</Text>
+            <Text className="text-[11px] text-[#8E8E93]" numberOfLines={1}>
               {item.url}
             </Text>
           </View>
-          <SymbolView name={{ ios: 'chevron.right', android: 'chevron_right', web: 'chevron_right' }} size={20} tintColor="#8E8E93" />
+          <SymbolView name={{ ios: 'chevron.right', android: 'chevron_right', web: 'chevron_right' }} size={18} tintColor="#8E8E93" />
         </Pressable>
       ))}
+
       <Pressable
         accessibilityRole="button"
         onPress={() => router.push('/(tabs)/monitors')}
-        className="min-h-[44px] items-center justify-center active:opacity-80">
-        <Text className="text-[14px] font-semibold text-[#007AFF]">扫码添加其他终端</Text>
+        className="min-h-[48px] items-center justify-center rounded-[16px] bg-[#007AFF] active:opacity-80">
+        <Text className="text-[14px] font-semibold text-white">扫码添加其他电脑</Text>
       </Pressable>
+
+      <Text className="pt-6 text-center text-[11px] leading-[17px] text-[#8E8E93]">
+        配对码由电脑端 Codex-Turnloom 生成 · 格式为 codexpocket://add?...
+      </Text>
     </View>
   );
 }

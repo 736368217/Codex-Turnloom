@@ -1,0 +1,284 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<meta name="theme-color" content="#F2F2F7" />
+<meta name="color-scheme" content="light" />
+<title>Codex-Turnloom Option A · 交付与实机测试报告</title>
+<style>
+  :root{
+    --canvas:#F2F2F7; --card:rgba(255,255,255,.86); --ink:#1C1C1E; --soft:#8E8E93;
+    --blue:#007AFF; --green:#34C759; --greenInk:#248A3D; --red:#FF3B30; --redInk:#D70015;
+    --sep:#E5E5EA; --fill:#EFEFF4;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;padding:0}
+  body{
+    font-family:-apple-system,BlinkMacSystemFont,"SF Pro Text","Segoe UI",system-ui,"PingFang SC","Microsoft YaHei",sans-serif;
+    color:var(--ink); background:#EEF1F7; -webkit-font-smoothing:antialiased;
+    background-image:
+      radial-gradient(120% 42% at 2% -2%, rgba(255,255,255,.98) 0%, rgba(255,255,255,0) 58%),
+      radial-gradient(80% 34% at 100% 0%, rgba(0,122,255,.13) 0%, rgba(0,122,255,0) 62%),
+      radial-gradient(70% 30% at 92% 88%, rgba(52,199,89,.09) 0%, rgba(52,199,89,0) 66%),
+      radial-gradient(64% 30% at 0% 78%, rgba(255,205,150,.14) 0%, rgba(255,205,150,0) 68%),
+      linear-gradient(165deg,#F6F9FF 0%,#EEF1F8 40%,#E9EEF6 72%,#F3F1F6 100%);
+    background-attachment:fixed;
+  }
+  .wrap{max-width:980px;margin:0 auto;padding:32px 20px 80px}
+  header.top{
+    border-radius:26px;padding:30px 30px 26px;margin-bottom:22px;
+    background:rgba(255,255,255,.66);
+    -webkit-backdrop-filter:saturate(180%) blur(22px);backdrop-filter:saturate(180%) blur(22px);
+    border:1px solid rgba(255,255,255,.9);
+    box-shadow:0 8px 32px rgba(16,30,60,.09),inset 0 1px 0 rgba(255,255,255,.95);
+  }
+  .eyebrow{font-size:11px;font-weight:700;letter-spacing:.18em;text-transform:uppercase;color:var(--soft)}
+  h1{font-size:34px;line-height:1.15;letter-spacing:-.03em;margin:8px 0 8px}
+  .lede{font-size:14px;line-height:1.7;color:var(--soft);max-width:720px;margin:0}
+  .badges{display:flex;flex-wrap:wrap;gap:8px;margin-top:18px}
+  .badge{display:inline-flex;align-items:center;gap:6px;border-radius:999px;padding:7px 13px;font-size:12px;font-weight:650}
+  .b-green{background:rgba(52,199,89,.14);border:1px solid rgba(52,199,89,.24);color:var(--greenInk)}
+  .b-blue{background:rgba(0,122,255,.11);border:1px solid rgba(0,122,255,.2);color:var(--blue)}
+  .b-gray{background:rgba(142,142,147,.12);border:1px solid rgba(142,142,147,.2);color:var(--soft)}
+  section{
+    background:var(--card);border:1px solid rgba(255,255,255,.95);border-radius:24px;
+    padding:26px 28px;margin-bottom:20px;
+    box-shadow:0 1px 2px rgba(16,30,60,.05),0 12px 34px rgba(16,30,60,.06),inset 0 1px 0 rgba(255,255,255,.9);
+    -webkit-backdrop-filter:blur(10px);backdrop-filter:blur(10px);
+  }
+  h2{font-size:21px;letter-spacing:-.02em;margin:0 0 6px;display:flex;align-items:center;gap:10px}
+  h2 .num{display:inline-flex;width:28px;height:28px;align-items:center;justify-content:center;border-radius:9px;background:rgba(0,122,255,.12);color:var(--blue);font-size:13px;font-weight:800}
+  h3{font-size:15px;margin:22px 0 8px}
+  p{font-size:14px;line-height:1.75;color:#3a3a3f;margin:8px 0}
+  .sub{color:var(--soft);font-size:13px;margin-top:2px}
+  .grid{display:grid;gap:14px}
+  .g2{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .g3{grid-template-columns:repeat(3,minmax(0,1fr))}
+  .g4{grid-template-columns:repeat(4,minmax(0,1fr))}
+  @media(max-width:820px){.g2,.g3,.g4{grid-template-columns:1fr}}
+  .tile{border-radius:18px;border:1px solid rgba(229,229,234,.85);background:rgba(255,255,255,.8);padding:14px}
+  .tile .k{font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--soft)}
+  .tile .v{font-size:19px;font-weight:750;margin-top:5px;letter-spacing:-.02em}
+  .tile .d{font-size:12px;color:var(--soft);margin-top:4px;line-height:1.55}
+  .ok{color:var(--greenInk)} .warn{color:#B26A00} .bad{color:var(--redInk)}
+  figure{margin:0}
+  figure img{width:100%;display:block;border-radius:14px;border:1px solid rgba(229,229,234,.9);background:#fff}
+  figcaption{font-size:12px;color:var(--soft);margin-top:7px;line-height:1.55;text-align:center}
+  .phone{margin:0 auto;max-width:300px}
+  .phone img{box-shadow:0 8px 26px rgba(16,30,60,.12)}
+  table{width:100%;border-collapse:collapse;font-size:13px;margin-top:10px}
+  th,td{text-align:left;padding:10px 12px;border-bottom:1px solid var(--sep);vertical-align:top}
+  th{font-size:11px;text-transform:uppercase;letter-spacing:.05em;color:var(--soft);font-weight:700;background:rgba(239,239,244,.55)}
+  tr:last-child td{border-bottom:0}
+  code{font-family:"SFMono-Regular",Consolas,Menlo,monospace;font-size:12px;background:rgba(239,239,244,.9);border:1px solid var(--sep);border-radius:6px;padding:1px 5px;word-break:break-all}
+  ul{margin:8px 0;padding-left:20px} li{font-size:14px;line-height:1.75;margin:4px 0}
+  .download{display:flex;gap:16px;align-items:center;flex-wrap:wrap;border-radius:20px;border:1px solid rgba(255,255,255,.95);background:rgba(255,255,255,.8);padding:18px}
+  .download img.qr{width:132px;height:132px;border-radius:12px;border:1px solid var(--sep);background:#fff;padding:6px}
+  .download .info{flex:1;min-width:220px}
+  .download a{color:var(--blue);text-decoration:none;font-weight:650;word-break:break-all}
+  .btn{display:inline-block;margin-top:10px;border-radius:12px;padding:11px 18px;font-size:13px;font-weight:700;color:#fff;text-decoration:none;
+       background:linear-gradient(170deg,#3395ff 0%,#007AFF 60%,#0069e0 100%);box-shadow:0 4px 14px rgba(0,122,255,.26)}
+  .note{border-left:3px solid var(--blue);background:rgba(0,122,255,.05);border-radius:0 12px 12px 0;padding:12px 16px;font-size:13px;line-height:1.7;color:#3a3a3f;margin:14px 0}
+  .note.warnbox{border-left-color:#FF9F0A;background:rgba(255,159,10,.07)}
+  .beforeafter{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+  @media(max-width:820px){.beforeafter{grid-template-columns:1fr}}
+  .ba-tag{display:inline-block;font-size:11px;font-weight:750;padding:4px 10px;border-radius:999px;margin-bottom:8px}
+  .ba-old{background:rgba(255,59,48,.12);color:var(--redInk)}
+  .ba-new{background:rgba(52,199,89,.14);color:var(--greenInk)}
+  footer{text-align:center;font-size:12px;color:var(--soft);padding:18px 0 0}
+  .small{font-size:12px;color:var(--soft)}
+  .kv{display:flex;justify-content:space-between;gap:12px;padding:7px 0;border-bottom:1px dashed var(--sep);font-size:13px}
+  .kv:last-child{border-bottom:0}
+  .kv span:first-child{color:var(--soft)}
+  .kv span:last-child{font-weight:650;text-align:right;word-break:break-all}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header class="top">
+  <div class="eyebrow">Codex-Turnloom · Option A / Cupertino Daylight Glass</div>
+  <h1>交付与实机测试报告</h1>
+  <p class="lede">双线并行重构：Web-Native 网页版 + Expo/React Native 独立原生 App。以下为设计对照、顶层体验优化、两个可安装 APK 与完整实机测试的最终结论。所有数据均为本机实测，未验证项明确标注。</p>
+  <div class="badges">
+    <span class="badge b-green">✔ 完整回归 0 FAIL</span>
+    <span class="badge b-blue">qa-v5 21 / 21</span>
+    <span class="badge b-blue">两端 npm test 172 / 172</span>
+    <span class="badge b-gray">main 分支未改动 · 96fd08c</span>
+    <span class="badge b-gray">2026-11-07</span>
+  </div>
+</header>
+
+<!-- 1 交付物 -->
+<section>
+  <h2><span class="num">1</span>两个独立可安装 APK</h2>
+  <p class="sub">四个包名互不相同，不会覆盖你已安装的任何 APP。手机与电脑需在同一局域网，服务地址 <code>http://192.168.1.10:8787</code>，访问码 <code>684271</code>。</p>
+  <div class="grid g2" style="margin-top:16px">
+    <div class="download">
+      <img class="qr" src="report-assets/qr-web.png" alt="网页版 APK 下载二维码" />
+      <div class="info">
+        <div class="eyebrow">Web 线 · WebView 壳</div>
+        <div style="font-size:17px;font-weight:750;margin:6px 0">会话总控 · 网页版</div>
+        <div class="kv"><span>包名</span><span>com.codexpocket.optiona.web</span></div>
+        <div class="kv"><span>版本</span><span>1.19.0-web (70)</span></div>
+        <div class="kv"><span>大小 / SHA256</span><span>3,412,237 B<br><code>E9A78756…B8ED</code></span></div>
+        <a href="http://192.168.1.10:8787/downloads/Codex-Turnloom-Web.apk">下载 Codex-Turnloom-Web.apk</a>
+      </div>
+    </div>
+    <div class="download">
+      <img class="qr" src="report-assets/qr-native.png" alt="原生版 APK 下载二维码" />
+      <div class="info">
+        <div class="eyebrow">原生线 · 真 RN 原生包</div>
+        <div style="font-size:17px;font-weight:750;margin:6px 0">会话总控 · 原生版</div>
+        <div class="kv"><span>包名</span><span>com.codexpocket.optiona.native</span></div>
+        <div class="kv"><span>版本</span><span>1.19.0-native (71)</span></div>
+        <div class="kv"><span>大小 / SHA256</span><span>285,506,040 B<br><code>7D1D49FE…886C</code></span></div>
+        <a href="http://192.168.1.10:8787/downloads/Codex-Turnloom-Native.apk">下载 Codex-Turnloom-Native.apk</a>
+      </div>
+    </div>
+  </div>
+  <div class="note">
+    <b>原生包是真原生，不是 WebView 壳</b>：包内 24 个 <code>classes*.dex</code>、四 ABI（arm64-v8a / armeabi-v7a / x86 / x86_64）各 30 个 <code>.so</code>（含 <code>libreactnative.so</code> 24MB、<code>libhermesvm.so</code>、<code>libreanimated.so</code>、<code>libworklets.so</code>），自带 <code>assets/index.android.bundle</code>（3,873,744 B，Hermes 字节码 <code>C6 1F BC 03</code>），<b>断网 / 无 Metro 也能启动</b>，包内无任何内嵌 HTML。
+  </div>
+  <p><a class="btn" href="http://192.168.1.10:8787/option-a/index.html">在手机浏览器打开中文版网页</a></p>
+  <p class="small">127 与 LAN 六个下载/页面 URL 全部实测 GET 200。</p>
+</section>
+
+<!-- 2 设计对照 -->
+<section>
+  <h2><span class="num">2</span>设计对照：示意图 → 实际界面</h2>
+  <p class="sub">用户复核指出「和示意图不像、iOS 风格与毛玻璃没了」后，主对话重新逐屏比对设计包 <code>docs/option-a/previews/</code> 并双端重做视觉层。</p>
+  <div class="grid g2" style="margin-top:16px">
+    <figure><img src="report-assets/ref1.jpg" alt="设计包示意图 01" /><figcaption>设计包 01 · Option A Cupertino Daylight Glass 风格对照</figcaption></figure>
+    <figure><img src="report-assets/ref2.jpg" alt="设计包示意图 02" /><figcaption>设计包 02 · Daylight Mode 三大核心页面</figcaption></figure>
+  </div>
+  <h3>根因：毛玻璃看不见，不是没写 blur</h3>
+  <p>全局背景原本是纯平 <code>#F2F2F7</code>，<code>backdrop-blur</code> 对纯色是<b>视觉无操作</b>——玻璃后面没有可折射的内容，顶/底栏只剩一条白线。改为多径向「日光雾白」渐变画布后，玻璃才真正通透。原生端 <code>headerLargeTitle</code> / <code>expo-blur</code> 是 iOS 专有 API，Android 不生效，另用 <code>expo-linear-gradient</code> 的共享 <code>DaylightBackdrop</code> 兜底。</p>
+  <h3>实际界面（改版后 · 390×844 @2x 实拍）</h3>
+  <div class="grid g4" style="margin-top:8px">
+    <figure class="phone"><img src="report-assets/web-chat.png" alt="对话主界面" /><figcaption>对话 · iOS 大标题 + 玻璃卡 + 气泡</figcaption></figure>
+    <figure class="phone"><img src="report-assets/web-sessions.png" alt="会话页" /><figcaption>会话列表</figcaption></figure>
+    <figure class="phone"><img src="report-assets/web-terminal.png" alt="终端页" /><figcaption>终端管理</figcaption></figure>
+    <figure class="phone"><img src="report-assets/web-settings.png" alt="设置页" /><figcaption>设置</figcaption></figure>
+  </div>
+  <div class="grid g2" style="margin-top:14px">
+    <figure class="phone"><img src="report-assets/web-360.png" alt="360 小屏" /><figcaption>360×780 小屏：无横向溢出、底栏不遮挡</figcaption></figure>
+    <figure class="phone"><img src="report-assets/after-approval.png" alt="审批抽屉" /><figcaption>半屏手势审批抽屉 · 主按钮为 iOS 绿色渐层</figcaption></figure>
+  </div>
+  <p class="small">落地要点：<code>.daylight-canvas</code> 多径向渐变、<code>.glass-chrome</code> / <code>.ios-floating-tabs</code> / <code>.ios-sheet-glass</code> 62%–76% 透光白 + saturate(180%) blur(22px)、<code>.ios-card</code> 22px 圆角三层阴影、白卡/系统蓝渐变双气泡、iOS 大标题 + 绿色连接胶囊、悬浮玻璃胶囊 Tab。两端均保持 <code>lang=zh-CN</code>、44px 命中区、按钮文字不变。</p>
+</section>
+
+<!-- 3 顶层体验优化 -->
+<section>
+  <h2><span class="num">3</span>顶层设计复核：修复核心任务链断口</h2>
+  <p class="sub">按真实用户旅程（冷启动 → 选终端 → 发指令 → 审批 → 中断 → 切 Tab → 异常态）在真实 Chrome + 手机视口逐屏走查 10 屏，发现的不是样式问题，而是 IA 问题。</p>
+  <table>
+    <tr><th>#</th><th>实测问题</th><th>优化</th></tr>
+    <tr><td>1</td><td><b>代理运行中，输入框能填字却发不出去</b>：发送键被整键换成「中断」，填完指令无提交入口也无解释（走查 03/04 屏文本完全一致）</td><td>发送/中断并存；busy 时 <code>api.sendMessage</code> 带 <code>mode:'queue'</code> 排队，附「不会打断当前任务」说明</td></tr>
+    <tr><td>2</td><td>冷启动底部 4 个 Tab 是死的（点了没反应）+ 大片空白</td><td>隐藏 Tab，改品牌大标题 + 「是什么/要做什么」说明 + 引导白卡 + 两个明确按钮</td></tr>
+    <tr><td>3</td><td>切到会话/终端/设置，大标题仍是「会话总控」</td><td>标题与副标题随 Tab 变化：会话总控 / 会话列表 / 终端管理 / 设置</td></tr>
+    <tr><td>4</td><td>审批入口重复三层，卡内还有 disabled「查看并批准」，点了没反应</td><td>整卡可点（role=button + 键盘可达）、去 disabled；仅 &gt;1 条才显示聚合入口</td></tr>
+    <tr><td>5</td><td>顶栏齿轮「管理」跳「终端」Tab，语义含糊</td><td>改成明确的「终端」文字按钮</td></tr>
+  </table>
+  <div class="beforeafter" style="margin-top:18px">
+    <figure><span class="ba-tag ba-old">改版前</span><img src="report-assets/before-cold-start.png" alt="改版前冷启动" /><figcaption>4 个死 Tab + 大空白，没有说明这是什么</figcaption></figure>
+    <figure><span class="ba-tag ba-new">改版后</span><img src="report-assets/after-cold-start.png" alt="改版后冷启动" /><figcaption>品牌大标题 + 说明 + 引导卡 + 2 个有效按钮</figcaption></figure>
+  </div>
+  <div class="beforeafter" style="margin-top:14px">
+    <figure><span class="ba-tag ba-old">改版前</span><img src="report-assets/before-chat.png" alt="改版前对话" /><figcaption>busy 时只剩红色「中断」，填字发不出去</figcaption></figure>
+    <figure><span class="ba-tag ba-new">改版后</span><img src="report-assets/after-input.png" alt="改版后输入" /><figcaption>「发送」+「中断」并存，输入框有排队提示</figcaption></figure>
+  </div>
+  <div class="note">
+    <b>核心任务链实证</b>（隔离 mock 18997 的 <code>GET /__qa/log</code>，count=6）：3 条 <code>POST /api/send</code> 全部带 <code>"mode":"queue"</code>、2 条 <code>POST /api/interrupt</code>、1 条 <code>POST /api/approval</code>（<code>decision:"accept"</code>）。从 UI 真实点击到后端一条不缺。原生端 <code>ThumbPromptBar</code> 原本也是「busy 换中断」的老逻辑，本轮已同步修复并重编 APK。
+  </div>
+</section>
+
+<!-- 4 框架与缺陷修复 -->
+<section>
+  <h2><span class="num">4</span>框架落地与真实缺陷修复</h2>
+  <div class="grid g2">
+    <div>
+      <h3>成熟框架真实使用（双端不同框架，共用视觉宪法）</h3>
+      <ul>
+        <li><b>Web</b>：React + Vite + Tailwind + Konsta UI + Vaul + Lucide + Motion + Shiki</li>
+        <li><b>原生</b>：Expo/RN + NativeWind + React Native Reusables（复制式组件）+ expo-blur + expo-symbols + expo-linear-gradient + @gorhom/bottom-sheet</li>
+        <li><b>图标</b>：自编 inline SVG 与符号图标全部清零，统一用 <code>lucide-react</code> / <code>expo-symbols</code>；<b>两端 emoji = 0</b></li>
+        <li><b>API</b>：按真实契约 <code>/api/*</code> + <code>x-access-token</code>（设计包里的 <code>/threads</code> 是错的，未回改）</li>
+      </ul>
+    </div>
+    <div>
+      <h3>Shiki 代码高亮在 CSP 下失效 —— 已修复</h3>
+      <p>QA 用 CSP A/B 实测定位：服务端 <code>script-src 'self'</code> 禁止 WASM 编译，oniguruma 引擎抛 <code>CompileError</code> 被 <code>catch</code> 吞掉，永远停在 fallback 且把 <code>&lt;span&gt;</code> 当正文显示。</p>
+      <p>改用 Shiki 官方<b>纯 JS 正则引擎</b> <code>createJavaScriptRegexEngine</code>（零 WASM、不动 CSP / server.js），并清理装饰标签。保留 CSP 下实测 <code>shikiBlocks=2 / fallback=0</code>，1 秒内完成高亮。</p>
+    </div>
+  </div>
+  <div class="grid g3" style="margin-top:14px">
+    <figure><img src="report-assets/shiki-fixed.png" alt="修复后代码高亮" /><figcaption>修复后：真实 CSP 下彩色 token 正常渲染</figcaption></figure>
+    <figure><img src="report-assets/csp-with.png" alt="保留 CSP 时失败" /><figcaption>A/B 对照：保留 CSP 时 WASM 被拒、0 块</figcaption></figure>
+    <figure><img src="report-assets/csp-without.png" alt="去掉 CSP 时成功" /><figcaption>A/B 对照：去掉 CSP 头则 2 块正常</figcaption></figure>
+  </div>
+</section>
+
+<!-- 5 完整测试 -->
+<section>
+  <h2><span class="num">5</span>完整实机测试（跑完，无提前收口）</h2>
+  <p class="sub">真实 Chrome + Playwright，390×844 与 360×780 手机视口，真实点击、逐页截图、控制台/网络全采集。隔离 mock 18997 用于写操作验证，不污染真实 Codex 会话。</p>
+  <div class="grid g4" style="margin-top:14px">
+    <div class="tile"><div class="k">qa-v5 源码/DOM 核对</div><div class="v ok">21 / 21</div><div class="d">两个 APK SHA256 与交付文件一致</div></div>
+    <div class="tile"><div class="k">qa-full · mock</div><div class="v ok">58 步 · 0 FAIL</div><div class="d">56 PASS / 1 SKIP / 18 页</div></div>
+    <div class="tile"><div class="k">qa-full · 真实 8787</div><div class="v ok">56 步 · 0 FAIL</div><div class="d">52 PASS / 3 SKIP / 16 页</div></div>
+    <div class="tile"><div class="k">核心任务链</div><div class="v ok">9 / 9</div><div class="d">排队发送 / 中断 / 审批全到达后端</div></div>
+  </div>
+  <table style="margin-top:18px">
+    <tr><th>验证项</th><th>结果</th><th>证据</th></tr>
+    <tr><td>两端 <code>npm test</code></td><td class="ok">各 172 / 172，0 fail</td><td>主仓 + 集成分支</td></tr>
+    <tr><td><code>npm run check</code> / mobile <code>tsc --noEmit</code> / web <code>build</code> / <code>expo export</code></td><td class="ok">全部 exit 0</td><td>2839 modules</td></tr>
+    <tr><td>Gradle 原生构建</td><td class="ok">BUILD SUCCESSFUL</td><td>1m14s（本轮）/ 9m9s（全量重编）/ 53m28s 首轮真实失败后修复</td></tr>
+    <tr><td>Shiki 修复复验</td><td class="ok">9 PASS / 0 FAIL</td><td>mock 与真实 8787 两端 shikiBlocks=2</td></tr>
+    <tr><td>点击区 / 横向溢出 / 中文缺字</td><td class="ok">0 小点击区 · 0 横溢 · 0 U+FFFD</td><td>390 与 360 双视口逐页探针</td></tr>
+    <tr><td>写操作真实到达后端</td><td class="ok">6 条全部命中</td><td><code>/__qa/log</code>：3×send(queue) / 2×interrupt / 1×approval(accept)</td></tr>
+    <tr><td>六个下载 / 页面 URL</td><td class="ok">全 GET 200</td><td>127 + LAN × 页面 / Web APK / Native APK</td></tr>
+    <tr><td>报告图片引用</td><td class="ok">0 断链</td><td>本报告全部图片经存在性核对</td></tr>
+  </table>
+  <div class="note warnbox">
+    <b>如实记录的已知噪声（非产品缺陷）</b>：真实 8787 的 <code>/api/host/diff</code> 502 / 500 是桌面端 <code>codex-ipc</code> 管道未连（<code>connect ENOENT \\.\pipe\codex-ipc</code>），前端有空状态兜底；<code>net::ERR_ABORTED</code> 是组件卸载时取消请求；mock favicon 404。SKIP 均为环境态（无刷新按钮 / 非运行中 / 当前数据无待审批），未写成通过。
+  </div>
+</section>
+
+<!-- 6 限制与边界 -->
+<section>
+  <h2><span class="num">6</span>已知限制与交付边界</h2>
+  <div class="grid g2">
+    <div>
+      <h3>限制（不写成通过）</h3>
+      <ul>
+        <li>本机 <code>adb devices</code> 为空，<b>两个 APK 都未在本机安装运行</b>；手机安装、真机摄像头扫码、触感震动、长时间稳定性由用户自行验证。</li>
+        <li>「实机测试」指真实 Chrome + 390×844 / 360×780 手机视口、真实点击与截图；不是 Android 真机。</li>
+        <li>Web APK 是 WebView 壳，依赖 <code>192.168.1.10:8787</code> 可达；原生 APK 自带 Hermes bundle，但首次进入仍需配对服务。</li>
+        <li>原生包为 <b>debug 签名</b>、四 ABI 全量（约 272MB），非商店 release 精简包。</li>
+        <li>Shiki 语言包本地打包后 JS 约 1.77MB，未做 code-splitting，不影响功能与 CSP。</li>
+      </ul>
+    </div>
+    <div>
+      <h3>隔离边界</h3>
+      <ul>
+        <li><code>main</code> 分支仍为 <code>96fd08c</code>，未改动、未推送、未合并。</li>
+        <li>未改 <code>server.js</code> / <code>backends/</code> / <code>desktop/</code> / <code>test/</code> / 既有 <code>public/</code> 文件。</li>
+        <li><code>public/option-a/</code> 与 <code>public/downloads/*</code> 为纯新增 / 覆盖交付物。</li>
+        <li>全部成果提交在 <code>feature/option-a-integration</code>，最新提交 <code>66b8d0c</code>，工作区干净。</li>
+        <li>真实 8787 只读验证，不向真实 Codex 会话写入测试指令；写操作在隔离 mock 完成，真实会话数仍为 68。</li>
+      </ul>
+    </div>
+  </div>
+  <div class="note">
+    <b>构建失败链如实记录</b>：首轮 <code>assembleDebug</code> 跑满 53m28s 后因 Windows <code>MAX_PATH=260</code>（RN worklets 把绝对路径编码进 ninja 对象目录）自然失败；用 Gradle <code>--init-script</code> 改写 <code>build.ninja</code> 长前缀并预建对象目录后成功。<code>expo prebuild</code> 曾把 <code>namespace</code> 设成含 Java 关键字 <code>native</code>，改回 <code>com.app</code>、<code>applicationId</code> 单独覆盖。每一次失败都是 Gradle 自己退出并给出完整 FAILURE 段，主对话未因时间取消任何构建。
+  </div>
+</section>
+
+<footer>
+  Codex-Turnloom · Option A 交付报告 · 生成于 2026-11-07 · 图片与结果归档于 <code>docs/option-a/qa-shots/</code> 与 <code>docs/option-a/report-assets/</code>
+</footer>
+</div>
+</body>
+</html>
