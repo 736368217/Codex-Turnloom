@@ -116,11 +116,11 @@ const PILL_STYLE: Record<ThreadStatusKind, { label: string; tone: 'blue' | 'gree
   unknown: { label: '空闲', tone: 'gray' },
 };
 
-const CARD = 'rounded-2xl border border-[#E5E5EA]/60 bg-white shadow-[0_1px_3px_rgba(0,0,0,0.04)]';
+const CARD = 'ios-card rounded-[20px]';
 
 export function SectionTitle({ children }: { children: string }) {
   return (
-    <h2 className="mb-2 mt-4 px-1 text-[13px] font-semibold text-[#8E8E93]">{children}</h2>
+    <h2 className="mb-2.5 mt-6 px-1 text-[12px] font-semibold uppercase tracking-[0.08em] text-[#8E8E93]">{children}</h2>
   );
 }
 

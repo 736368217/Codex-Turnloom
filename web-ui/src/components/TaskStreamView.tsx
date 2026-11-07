@@ -305,12 +305,12 @@ export default function TaskStreamView(props: TaskStreamViewProps) {
     parsedDiff.lines.length > 0 || parsedDiff.files.length > 0;
 
   return (
-    <div className="space-y-4 px-4 pb-6">
+    <div className="space-y-5 pb-6">
       {/* (A) Collapsible AI Thinking / Terminal Log */}
       <motion.section
         layout
         transition={{ type: 'spring', stiffness: 320, damping: 32 }}
-        className="overflow-hidden rounded-2xl bg-[#EFEFF4]"
+        className="ios-fill overflow-hidden rounded-[20px] border border-white/70 shadow-[inset_0_1px_0_rgba(255,255,255,0.8)]"
       >
         <button
           type="button"
@@ -366,7 +366,7 @@ export default function TaskStreamView(props: TaskStreamViewProps) {
 
       {/* (D) 空状态：可操作，引导直接发送或新建对话 */}
       {messages.length === 0 ? (
-        <div className="rounded-2xl border border-[#E5E5EA]/60 bg-white p-5 text-center shadow-[0_1px_3px_rgba(0,0,0,0.04)]">
+        <div className="ios-card p-6 text-center">
           <p className="text-[15px] font-semibold text-[#1C1C1E]">开始聊天</p>
           <p className="mt-1.5 text-[12px] leading-relaxed text-[#8E8E93]">
             在下方输入框直接发送即可开始，或新建一条任务会话。
@@ -375,14 +375,14 @@ export default function TaskStreamView(props: TaskStreamViewProps) {
             <button
               type="button"
               onClick={onStartTask}
-              className={cx('mt-3 min-h-[44px] w-full rounded-xl bg-[#007AFF] px-4 text-[14px] font-semibold text-white', PRESS)}
+              className={cx('ios-btn-primary mt-4 min-h-[44px] w-full rounded-[14px] px-4 text-[14px] font-semibold text-white', PRESS)}
             >
               开始新对话
             </button>
           )}
         </div>
       ) : (
-        <div className="space-y-3">
+        <div className="space-y-4">
           {messages.map((message, index) => {
             const key = `${message.turnId || message.role}-${index}`;
             const text = messageText(message);
@@ -397,7 +397,7 @@ export default function TaskStreamView(props: TaskStreamViewProps) {
               return (
                 <div
                   key={key}
-                  className="rounded-2xl border border-[#E5E5EA]/60 bg-white p-4 shadow-[0_1px_3px_rgba(0,0,0,0.04)]"
+                  className="ios-card p-4"
                 >
                   <div className="flex items-center gap-2 text-[14px] font-semibold text-[#1C1C1E]">
                     <ShieldCheck size={16} className="text-[#34C759]" />
@@ -411,7 +411,7 @@ export default function TaskStreamView(props: TaskStreamViewProps) {
                     disabled={busy}
                     onClick={() => onApprove(item)}
                     className={cx(
-                      'mt-3 w-full rounded-xl bg-[#34C759] px-4 py-2.5 text-[13px] font-semibold text-white disabled:opacity-50',
+                      'ios-btn-green mt-3 w-full rounded-[14px] px-4 py-2.5 text-[13px] font-semibold text-white disabled:opacity-50',
                       PRESS,
                     )}
                   >
@@ -424,7 +424,7 @@ export default function TaskStreamView(props: TaskStreamViewProps) {
             if (message.role === 'user') {
               return (
                 <div key={key} className="flex justify-end">
-                  <div className="max-w-[85%] whitespace-pre-wrap rounded-2xl bg-[#007AFF] px-4 py-2.5 text-[15px] leading-relaxed text-white">
+                  <div className="ios-bubble-user max-w-[85%] whitespace-pre-wrap px-4 py-2.5 text-[15px] leading-relaxed text-white">
                     {text}
                   </div>
                 </div>
@@ -435,7 +435,7 @@ export default function TaskStreamView(props: TaskStreamViewProps) {
               return (
                 <div
                   key={key}
-                  className="rounded-2xl border border-[#E5E5EA]/60 bg-white p-4 shadow-[0_1px_3px_rgba(0,0,0,0.04)]"
+                  className="ios-bubble-ai p-4"
                 >
                   <MarkdownBody markdown={text} />
                 </div>
@@ -456,9 +456,11 @@ export default function TaskStreamView(props: TaskStreamViewProps) {
       )}
 
       {/* (C) Daylight Git Diff card */}
-      <section className="overflow-hidden rounded-2xl border border-[#E5E5EA]/60 bg-white shadow-[0_1px_3px_rgba(0,0,0,0.04)]">
-        <div className="flex items-center gap-2 border-b border-[#E5E5EA] px-4 py-3">
-          <GitBranch size={16} className="text-[#34C759]" />
+      <section className="ios-card overflow-hidden">
+        <div className="flex items-center gap-2 border-b border-[#E5E5EA]/80 px-4 py-3">
+          <span className="flex h-7 w-7 items-center justify-center rounded-[9px] bg-[#34C759]/12 text-[#248A3D]">
+            <GitBranch size={15} />
+          </span>
           <h2 className="text-[14px] font-semibold text-[#1C1C1E]">代码改动</h2>
         </div>
         {hasDiff ? (

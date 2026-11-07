@@ -54,16 +54,15 @@ export default function ThumbGlassBar({
       void submit();
     }
   };
-
   return (
-    <div className="z-20 shrink-0 px-3 pt-2">
+    <div className="z-20 shrink-0 px-3 pt-2.5">
       <div className="flex items-end gap-2">
         <button
           type="button"
           aria-label="语音输入"
           onClick={onVoice}
           className={cx(
-            'mb-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[#EFEFF4] text-[#8E8E93]',
+            'mb-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-white/80 text-[#8E8E93] shadow-[0_1px_4px_rgba(16,30,60,0.07)]',
             HIT_AREA_44,
             PRESS,
           )}
@@ -80,8 +79,8 @@ export default function ThumbGlassBar({
           onChange={(event) => onValueChange(event.target.value)}
           onKeyDown={onKeyDown}
           className={cx(
-            'min-h-[40px] max-h-[120px] min-w-0 flex-1 resize-none rounded-full bg-[#EFEFF4] px-4 py-2.5 text-[15px] leading-5 text-[#1C1C1E]',
-            'placeholder:text-[#8E8E93] outline-none focus:ring-2 focus:ring-[#007AFF]/20 disabled:opacity-60',
+            'ios-fill min-h-[42px] max-h-[120px] min-w-0 flex-1 resize-none rounded-[22px] border border-white/80 px-4 py-2.5 text-[15px] leading-5 text-[#1C1C1E]',
+            'placeholder:text-[#8E8E93] outline-none focus:ring-2 focus:ring-[#007AFF]/25 disabled:opacity-60',
             'select-text',
           )}
         />
@@ -92,7 +91,7 @@ export default function ThumbGlassBar({
             disabled={readOnly || submitting}
             onClick={() => void onInterrupt()}
             className={cx(
-              'mb-0.5 flex h-10 shrink-0 items-center gap-1.5 rounded-full bg-[#FF3B30] px-4 text-[14px] font-semibold text-white disabled:opacity-50',
+              'ios-btn-red mb-0.5 flex h-10 shrink-0 items-center gap-1.5 rounded-full px-4 text-[14px] font-semibold text-white disabled:opacity-50',
               PRESS,
             )}
           >
@@ -106,7 +105,7 @@ export default function ThumbGlassBar({
             disabled={blocked || !value.trim()}
             onClick={() => void submit()}
             className={cx(
-              'mb-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[#007AFF] text-white disabled:opacity-40',
+              'ios-btn-primary mb-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-white disabled:opacity-40',
               HIT_AREA_44,
               PRESS,
             )}

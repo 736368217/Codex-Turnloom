@@ -18,12 +18,16 @@ const TABS: Array<{ key: TabKey; label: string; Icon: LucideIcon }> = [
   { key: 'settings', label: '设置', Icon: Settings },
 ];
 
-/** 底部拇指舱：输入舱 + 4 Tab 共用一条 bg-white/85 毛玻璃栏。 */
+/**
+ * 底部拇指舱：输入舱 + 悬浮玻璃胶囊 4 Tab。
+ * 玻璃背后是 daylight-canvas 的渐变，backdrop-blur 才有可折射的内容。
+ * role=tab / data-tab / 按钮文字 / 44px 命中区保持不变，供 QA 断言。
+ */
 export default function GlassTabBar({ active, onChange, composer }: GlassTabBarProps) {
   return (
-    <div className="z-20 shrink-0 border-t border-[#E5E5EA] bg-white/85 backdrop-blur-xl">
+    <div className="glass-chrome z-20 shrink-0 border-t px-3 pb-[max(0.5rem,env(safe-area-inset-bottom))] pt-2">
       {composer}
-      <nav aria-label="主导航" className="flex items-stretch">
+      <nav aria-label="主导航" className="ios-floating-tabs mt-2 flex items-stretch p-1">
         {TABS.map(({ key, label, Icon }) => {
           const isActive = key === active;
           return (
@@ -36,8 +40,10 @@ export default function GlassTabBar({ active, onChange, composer }: GlassTabBarP
               aria-selected={isActive}
               onClick={() => onChange(key)}
               className={cx(
-                'flex min-h-[44px] min-w-[44px] flex-1 flex-col items-center justify-center gap-0.5 pt-1.5 pb-[max(0.5rem,env(safe-area-inset-bottom))]',
-                isActive ? 'text-[#007AFF]' : 'text-[#8E8E93]',
+                'flex min-h-[44px] min-w-[44px] flex-1 flex-col items-center justify-center gap-0.5 rounded-[20px] py-1.5',
+                isActive
+                  ? 'bg-[#007AFF]/12 text-[#007AFF] shadow-[inset_0_1px_2px_rgba(0,122,255,0.10)]'
+                  : 'text-[#8E8E93]',
                 PRESS,
               )}
             >

@@ -118,10 +118,11 @@ export default function ThreadsScreen() {
   );
 
   return (
-    <View className="flex-1 bg-[#F2F2F7]">
-      <View className="gap-[3px] px-4 pb-[10px]" style={{ paddingTop: insets.top + 12 }}>
-        <Text className="text-[28px] font-bold text-[#1C1C1E]">会话</Text>
-        <Text className="text-[13px] text-[#8E8E93]">选择一个对话，查看实时任务流</Text>
+    <View className="flex-1 bg-transparent">
+      <View className="gap-[3px] px-5 pb-[12px]" style={{ paddingTop: insets.top + 12 }}>
+        <Text className="text-[11px] font-bold uppercase tracking-[2px] text-[#8E8E93]">Codex-Turnloom</Text>
+        <Text className="text-[30px] font-bold leading-[34px] tracking-[-1px] text-[#1C1C1E]">会话总控</Text>
+        <Text className="text-[12px] text-[#8E8E93]">项目管理 · 全部历史对话</Text>
       </View>
       {authGate ? <Text className="px-4 pb-[6px] text-[12px] text-[#D70015]">需要访问码，请到「终端」页重新输入</Text> : null}
       {error ? <Text className="px-4 pb-[6px] text-[12px] text-[#D70015]">{error}</Text> : null}

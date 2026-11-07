@@ -120,7 +120,7 @@ export default function CupertinoSheets(props: CupertinoSheetsProps) {
     >
       <Drawer.Portal>
         <Drawer.Overlay className="fixed inset-0 z-40 bg-black/20" />
-        <Drawer.Content className="fixed bottom-0 left-0 right-0 z-50 mx-auto flex max-h-[85dvh] max-w-[430px] flex-col rounded-t-3xl border-t border-[#E5E5EA] bg-white/95 shadow-2xl outline-none backdrop-blur-2xl">
+        <Drawer.Content className="ios-sheet-glass fixed bottom-0 left-0 right-0 z-50 mx-auto flex max-h-[85dvh] max-w-[430px] flex-col rounded-t-[28px] border-t border-white/90 shadow-[0_-8px_40px_rgba(16,30,60,0.16)] outline-none">
           {/* iOS drag handle */}
           <div className="mx-auto mt-2.5 h-1.5 w-9 shrink-0 rounded-full bg-[#C7C7CC]" />
 
