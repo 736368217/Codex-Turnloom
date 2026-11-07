@@ -16,10 +16,10 @@ export default function TabsLayout() {
         headerShown: false,
         sceneStyle: { backgroundColor: OptionA.canvas },
       }}>
-      <Tabs.Screen name="index" options={{ title: 'Home' }} />
-      <Tabs.Screen name="threads" options={{ title: 'Project · Threads' }} />
-      <Tabs.Screen name="monitors" options={{ title: 'Monitors' }} />
-      <Tabs.Screen name="settings" options={{ title: 'Settings' }} />
+      <Tabs.Screen name="index" options={{ title: '首页' }} />
+      <Tabs.Screen name="threads" options={{ title: '会话' }} />
+      <Tabs.Screen name="monitors" options={{ title: '监控' }} />
+      <Tabs.Screen name="settings" options={{ title: '设置' }} />
     </Tabs>
   );
 }

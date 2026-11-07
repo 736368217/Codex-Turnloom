@@ -160,7 +160,7 @@ function parseDiff(diff: unknown): { files: DiffFile[]; lines: string[] } {
       const additions = file.additions ?? file.added ?? '';
       const deletions = file.deletions ?? file.deleted ?? file.removals ?? '';
       files.push({
-        name: String(file.path ?? file.name ?? file.file ?? 'Unknown file'),
+        name: String(file.path ?? file.name ?? file.file ?? '未知文件'),
         status: String(file.status ?? file.change ?? ''),
         additions: additions === 0 || additions ? String(additions) : '',
         deletions: deletions === 0 || deletions ? String(deletions) : '',
@@ -257,7 +257,7 @@ export default function TaskStreamView(props: TaskStreamViewProps) {
           aria-expanded={expanded}
           onClick={() => setExpanded((value) => !value)}
           className={cx(
-            'flex w-full items-center gap-2 px-4 py-3 text-left text-[15px] font-medium text-[#1C1C1E]',
+            'flex min-h-[44px] w-full items-center gap-2 px-4 py-3 text-left text-[15px] font-medium text-[#1C1C1E]',
             PRESS,
           )}
         >
@@ -267,7 +267,7 @@ export default function TaskStreamView(props: TaskStreamViewProps) {
               thinking ? 'bg-[#34C759]' : 'bg-[#C7C7CC]',
             )}
           />
-          <span className="flex-1">{thinking ? 'AI Thinking...' : 'Idle'}</span>
+          <span className="min-w-0 flex-1 truncate">{thinking ? 'AI 正在思考…' : '空闲'}</span>
           <span className="text-[12px] text-[#8E8E93]">{runningLabel}</span>
           <ChevronDown
             size={18}
@@ -282,13 +282,13 @@ export default function TaskStreamView(props: TaskStreamViewProps) {
           )}
         >
           <div className="border-t border-[#E5E5EA] px-4 pb-4 pt-3">
-            <p className="mb-2 text-[12px] font-semibold text-[#1C1C1E]">Terminal Log</p>
+            <p className="mb-2 text-[12px] font-semibold text-[#1C1C1E]">终端日志</p>
             <pre className="max-h-56 overflow-auto whitespace-pre-wrap rounded-xl bg-white/70 p-3 font-mono text-[11px] leading-relaxed text-[#1C1C1E]">
               {terminalLines.length > 0
                 ? terminalLines.join('\n')
-                : 'No terminal output yet.'}
+                : '暂无终端输出'}
             </pre>
-            <p className="mb-2 mt-3 text-[12px] font-semibold text-[#1C1C1E]">Thinking</p>
+            <p className="mb-2 mt-3 text-[12px] font-semibold text-[#1C1C1E]">思考中</p>
             {thoughts.length > 0 ? (
               <div className="space-y-2 text-[12px] leading-relaxed text-[#6D6D72]">
                 {thoughts.map((thought, index) => (
@@ -298,7 +298,7 @@ export default function TaskStreamView(props: TaskStreamViewProps) {
                 ))}
               </div>
             ) : (
-              <p className="text-[12px] text-[#8E8E93]">No reasoning recorded yet.</p>
+              <p className="text-[12px] text-[#8E8E93]">暂无思考记录</p>
             )}
           </div>
         </div>
@@ -307,7 +307,7 @@ export default function TaskStreamView(props: TaskStreamViewProps) {
       {/* (D) Empty state */}
       {messages.length === 0 ? (
         <div className="rounded-2xl border border-[#E5E5EA]/60 bg-white p-5 text-[13px] text-[#8E8E93] shadow-[0_1px_3px_rgba(0,0,0,0.04)]">
-          Select a conversation to see its task stream.
+          选择会话查看实时任务流
         </div>
       ) : (
         <div className="space-y-3">
@@ -343,7 +343,7 @@ export default function TaskStreamView(props: TaskStreamViewProps) {
                       PRESS,
                     )}
                   >
-                    Review &amp; Approve
+                    查看并批准
                   </button>
                 </div>
               );
@@ -387,7 +387,7 @@ export default function TaskStreamView(props: TaskStreamViewProps) {
       <section className="overflow-hidden rounded-2xl border border-[#E5E5EA]/60 bg-white shadow-[0_1px_3px_rgba(0,0,0,0.04)]">
         <div className="flex items-center gap-2 border-b border-[#E5E5EA] px-4 py-3">
           <GitBranch size={16} className="text-[#34C759]" />
-          <h2 className="text-[14px] font-semibold text-[#1C1C1E]">Git Diff</h2>
+          <h2 className="text-[14px] font-semibold text-[#1C1C1E]">代码改动</h2>
         </div>
         {hasDiff ? (
           <div className="p-3">
@@ -415,7 +415,7 @@ export default function TaskStreamView(props: TaskStreamViewProps) {
             <DiffLines lines={parsedDiff.lines} />
           </div>
         ) : (
-          <p className="px-4 py-4 text-[13px] text-[#8E8E93]">No file changes yet</p>
+          <p className="px-4 py-4 text-[13px] text-[#8E8E93]">暂无文件改动</p>
         )}
       </section>
     </div>

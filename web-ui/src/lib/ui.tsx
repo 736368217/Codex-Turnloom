@@ -36,17 +36,25 @@ export function relativeTime(value?: number | string | null): string {
   const ms = typeof value === 'number' ? value : Date.parse(value);
   if (!Number.isFinite(ms)) return '';
   const seconds = Math.max(0, Math.floor((Date.now() - ms) / 1000));
-  if (seconds < 60) return 'just now';
+  if (seconds < 60) return '刚刚';
   const minutes = Math.floor(seconds / 60);
-  if (minutes < 60) return `${minutes}m ago`;
+  if (minutes < 60) return `${minutes} 分钟前`;
   const hours = Math.floor(minutes / 60);
-  if (hours < 24) return `${hours}h ago`;
+  if (hours < 24) return `${hours} 小时前`;
   const days = Math.floor(hours / 24);
-  if (days < 30) return `${days}d ago`;
-  return new Date(ms).toLocaleDateString();
+  if (days < 30) return `${days} 天前`;
+  return new Date(ms).toLocaleDateString('zh-CN');
 }
 
 export function truncate(value: string, max = 140): string {
   const text = String(value || '').replace(/\s+/g, ' ').trim();
   return text.length > max ? `${text.slice(0, max)}…` : text;
 }
+
+/**
+ * iOS HIG: every interactive target must be at least 44×44px. For icon-only
+ * buttons the visual circle stays 32–40px, and a transparent ::after overlay
+ * expands the hit area without changing the layout (no structural changes).
+ */
+export const HIT_AREA_44 =
+  'relative after:absolute after:left-1/2 after:top-1/2 after:h-[44px] after:w-[44px] after:-translate-x-1/2 after:-translate-y-1/2 after:content-[""]';

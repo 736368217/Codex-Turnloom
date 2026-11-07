@@ -14,10 +14,10 @@ import { GLASS_INTENSITY, GLASS_TINT, OptionA } from '@/constants/optionA';
 export type TabIconName = 'home' | 'threads' | 'monitors' | 'settings';
 
 const TAB_META: Record<string, { label: string; icon: string }> = {
-  index: { label: 'Home', icon: '⌂' },
-  threads: { label: 'Project · Threads', icon: '☰' },
-  monitors: { label: 'Monitors', icon: '◉' },
-  settings: { label: 'Settings', icon: '⚙' },
+  index: { label: '首页', icon: '⌂' },
+  threads: { label: '会话', icon: '☰' },
+  monitors: { label: '监控', icon: '◉' },
+  settings: { label: '设置', icon: '⚙' },
 };
 
 function metaFor(routeName: string) {

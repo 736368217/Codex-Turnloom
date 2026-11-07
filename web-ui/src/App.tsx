@@ -21,7 +21,7 @@ import {
   type StreamMessage,
   type Thread,
 } from './lib/turnloomApi';
-import { PRESS, cx, truncate } from './lib/ui';
+import { HIT_AREA_44, PRESS, cx, truncate } from './lib/ui';
 import MachineHubHeader from './components/MachineHubHeader';
 import TaskStreamView from './components/TaskStreamView';
 import ThumbGlassBar from './components/ThumbGlassBar';
@@ -30,6 +30,16 @@ import CupertinoSheets, { type SheetKind } from './components/CupertinoSheets';
 type Engine = 'codex' | 'pi';
 
 const EMPTY_STATUS: MessagesStatus = { thinking: false, interactionRequired: false };
+
+const STATUS_LABELS: Record<string, string> = {
+  waiting: '待处理',
+  running: '运行中',
+  stale: '运行中',
+  ended: '已完成',
+  unknown: '空闲',
+};
+const statusText = (status: MessagesStatus | null): string =>
+  STATUS_LABELS[threadStatusKind(status)] || '空闲';
 
 export default function App() {
   const [health, setHealth] = useState<HealthResponse | null>(null);
@@ -217,7 +227,7 @@ export default function App() {
 
   const handleInterrupt = useCallback(async () => {
     if (!selectedThreadId) {
-      setNotice('Select a conversation before interrupting.');
+      setNotice('请先选择一个会话再中断。');
       return;
     }
     try {
@@ -281,7 +291,7 @@ export default function App() {
 
   const selectedTitle = useMemo(() => {
     const thread = threads.find((t) => t.id === selectedThreadId);
-    return thread?.title ? truncate(thread.title, 28) : 'Project Overview';
+    return thread?.title ? truncate(thread.title, 20) : '项目总览';
   }, [threads, selectedThreadId]);
 
   return (
@@ -293,7 +303,7 @@ export default function App() {
       <header className="z-20 shrink-0">
         <MachineHubHeader
           health={health}
-          machineName={loadConnection().name || 'DESKTOP-PC'}
+          machineName={loadConnection().name || '本机电脑'}
           threads={threads}
           selectedThreadId={selectedThreadId}
           engine={engine}
@@ -313,7 +323,7 @@ export default function App() {
       >
         {loading && (
           <div className="mb-3 rounded-2xl bg-white px-4 py-3 text-center text-[13px] text-[#8E8E93]">
-            Connecting to the desktop…
+            正在连接电脑…
           </div>
         )}
 
@@ -322,15 +332,16 @@ export default function App() {
             <div className="min-w-0">
               <p className="truncate text-[13px] font-semibold text-[#1C1C1E]">{selectedTitle}</p>
               <p className="text-[11px] text-[#8E8E93]">
-                {threadStatusKind(status)} · {messages.length} messages
+                {statusText(status)} · {messages.length} 条消息
               </p>
             </div>
             <button
               type="button"
-              aria-label="Refresh"
+              aria-label="刷新"
               onClick={() => void loadMessages(selectedThreadId, false)}
               className={cx(
-                'flex h-8 w-8 items-center justify-center rounded-full bg-[#EFEFF4] text-[#8E8E93]',
+                'flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[#EFEFF4] text-[#8E8E93]',
+                HIT_AREA_44,
                 PRESS,
               )}
             >
@@ -359,7 +370,7 @@ export default function App() {
               PRESS,
             )}
           >
-            {approvals.length} pending approval{approvals.length > 1 ? 's' : ''} · Review
+            {approvals.length} 条待审批 · 查看
           </button>
         )}
 
@@ -378,7 +389,7 @@ export default function App() {
           )}
         >
           <Settings2 size={15} />
-          Switch conversation / pair device
+          切换会话 / 配对设备
         </button>
       </main>
 
@@ -388,7 +399,7 @@ export default function App() {
         onSend={handleSend}
         onInterrupt={handleInterrupt}
         onQuickCommand={handleQuickCommand}
-        onVoice={() => setNotice('Voice input is not available in the browser build yet.')}
+        onVoice={() => setNotice('浏览器版本暂不支持语音输入。')}
         busy={busy}
         readOnly={readOnly}
         disabled={loading}

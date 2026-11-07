@@ -43,7 +43,7 @@ export function AgentStepCard({
     transform: [{ rotate: `${progress.value * 180}deg` }],
   }));
 
-  const label = title || (kind === 'thinking' ? 'AI Thinking...' : 'Terminal Log');
+  const label = title || (kind === 'thinking' ? 'AI 正在思考…' : '终端日志');
 
   return (
     <View style={styles.container}>

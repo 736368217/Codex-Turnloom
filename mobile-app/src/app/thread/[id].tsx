@@ -279,9 +279,9 @@ export default function ThreadScreen() {
       <Stack.Screen options={{ title: thread?.title || '会话详情' }} />
 
       <View style={styles.topRow}>
-        <Badge label={busy ? 'Running' : 'Idle'} tone={busy ? 'blue' : 'neutral'} />
-        {readOnly ? <Badge label="Read only" tone="neutral" /> : null}
-        {cached ? <Badge label="Cache" tone="neutral" /> : null}
+        <Badge label={busy ? '运行中' : '空闲'} tone={busy ? 'blue' : 'neutral'} />
+        {readOnly ? <Badge label="只读模式" tone="neutral" /> : null}
+        {cached ? <Badge label="缓存" tone="neutral" /> : null}
         {approvals.length ? (
           <Pressable onPress={() => approvalRef.current?.present(null)} style={styles.approvalButton}>
             <Text style={styles.approvalButtonText}>{approvals.length} 项待审批</Text>
@@ -292,7 +292,7 @@ export default function ThreadScreen() {
       {authGate ? (
         <Card style={styles.noticeCard}>
           <Text style={styles.noticeTitle}>需要访问码</Text>
-          <Text style={styles.noticeText}>服务器返回 401，请在 Settings / 扫码抽屉重新输入访问码</Text>
+          <Text style={styles.noticeText}>服务器返回 401，请在「设置」或扫码抽屉重新输入访问码</Text>
         </Card>
       ) : null}
       {error ? <Text style={styles.error}>{error}</Text> : null}

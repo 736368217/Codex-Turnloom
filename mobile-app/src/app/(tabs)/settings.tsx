@@ -28,7 +28,7 @@ export default function SettingsScreen() {
 
   return (
     <View style={{ flex: 1, backgroundColor: '#F2F2F7', paddingTop: 64 + insets.top, paddingHorizontal: 20, gap: 12 }}>
-      <Text style={{ fontSize: 30, fontWeight: '700', color: '#1C1C1E' }}>Settings</Text>
+      <Text style={{ fontSize: 30, fontWeight: '700', color: '#1C1C1E' }}>设置</Text>
       <Text style={{ fontSize: 13, color: '#8E8E93' }}>连接配置保存在系统钥匙串（Web 预览为本地存储）</Text>
       <RoundedInput value={serverUrl} onChangeText={setServerUrl} placeholder="http://192.168.1.10:8799" autoCapitalize="none" />
       <RoundedInput value={token} onChangeText={setToken} placeholder="访问码 / token" autoCapitalize="none" secureTextEntry />

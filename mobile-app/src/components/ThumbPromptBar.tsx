@@ -20,7 +20,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { GLASS_TINT, OptionA, THUMB_GLASS_INTENSITY } from '@/constants/optionA';
 
-export const QUICK_PROMPTS = ['检查报错', '查看 Diff', '继续执行', '总结进度'] as const;
+export const QUICK_PROMPTS = ['检查报错', '查看改动 Diff', '继续执行', '运行测试'] as const;
 
 export type ThumbPromptBarProps = {
   busy?: boolean;
@@ -86,7 +86,7 @@ export function ThumbPromptBar({
             <TextInput
               value={value}
               onChangeText={setValue}
-              placeholder="Thumb prompt..."
+              placeholder="输入指令…"
               placeholderTextColor={OptionA.inkSoft}
               editable={!readOnly && !sending}
               multiline={false}
@@ -108,7 +108,7 @@ export function ThumbPromptBar({
                   { backgroundColor: OptionA.red, opacity: readOnly ? 0.45 : pressed ? 0.8 : 1 },
                   pressed && !readOnly && styles.pressed,
                 ]}>
-                <Text style={styles.actionText}>Interrupt</Text>
+                <Text style={styles.actionText}>中断</Text>
               </Pressable>
             ) : (
               <Pressable

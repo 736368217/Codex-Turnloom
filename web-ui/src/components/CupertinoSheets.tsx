@@ -18,7 +18,7 @@ import {
   type HealthResponse,
   type Thread,
 } from '../lib/turnloomApi';
-import { PRESS, StatusPill, relativeTime, truncate } from '../lib/ui';
+import { HIT_AREA_44, PRESS, StatusPill, relativeTime, truncate } from '../lib/ui';
 
 export type SheetKind = 'approval' | 'threads' | 'newTask' | 'scanQr' | 'accessCode' | null;
 
@@ -38,11 +38,11 @@ export interface CupertinoSheetsProps {
 }
 
 const SHEET_TITLES: Record<Exclude<SheetKind, null>, string> = {
-  approval: 'Approve changes',
-  threads: 'Switch conversation',
-  newTask: 'New task',
-  scanQr: 'Scan QR to Pair',
-  accessCode: 'Enter access code',
+  approval: '审批改动',
+  threads: '切换会话',
+  newTask: '新建任务',
+  scanQr: '扫码配对',
+  accessCode: '输入访问码',
 };
 
 function ErrorBox({ message }: { message: string }) {
@@ -56,7 +56,7 @@ function ErrorBox({ message }: { message: string }) {
 function ReadOnlyNote() {
   return (
     <div className="mt-3 rounded-xl bg-[#FF3B30]/5 px-3 py-2.5 text-[12px] text-[#D70015]">
-      Read-only mode — sending and approvals are disabled.
+      只读模式：发送与审批已停用。
     </div>
   );
 }
@@ -100,7 +100,7 @@ export default function CupertinoSheets(props: CupertinoSheetsProps) {
     setError('');
     try {
       await fn();
-      setSuccess('Done');
+      setSuccess('已完成');
       onDone?.();
     } catch (err) {
       // Never close on failure — surface the error inside the sheet.
@@ -130,14 +130,14 @@ export default function CupertinoSheets(props: CupertinoSheetsProps) {
                 {title}
               </Drawer.Title>
               <Drawer.Description className="sr-only">
-                {title} — bottom sheet
+                {title} — 底部抽屉
               </Drawer.Description>
             </div>
             <button
               type="button"
-              aria-label="Close"
+              aria-label="关闭"
               onClick={() => onSheetChange(null)}
-              className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[#EFEFF4] text-[#8E8E93] ${PRESS}`}
+              className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[#EFEFF4] text-[#8E8E93] ${HIT_AREA_44} ${PRESS}`}
             >
               <X size={16} />
             </button>
@@ -153,11 +153,10 @@ export default function CupertinoSheets(props: CupertinoSheetsProps) {
                   <div className="rounded-2xl bg-[#EFEFF4] px-4 py-8 text-center">
                     <CheckCircle2 size={30} className="mx-auto text-[#34C759]" />
                     <p className="mt-3 text-[15px] font-semibold text-[#1C1C1E]">
-                      No pending approvals
+                      暂无待审批
                     </p>
                     <p className="mt-1 text-[12px] leading-relaxed text-[#8E8E93]">
-                      Approvals appear here when the desktop agent requests a command or file
-                      change.
+                      当电脑端代理请求执行命令或改动文件时，审批会显示在这里。
                     </p>
                   </div>
                 ) : (
@@ -165,19 +164,19 @@ export default function CupertinoSheets(props: CupertinoSheetsProps) {
                     <div className="rounded-2xl border border-[#E5E5EA]/60 bg-white p-4 shadow-[0_1px_3px_rgba(0,0,0,0.04)]">
                       <div className="flex items-start justify-between gap-2">
                         <p className="text-[15px] font-semibold text-[#1C1C1E]">
-                          {item.title || 'Approval requested'}
+                          {item.title || '待审批'}
                         </p>
-                        <StatusPill label={item.approvalKind || 'command'} tone="blue" />
+                        <StatusPill label={item.approvalKind === 'command' ? '命令' : '文件改动'} tone="blue" />
                       </div>
                       <p className="mt-3 whitespace-pre-wrap rounded-xl bg-[#EFEFF4] px-3 py-2.5 font-mono text-[11px] leading-relaxed text-[#1C1C1E]">
                         {truncate(item.content, 400)}
                       </p>
                       <p className="mt-2 truncate text-[10px] text-[#8E8E93]">
-                        requestId: {item.requestId}
+                        请求编号：{item.requestId}
                       </p>
                       {approvals.length > 1 && (
                         <p className="mt-1 text-[11px] text-[#8E8E93]">
-                          {approvalIndex + 1} of {approvals.length}
+                          第 {approvalIndex + 1} / {approvals.length} 条
                         </p>
                       )}
                     </div>
@@ -192,7 +191,7 @@ export default function CupertinoSheets(props: CupertinoSheetsProps) {
                       }
                       className={`mt-4 w-full rounded-2xl bg-[#34C759] px-4 py-3.5 text-[15px] font-semibold text-white disabled:opacity-50 ${PRESS}`}
                     >
-                      {submitting ? 'Submitting…' : 'Approve & Apply'}
+                      {submitting ? '提交中…' : '批准并应用'}
                     </button>
                     <button
                       type="button"
@@ -202,7 +201,7 @@ export default function CupertinoSheets(props: CupertinoSheetsProps) {
                       }
                       className={`mt-2 w-full rounded-2xl bg-[#EFEFF4] px-4 py-3.5 text-[15px] font-semibold text-[#1C1C1E] disabled:opacity-50 ${PRESS}`}
                     >
-                      Reject
+                      拒绝
                     </button>
 
                     {approvals.length > 1 && (
@@ -212,13 +211,13 @@ export default function CupertinoSheets(props: CupertinoSheetsProps) {
                         onClick={() => setApprovalIndex((i) => (i + 1) % approvals.length)}
                         className={`mt-2 w-full rounded-2xl bg-white px-4 py-2.5 text-[13px] text-[#007AFF] ${PRESS}`}
                       >
-                        Next approval
+                      下一条审批
                       </button>
                     )}
 
                     {success && !error && (
                       <p className="mt-3 text-center text-[13px] font-medium text-[#248A3D]">
-                        Approval submitted
+                        审批已提交
                       </p>
                     )}
                   </>
@@ -234,7 +233,7 @@ export default function CupertinoSheets(props: CupertinoSheetsProps) {
               <>
                 {threads.length === 0 ? (
                   <div className="rounded-2xl bg-[#EFEFF4] px-4 py-8 text-center text-[13px] text-[#8E8E93]">
-                    No conversations yet. Scan a QR code or start a new task.
+                    暂无会话，扫码配对或新建任务
                   </div>
                 ) : (
                   <List strongIos insetIos>
@@ -244,17 +243,17 @@ export default function CupertinoSheets(props: CupertinoSheetsProps) {
                         kind === 'waiting' ? 'green' : kind === 'running' || kind === 'stale' ? 'blue' : 'gray';
                       const label =
                         kind === 'waiting'
-                          ? 'Merge Request'
+                          ? '待合并'
                           : kind === 'running' || kind === 'stale'
-                            ? 'Active'
-                            : 'Completed';
+                            ? '进行中'
+                            : '已完成';
                       return (
                         <ListItem
                           key={thread.id}
                           component="button"
                           onClick={() => props.onSelectThread(thread.id)}
-                          className={`${PRESS} ${thread.id === selectedThreadId ? 'bg-[#007AFF]/5' : ''}`}
-                          title={thread.title || 'Untitled thread'}
+                          className={`min-h-[44px] ${PRESS} ${thread.id === selectedThreadId ? 'bg-[#007AFF]/5' : ''}`}
+                          title={thread.title || '未命名会话'}
                           text={truncate(thread.preview || '', 60)}
                           after={
                             <span className="flex items-center gap-2">
@@ -272,20 +271,20 @@ export default function CupertinoSheets(props: CupertinoSheetsProps) {
                 <button
                   type="button"
                   onClick={() => onSheetChange('newTask')}
-                  className={`mt-4 flex w-full items-center justify-between rounded-2xl bg-white px-4 py-3.5 text-[14px] font-medium text-[#007AFF] ${PRESS}`}
+                  className={`mt-4 flex min-h-[44px] w-full items-center justify-between rounded-2xl bg-white px-4 py-3.5 text-[14px] font-medium text-[#007AFF] ${PRESS}`}
                 >
                   <span className="flex items-center gap-2">
-                    <Plus size={16} /> New Task
+                    <Plus size={16} /> 新建任务
                   </span>
                   <ChevronRight size={16} />
                 </button>
                 <button
                   type="button"
                   onClick={() => onSheetChange('scanQr')}
-                  className={`mt-2 flex w-full items-center justify-between rounded-2xl bg-white px-4 py-3.5 text-[14px] font-medium text-[#1C1C1E] ${PRESS}`}
+                  className={`mt-2 flex min-h-[44px] w-full items-center justify-between rounded-2xl bg-white px-4 py-3.5 text-[14px] font-medium text-[#1C1C1E] ${PRESS}`}
                 >
                   <span className="flex items-center gap-2">
-                    <QrCode size={16} /> Scan QR to Pair
+                    <QrCode size={16} /> 扫码配对
                   </span>
                   <ChevronRight size={16} />
                 </button>
@@ -301,12 +300,11 @@ export default function CupertinoSheets(props: CupertinoSheetsProps) {
                   value={taskText}
                   onChange={(event) => setTaskText(event.target.value)}
                   rows={4}
-                  placeholder="What should the agent work on?"
+                  placeholder="输入任务内容…"
                   className="w-full resize-none rounded-2xl bg-[#EFEFF4] px-4 py-3 text-[15px] leading-relaxed text-[#1C1C1E] outline-none placeholder:text-[#8E8E93] focus:ring-2 focus:ring-[#007AFF]/20 select-text"
                 />
                 <p className="mt-2 text-[11px] leading-relaxed text-[#8E8E93]">
-                  A new conversation is created on the desktop. In desktop mode this starts a
-                  local draft.
+                  将在电脑端创建新会话；桌面模式下会先生成一份本地草稿。
                 </p>
                 {readOnly && <ReadOnlyNote />}
                 <button
@@ -318,9 +316,9 @@ export default function CupertinoSheets(props: CupertinoSheetsProps) {
                       onSheetChange(null);
                     })
                   }
-                  className={`mt-4 w-full rounded-2xl bg-[#007AFF] px-4 py-3.5 text-[15px] font-semibold text-white disabled:opacity-50 ${PRESS}`}
+                  className={`mt-4 min-h-[44px] w-full rounded-2xl bg-[#007AFF] px-4 py-3.5 text-[15px] font-semibold text-white disabled:opacity-50 ${PRESS}`}
                 >
-                  {submitting ? 'Starting…' : 'Start Task'}
+                  {submitting ? '启动中…' : '开始任务'}
                 </button>
                 {error && <ErrorBox message={error} />}
               </>
@@ -332,30 +330,30 @@ export default function CupertinoSheets(props: CupertinoSheetsProps) {
             {sheet === 'scanQr' && (
               <>
                 <div className="rounded-2xl bg-[#EFEFF4] px-4 py-3">
-                  <p className="text-[12px] font-medium text-[#1C1C1E]">Pairing code format</p>
+                  <p className="text-[12px] font-medium text-[#1C1C1E]">配对码格式</p>
                   <p className="mt-1 break-all font-mono text-[10px] leading-relaxed text-[#8E8E93]">
                     codexpocket://add?name=…&amp;url=…&amp;token=…
                   </p>
                 </div>
                 <p className="mt-3 text-[12px] leading-relaxed text-[#8E8E93]">
-                  Browser camera scanning is unavailable here. Paste the scanned code below.
+                  浏览器无法调用摄像头，请粘贴扫到的配对码
                 </p>
                 <textarea
                   value={qrText}
                   onChange={(event) => setQrText(event.target.value)}
                   rows={3}
-                  placeholder="Paste codexpocket://add?... or a URL with ?token="
+                  placeholder="粘贴 codexpocket://add?… 配对码或带 ?token= 的服务地址"
                   className="mt-2 w-full resize-none rounded-2xl bg-[#EFEFF4] px-4 py-3 font-mono text-[12px] text-[#1C1C1E] outline-none placeholder:text-[#8E8E93] focus:ring-2 focus:ring-[#007AFF]/20 select-text"
                 />
                 <div className="mt-3 rounded-2xl bg-white px-4 py-3 text-[12px] text-[#8E8E93]">
                   <div className="flex justify-between gap-2">
-                    <span>Current backend</span>
+                    <span>当前服务</span>
                     <span className="font-medium text-[#1C1C1E]">
                       {props.health?.backend?.kind ? String(props.health.backend.kind) : '—'}
                     </span>
                   </div>
                   <div className="mt-1 flex justify-between gap-2">
-                    <span>Paired device</span>
+                    <span>已配对设备</span>
                     <span className="font-medium text-[#1C1C1E]">
                       {api.getConnection().name || '—'}
                     </span>
@@ -367,7 +365,7 @@ export default function CupertinoSheets(props: CupertinoSheetsProps) {
                   onClick={() => {
                     const parsed = parsePairingQr(qrText);
                     if (!parsed) {
-                      setError('Invalid pairing code. Expected codexpocket://add?name=&url=&token=');
+                      setError('配对码无效，应为 codexpocket://add?name=&url=&token=');
                       return;
                     }
                     void run(() => props.onPairing(parsed), () => {
@@ -375,16 +373,16 @@ export default function CupertinoSheets(props: CupertinoSheetsProps) {
                       onSheetChange(null);
                     });
                   }}
-                  className={`mt-4 w-full rounded-2xl bg-[#007AFF] px-4 py-3.5 text-[15px] font-semibold text-white disabled:opacity-50 ${PRESS}`}
+                  className={`mt-4 min-h-[44px] w-full rounded-2xl bg-[#007AFF] px-4 py-3.5 text-[15px] font-semibold text-white disabled:opacity-50 ${PRESS}`}
                 >
-                  {submitting ? 'Connecting…' : 'Connect'}
+                  {submitting ? '连接中…' : '连接'}
                 </button>
                 <button
                   type="button"
                   onClick={() => onSheetChange('accessCode')}
-                  className={`mt-2 flex w-full items-center justify-center gap-2 rounded-2xl bg-white px-4 py-3 text-[13px] font-medium text-[#1C1C1E] ${PRESS}`}
+                  className={`mt-2 flex min-h-[44px] w-full items-center justify-center gap-2 rounded-2xl bg-white px-4 py-3 text-[13px] font-medium text-[#1C1C1E] ${PRESS}`}
                 >
-                  <KeyRound size={15} /> Enter access code manually
+                  <KeyRound size={15} /> 手动输入访问码
                 </button>
                 {error && <ErrorBox message={error} />}
               </>
@@ -399,13 +397,13 @@ export default function CupertinoSheets(props: CupertinoSheetsProps) {
                   type="password"
                   value={token}
                   onChange={(event) => setToken(event.target.value)}
-                  placeholder="Access code"
+                  placeholder="访问码"
                   autoComplete="off"
                   className="w-full rounded-2xl bg-[#EFEFF4] px-4 py-3 text-[15px] text-[#1C1C1E] outline-none placeholder:text-[#8E8E93] focus:ring-2 focus:ring-[#007AFF]/20 select-text"
                 />
                 <p className="mt-2 text-[11px] leading-relaxed text-[#8E8E93]">
-                  The code is sent as the <code className="font-mono">x-access-token</code> header
-                  on every request, and exchanged for a session cookie via /api/auth/session.
+                  访问码将作为 <code className="font-mono">x-access-token</code> 请求头发送，
+                  并通过 /api/auth/session 换取会话凭证。
                 </p>
                 <button
                   type="button"
@@ -416,9 +414,9 @@ export default function CupertinoSheets(props: CupertinoSheetsProps) {
                       onSheetChange(null);
                     })
                   }
-                  className={`mt-4 w-full rounded-2xl bg-[#007AFF] px-4 py-3.5 text-[15px] font-semibold text-white disabled:opacity-50 ${PRESS}`}
+                  className={`mt-4 min-h-[44px] w-full rounded-2xl bg-[#007AFF] px-4 py-3.5 text-[15px] font-semibold text-white disabled:opacity-50 ${PRESS}`}
                 >
-                  {submitting ? 'Connecting…' : 'Connect'}
+                  {submitting ? '连接中…' : '连接'}
                 </button>
                 {error && <ErrorBox message={error} />}
               </>

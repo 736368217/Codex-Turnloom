@@ -86,7 +86,7 @@ export async function readPairing(): Promise<PairingConfig | null> {
 
 export async function savePairing(config: PairingConfig): Promise<PairingConfig> {
   const normalized = normalizeServerUrl(config.serverUrl);
-  if (!normalized) throw new Error('Invalid server URL');
+  if (!normalized) throw new Error('服务地址格式不正确，请检查后重试');
   const next: PairingConfig = {
     serverUrl: normalized,
     token: String(config.token || ''),

@@ -32,7 +32,7 @@ export default function RootLayout() {
               <Stack.Screen
                 name="(tabs)"
                 options={{
-                  title: 'Turnloom',
+                  title: '会话总控',
                   // Native iOS large title + chrome-material-light glass header.
                   headerLargeTitle: true,
                   headerBlurEffect: 'systemChromeMaterialLight',

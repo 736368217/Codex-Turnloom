@@ -43,7 +43,7 @@ import type {
 } from './types';
 
 export class AuthRequiredError extends Error {
-  constructor(message = 'Unauthorized — enter the access code') {
+  constructor(message = '需要访问码，请重新输入') {
     super(message);
     this.name = 'AuthRequiredError';
   }
@@ -225,14 +225,14 @@ export class TurnloomClient {
       }
 
       if (response.status === 401) {
-        const message = errorMessage(payload, 'Unauthorized');
+        const message = errorMessage(payload, '需要访问码');
         this.authListeners.forEach((listener) => listener(message));
         throw new AuthRequiredError(message);
       }
       if (!response.ok) {
         throw new TurnloomHttpError(
           response.status,
-          errorMessage(payload, `HTTP ${response.status}`),
+          errorMessage(payload, `网络请求失败（HTTP ${response.status}）`),
           payload
         );
       }

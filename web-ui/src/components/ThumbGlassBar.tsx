@@ -1,6 +1,6 @@
 import { useRef, useState, type KeyboardEvent } from 'react';
 import { Mic, Send, Square, Sparkles } from 'lucide-react';
-import { PRESS, cx } from '../lib/ui';
+import { HIT_AREA_44, PRESS, cx } from '../lib/ui';
 
 export const QUICK_COMMANDS = ['检查报错', '查看改动 Diff', '继续执行', '运行测试'] as const;
 
@@ -32,7 +32,7 @@ export default function ThumbGlassBar({
   busy = false,
   readOnly = false,
   disabled = false,
-  placeholder = 'Thumb prompt...',
+  placeholder = '输入指令…',
 }: ThumbGlassBarProps) {
   const [submitting, setSubmitting] = useState(false);
   const inputRef = useRef<HTMLTextAreaElement | null>(null);
@@ -69,7 +69,7 @@ export default function ThumbGlassBar({
             disabled={blocked}
             onClick={() => onQuickCommand(command)}
             className={cx(
-              'shrink-0 whitespace-nowrap rounded-full border border-[#E5E5EA] bg-white px-3 py-1.5 text-[12px] font-medium text-[#1C1C1E] disabled:opacity-50',
+              'flex min-h-[44px] shrink-0 items-center whitespace-nowrap rounded-full border border-[#E5E5EA] bg-white px-3 text-[12px] font-medium text-[#1C1C1E] disabled:opacity-50',
               PRESS,
             )}
           >
@@ -81,10 +81,11 @@ export default function ThumbGlassBar({
       <div className="flex items-end gap-2">
         <button
           type="button"
-          aria-label="Voice input"
+          aria-label="语音输入"
           onClick={onVoice}
           className={cx(
             'mb-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[#EFEFF4] text-[#8E8E93]',
+            HIT_AREA_44,
             PRESS,
           )}
         >
@@ -117,16 +118,17 @@ export default function ThumbGlassBar({
             )}
           >
             <Square size={14} fill="currentColor" />
-            Interrupt
+            中断
           </button>
         ) : (
           <button
             type="button"
-            aria-label="Send"
+            aria-label="发送"
             disabled={blocked || !value.trim()}
             onClick={() => void submit()}
             className={cx(
               'mb-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[#007AFF] text-white disabled:opacity-40',
+              HIT_AREA_44,
               PRESS,
             )}
           >
@@ -137,7 +139,7 @@ export default function ThumbGlassBar({
 
       {readOnly && (
         <p className="mt-1.5 text-center text-[11px] text-[#D70015]">
-          Read-only mode — sending and interrupts are disabled.
+          只读模式：发送与中断已停用。
         </p>
       )}
     </div>

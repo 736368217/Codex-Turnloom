@@ -46,6 +46,9 @@ a,
 label[for] {
   -webkit-user-select: none;
   user-select: none;
+  /* iOS HIG：所有按钮/链接点击区不小于 44×44，视觉尺寸不受影响。 */
+  min-width: 44px;
+  min-height: 44px;
   transition: transform 150ms ease, opacity 150ms ease, background-color 150ms ease;
 }
 button:active:not(:disabled),

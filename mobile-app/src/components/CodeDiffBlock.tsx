@@ -37,7 +37,7 @@ export function parseUnifiedDiff(raw: string): DiffLine[] {
     });
 }
 
-export function CodeDiffBlock({ diff, title = 'Git Diff', lines, error }: CodeDiffBlockProps) {
+export function CodeDiffBlock({ diff, title = '代码改动', lines, error }: CodeDiffBlockProps) {
   const payload = diff?.payload ?? diff;
   const structuredFiles = payload?.files ?? [];
   const raw = payload?.diff ?? payload?.patch ?? '';

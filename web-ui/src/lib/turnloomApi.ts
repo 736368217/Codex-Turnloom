@@ -211,7 +211,7 @@ export class ApiError extends Error {
 /** Thrown before a request leaves the browser when health.allowWrite === false. */
 export class ReadOnlyError extends ApiError {
   constructor() {
-    super('This server is in read-only mode. Sending, interrupting and approvals are disabled.', 403);
+    super('当前服务为只读模式，发送、中断与审批均已停用。', 403);
     this.name = 'ReadOnlyError';
   }
 }
@@ -477,7 +477,7 @@ export function runningTimeLabel(status?: ThreadStatus | null, now = Date.now())
   if (!status?.thinking || !Number.isFinite(start) || !start || start <= 0) return '';
   const seconds = Math.max(0, Math.floor((now - Number(start)) / 1000));
   const minutes = Math.floor(seconds / 60);
-  return minutes > 0 ? `Running ${minutes}m ${seconds % 60}s` : `Running ${seconds}s`;
+  return minutes > 0 ? `运行中 ${minutes} 分 ${seconds % 60} 秒` : `运行中 ${seconds} 秒`;
 }
 
 export function messageText(message: StreamMessage): string {
@@ -496,7 +496,7 @@ export function approvalItems(messages: StreamMessage[] | undefined): ApprovalIt
     items.push({
       requestId: m.requestId,
       approvalKind: m.approvalKind || 'command',
-      title: m.title || 'Approval requested',
+      title: m.title || '待审批',
       content: messageText(m),
       turnId: m.turnId || null,
     });
@@ -598,9 +598,9 @@ export class TurnloomApi {
     } catch (error) {
       clearTimeout(timer);
       if ((error as Error)?.name === 'AbortError') {
-        throw new ApiError(`Request timed out: ${path}`, 0);
+        throw new ApiError(`请求超时：${path}`, 0);
       }
-      throw new ApiError(`Network error: ${(error as Error)?.message || error}`, 0);
+      throw new ApiError('网络连接失败，请检查服务地址', 0);
     }
     clearTimeout(timer);
 
@@ -629,10 +629,30 @@ export class TurnloomApi {
   }
 
   private errorMessage(body: unknown, response: Response): string {
-    if (body && typeof body === 'object' && 'error' in body) {
-      return String((body as { error: unknown }).error || `HTTP ${response.status}`);
+    const raw =
+      body && typeof body === 'object' && 'error' in body
+        ? String((body as { error: unknown }).error || '')
+        : '';
+    // 统一错误漏斗：把服务端英文错误转成地道中文，避免英文出现在界面上。
+    const known: Record<string, string> = {
+      Unauthorized: '需要访问码',
+      'Method not allowed': '请求方式不支持',
+      'threadId is required': '缺少会话编号',
+      'threadId and path are required': '缺少会话编号或文件路径',
+      'threadId and itemId are required': '缺少会话编号或队列编号',
+      'operation is required': '缺少操作类型',
+      'Image not found': '图片不存在',
+      'Queued image not found': '排队图片不存在',
+      'Queued image not available from HTTP backend': '排队图片暂不可用',
+      'unknown host resource': '未知主机资源',
+      'This endpoint is not supported by the HTTP backend': '当前服务后端不支持该操作',
+      'approval requires explicit confirmation': '该审批需要再次确认',
+    };
+    if (raw && known[raw]) return known[raw];
+    if (raw && !/^HTTP \d+$/.test(raw) && !/[\u4e00-\u9fff]/.test(raw)) {
+      return `请求失败（${response.status}）：${raw}`;
     }
-    return `HTTP ${response.status}`;
+    return raw || `请求失败（${response.status}）`;
   }
 
   private jsonInit(method: string, body?: unknown): RequestInit {
@@ -712,7 +732,7 @@ export class TurnloomApi {
     if (response.status === 304 && this.threadsCache) return this.threadsCache;
     if (response.status === 401) {
       this.onUnauthorized?.();
-      throw new ApiError('Unauthorized', 401, true, await this.safeJson(response));
+      throw new ApiError('需要访问码', 401, true, await this.safeJson(response));
     }
     if (!response.ok) {
       throw new ApiError(this.errorMessage(await this.safeJson(response), response), response.status);
@@ -728,7 +748,7 @@ export class TurnloomApi {
     threadId: string,
     params: { limit?: number; before?: string; history?: 'full' } = {},
   ): Promise<MessagesResponse> {
-    if (!threadId) throw new ApiError('Missing threadId', 400);
+    if (!threadId) throw new ApiError('缺少会话编号', 400);
     const query = new URLSearchParams();
     if (params.limit) query.set('limit', String(params.limit));
     if (params.before) query.set('before', params.before);
@@ -744,7 +764,7 @@ export class TurnloomApi {
    * Returns ONLY {cursor, changed}. Server clamps timeout to 250..30000 ms.
    */
   async waitForChanges(threadId: string, cursor = '', timeout = 25_000): Promise<ChangesResponse> {
-    if (!threadId) throw new ApiError('Missing threadId', 400);
+    if (!threadId) throw new ApiError('缺少会话编号', 400);
     const query = new URLSearchParams({ timeout: String(timeout) });
     if (cursor) query.set('cursor', cursor);
     // +5s headroom over the server's own deadline so a slow reply isn't aborted.
@@ -857,7 +877,7 @@ export class TurnloomApi {
     decision: ApprovalDecision;
   }): Promise<{ ok: boolean; requestId?: string; decision?: string }> {
     this.assertWritable('approval');
-    if (!input.requestId) throw new ApiError('No approval request id found', 400);
+    if (!input.requestId) throw new ApiError('未找到审批请求编号', 400);
     return this.request(
       '/api/approval',
       this.jsonInit('POST', {
@@ -903,20 +923,36 @@ export function startChangePoller(options: ChangePollerOptions): () => void {
   let cursor = options.cursor || '';
   let timer: ReturnType<typeof setTimeout> | null = null;
   const timeout = options.timeout ?? 25_000;
+  // A well-behaved server blocks ~25s per /changes call. If a server answers
+  // immediately with changed:false, back off (1s → 5s) instead of hammering it.
+  let fastIdleDelay = 0;
 
   const tick = async (): Promise<void> => {
     if (stopped) return;
+    const startedAt = Date.now();
     try {
       const result = await api.waitForChanges(options.threadId, cursor, timeout);
       if (stopped) return;
-      if (result.changed) await options.onChanged();
+      const elapsed = Date.now() - startedAt;
+      if (result.changed) {
+        fastIdleDelay = 0;
+        await options.onChanged();
+        cursor = result.cursor || cursor;
+        if (!stopped) schedule(0);
+        return;
+      }
       cursor = result.cursor || cursor;
-      if (!stopped) schedule(0);
+      if (elapsed < 1000) {
+        fastIdleDelay = Math.min(fastIdleDelay ? fastIdleDelay * 2 : 1000, 5000);
+      } else {
+        fastIdleDelay = 0;
+      }
+      if (!stopped) schedule(fastIdleDelay);
     } catch (error) {
       if (stopped) return;
       if (error instanceof ApiError && error.isAuth) {
         options.onUnauthorized?.();
-        return; // hard stop on 401
+        return; // 需要访问码时彻底停止轮询
       }
       options.onError?.(error);
       if (!stopped) schedule(1500);

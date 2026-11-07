@@ -36,11 +36,11 @@ const client = getTurnloomClient();
 type Engine = 'codex' | 'pi';
 
 const STATUS_LABEL = {
-  waiting: 'Waiting',
-  running: 'Active',
-  stale: 'Stale',
-  ended: 'Ended',
-  unknown: 'Active',
+  waiting: '待处理',
+  running: '进行中',
+  stale: '已停滞',
+  ended: '已完成',
+  unknown: '进行中',
 } as const;
 
 const STATUS_TONE = {
@@ -60,7 +60,7 @@ export default function HomeScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState('');
   const [connected, setConnected] = useState(false);
-  const [machineName, setMachineName] = useState('DESKTOP-PC');
+  const [machineName, setMachineName] = useState('de');
   const [readOnly, setReadOnly] = useState(false);
   const [authGate, setAuthGate] = useState(false);
   const [authCode, setAuthCode] = useState('');
@@ -82,7 +82,7 @@ export default function HomeScreen() {
         setThreads([]);
         setConnected(false);
         setAuthGate(false);
-        setError('尚未配对电脑节点，请点击 Scan QR to Pair');
+        setError('尚未配对电脑节点，请点击「扫码配对」');
         return;
       }
       setMachineName(config.machineName || new URL(config.serverUrl).host);
@@ -147,7 +147,7 @@ export default function HomeScreen() {
           style={styles.threadCard}>
           <View style={styles.threadRow}>
             <Text style={styles.threadTitle} numberOfLines={1}>
-              {item.title || 'Untitled thread'}
+              {item.title || '未命名会话'}
             </Text>
             <Text style={styles.chevron}>›</Text>
           </View>
@@ -156,7 +156,7 @@ export default function HomeScreen() {
           </Text>
           <View style={styles.threadFooter}>
             <Badge label={STATUS_LABEL[kind]} tone={STATUS_TONE[kind]} />
-            {item.status?.interactionRequired ? <Badge label="Merge Request" tone="green" /> : null}
+            {item.status?.interactionRequired ? <Badge label="待合并" tone="green" /> : null}
             <Text style={styles.threadMeta}>
               {item.updatedAtMs ? relativeTime(item.updatedAtMs) : `#${index + 1}`}
             </Text>
@@ -181,17 +181,17 @@ export default function HomeScreen() {
         }
         ListHeaderComponent={
           <View style={styles.header}>
-            <Text style={styles.largeTitle}>Turnloom</Text>
+            <Text style={styles.largeTitle}>会话总控</Text>
             <Card style={styles.machineCard}>
               <View style={styles.statusRow}>
                 <Animated.View style={[styles.statusDot, pulseStyle]} />
                 <Text style={styles.statusText}>
-                  {connected ? `${machineName.toUpperCase()} CONNECTED` : 'DESKTOP-PC DISCONNECTED'}
+                  {connected ? `电脑已连接 · ${machineName}` : '电脑离线'}
                 </Text>
-                {readOnly ? <Badge label="Read only" tone="neutral" /> : null}
+                {readOnly ? <Badge label="只读模式" tone="neutral" /> : null}
               </View>
               <Separator />
-              <Text style={styles.fieldLabel}>AGENT ENGINE</Text>
+              <Text style={styles.fieldLabel}>代理引擎</Text>
               <View style={styles.segment}>
                 {(['codex', 'pi'] as Engine[]).map((value) => {
                   const active = engine === value;
@@ -217,7 +217,7 @@ export default function HomeScreen() {
                 })}
               </View>
               <PrimaryButton
-                label="▣  Scan QR to Pair"
+                label="▣  扫码配对"
                 tone="neutral"
                 onPress={() => pairingRef.current?.present()}
                 style={styles.scanButton}
@@ -235,7 +235,7 @@ export default function HomeScreen() {
                     style={{ flex: 1 }}
                   />
                 </View>
-                <Text style={styles.authCodeHint}>扫码或在配对抽屉里填写 token</Text>
+                <Text style={styles.authCodeHint}>扫码或在配对抽屉里填写访问码</Text>
                 <Text style={styles.hiddenValue}>{authCode}</Text>
               </Card>
             ) : null}
@@ -243,9 +243,9 @@ export default function HomeScreen() {
             {error ? <Text style={styles.error}>{error}</Text> : null}
             {loading ? <ActivityIndicator color={OptionA.blue} style={styles.loader} /> : null}
             {!loading && !error && threads.length === 0 ? (
-              <EmptyState title="暂无会话" hint="连接成功后，这里会显示电脑端的真实会话" />
+              <EmptyState title="暂无会话" hint="扫码配对或新建任务后，这里会显示真实会话" />
             ) : null}
-            <Text style={styles.sectionTitle}>TASK THREADS</Text>
+            <Text style={styles.sectionTitle}>任务会话</Text>
           </View>
         }
       />
@@ -259,12 +259,12 @@ export default function HomeScreen() {
 
 function relativeTime(ms: number): string {
   const seconds = Math.max(0, Math.floor((Date.now() - ms) / 1000));
-  if (seconds < 60) return `${seconds}s ago`;
+  if (seconds < 60) return `${seconds} 秒前`;
   const minutes = Math.floor(seconds / 60);
-  if (minutes < 60) return `${minutes}m ago`;
+  if (minutes < 60) return `${minutes} 分钟前`;
   const hours = Math.floor(minutes / 60);
-  if (hours < 24) return `${hours}h ago`;
-  return `${Math.floor(hours / 24)}d ago`;
+  if (hours < 24) return `${hours} 小时前`;
+  return `${Math.floor(hours / 24)} 天前`;
 }
 
 const styles = StyleSheet.create({
