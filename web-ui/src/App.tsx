@@ -423,7 +423,7 @@ export default function App() {
   return (
     <div
       vaul-drawer-wrapper=""
-      className="daylight-canvas relative mx-auto flex h-[100dvh] w-full max-w-[430px] flex-col overflow-hidden text-[#1C1C1E] shadow-2xl select-none"
+      className="relative mx-auto flex h-[100dvh] w-full max-w-[430px] flex-col overflow-hidden text-[#1C1C1E] shadow-2xl select-none"
     >
       {pickerVisible ? (
         <>

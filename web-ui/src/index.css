@@ -16,9 +16,18 @@ body,
 #root {
   height: 100%;
   margin: 0;
-  background: #f2f2f7;
   color: #1c1c1e;
   overscroll-behavior-y: none;
+  /* Option A 日光渐变铺满整个视口（含 WebView 宽屏两侧），
+     避免 WebView 把 CSS 宽度当 1620px 时中间窄栏两侧出现空白/黑边。 */
+  background-color: #eef1f7;
+  background-image:
+    radial-gradient(120% 52% at 2% -4%, rgba(255,255,255,0.98) 0%, rgba(255,255,255,0) 58%),
+    radial-gradient(90% 50% at 100% 0%, rgba(0,122,255,0.14) 0%, rgba(0,122,255,0) 62%),
+    radial-gradient(85% 48% at 92% 88%, rgba(52,199,89,0.10) 0%, rgba(52,199,89,0) 66%),
+    radial-gradient(75% 44% at 0% 76%, rgba(255,205,150,0.16) 0%, rgba(255,205,150,0) 68%),
+    linear-gradient(165deg, #f6f9ff 0%, #eef1f8 40%, #e9eef6 72%, #f3f1f6 100%);
+  background-attachment: fixed;
 }
 
 /* Global hidden scrollbars (visual constitution §3.3). */
@@ -240,3 +249,13 @@ a:active,
 .shiki-block { margin: 8px 0; border-radius: 12px; border: 1px solid #e5e5ea; background: rgba(255,255,255,0.85); overflow-x: auto; box-shadow: inset 0 1px 2px rgba(16,30,60,0.03); }
 .shiki-block pre { margin: 0; padding: 10px 12px; background: transparent !important; border: 0; font-size: 12px; line-height: 1.6; }
 .shiki-fallback { background: #f7f7fa; border: 1px solid #e5e5ea; border-radius: 12px; padding: 10px 12px; overflow-x: auto; margin: 8px 0; font-size: 12px; line-height: 1.55; }
+
+/* WebView / 平板宽屏：内容铺满视口，避免 1620px 宽 WebView 把页面压成中间窄栏。
+   手机（<600px）保持原有手机布局不变。 */
+@media (min-width: 600px) {
+  #root > [vaul-drawer-wrapper] {
+    max-width: none !important;
+    width: 100% !important;
+    box-shadow: none !important;
+  }
+}

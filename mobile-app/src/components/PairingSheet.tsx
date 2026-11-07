@@ -37,6 +37,7 @@ export const PairingSheet = forwardRef<PairingSheetHandle, Props>(function Pairi
 ) {
   const sheetRef = useRef<BottomSheetModal>(null);
   const [permission, requestPermission] = useCameraPermissions();
+  const [sheetOpen, setSheetOpen] = useState(false);
   const [scanned, setScanned] = useState<string | null>(null);
   const [error, setError] = useState('');
   const [manualUrl, setManualUrl] = useState('');
@@ -46,14 +47,17 @@ export const PairingSheet = forwardRef<PairingSheetHandle, Props>(function Pairi
     present: () => {
       setError('');
       setScanned(null);
+      setSheetOpen(true);
       sheetRef.current?.present();
     },
     dismiss: () => sheetRef.current?.dismiss(),
   }));
 
+  // 只在用户真正打开扫码抽屉后才申请相机权限。
+  // 之前在组件挂载时（即切到「终端」Tab 时）就申请，属打扰式权限弹窗。
   useEffect(() => {
-    if (!permission?.granted) void requestPermission().catch(() => undefined);
-  }, [permission?.granted, requestPermission]);
+    if (sheetOpen && !permission?.granted) void requestPermission().catch(() => undefined);
+  }, [sheetOpen, permission?.granted, requestPermission]);
 
   const accept = useCallback(
     async (result: QRParseResult | null, source: string) => {
@@ -77,6 +81,7 @@ export const PairingSheet = forwardRef<PairingSheetHandle, Props>(function Pairi
       ref={sheetRef}
       snapPoints={['62%']}
       enablePanDownToClose
+      onChange={(index) => setSheetOpen(index >= 0)}
       backgroundStyle={styles.sheetBackground}
       handleComponent={() => (
         <View style={styles.handleWrapper}>
@@ -104,8 +109,8 @@ export const PairingSheet = forwardRef<PairingSheetHandle, Props>(function Pairi
             />
           ) : (
             <EmptyState
-              title="相机不可用"
-              hint={Platform.OS === 'web' ? 'Web 预览不支持原生扫码，请使用下方手动输入' : '请授予相机权限后重试'}
+              title={sheetOpen ? '相机尚未授权' : '准备启用相机'}
+              hint={Platform.OS === 'web' ? 'Web 预览不支持原生扫码，请使用下方手动输入' : (sheetOpen ? '请在系统弹窗中允许相机权限' : '打开扫码抽屉后会自动请求相机权限；也可直接使用下方手动输入')}
             />
           )}
           <View style={styles.glassLabel}>
