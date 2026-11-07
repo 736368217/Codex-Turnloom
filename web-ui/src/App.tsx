@@ -267,10 +267,6 @@ export default function App() {
     }
   }, [selectedThreadId, loadMessages, refreshThreads, showError]);
 
-  const handleQuickCommand = useCallback((command: string) => {
-    setDraft(command);
-    setNotice('');
-  }, []);
 
   const handleApprovalSubmit = useCallback(
     async (decision: 'accept' | 'decline', item: ApprovalItem) => {
@@ -394,7 +390,6 @@ export default function App() {
       onValueChange={setDraft}
       onSend={handleSend}
       onInterrupt={handleInterrupt}
-      onQuickCommand={handleQuickCommand}
       onVoice={() => setNotice('浏览器版本暂不支持语音输入。')}
       busy={busy}
       readOnly={readOnly}

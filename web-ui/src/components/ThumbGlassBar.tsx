@@ -2,14 +2,11 @@ import { useRef, useState, type KeyboardEvent } from 'react';
 import { Mic, Send, Square, Sparkles } from 'lucide-react';
 import { HIT_AREA_44, PRESS, cx } from '../lib/ui';
 
-export const QUICK_COMMANDS = ['检查报错', '查看改动 Diff', '继续执行', '运行测试'] as const;
-
 export interface ThumbGlassBarProps {
   value: string;
   onValueChange: (value: string) => void;
   onSend: (message: string) => void | Promise<void>;
   onInterrupt: () => void | Promise<void>;
-  onQuickCommand: (command: string) => void;
   onVoice?: () => void;
   busy?: boolean;
   readOnly?: boolean;
@@ -18,16 +15,16 @@ export interface ThumbGlassBarProps {
 }
 
 /**
- * Bottom thumb-zone glass bar. Idle → blue Send (POST /api/send),
- * running → red Interrupt (POST /api/interrupt).
- * No hamburger, no top nav, no footer — all secondary actions live in sheets.
+ * 底部拇指输入舱。空闲 → 蓝色发送（POST /api/send），
+ * 运行中 → 红色中断（POST /api/interrupt）。
+ * 快捷指令胶囊排已按 v5 规范删减：规范只要求「提供胶囊」却未定义点击行为，
+ * 现有实现仅回填文字属半成品，故整排移除，把空间还给聊天与输入。
  */
 export default function ThumbGlassBar({
   value,
   onValueChange,
   onSend,
   onInterrupt,
-  onQuickCommand,
   onVoice,
   busy = false,
   readOnly = false,
@@ -60,24 +57,6 @@ export default function ThumbGlassBar({
 
   return (
     <div className="z-20 shrink-0 px-3 pt-2">
-      {/* Quick-command capsule row — single-hand reachable, horizontally scrollable. */}
-      <div className="-mx-1 mb-2 flex gap-2 overflow-x-auto px-1 py-0.5">
-        {QUICK_COMMANDS.map((command) => (
-          <button
-            key={command}
-            type="button"
-            disabled={blocked}
-            onClick={() => onQuickCommand(command)}
-            className={cx(
-              'flex min-h-[44px] shrink-0 items-center whitespace-nowrap rounded-full border border-[#E5E5EA] bg-white px-3 text-[12px] font-medium text-[#1C1C1E] disabled:opacity-50',
-              PRESS,
-            )}
-          >
-            {command}
-          </button>
-        ))}
-      </div>
-
       <div className="flex items-end gap-2">
         <button
           type="button"

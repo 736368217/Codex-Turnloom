@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import DOMPurify from 'dompurify';
 import { marked } from 'marked';
+import { motion } from 'motion/react';
 import { ChevronDown, GitBranch, ShieldCheck } from 'lucide-react';
 import {
   approvalItems,
@@ -11,6 +12,7 @@ import {
   type StreamMessage,
 } from '../lib/turnloomApi';
 import { PRESS, cx, truncate } from '../lib/ui';
+import { highlightWithShiki } from '../lib/shikiHighlight';
 
 export interface TaskStreamViewProps {
   messages: StreamMessage[];
@@ -184,9 +186,54 @@ function diffLineClass(line: string): string {
 // Sub-components
 // ---------------------------------------------------------------------------
 
+function decodeEntities(value: string): string {
+  const el = document.createElement('textarea');
+  el.innerHTML = value;
+  return el.value;
+}
+
+/** 官方 Shiki codeToHtml + github-light，本地 bundle，无 CDN。 */
+function ShikiCode({ code, lang }: { code: string; lang?: string }) {
+  const [html, setHtml] = useState('');
+  useEffect(() => {
+    let cancelled = false;
+    void highlightWithShiki(code, lang).then((result) => {
+      if (!cancelled) setHtml(result);
+    });
+    return () => { cancelled = true; };
+  }, [code, lang]);
+  if (html) {
+    return <div className="shiki-block" dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(html) }} />;
+  }
+  return <pre className="shiki-fallback"><code>{code}</code></pre>;
+}
+
 function MarkdownBody({ markdown }: { markdown: string }) {
   const html = useMemo(() => renderMarkdown(markdown), [markdown]);
-  return <div className="md-body" dangerouslySetInnerHTML={{ __html: html }} />;
+  const segments = useMemo(() => {
+    const out: Array<{ type: 'html' | 'code'; value: string; lang?: string }> = [];
+    const re = /<pre><code(?: class="language-([^"]+)")?>([\s\S]*?)<\/code><\/pre>/gi;
+    let last = 0;
+    for (const m of html.matchAll(re)) {
+      const start = m.index || 0;
+      if (start > last) out.push({ type: 'html', value: html.slice(last, start) });
+      out.push({ type: 'code', value: decodeEntities(m[2]).replace(/\n$/, ''), lang: m[1] });
+      last = start + m[0].length;
+    }
+    if (last < html.length) out.push({ type: 'html', value: html.slice(last) });
+    return out;
+  }, [html]);
+  return (
+    <div className="md-body">
+      {segments.map((segment, index) =>
+        segment.type === 'code' ? (
+          <ShikiCode key={`code-${index}`} code={segment.value} lang={segment.lang} />
+        ) : (
+          <div key={`html-${index}`} dangerouslySetInnerHTML={{ __html: segment.value }} />
+        ),
+      )}
+    </div>
+  );
 }
 
 function DiffLines({ lines }: { lines: string[] }) {
@@ -252,7 +299,11 @@ export default function TaskStreamView(props: TaskStreamViewProps) {
   return (
     <div className="space-y-4 px-4 pb-6">
       {/* (A) Collapsible AI Thinking / Terminal Log */}
-      <section className="overflow-hidden rounded-2xl bg-[#EFEFF4]">
+      <motion.section
+        layout
+        transition={{ type: 'spring', stiffness: 320, damping: 32 }}
+        className="overflow-hidden rounded-2xl bg-[#EFEFF4]"
+      >
         <button
           type="button"
           aria-expanded={expanded}
@@ -303,7 +354,7 @@ export default function TaskStreamView(props: TaskStreamViewProps) {
             )}
           </div>
         </div>
-      </section>
+      </motion.section>
 
       {/* (D) 空状态：可操作，引导直接发送或新建对话 */}
       {messages.length === 0 ? (

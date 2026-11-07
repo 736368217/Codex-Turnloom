@@ -1,19 +1,16 @@
 /**
  * 「对话」Tab（默认首屏）：先选终端 → 开始聊天。
- * 顶部只有一行「终端名 + 状态点 + 管理入口」；会话列表已迁到 threads Tab，
- * 扫码/新增/引擎/修改全部收进 monitors（终端）Tab，首屏不再有低频按钮。
- * 中部为聊天/任务流主区，底部为拇指输入舱（含红色「中断」）。
+ * v5：布局改用 NativeWind className；卡片/文字/按钮用 React Native Reusables
+ * 复制式组件（src/components/ui/*）；快捷胶囊排已按简报删除。
  */
 import { FlashList } from '@shopify/flash-list';
 import { router, useFocusEffect } from 'expo-router';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import {
   ActivityIndicator,
   Pressable,
   RefreshControl,
   ScrollView,
-  StyleSheet,
-  Text,
   View,
 } from 'react-native';
 import Animated, {
@@ -26,7 +23,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { OptionA } from '@/constants/optionA';
 import { ThumbPromptBar } from '@/components/ThumbPromptBar';
-import { EmptyState, PrimaryButton } from '@/components/ui';
+import { Button, Card, Text } from '@/components/ui/rnr';
 import {
   BUILTIN_TERMINALS,
   useTerminalSelection,
@@ -41,30 +38,32 @@ const client = getTurnloomClient();
 /** 轻量冷启动页：不是配对大卡片，只有「选一个终端进入」+ 一个文字入口。 */
 function TerminalPicker({ onChoose }: { onChoose: (option: TerminalOption) => void }) {
   return (
-    <View style={pickerStyles.wrap}>
-      <Text style={pickerStyles.title}>选择终端</Text>
-      <Text style={pickerStyles.hint}>选好之后直接进入聊天，之后可在「终端」页随时修改或切换。</Text>
+    <View className="gap-3 pt-3">
+      <Text className="text-[28px] font-bold text-[#1C1C1E]">选择终端</Text>
+      <Text className="text-[13px] leading-[19px] text-[#8E8E93]">
+        选好之后直接进入聊天，之后可在「终端」页随时修改或切换。
+      </Text>
       {BUILTIN_TERMINALS.map((item) => (
         <Pressable
           key={item.id}
           accessibilityRole="button"
           onPress={() => onChoose({ ...item })}
-          style={({ pressed }) => [pickerStyles.row, pressed && pickerStyles.pressed]}>
-          <View style={pickerStyles.dot} />
-          <View style={pickerStyles.copy}>
-            <Text style={pickerStyles.name}>{item.name}</Text>
-            <Text style={pickerStyles.url} numberOfLines={1}>
+          className="min-h-[68px] flex-row items-center gap-3 rounded-2xl border border-[#E5E5EA] bg-white p-4 active:opacity-80">
+          <View className="h-[9px] w-[9px] rounded-full bg-[#34C759]" />
+          <View className="flex-1 gap-[3px]">
+            <Text className="text-[16px] font-semibold text-[#1C1C1E]">{item.name}</Text>
+            <Text className="text-[12px] text-[#8E8E93]" numberOfLines={1}>
               {item.url}
             </Text>
           </View>
-          <Text style={pickerStyles.chevron}>›</Text>
+          <Text className="text-[22px] text-[#8E8E93]">›</Text>
         </Pressable>
       ))}
       <Pressable
         accessibilityRole="button"
         onPress={() => router.push('/(tabs)/monitors')}
-        style={({ pressed }) => [pickerStyles.textButton, pressed && pickerStyles.pressed]}>
-        <Text style={pickerStyles.textButtonLabel}>扫码添加其他终端</Text>
+        className="min-h-[44px] items-center justify-center active:opacity-80">
+        <Text className="text-[14px] font-semibold text-[#007AFF]">扫码添加其他终端</Text>
       </Pressable>
     </View>
   );
@@ -167,21 +166,22 @@ export default function HomeScreen() {
   const renderMessage = useCallback(({ item, index }: { item: Message; index: number }) => {
     const isUser = item.role === 'user';
     return (
-      <View style={[styles.messageRow, isUser && styles.messageRowUser]}>
-        <View style={[styles.messageCard, isUser && styles.messageCardUser]}>
-          <Text style={styles.messageRole}>{item.title || (isUser ? '我' : '代理')}</Text>
-          <Text style={styles.messageText} selectable>
+      <View className={isUser ? 'items-end' : 'items-start'}>
+        <Card
+          className={`max-w-[88%] gap-1 rounded-[14px] p-[10px] ${isUser ? 'bg-[#E5F1FF]' : 'bg-white'}`}>
+          <Text className="text-[11px] font-bold text-[#8E8E93]">{item.title || (isUser ? '我' : '代理')}</Text>
+          <Text className="text-[14px] leading-5 text-[#1C1C1E]" selectable>
             {item.content || ''}
           </Text>
-          <Text style={styles.messageIndex}>#{index + 1}</Text>
-        </View>
+          <Text className="self-end text-[10px] text-[#8E8E93]">#{index + 1}</Text>
+        </Card>
       </View>
     );
   }, []);
 
   if (checking) {
     return (
-      <View style={[styles.screen, styles.centered]}>
+      <View className="flex-1 items-center justify-center bg-[#F2F2F7]">
         <ActivityIndicator color={OptionA.blue} />
       </View>
     );
@@ -189,71 +189,77 @@ export default function HomeScreen() {
 
   if (!terminal) {
     return (
-      <ScrollView style={styles.screen} contentContainerStyle={styles.pickerContent}>
+      <ScrollView className="flex-1 bg-[#F2F2F7]" contentContainerStyle={{ paddingHorizontal: 20, paddingTop: 72, paddingBottom: 112 }}>
         <TerminalPicker onChoose={(option) => void handleChoose(option)} />
       </ScrollView>
     );
   }
 
   return (
-    <View style={styles.screen}>
+    <View className="flex-1 bg-[#F2F2F7]">
       {/* 顶部：一行终端状态 + 一个管理入口，没有扫码/新建/分段器/状态大胶囊。 */}
-      <View style={[styles.topRow, { paddingTop: insets.top + 8 }]}>
-        <Animated.View style={[styles.statusDot, pulseStyle]} />
-        <Text style={styles.terminalName} numberOfLines={1}>
+      <View
+        className="min-h-[44px] flex-row items-center gap-2 bg-[#F2F2F7] px-4 pb-[10px]"
+        style={{ paddingTop: insets.top + 8 }}>
+        <Animated.View className="h-2 w-2 rounded-full bg-[#34C759]" style={pulseStyle} />
+        <Text className="flex-1 text-[13px] font-semibold text-[#1C1C1E]" numberOfLines={1}>
           {machineName || terminal.name}
         </Text>
-        <Text style={styles.statusLabel} numberOfLines={1}>
+        <Text className="text-[13px] text-[#8E8E93]" numberOfLines={1}>
           {connected ? '已连接' : '离线'}
         </Text>
         <Pressable
           accessibilityRole="button"
           accessibilityLabel="管理终端"
           onPress={() => router.push('/(tabs)/monitors')}
-          style={({ pressed }) => [styles.manageButton, pressed && styles.pressed]}>
-          <Text style={styles.manageLabel}>管理</Text>
+          className="min-h-[44px] min-w-[44px] items-center justify-center rounded-xl bg-[#EFEFF4] px-[10px] active:opacity-80">
+          <Text className="text-[13px] font-semibold text-[#007AFF]">管理</Text>
         </Pressable>
       </View>
 
       {authGate ? (
-        <View style={styles.notice}>
-          <Text style={styles.noticeText}>需要访问码，请到「终端」页重新输入</Text>
+        <Card className="mx-4 mb-[6px] flex-row items-center gap-2 bg-[#EFEFF4] p-[10px]">
+          <Text className="flex-1 text-[12px] text-[#8E8E93]">需要访问码，请到「终端」页重新输入</Text>
           <Pressable accessibilityRole="button" onPress={() => router.push('/(tabs)/monitors')}>
-            <Text style={styles.noticeLink}>去处理 ›</Text>
+            <Text className="text-[13px] font-semibold text-[#007AFF]">去处理 ›</Text>
           </Pressable>
-        </View>
+        </Card>
       ) : null}
-      {error ? <Text style={styles.error}>{error}</Text> : null}
+      {error ? <Text className="px-4 pb-[6px] text-[12px] text-[#D70015]">{error}</Text> : null}
       {loading && messages.length === 0 ? (
-        <View style={styles.centered}>
+        <View className="items-center justify-center p-6">
           <ActivityIndicator color={OptionA.blue} />
         </View>
       ) : null}
 
-      {/* 中部聊天主区：flex:1 占满可用高度，是首屏主角。 */}
-      <View style={styles.chatArea}>
+      {/* 中部聊天主区：flex-1 占满可用高度，是首屏主角。 */}
+      <View className="min-h-0 flex-1">
         <FlashList
           data={messages}
           renderItem={renderMessage}
           keyExtractor={(item, index) => `${item.turnId || 'm'}-${item.lineNumber ?? index}-${index}`}
           showsVerticalScrollIndicator={false}
-          contentContainerStyle={styles.chatContent}
-          ItemSeparatorComponent={() => <View style={{ height: 8 }} />}
+          contentContainerStyle={{ paddingHorizontal: 16, paddingTop: 8, paddingBottom: 16 }}
+          ItemSeparatorComponent={() => <View className="h-2" />}
           refreshControl={
             <RefreshControl refreshing={refreshing} onRefresh={() => void load(true)} tintColor={OptionA.blue} />
           }
           ListEmptyComponent={
             loading ? null : (
-              <EmptyState
-                title={error ? '暂时无法加载消息' : '还没有消息'}
-                hint={error ? '下拉刷新重试，或到「终端」页检查连接' : '在下方输入指令开始聊天，或到「会话」页选择已有对话'}
-              />
+              <View className="items-center py-7">
+                <Text className="text-[15px] font-semibold text-[#1C1C1E]">
+                  {error ? '暂时无法加载消息' : '还没有消息'}
+                </Text>
+                <Text className="mt-2 text-center text-[13px] text-[#8E8E93]">
+                  {error ? '下拉刷新重试，或到「终端」页检查连接' : '在下方输入指令开始聊天，或到「会话」页选择已有对话'}
+                </Text>
+              </View>
             )
           }
         />
       </View>
 
-      {/* 底部拇指舱：快捷胶囊 + 输入 + 发送 / 红色中断。 */}
+      {/* 底部拇指舱：输入 + 发送 / 红色中断（无快捷胶囊排）。 */}
       <ThumbPromptBar
         busy={busy}
         readOnly={readOnly}
@@ -280,98 +286,14 @@ export default function HomeScreen() {
             setError(caught instanceof Error ? caught.message : String(caught));
           }
         }}
-        onQuickPrompt={(prompt) => void prompt}
       />
 
       {/* 无会话时的兜底引导按钮位于聊天空态之后，不是首屏常驻低频按钮。 */}
       {!loading && !messages.length && !error ? (
-        <PrimaryButton label="从会话列表选择" tone="neutral" onPress={() => router.push('/(tabs)/threads')} style={styles.fallbackButton} />
+        <Button variant="secondary" onPress={() => router.push('/(tabs)/threads')} className="mx-4 mb-1">
+          <Text className="text-[15px] font-semibold text-[#1C1C1E]">从会话列表选择</Text>
+        </Button>
       ) : null}
     </View>
   );
 }
-
-const pickerStyles = StyleSheet.create({
-  wrap: { gap: 12, paddingTop: 12 },
-  title: { fontSize: 28, fontWeight: '700', color: OptionA.ink },
-  hint: { fontSize: 13, lineHeight: 19, color: OptionA.inkSoft },
-  row: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-    minHeight: 68,
-    padding: 16,
-    borderRadius: 16,
-    backgroundColor: OptionA.card,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: OptionA.separator,
-  },
-  dot: { width: 9, height: 9, borderRadius: 999, backgroundColor: OptionA.green },
-  copy: { flex: 1, gap: 3 },
-  name: { fontSize: 16, fontWeight: '600', color: OptionA.ink },
-  url: { fontSize: 12, color: OptionA.inkSoft },
-  chevron: { fontSize: 22, color: OptionA.inkSoft },
-  textButton: { minHeight: 44, alignItems: 'center', justifyContent: 'center' },
-  textButtonLabel: { fontSize: 14, fontWeight: '600', color: OptionA.blue },
-  pressed: { opacity: 0.8, transform: [{ scale: 0.98 }] },
-});
-
-const styles = StyleSheet.create({
-  screen: { flex: 1, backgroundColor: OptionA.canvas },
-  centered: { alignItems: 'center', justifyContent: 'center', padding: 24 },
-  pickerContent: { paddingHorizontal: 20, paddingTop: 72, paddingBottom: 112 },
-  topRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    paddingHorizontal: 16,
-    paddingBottom: 10,
-    minHeight: 44,
-    backgroundColor: OptionA.canvas,
-  },
-  statusDot: { width: 8, height: 8, borderRadius: 999, backgroundColor: OptionA.green },
-  terminalName: { flex: 1, fontSize: 13, fontWeight: '600', color: OptionA.ink },
-  statusLabel: { fontSize: 13, color: OptionA.inkSoft },
-  manageButton: {
-    minWidth: 44,
-    minHeight: 44,
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: 10,
-    borderRadius: 12,
-    backgroundColor: OptionA.fill,
-  },
-  manageLabel: { fontSize: 13, fontWeight: '600', color: OptionA.blue },
-  pressed: { opacity: 0.8, transform: [{ scale: 0.98 }] },
-  notice: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    marginHorizontal: 16,
-    marginBottom: 6,
-    padding: 10,
-    borderRadius: 12,
-    backgroundColor: OptionA.fill,
-  },
-  noticeText: { flex: 1, fontSize: 12, color: OptionA.inkSoft },
-  noticeLink: { fontSize: 13, fontWeight: '600', color: OptionA.blue },
-  error: { fontSize: 12, color: OptionA.redInk, paddingHorizontal: 16, paddingBottom: 6 },
-  chatArea: { flex: 1, minHeight: 0 },
-  chatContent: { paddingHorizontal: 16, paddingTop: 8, paddingBottom: 16 },
-  messageRow: { alignItems: 'flex-start' },
-  messageRowUser: { alignItems: 'flex-end' },
-  messageCard: {
-    maxWidth: '88%',
-    backgroundColor: OptionA.card,
-    borderRadius: 14,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: OptionA.separator,
-    padding: 10,
-    gap: 4,
-  },
-  messageCardUser: { backgroundColor: '#E5F1FF' },
-  messageRole: { fontSize: 11, fontWeight: '700', color: OptionA.inkSoft },
-  messageText: { fontSize: 14, lineHeight: 20, color: OptionA.ink },
-  messageIndex: { fontSize: 10, color: OptionA.inkSoft, alignSelf: 'flex-end' },
-  fallbackButton: { marginHorizontal: 16, marginBottom: 4 },
-});

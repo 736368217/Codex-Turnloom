@@ -1,25 +1,16 @@
 /**
- * 「终端」Tab（route 名沿用 monitors，避免改动 _layout）。
- * 用户说的「一个地方」：已保存终端、切换、扫码新增、修改名称/地址/访问码、
- * 引擎 Codex CLI / Pi Agent、连接状态、重新输入访问码，全部集中在此页。
- * 首屏（对话 Tab）不再出现任何连接/配对/新增按钮。
+ * 「终端」Tab（route 名沿用 monitors）：低频能力唯一归口。
+ * v5：NativeWind className + React Native Reusables 复制式 Card/Button/Text/Input/Badge。
  */
 import { router, useFocusEffect } from 'expo-router';
 import * as Haptics from 'expo-haptics';
-import { useCallback, useEffect, useRef, useState } from 'react';
-import {
-  ActivityIndicator,
-  Pressable,
-  ScrollView,
-  StyleSheet,
-  Text,
-  View,
-} from 'react-native';
+import { useCallback, useRef, useState } from 'react';
+import { ActivityIndicator, Pressable, ScrollView, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { OptionA } from '@/constants/optionA';
 import { PairingSheet, type PairingSheetHandle } from '@/components/PairingSheet';
-import { Badge, Card, PrimaryButton, RoundedInput, SectionLabel } from '@/components/ui';
+import { Badge, Button, Card, Input, Text } from '@/components/ui/rnr';
 import { useEnginePreference, type Engine } from '@/services/appState';
 import { localGet, localSet } from '@/services/localStore';
 import { savePairing, type QRParseResult } from '@/services/pairing';
@@ -73,11 +64,7 @@ export default function TerminalsScreen() {
 
   const handlePaired = useCallback(
     async (result: QRParseResult) => {
-      await savePairing({
-        serverUrl: result.serverUrl,
-        token: result.token,
-        machineName: result.machineName,
-      });
+      await savePairing({ serverUrl: result.serverUrl, token: result.token, machineName: result.machineName });
       await client.refreshConfig();
       if (result.token) await client.exchangeAuthSession(result.token).catch(() => undefined);
       setMessage('终端已添加');
@@ -112,38 +99,46 @@ export default function TerminalsScreen() {
 
   return (
     <ScrollView
-      style={styles.screen}
-      contentContainerStyle={[styles.content, { paddingTop: insets.top + 16 }]}
+      className="flex-1 bg-[#F2F2F7]"
+      contentContainerStyle={{ paddingHorizontal: 16, paddingTop: insets.top + 16, paddingBottom: 120, gap: 10 }}
       showsVerticalScrollIndicator={false}>
-      <Text style={styles.title}>终端</Text>
-      <Text style={styles.lead}>切换、新增、修改与连接设置都在这里，日常聊天无需再来。</Text>
+      <Text className="text-[28px] font-bold text-[#1C1C1E]">终端</Text>
+      <Text className="pb-[6px] text-[13px] leading-[19px] text-[#8E8E93]">
+        切换、新增、修改与连接设置都在这里，日常聊天无需再来。
+      </Text>
 
-      <Card style={styles.card}>
-        <View style={styles.row}>
-          <View style={[styles.dot, { backgroundColor: connected ? OptionA.green : OptionA.red }]} />
-          <View style={styles.copy}>
-            <Text style={styles.name} numberOfLines={1}>
+      <Card className="gap-[10px] p-[14px]">
+        <View className="flex-row items-center gap-[10px]">
+          <View className={`h-[9px] w-[9px] rounded-full ${connected ? 'bg-[#34C759]' : 'bg-[#FF3B30]'}`} />
+          <View className="flex-1 gap-[2px]">
+            <Text className="text-[15px] font-semibold text-[#1C1C1E]" numberOfLines={1}>
               {machineName || '本机 · de'}
             </Text>
-            <Text style={styles.url} numberOfLines={1}>
+            <Text className="text-[12px] text-[#8E8E93]" numberOfLines={1}>
               {serverUrl || 'http://192.168.1.10:8787'}
             </Text>
           </View>
           {connected === null ? (
             <ActivityIndicator color={OptionA.blue} />
           ) : (
-            <Badge label={connected ? '已连接' : '离线'} tone={connected ? 'green' : 'neutral'} />
+            <Badge variant={connected ? 'default' : 'secondary'}>
+              <Text className="text-[12px] font-semibold text-[#007AFF]">{connected ? '已连接' : '离线'}</Text>
+            </Badge>
           )}
         </View>
-        <View style={styles.actions}>
-          <PrimaryButton label="切换并使用" onPress={() => void switchTo()} style={styles.action} />
-          <PrimaryButton label="测试连接" tone="neutral" onPress={() => void checkConnection()} style={styles.action} />
+        <View className="flex-row gap-[10px]">
+          <Button onPress={() => void switchTo()} className="flex-1">
+            <Text className="text-[15px] font-semibold text-white">切换并使用</Text>
+          </Button>
+          <Button variant="secondary" onPress={() => void checkConnection()} className="flex-1">
+            <Text className="text-[15px] font-semibold text-[#1C1C1E]">测试连接</Text>
+          </Button>
         </View>
       </Card>
 
-      <SectionLabel>代理引擎</SectionLabel>
-      <Card style={styles.card}>
-        <View style={styles.segment}>
+      <Text className="mb-2 text-[13px] font-semibold uppercase tracking-[0.6px] text-[#8E8E93]">代理引擎</Text>
+      <Card className="gap-[10px] p-[14px]">
+        <View className="flex-row gap-[3px] rounded-xl bg-[#EFEFF4] p-[3px]">
           {(['codex', 'pi'] as Engine[]).map((value) => {
             const active = engine === value;
             return (
@@ -155,28 +150,25 @@ export default function TerminalsScreen() {
                   void Haptics.selectionAsync();
                   setEngine(value);
                 }}
-                style={({ pressed }) => [styles.segmentItem, active && styles.segmentActive, pressed && styles.pressed]}>
-                <Text style={[styles.segmentText, active && styles.segmentTextActive]}>
+                className={`min-h-[44px] flex-1 items-center justify-center rounded-[10px] active:opacity-80 ${active ? 'bg-white' : ''}`}>
+                <Text className={`text-[14px] ${active ? 'font-bold text-[#1C1C1E]' : 'font-medium text-[#8E8E93]'}`}>
                   {value === 'codex' ? 'Codex CLI' : 'Pi Agent'}
                 </Text>
               </Pressable>
             );
           })}
         </View>
-        <Text style={styles.hint}>技术标识保留，选择只影响显示偏好，不会改动服务端配置。</Text>
+        <Text className="text-[12px] leading-[17px] text-[#8E8E93]">
+          技术标识保留，选择只影响显示偏好，不会改动服务端配置。
+        </Text>
       </Card>
 
-      <SectionLabel>修改终端信息</SectionLabel>
-      <Card style={styles.card}>
+      <Text className="mb-2 text-[13px] font-semibold uppercase tracking-[0.6px] text-[#8E8E93]">修改终端信息</Text>
+      <Card className="gap-[10px] p-[14px]">
         {editing ? (
-          <View style={styles.form}>
-            <RoundedInput
-              value={machineName}
-              onChangeText={setMachineName}
-              placeholder="终端名称"
-              autoCapitalize="none"
-            />
-            <RoundedInput
+          <View className="gap-2">
+            <Input value={machineName} onChangeText={setMachineName} placeholder="终端名称" autoCapitalize="none" />
+            <Input
               value={serverUrl}
               onChangeText={setServerUrl}
               placeholder="http://192.168.1.10:8787"
@@ -184,7 +176,7 @@ export default function TerminalsScreen() {
               autoCorrect={false}
               keyboardType="url"
             />
-            <RoundedInput
+            <Input
               value={token}
               onChangeText={setToken}
               placeholder="访问码"
@@ -192,61 +184,35 @@ export default function TerminalsScreen() {
               autoCorrect={false}
               secureTextEntry
             />
-            <View style={styles.actions}>
-              <PrimaryButton label="保存" onPress={() => void saveEdit()} style={styles.action} />
-              <PrimaryButton label="取消" tone="neutral" onPress={() => setEditing(false)} style={styles.action} />
+            <View className="flex-row gap-[10px]">
+              <Button onPress={() => void saveEdit()} className="flex-1">
+                <Text className="text-[15px] font-semibold text-white">保存</Text>
+              </Button>
+              <Button variant="secondary" onPress={() => setEditing(false)} className="flex-1">
+                <Text className="text-[15px] font-semibold text-[#1C1C1E]">取消</Text>
+              </Button>
             </View>
           </View>
         ) : (
-          <PrimaryButton label="修改名称 / 地址 / 访问码" tone="neutral" onPress={() => setEditing(true)} />
+          <Button variant="secondary" onPress={() => setEditing(true)}>
+            <Text className="text-[15px] font-semibold text-[#1C1C1E]">修改名称 / 地址 / 访问码</Text>
+          </Button>
         )}
       </Card>
 
-      <SectionLabel>新增终端</SectionLabel>
-      <Card style={styles.card}>
-        <PrimaryButton label="扫码添加终端" onPress={() => pairingRef.current?.present()} />
-        <Text style={styles.hint}>粘贴 codexpocket://add?… 配对码，或手动输入服务地址与访问码。</Text>
+      <Text className="mb-2 text-[13px] font-semibold uppercase tracking-[0.6px] text-[#8E8E93]">新增终端</Text>
+      <Card className="gap-[10px] p-[14px]">
+        <Button onPress={() => pairingRef.current?.present()}>
+          <Text className="text-[15px] font-semibold text-white">扫码添加终端</Text>
+        </Button>
+        <Text className="text-[12px] leading-[17px] text-[#8E8E93]">
+          粘贴 codexpocket://add?… 配对码，或手动输入服务地址与访问码。
+        </Text>
       </Card>
 
-      {message ? <Text style={styles.message}>{message}</Text> : null}
+      {message ? <Text className="py-[6px] text-[13px] text-[#248A3D]">{message}</Text> : null}
 
       <PairingSheet ref={pairingRef} onPaired={handlePaired} />
     </ScrollView>
   );
 }
-
-const styles = StyleSheet.create({
-  screen: { flex: 1, backgroundColor: OptionA.canvas },
-  content: { paddingHorizontal: 16, paddingBottom: 120, gap: 10 },
-  title: { fontSize: 28, fontWeight: '700', color: OptionA.ink },
-  lead: { fontSize: 13, lineHeight: 19, color: OptionA.inkSoft, paddingBottom: 6 },
-  card: { padding: 14, gap: 10 },
-  row: { flexDirection: 'row', alignItems: 'center', gap: 10 },
-  dot: { width: 9, height: 9, borderRadius: 999 },
-  copy: { flex: 1, gap: 2 },
-  name: { fontSize: 15, fontWeight: '600', color: OptionA.ink },
-  url: { fontSize: 12, color: OptionA.inkSoft },
-  actions: { flexDirection: 'row', gap: 10 },
-  action: { flex: 1 },
-  segment: {
-    flexDirection: 'row',
-    backgroundColor: OptionA.fill,
-    borderRadius: 12,
-    padding: 3,
-    gap: 3,
-  },
-  segmentItem: {
-    flex: 1,
-    minHeight: 44,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderRadius: 10,
-  },
-  segmentActive: { backgroundColor: OptionA.card, shadowColor: 'rgba(0,0,0,0.08)', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 1, shadowRadius: 2 },
-  segmentText: { fontSize: 14, color: OptionA.inkSoft, fontWeight: '500' },
-  segmentTextActive: { color: OptionA.ink, fontWeight: '700' },
-  pressed: { opacity: 0.8, transform: [{ scale: 0.98 }] },
-  hint: { fontSize: 12, lineHeight: 17, color: OptionA.inkSoft },
-  form: { gap: 8 },
-  message: { fontSize: 13, color: OptionA.greenInk, paddingVertical: 6 },
-});
