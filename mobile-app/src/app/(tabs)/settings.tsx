@@ -43,7 +43,7 @@ export default function SettingsScreen() {
 
   return (
     <ScrollView
-      className="flex-1 bg-[#F2F2F7]"
+      className="flex-1 bg-transparent"
       contentContainerStyle={{ paddingHorizontal: 20, paddingTop: insets.top + 16, paddingBottom: 120, gap: 10 }}
       showsVerticalScrollIndicator={false}>
       <Text className="pb-[6px] text-[28px] font-bold text-[#1C1C1E]">设置</Text>

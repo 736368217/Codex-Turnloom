@@ -168,12 +168,16 @@ export default function HomeScreen() {
     return (
       <View className={isUser ? 'items-end' : 'items-start'}>
         <Card
-          className={`max-w-[88%] gap-1 rounded-[14px] p-[10px] ${isUser ? 'bg-[#E5F1FF]' : 'bg-white'}`}>
-          <Text className="text-[11px] font-bold text-[#8E8E93]">{item.title || (isUser ? '我' : '代理')}</Text>
-          <Text className="text-[14px] leading-5 text-[#1C1C1E]" selectable>
+          className={`max-w-[88%] gap-1 p-[12px] ${isUser
+            ? 'rounded-[20px] rounded-br-[7px] border-[#007AFF]/20 bg-[#007AFF]'
+            : 'rounded-[20px] rounded-bl-[7px] bg-white/95'}`}>
+          <Text className={`text-[11px] font-bold ${isUser ? 'text-white/75' : 'text-[#8E8E93]'}`}>
+            {item.title || (isUser ? '我' : '代理')}
+          </Text>
+          <Text className={`text-[14px] leading-5 ${isUser ? 'text-white' : 'text-[#1C1C1E]'}`} selectable>
             {item.content || ''}
           </Text>
-          <Text className="self-end text-[10px] text-[#8E8E93]">#{index + 1}</Text>
+          <Text className={`self-end text-[10px] ${isUser ? 'text-white/60' : 'text-[#8E8E93]'}`}>#{index + 1}</Text>
         </Card>
       </View>
     );
@@ -181,7 +185,7 @@ export default function HomeScreen() {
 
   if (checking) {
     return (
-      <View className="flex-1 items-center justify-center bg-[#F2F2F7]">
+      <View className="flex-1 items-center justify-center bg-transparent">
         <ActivityIndicator color={OptionA.blue} />
       </View>
     );
@@ -189,32 +193,41 @@ export default function HomeScreen() {
 
   if (!terminal) {
     return (
-      <ScrollView className="flex-1 bg-[#F2F2F7]" contentContainerStyle={{ paddingHorizontal: 20, paddingTop: 72, paddingBottom: 112 }}>
+      <ScrollView className="flex-1 bg-transparent" contentContainerStyle={{ paddingHorizontal: 20, paddingTop: 72, paddingBottom: 112 }}>
         <TerminalPicker onChoose={(option) => void handleChoose(option)} />
       </ScrollView>
     );
   }
 
   return (
-    <View className="flex-1 bg-[#F2F2F7]">
-      {/* 顶部：一行终端状态 + 一个管理入口，没有扫码/新建/分段器/状态大胶囊。 */}
-      <View
-        className="min-h-[44px] flex-row items-center gap-2 bg-[#F2F2F7] px-4 pb-[10px]"
-        style={{ paddingTop: insets.top + 8 }}>
-        <Animated.View className="h-2 w-2 rounded-full bg-[#34C759]" style={pulseStyle} />
-        <Text className="flex-1 text-[13px] font-semibold text-[#1C1C1E]" numberOfLines={1}>
-          {machineName || terminal.name}
+    <View className="flex-1 bg-transparent">
+      {/* Option A · iOS 大标题 + 玻璃机器状态栏 */}
+      <View className="px-5 pb-3" style={{ paddingTop: insets.top + 10 }}>
+        <Text className="text-[11px] font-bold uppercase tracking-[2px] text-[#8E8E93]">
+          Codex-Turnloom
         </Text>
-        <Text className="text-[13px] text-[#8E8E93]" numberOfLines={1}>
-          {connected ? '已连接' : '离线'}
+        <Text className="mt-1 text-[30px] font-bold leading-[34px] tracking-[-1px] text-[#1C1C1E]">
+          会话总控
         </Text>
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel="管理终端"
-          onPress={() => router.push('/(tabs)/monitors')}
-          className="min-h-[44px] min-w-[44px] items-center justify-center rounded-xl bg-[#EFEFF4] px-[10px] active:opacity-80">
-          <Text className="text-[13px] font-semibold text-[#007AFF]">管理</Text>
-        </Pressable>
+        <Text className="mt-1 text-[12px] text-[#8E8E93]">
+          日光 · 苹果雾白 · 远程指挥你的电脑
+        </Text>
+        <View className="mt-3 flex-row items-center gap-2 rounded-full border border-white/90 bg-white/60 px-3 py-2">
+          <Animated.View className="h-2 w-2 rounded-full bg-[#34C759]" style={pulseStyle} />
+          <Text className="flex-1 text-[12px] font-semibold text-[#248A3D]" numberOfLines={1}>
+            {connected ? '电脑已连接' : '电脑离线'}
+          </Text>
+          <Text className="text-[11px] text-[#8E8E93]" numberOfLines={1}>
+            {machineName || terminal.name}
+          </Text>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="管理终端"
+            onPress={() => router.push('/(tabs)/monitors')}
+            className="min-h-[44px] min-w-[44px] items-center justify-center rounded-full bg-white/80 px-[10px] active:opacity-80">
+            <Text className="text-[13px] font-semibold text-[#007AFF]">管理</Text>
+          </Pressable>
+        </View>
       </View>
 
       {authGate ? (
