@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { RefreshCw } from 'lucide-react';
+import { MessageSquare, RefreshCw } from 'lucide-react';
 import {
   api,
   ApiError,
@@ -449,9 +449,7 @@ export default function App() {
                   <div className="ios-card mb-4 flex items-center justify-between gap-3 px-4 py-3">
                     <div className="flex min-w-0 items-center gap-3">
                       <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-[13px] bg-[#007AFF]/12 text-[#007AFF]">
-                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                          <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
-                        </svg>
+                        <MessageSquare size={18} strokeWidth={2} aria-hidden="true" />
                       </span>
                       <div className="min-w-0">
                         <p className="truncate text-[15px] font-semibold text-[#1C1C1E]">{selectedTitle}</p>

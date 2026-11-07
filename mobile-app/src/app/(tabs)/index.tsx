@@ -5,6 +5,7 @@
  */
 import { FlashList } from '@shopify/flash-list';
 import { router, useFocusEffect } from 'expo-router';
+import { SymbolView } from 'expo-symbols';
 import { useCallback, useEffect, useState } from 'react';
 import {
   ActivityIndicator,
@@ -56,7 +57,7 @@ function TerminalPicker({ onChoose }: { onChoose: (option: TerminalOption) => vo
               {item.url}
             </Text>
           </View>
-          <Text className="text-[22px] text-[#8E8E93]">›</Text>
+          <SymbolView name={{ ios: 'chevron.right', android: 'chevron_right', web: 'chevron_right' }} size={20} tintColor="#8E8E93" />
         </Pressable>
       ))}
       <Pressable
@@ -234,7 +235,8 @@ export default function HomeScreen() {
         <Card className="mx-4 mb-[6px] flex-row items-center gap-2 bg-[#EFEFF4] p-[10px]">
           <Text className="flex-1 text-[12px] text-[#8E8E93]">需要访问码，请到「终端」页重新输入</Text>
           <Pressable accessibilityRole="button" onPress={() => router.push('/(tabs)/monitors')}>
-            <Text className="text-[13px] font-semibold text-[#007AFF]">去处理 ›</Text>
+            <Text className="text-[13px] font-semibold text-[#007AFF]">去处理</Text>
+            <SymbolView name={{ ios: 'chevron.right', android: 'chevron_right', web: 'chevron_right' }} size={13} tintColor="#007AFF" />
           </Pressable>
         </Card>
       ) : null}

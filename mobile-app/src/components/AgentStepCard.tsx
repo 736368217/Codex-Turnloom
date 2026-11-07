@@ -5,6 +5,7 @@
 import { useEffect, useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import Animated, { useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
+import { SymbolView } from 'expo-symbols';
 
 import { OptionA } from '@/constants/optionA';
 
@@ -59,7 +60,9 @@ export function AgentStepCard({
         <Text style={styles.timer} numberOfLines={1}>
           {status || timer || (expanded ? '' : '收起')}
         </Text>
-        <Animated.Text style={[styles.chevron, chevronStyle]}>⌄</Animated.Text>
+        <Animated.View style={[styles.chevron, chevronStyle]}>
+          <SymbolView name={{ ios: 'chevron.down', android: 'arrow_drop_down', web: 'arrow_drop_down' }} size={18} tintColor={OptionA.inkSoft} />
+        </Animated.View>
       </Pressable>
 
       {/* Hidden measurement copy keeps the animated height exact. */}
@@ -121,9 +124,11 @@ const styles = StyleSheet.create({
     maxWidth: 130,
   },
   chevron: {
-    fontSize: 16,
-    color: OptionA.inkSoft,
+    width: 18,
+    height: 18,
     marginLeft: 4,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   measure: {
     position: 'absolute',
