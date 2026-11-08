@@ -25,7 +25,7 @@ import { PRESS, cx, truncate } from './lib/ui';
 import MachineHubHeader from './components/MachineHubHeader';
 import ChatDetailHeader from './components/ChatDetailHeader';
 import TaskStreamView from './components/TaskStreamView';
-import ThumbGlassBar, { type SendPayload } from './components/ThumbGlassBar';
+import ThumbGlassBar, { type QueuedItem, type SendPayload } from './components/ThumbGlassBar';
 import GlassTabBar, { type TabKey } from './components/GlassTabBar';
 import CupertinoSheets, { type SheetKind } from './components/CupertinoSheets';
 import {
@@ -391,16 +391,51 @@ export default function App() {
     return thread?.title ? truncate(thread.title, 20) : '项目总览';
   }, [threads, selectedThreadId]);
 
+  const queuedMessages = useMemo(
+    () => (Array.isArray(status?.queuedMessages) ? (status!.queuedMessages as QueuedItem[]) : []),
+    [status],
+  );
+
+  const handleQueueAction = useCallback(
+    async (action: 'steer' | 'cancel', itemId: string) => {
+      if (!selectedThreadId || !itemId) return;
+      try {
+        await api.queueAction(action, { threadId: selectedThreadId, itemId });
+        await loadMessages(selectedThreadId, false);
+        await refreshThreads();
+      } catch (error) {
+        if (error instanceof ApiError && error.isAuth) setSheet('accessCode');
+        showError(error);
+      }
+    },
+    [selectedThreadId, loadMessages, refreshThreads, showError],
+  );
+
+  const handleClearQueue = useCallback(async () => {
+    if (!selectedThreadId) return;
+    try {
+      await api.clearQueue(selectedThreadId);
+      await loadMessages(selectedThreadId, false);
+      await refreshThreads();
+    } catch (error) {
+      if (error instanceof ApiError && error.isAuth) setSheet('accessCode');
+      showError(error);
+    }
+  }, [selectedThreadId, loadMessages, refreshThreads, showError]);
+
   const composer = (
     <ThumbGlassBar
       value={draft}
       onValueChange={setDraft}
       onSend={handleSend}
       onInterrupt={handleInterrupt}
-      onVoice={() => setNotice('浏览器版本暂不支持语音输入。')}
       busy={busy}
       readOnly={readOnly}
       disabled={loading}
+      queueLength={status?.queueLength ?? 0}
+      queuedMessages={queuedMessages}
+      onQueueAction={handleQueueAction}
+      onClearQueue={handleClearQueue}
     />
   );
 

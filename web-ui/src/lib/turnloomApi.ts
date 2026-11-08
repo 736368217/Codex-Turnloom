@@ -897,6 +897,15 @@ export class TurnloomApi {
     this.assertWritable('queue');
     return this.request(`/api/queue/${action}`, this.jsonInit('POST', input));
   }
+
+  /**
+   * POST /api/queue/cancel {threadId} —— 不带 itemId 即清空该会话全部排队消息
+   * （与 public/app.js 的 clearQueueButton 同契约）。
+   */
+  async clearQueue(threadId: string): Promise<unknown> {
+    this.assertWritable('queue');
+    return this.request('/api/queue/cancel', this.jsonInit('POST', { threadId }));
+  }
 }
 
 /** Shared default instance (the React app uses this one). */

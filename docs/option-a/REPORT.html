@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
 <meta name="theme-color" content="#F2F2F7" />
 <meta name="color-scheme" content="light" />
-<title>Codex-Turnloom Option A · V7 离线演示交付与实机测试报告</title>
+<title>Codex-Turnloom Option A · V8 输入舱返工 / 离线演示 / 实机测试报告</title>
 <style>
   :root{
     --canvas:#F2F2F7; --card:rgba(255,255,255,.86); --ink:#1C1C1E; --soft:#8E8E93;
@@ -98,13 +98,14 @@
 </head>
 <body>
 <div class="wrap">
-  <div class="eyebrow">Codex-Turnloom · Option A / Cupertino Daylight Glass · V7 离线演示</div>
-  <h1>交付与实机测试报告 · V7</h1>
-  <p class="lede">双线并行重构 + V6 返工（修截断 / 大标题重叠、MuMu 手机分辨率重跑、排队·插队·附件、48 张当前构建重截图）+ <b>V7 离线演示</b>（外网用户零联网也能逐页点、每个功能都有演示数据与反馈）。所有结论分「本机实测」与「工具限制未完成」，不把浏览器视口冒充真机、不把未验证写成通过。</p>
+  <div class="eyebrow">Codex-Turnloom · Option A / Cupertino Daylight Glass · V8 输入舱返工</div>
+  <h1>交付与实机测试报告 · V8</h1>
+  <p class="lede">双线并行重构 + V6 返工（截断 / 大标题重叠 / MuMu 手机分辨率 / 排队·插队·附件）+ <b>V7 离线演示</b>（外网零联网可逐页点）+ <b>V8 输入舱返工</b>（单行 46px、发送/停止互斥、还原原版「相册 / 文件」附件、删语音、标题居中 0.0px 偏差）。所有结论分「本机实测」与「工具限制未完成」，不把浏览器视口冒充真机、不把未验证写成通过。</p>
   <div class="badges">
     <span class="badge b-green">✔ 完整回归 0 FAIL</span>
     <span class="badge b-blue">对话功能链 49 / 49</span>
-    <span class="badge b-blue">离线演示 · 强制断网 22 / 22</span>
+    <span class="badge b-blue">V8 视觉检定 40 / 40</span>
+    <span class="badge b-blue">离线演示 · 强制断网 24 / 24</span>
     <span class="badge b-blue">MuMu 1080×1920 手机分辨率重跑</span>
     <span class="badge b-blue">报告 0 张旧图</span>
     <span class="badge b-gray">main 分支未改动 · 96fd08c</span>
@@ -383,19 +384,19 @@
 
   <h3>离线演示实拍（单文件 HTML，真实 Chrome 逐页点击）</h3>
   <div class="grid g4">
-    <figure class="phone"><img src="report-assets/v7-html-01-session-list.png" alt="离线会话列表" /><figcaption>会话列表：6 条多状态会话、3 Tab 底栏</figcaption></figure>
-    <figure class="phone"><img src="report-assets/v7-html-02-chat-detail.png" alt="离线聊天详情" /><figcaption>全屏聊天详情：0 底栏、消息流 / 代码 / 审批</figcaption></figure>
-    <figure class="phone"><img src="report-assets/v7-html-03-composer-busy.png" alt="离线分段控件" /><figcaption>busy 分段：排队发送 / 直接插队 + 图片入口</figcaption></figure>
-    <figure class="phone"><img src="report-assets/v7-html-06-attachment-preview.png" alt="离线附件预览" /><figcaption>带图附件预览与发送</figcaption></figure>
+    <figure class="phone"><img src="report-assets/v8-html-01-session-list.png" alt="离线会话列表" /><figcaption>会话列表：6 条多状态会话、3 Tab 底栏</figcaption></figure>
+    <figure class="phone"><img src="report-assets/v8-html-02-chat-detail.png" alt="离线聊天详情" /><figcaption>全屏聊天详情：0 底栏、消息流 / 代码 / 审批</figcaption></figure>
+    <figure class="phone"><img src="report-assets/v8-html-03-composer-busy.png" alt="离线分段控件" /><figcaption>busy 分段：排队发送 / 直接插队 + 图片入口</figcaption></figure>
+    <figure class="phone"><img src="report-assets/v8-html-06-attachment-preview.png" alt="离线附件预览" /><figcaption>带图附件预览与发送</figcaption></figure>
   </div>
   <div class="grid g3" style="margin-top:12px">
-    <figure class="phone"><img src="report-assets/v7-html-04-queue-sent.png" alt="排队发送后" /><figcaption>排队发送后：输入舱清空、队列回执</figcaption></figure>
-    <figure class="phone"><img src="report-assets/v7-html-05-steer-sent.png" alt="直接插队后" /><figcaption>直接插队后：插入回执</figcaption></figure>
-    <figure class="phone"><img src="report-assets/v7-html-08-terminal.png" alt="离线终端页" /><figcaption>终端页：服务后端标注「离线演示数据」</figcaption></figure>
+    <figure class="phone"><img src="report-assets/v8-html-04-queue-sent.png" alt="排队发送后" /><figcaption>排队发送后：输入舱清空、队列回执</figcaption></figure>
+    <figure class="phone"><img src="report-assets/v8-html-05-queue-steer.png" alt="直接插队后" /><figcaption>直接插队后：插入回执</figcaption></figure>
+    <figure class="phone"><img src="report-assets/v8-html-08-terminal.png" alt="离线终端页" /><figcaption>终端页：服务后端标注「离线演示数据」</figcaption></figure>
   </div>
   <div class="grid g2" style="margin-top:12px">
-    <figure class="phone"><img src="report-assets/v7-hard-390-list.png" alt="强制离线 390" /><figcaption>Chrome 强制 <code>offline:true</code> · 390 视口仍完整可用</figcaption></figure>
-    <figure class="phone"><img src="report-assets/v7-hard-360-list.png" alt="强制离线 360" /><figcaption>强制离线 · 360 小屏无横向溢出</figcaption></figure>
+    <figure class="phone"><img src="report-assets/v8-html-hard-390-list.png" alt="强制离线 390" /><figcaption>Chrome 强制 <code>offline:true</code> · 390 视口仍完整可用</figcaption></figure>
+    <figure class="phone"><img src="report-assets/v8-html-hard-360-list.png" alt="强制离线 360" /><figcaption>强制离线 · 360 小屏无横向溢出</figcaption></figure>
   </div>
 
   <h3>验证结果（不把推测写成通过）</h3>
@@ -424,6 +425,76 @@
     <figure class="phone"><img src="report-assets/v7-mumu-rn-demo-list.png" alt="原生演示 APK 真机列表" /><figcaption>原生演示 APK · MuMu 启动即会话列表（6 条演示会话、3 Tab）</figcaption></figure>
   </div>
   <div class="note warnbox"><b>如实说明</b>：演示包<b>不连接任何真实 Codex 会话</b>，不读写你电脑上的真实数据，纯粹是让你在外网也能把页面与交互看一遍。数据存在内存里，杀掉 App / 刷新页面会重置。真要远程指挥电脑端代理，仍需在能访问 <code>192.168.1.10:8787</code> 的网络环境里用两个正式包。</div>
+</section>
+
+<!-- 10 V8 输入舱返工 -->
+<section>
+  <h2><span class="num">10</span>V8 输入舱返工：单行、互斥、还原原版附件</h2>
+  <p class="sub">你对真机截图提了 6 条：占两行面积太大、中断和发送应互斥只显示一个、排队/插队正常不该显示而是发出后再选、语音输入是鸡肋要删、要还原原版的图片和附件按钮、会话页标题不居中。全部已改，并用像素级检定验证。</p>
+
+  <h3>改了什么</h3>
+  <table>
+    <tr><th>问题</th><th>之前</th><th>现在</th></tr>
+    <tr><td>占两行、面积大</td><td>工具行 44px + 排队分段 44px + 输入行 42px ≈ 130px</td><td><b>单行 46px</b>：<code>[附件] [输入框] [发送/停止]</code>；队列条与附件缩略图只在真需要时才额外占一行</td></tr>
+    <tr><td>中断和发送两个按钮并排</td><td>发送 + 大红「中断」同时显示</td><td><b>同一位置只渲染一个</b>：有内容→发送（运行中即排队）；空且运行中→停止</td></tr>
+    <tr><td>排队/插队常驻占一整行</td><td>「排队发送 / 直接插队」分段常驻（运行中就出现）</td><td>常驻分段<b>删除</b>；改为运行中且真有排队消息时才出现的<b>紧凑队列条</b>（折叠 52px），展开后逐条「插队 / 删除」，可「清空」——即你说的「发出去之后再选排序/插队」</td></tr>
+    <tr><td>语音输入鸡肋</td><td>有麦克风按钮</td><td><b>已删除</b>（核对原版 <code>public/index.html</code> / <code>app.js</code>：voice 相关命中 <b>0</b>，确认本就是我们自己多加的）</td></tr>
+    <tr><td>缺少图片/附件按钮</td><td>只有一个「添加图片」</td><td><b>还原原版语义</b>：回形针按钮 → 弹出「相册 / 文件」二级菜单；相册 <code>accept=image/*</code>，文件允许选任意文件但只接受图片格式（与原版 <code>fileToImageAttachment</code> 一致），选了非图片给明确提示而不是静默丢弃</td></tr>
+    <tr><td>会话页标题不居中</td><td>左侧「‹ 会话」约 70px、右侧刷新仅 40px，中间 <code>flex-1 text-center</code> 被不等宽两侧夹住，视觉中心偏右</td><td>左右各固定 <b>72px 等宽容器</b>；实测标题中心 = 视口中心，<b>偏差 0.0px</b>，左右 72/72</td></tr>
+  </table>
+
+  <div class="grid g4" style="margin-top:14px">
+    <figure class="phone"><img src="report-assets/v8-390-01-typed-send-only.png" alt="有输入只有发送" /><figcaption>有输入 + 运行中：只有「发送」</figcaption></figure>
+    <figure class="phone"><img src="report-assets/v8-390-05-idle-composer.png" alt="空闲输入舱" /><figcaption>空闲：单行、无队列条无中断</figcaption></figure>
+    <figure class="phone"><img src="report-assets/v8-390-02-attach-menu.png" alt="附件菜单" /><figcaption>附件菜单：相册 / 文件</figcaption></figure>
+    <figure class="phone"><img src="report-assets/v8-390-04-queue-expanded.png" alt="队列展开" /><figcaption>队列展开：插队 / 删除 / 清空</figcaption></figure>
+  </div>
+  <div class="grid g2" style="margin-top:12px">
+    <figure class="phone"><img src="report-assets/v8-360-01-typed-send-only.png" alt="360 单行" /><figcaption>360×780：同样是单行，无横向溢出</figcaption></figure>
+    <figure class="phone"><img src="report-assets/v8-360-04-queue-expanded.png" alt="360 队列" /><figcaption>360 小屏队列展开不挤压消息流</figcaption></figure>
+  </div>
+
+  <h3>V8 验证（像素级，不靠肉眼）</h3>
+  <table>
+    <tr><th>验证项</th><th>结果</th><th>实测数据</th></tr>
+    <tr><td>标题水平居中</td><td class="ok">通过</td><td>标题中心 195.0 / 视口中心 195.0，<b>偏差 0.0px</b>（360 视口同样 0.0px）</td></tr>
+    <tr><td>标题栏左右等宽</td><td class="ok">通过</td><td>左 72.0px / 右 72.0px</td></tr>
+    <tr><td>输入舱主结构单行</td><td class="ok">通过</td><td>输入行高 <b>46px</b>；输入框宽 250px（390 视口）/ 220px（360 视口）</td></tr>
+    <tr><td>队列条折叠紧凑</td><td class="ok">通过</td><td>折叠高度 <b>52px</b></td></tr>
+    <tr><td>发送/停止互斥</td><td class="ok">通过</td><td>空输入+运行中：<code>send=0, stop=1</code>；有输入：<code>send=1, stop=0</code></td></tr>
+    <tr><td>语音按钮已删除</td><td class="ok">通过</td><td>语音按钮数 = 0</td></tr>
+    <tr><td>附件菜单两项</td><td class="ok">通过</td><td>「相册」=1、「文件」=1；相册 <code>accept=image/*</code></td></tr>
+    <tr><td>队列插队/清空真到达后端</td><td class="ok">通过</td><td><code>/api/queue/steer</code>（itemId=q1）、<code>/api/queue/cancel</code>（不带 itemId = 清空）</td></tr>
+    <tr><td>空闲会话不显示队列条与中断</td><td class="ok">通过</td><td>队列条=0、中断=0</td></tr>
+    <tr><td><b>合计</b></td><td class="ok"><b>40 PASS / 0 FAIL</b></td><td>390 与 360 双视口各 20 项；<code>qa-v8-visual.mjs</code></td></tr>
+    <tr><td>离线单文件 HTML（新输入舱）</td><td class="ok">29 PASS / 0 FAIL</td><td><code>qa-offline-demo.mjs</code>，零外部请求</td></tr>
+    <tr><td>Chrome 强制断网（新输入舱）</td><td class="ok">24 PASS / 0 FAIL</td><td><code>qa-offline-hard.mjs</code>，双视口</td></tr>
+  </table>
+
+  <h3>与原版功能对照盘点（你要求「仔细检查丢了什么」）</h3>
+  <p class="sub">逐条比对 <code>public/index.html</code>（391 行）与 <code>public/app.js</code>（5,669 行）里的输入舱与页面能力。</p>
+  <table>
+    <tr><th>原版能力</th><th>原版实现</th><th>本轮状态</th></tr>
+    <tr><td>附件：回形针 → 相册 / 文件浏览</td><td><code>attachButton</code> + <code>imagePickerMenu</code> + 两个 file input</td><td class="ok">✅ 本轮补齐</td></tr>
+    <tr><td>附件预览托盘</td><td><code>attachmentTray</code></td><td class="ok">✅ 有（缩略图 + 逐张移除）</td></tr>
+    <tr><td>队列状态条（折叠 / 逐条 / 清空）</td><td><code>queueStatusBar</code> + <code>clearQueueButton</code></td><td class="ok">✅ 本轮补齐（更紧凑）</td></tr>
+    <tr><td>运行中发送方式（排队 / 插入）</td><td><code>followUpMode</code>，仅运行中显示</td><td class="ok">✅ 改为队列内逐条插队</td></tr>
+    <tr><td>发送 / 停止</td><td><code>sendButton</code> + <code>stopButton</code></td><td class="ok">✅ 按你的要求做成互斥单按钮</td></tr>
+    <tr><td>语音输入</td><td><b>原版没有</b></td><td class="ok">✅ 已删（本是我们多加的）</td></tr>
+    <tr><td>模型 + 思考强度选择</td><td><code>modelSummary</code> + 供应商/模型/强度三档面板</td><td class="warn">❌ 仍缺（见下）</td></tr>
+    <tr><td>插件引用 / 技能引用 / @</td><td><code>pluginPickerButton</code> / <code>skillPickerButton</code> / <code>mentionButton</code></td><td class="warn">❌ 仍缺</td></tr>
+    <tr><td>新建会话时选项目</td><td><code>draftProjectRow</code></td><td class="warn">❌ 仍缺</td></tr>
+    <tr><td>会话搜索</td><td><code>searchInput</code></td><td class="warn">❌ 仍缺</td></tr>
+    <tr><td>消息复制全文 / 长按菜单</td><td><code>copyText</code> + <code>messageActionSheet</code></td><td class="warn">❌ 仍缺（当前只能选中文本）</td></tr>
+  </table>
+  <div class="note warnbox">
+    <b>为什么这 5 项本轮没做（如实说明，不糊弄）</b>：它们是<b>独立功能区</b>，不是输入舱的一行改动 ——
+    模型面板要接 <code>health.models</code>、与会话当前模型同步、持久化思考强度；插件/技能引用要先验证后端是否有对应端点；
+    项目选择影响新建会话流程；搜索与消息复制要改会话列表和消息组件。
+    <b>更关键的是：它们都会往刚被你要求「简洁」的输入舱里再加按钮。</b>
+    所以我先把你这轮点名的 6 项做扎实并验证到位，把这 5 项列成明确清单等你拍板，而不是自作主张再塞进输入舱把它又撑大。
+    <br>下一轮建议顺序：① 模型 + 强度（最影响实用）② 消息复制 ③ 会话搜索 ④ 项目选择 ⑤ 插件/技能引用。
+  </div>
 </section>
 
 <footer>
