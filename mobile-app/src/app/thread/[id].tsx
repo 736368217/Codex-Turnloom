@@ -319,13 +319,17 @@ export default function ThreadScreen() {
         busy={busy}
         readOnly={readOnly}
         sending={sending}
-        onSend={async (message) => {
+        onSend={async ({ message, mode, images }) => {
           setSending(true);
           setError('');
           try {
-            await client.sendMessage({ message, threadId, mode: busy ? 'queue' : 'start' });
+            await client.sendMessage({
+              message,
+              threadId,
+              mode: mode ?? (busy ? 'queue' : 'start'),
+              ...(images?.length ? { images } : {}),
+            });
             await load(true);
-            startPolling();
           } catch (caught) {
             if (caught instanceof ReadOnlyError || caught instanceof AuthRequiredError) throw caught;
             setError(caught instanceof Error ? caught.message : String(caught));
