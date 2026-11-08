@@ -22,6 +22,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { OptionA } from '@/constants/optionA';
 import { Badge, Card, Text } from '@/components/ui/rnr';
+import { DEMO_MODE, DEMO_LABEL } from '@/services/demoBootstrap';
 import {
   BUILTIN_TERMINALS,
   useTerminalSelection,
@@ -207,6 +208,11 @@ export default function HomeScreen() {
         <Text className="text-[11px] font-bold uppercase tracking-[2px] text-[#8E8E93]">Codex-Turnloom</Text>
         <Text className="text-[30px] font-bold leading-[34px] tracking-[-1px] text-[#1C1C1E]">对话</Text>
         <Text className="text-[12px] text-[#8E8E93]">选择一条会话，查看实时任务流并继续指挥</Text>
+        {DEMO_MODE ? (
+          <View className="mt-1 self-start rounded-full bg-[#E5F1FF] px-[10px] py-[4px]">
+            <Text className="text-[11px] font-semibold text-[#007AFF]">{DEMO_LABEL}</Text>
+          </View>
+        ) : null}
       </View>
       {authGate ? <Text className="px-4 pb-[6px] text-[12px] text-[#D70015]">需要访问码，请到「终端」页重新输入</Text> : null}
       {error ? <Text className="px-4 pb-[6px] text-[12px] text-[#D70015]">{error}</Text> : null}

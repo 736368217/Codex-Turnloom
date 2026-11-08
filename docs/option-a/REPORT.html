@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
 <meta name="theme-color" content="#F2F2F7" />
 <meta name="color-scheme" content="light" />
-<title>Codex-Turnloom Option A · V6 返工交付与实机测试报告</title>
+<title>Codex-Turnloom Option A · V7 离线演示交付与实机测试报告</title>
 <style>
   :root{
     --canvas:#F2F2F7; --card:rgba(255,255,255,.86); --ink:#1C1C1E; --soft:#8E8E93;
@@ -67,7 +67,8 @@
   figcaption{font-size:12px;color:var(--soft);margin-top:7px;line-height:1.55;text-align:center}
   .phone{margin:0 auto;max-width:270px}
   .phone img{box-shadow:0 8px 26px rgba(16,30,60,.12)}
-  table{width:100%;border-collapse:collapse;font-size:13px;margin-top:10px}
+  table{width:100%;border-collapse:collapse;font-size:13px;margin-top:10px;table-layout:fixed}
+  table th,table td{overflow-wrap:anywhere;word-break:break-word}
   th,td{text-align:left;padding:10px 12px;border-bottom:1px solid var(--sep);vertical-align:top}
   th{font-size:11px;text-transform:uppercase;letter-spacing:.05em;color:var(--soft);font-weight:700;background:rgba(239,239,244,.55)}
   tr:last-child td{border-bottom:0}
@@ -97,16 +98,15 @@
 </head>
 <body>
 <div class="wrap">
-
-<header class="top">
-  <div class="eyebrow">Codex-Turnloom · Option A / Cupertino Daylight Glass · V6 返工</div>
-  <h1>交付与实机测试报告 · V6</h1>
-  <p class="lede">针对上一版「报告图片过时（聊天页还画着底栏）、输入文字被截断、MuMu 实机截图分辨率不对 / 页面显示不正常、对话排队 / 插队 / 带图附件没仔细测」四项批评，本轮把报告图片整批重截、修真缺陷、把模拟器改成正确手机分辨率并逐页真实点击。所有结论分「本机实测」与「工具限制未完成」，不把浏览器视口冒充真机、不把未验证写成通过。</p>
+  <div class="eyebrow">Codex-Turnloom · Option A / Cupertino Daylight Glass · V7 离线演示</div>
+  <h1>交付与实机测试报告 · V7</h1>
+  <p class="lede">双线并行重构 + V6 返工（修截断 / 大标题重叠、MuMu 手机分辨率重跑、排队·插队·附件、48 张当前构建重截图）+ <b>V7 离线演示</b>（外网用户零联网也能逐页点、每个功能都有演示数据与反馈）。所有结论分「本机实测」与「工具限制未完成」，不把浏览器视口冒充真机、不把未验证写成通过。</p>
   <div class="badges">
     <span class="badge b-green">✔ 完整回归 0 FAIL</span>
     <span class="badge b-blue">对话功能链 49 / 49</span>
+    <span class="badge b-blue">离线演示 · 强制断网 22 / 22</span>
     <span class="badge b-blue">MuMu 1080×1920 手机分辨率重跑</span>
-    <span class="badge b-blue">报告 48 张当前构建新图 · 0 张旧图</span>
+    <span class="badge b-blue">报告 0 张旧图</span>
     <span class="badge b-gray">main 分支未改动 · 96fd08c</span>
     <span class="badge b-gray">2026-11-08</span>
   </div>
@@ -335,10 +335,99 @@
   <div class="note">
     <b>本轮返工做了什么</b>：三条固定角色会话并行（Web 前端 / 原生 APK / QA-UX，pull 模式、不各自 commit），主对话负责改 MuMu 分辨率、本机实装复核、图片一致性审计与报告重写。修 3 个真缺陷（大标题重叠、文案截断、分辨率）、补 3 类功能（排队 / 插队 / 附件）、删 26 张旧图、重截 48 张当前构建图、全套回归 0 FAIL。构建自然跑完，未因时间取消任何任务。
   </div>
+
+<!-- 9 离线演示（外网用户） -->
+<section>
+  <h2><span class="num">9</span>离线演示：不在局域网 / 外网也能看全部页面与功能</h2>
+  <p class="sub">你反馈「功能没法使用，我不在局域网，我在外网，只是想进去看下各种功能和页面」。根因是：两个正式包都是<b>远程遥控电脑端代理</b>的客户端，全部硬连 <code>http://192.168.1.10:8787</code>；在外网连不上这台机器，页面就没有会话、消息、审批任何数据，功能自然点不动。这不是界面 bug，是产品形态决定的。</p>
+  <div class="note">
+    <b>解决方式</b>：另做一套<b>零联网、自包含</b>的离线演示产物，内置完整演示数据，装上 / 打开就能逐页点，每个功能都有真实反馈。<b>正式包一个字节都没改</b>（哈希仍为 <code>E9A78756…B8ED</code> / <code>3DF7864E…C9</code>），演示包用全新包名，可与正式包同时安装。
+    <br><b>关键做法</b>：业务逻辑一行不改 —— 在页面里拦截 <code>fetch</code>，用内存演示数据应答所有 <code>/api/*</code>，并让写操作真的改内存状态。所以你点「发送」消息会追加到消息流、排队 / 插队会出现回执、中断会结束运行中状态、审批会消项，跟真连服务时的交互一致，而不是静态假页面。
+  </div>
+
+  <h3>三个离线演示产物（都可下载，二维码见下）</h3>
+  <div class="grid g3" style="margin-top:12px">
+    <div class="download" style="display:block;text-align:center">
+      <img class="qr" src="report-assets/qr-v7-web-demo.png" alt="Web 离线演示 APK 二维码" style="margin:0 auto 10px" />
+      <div class="eyebrow">Web 线 · 离线演示 APK</div>
+      <div style="font-size:15px;font-weight:750;margin:6px 0">会话总控 · 离线演示版</div>
+      <div class="small">包名 <code>com.codexpocket.optiona.demo.web</code><br>3,883,758 B · SHA <code>83AFCEBC…BAB9B7</code></div>
+      <a href="http://192.168.1.10:8787/downloads/Codex-Turnloom-Web-Demo.apk">下载 Web-Demo.apk</a>
+    </div>
+    <div class="download" style="display:block;text-align:center">
+      <img class="qr" src="report-assets/qr-v7-native-demo.png" alt="原生离线演示 APK 二维码" style="margin:0 auto 10px" />
+      <div class="eyebrow">原生线 · 离线演示 APK</div>
+      <div style="font-size:15px;font-weight:750;margin:6px 0">会话总控 · 离线演示版</div>
+      <div class="small">包名 <code>com.codexpocket.optiona.demo.native</code><br>285,765,247 B · SHA <code>A79D8692…FFF3</code></div>
+      <a href="http://192.168.1.10:8787/downloads/Codex-Turnloom-Native-Demo.apk">下载 Native-Demo.apk</a>
+    </div>
+    <div class="download" style="display:block;text-align:center">
+      <img class="qr" src="report-assets/qr-v7-html.png" alt="单文件 HTML 二维码" style="margin:0 auto 10px" />
+      <div class="eyebrow">无需安装 · 单文件 HTML</div>
+      <div style="font-size:15px;font-weight:750;margin:6px 0">Codex-Turnloom-离线演示.html</div>
+      <div class="small">1,875,814 B · SHA <code>3083370A…9A23</code><br>浏览器双击即开</div>
+      <a href="http://192.168.1.10:8787/downloads/Codex-Turnloom-%E7%A6%BB%E7%BA%BF%E6%BC%94%E7%A4%BA.html">下载 / 打开单文件 HTML</a>
+    </div>
+  </div>
+  <p class="small">单文件 HTML 把演示数据层 + 当前正式构建的 JS/CSS 全部内联，用经典 <code>&lt;script&gt;</code>，所以 <code>file://</code> 直接可开：电脑浏览器打开、或存到手机用浏览器打开都行，不需要装任何东西、不需要联网。两个演示 APK 则把这个页面 / 数据层打进 App，装上点图标即用。</p>
+
+  <h3>内置了什么演示数据（都能点）</h3>
+  <table>
+    <tr><th>类别</th><th>内容</th></tr>
+    <tr><td>会话列表</td><td>6 条不同状态会话：运行中（busy）、等待审批、已完成、有 2 条排队消息、空白会话、置顶归档；含项目分组、相对时间、状态徽标</td></tr>
+    <tr><td>消息流</td><td>用户 / 助理消息、工具调用与输出、思考中、两处代码高亮代码块（TypeScript / CSS / SQL）、补丁审批卡、代码改动 Diff、图片附件</td></tr>
+    <tr><td>对话功能</td><td>直接发送、排队发送 <code>mode:queue</code>、直接插队 <code>mode:steer</code>、带图 / 多图附件 <code>images[]</code> 与移除、纯图无文字发送、中断、审批通过 / 拒绝、新建会话</td></tr>
+    <tr><td>其它页面</td><td>终端管理（连接状态 / 代理引擎 / 已保存终端）、设置（访问码 / 权限 / 关于）、项目、账户</td></tr>
+    <tr><td>状态反馈</td><td>发送后输入舱清空且消息流追加、排队 / 插队出现回执且队列长度变化、中断后「运行中 → 已结束」、审批后该项消解、长轮询触发刷新</td></tr>
+  </table>
+
+  <h3>离线演示实拍（单文件 HTML，真实 Chrome 逐页点击）</h3>
+  <div class="grid g4">
+    <figure class="phone"><img src="report-assets/v7-html-01-session-list.png" alt="离线会话列表" /><figcaption>会话列表：6 条多状态会话、3 Tab 底栏</figcaption></figure>
+    <figure class="phone"><img src="report-assets/v7-html-02-chat-detail.png" alt="离线聊天详情" /><figcaption>全屏聊天详情：0 底栏、消息流 / 代码 / 审批</figcaption></figure>
+    <figure class="phone"><img src="report-assets/v7-html-03-composer-busy.png" alt="离线分段控件" /><figcaption>busy 分段：排队发送 / 直接插队 + 图片入口</figcaption></figure>
+    <figure class="phone"><img src="report-assets/v7-html-06-attachment-preview.png" alt="离线附件预览" /><figcaption>带图附件预览与发送</figcaption></figure>
+  </div>
+  <div class="grid g3" style="margin-top:12px">
+    <figure class="phone"><img src="report-assets/v7-html-04-queue-sent.png" alt="排队发送后" /><figcaption>排队发送后：输入舱清空、队列回执</figcaption></figure>
+    <figure class="phone"><img src="report-assets/v7-html-05-steer-sent.png" alt="直接插队后" /><figcaption>直接插队后：插入回执</figcaption></figure>
+    <figure class="phone"><img src="report-assets/v7-html-08-terminal.png" alt="离线终端页" /><figcaption>终端页：服务后端标注「离线演示数据」</figcaption></figure>
+  </div>
+  <div class="grid g2" style="margin-top:12px">
+    <figure class="phone"><img src="report-assets/v7-hard-390-list.png" alt="强制离线 390" /><figcaption>Chrome 强制 <code>offline:true</code> · 390 视口仍完整可用</figcaption></figure>
+    <figure class="phone"><img src="report-assets/v7-hard-360-list.png" alt="强制离线 360" /><figcaption>强制离线 · 360 小屏无横向溢出</figcaption></figure>
+  </div>
+
+  <h3>验证结果（不把推测写成通过）</h3>
+  <table>
+    <tr><th>验证项</th><th>结果</th><th>证据</th></tr>
+    <tr><td>演示数据层单元验证</td><td class="ok">33 PASS / 0 FAIL</td><td><code>test-demo-data.cjs</code>：health / threads / messages / diff / send(queue,steer,images) / interrupt / approval / queue 管理 / new-thread / changes 幂等 / 绝对 URL / 写日志</td></tr>
+    <tr><td>单文件 HTML 真实 Chrome <code>file://</code> 逐页点击</td><td class="ok">26 PASS / 0 FAIL</td><td><code>qa-offline-demo.mjs</code>：会话列表 → 聊天详情（0 底栏）→ 分段控件 → 排队 → 插队 → 附件 → 中断 → 终端 / 设置；<code>externalRequests=0</code></td></tr>
+    <tr><td><b>Chrome 强制断网</b>（<code>context.setOffline(true)</code>）双视口</td><td class="ok">22 PASS / 0 FAIL</td><td><code>qa-offline-hard.mjs</code>：390 与 360 下逐页点击、排队 / 插队 / 附件全部生效、零外部请求、无致命 JS 错误</td></tr>
+    <tr><td>写操作真实带参</td><td class="ok">queue / steer / images[] 全命中</td><td><code>/__demo/log</code> 记录：<code>mode:"queue"</code>、<code>mode:"steer"</code>、<code>images:[{name,mimeType,data}]</code></td></tr>
+    <tr><td>视觉无误导 / 无遮挡</td><td class="ok">通过</td><td>离线提示改为进入后淡出的底部 toast，不压大标题；连接胶囊常驻「离线演示 · 本机」；「服务后端 离线演示数据」</td></tr>
+    <tr><td>正式包隔离</td><td class="ok">未改动</td><td>两个正式 APK 哈希不变；Web 壳由 <code>getPackageName().endsWith(".demo.web")</code> 运行期判定（正式包名仍是原来的联网壳，本机重编 <code>BUILD SUCCESSFUL in 13s</code> 并实装复验离线仍生效）；RN 演示由 <code>EXPO_PUBLIC_TURNLOOM_DEMO=1</code> 构建开关判定，默认关闭</td></tr>
+    <tr><td>4 个包名互不相同、可共存</td><td class="ok">unique = 4 / 4</td><td><code>aapt dump badging</code>：<code>optiona.web</code> / <code>optiona.native</code> / <code>optiona.demo.web</code> / <code>optiona.demo.native</code>；MuMu <code>pm list packages</code> 实测同时存在</td></tr>
+    <tr><td><b>Web 演示 APK 真机实装</b></td><td class="ok">通过</td><td>MuMu 飞行模式断网下 <code>adb install -r -t</code> Success 且能进聊天详情看消息流 / 审批 / 排队分段控件；最终包另做<b>清数据冷启动复验</b>：首屏即会话列表、UIA 抓到 6 条演示会话、<code>logcat</code> 无 FATAL/NPE；截图见 <code>v7-mumu-web-demo.png</code></td></tr>
+    <tr><td><b>原生演示 APK 真机实装</b></td><td class="ok">通过（首屏）</td><td>MuMu 启动直接是会话列表，6 条演示会话、状态徽标、3 Tab 底栏、离线标注齐全；截图见 <code>v7-mumu-rn-demo-list.png</code></td></tr>
+    <tr><td>演示包内置文件核验</td><td class="ok">通过</td><td>Web 演示 APK 内 <code>assets/offline-demo.html</code>（1,875,866 B）含最终十六进制会话 id、淡出 toast、「离线演示数据」标识，不含旧 <code>demo-thread-</code> id（APK 内的副本由构建流程追加了少量离线标注，故与单文件 HTML 字节数略有差异，功能等价）；RN 演示 APK 内 <code>assets/index.android.bundle</code> 含 <code>__TURNLOOM_DEMO_API__</code> / <code>/__demo/log</code> / 新十六进制会话 id</td></tr>
+  </table>
+  <h3>真机才暴露、已修复的真缺陷（如实记录）</h3>
+  <table>
+    <tr><th>缺陷</th><th>真机表现</th><th>修复</th></tr>
+    <tr><td>原生演示包点会话进详情显示红字「无效的会话 id」、消息流空</td><td>RN 客户端 <code>getMessages/waitForChanges</code> 用 <code>/^[0-9a-fA-F-]{20,}$/</code> 校验会话 id，而演示数据最初用了 <code>demo-thread-1-…</code> 含非十六进制字符，被直接拒绝</td><td>把演示会话 id 统一改为纯十六进制 UUID 风格（<code>00000000-0000-4000-8000-…</code>），Web 与 RN 两端共用同一实现；<b>业务代码一行未改</b>；重编后交付 APK bundle 已确认含新 id、不含旧 id</td></tr>
+    <tr><td>离线提示角标压住顶部大标题 / 聊天标题</td><td>固定顶部居中的蓝色胶囊遮住「CODEX-TURNLOOM」和会话标题</td><td>改为进入时显示 6 秒后淡出的底部 toast（点按可再唤出），常驻标识由连接胶囊「离线演示 · 本机」承担；补了「角标不遮挡顶栏」探针</td></tr>
+    <tr><td>Web 演示包启动即崩溃（<code>NullPointerException</code>）</td><td>为了按包名区分正式/演示，首版把 <code>getPackageName()</code> 放在<b>字段初始化</b>里，此时 Activity 的 Context 尚未 attach，<code>MainActivity.&lt;init&gt;</code> 直接 NPE，App 一启动就被系统 Force finishing（logcat 实测）</td><td>字段声明改为 <code>private boolean demoMode;</code>，在 <code>onCreate()</code> 的 <code>super.onCreate()</code> 之后才赋值；重编后 <code>logcat</code> 无 FATAL/NPE、前台稳定、UIA 抓到 6 条演示会话</td></tr>
+  </table>
+  <div class="grid g2" style="margin-top:12px">
+    <figure class="phone"><img src="report-assets/v7-mumu-web-demo.png" alt="Web 演示 APK 真机会话列表" /><figcaption>Web 演示 APK · MuMu 冷启动即会话列表，6 条演示会话与离线标注齐全</figcaption></figure>
+    <figure class="phone"><img src="report-assets/v7-mumu-rn-demo-list.png" alt="原生演示 APK 真机列表" /><figcaption>原生演示 APK · MuMu 启动即会话列表（6 条演示会话、3 Tab）</figcaption></figure>
+  </div>
+  <div class="note warnbox"><b>如实说明</b>：演示包<b>不连接任何真实 Codex 会话</b>，不读写你电脑上的真实数据，纯粹是让你在外网也能把页面与交互看一遍。数据存在内存里，杀掉 App / 刷新页面会重置。真要远程指挥电脑端代理，仍需在能访问 <code>192.168.1.10:8787</code> 的网络环境里用两个正式包。</div>
 </section>
 
 <footer>
-  Codex-Turnloom · Option A · V6 返工报告 · 2026-11-08 · 图片与结果归档于 <code>docs/option-a/qa-shots/</code> 与主仓 <code>public/option-a/report/report-assets/</code>（48 张 <code>v6-*</code> 均为当前构建重截）
+  Codex-Turnloom · Option A · V6 返工 + V7 离线演示报告 · 2026-11-08 · 图片与结果归档于 <code>docs/option-a/qa-shots/</code> 与主仓 <code>public/option-a/report/report-assets/</code>（<code>v6-*</code> 为 V6 当前构建重截，<code>v7-*</code> 为离线演示实拍）
 </footer>
 </div>
 </body>
