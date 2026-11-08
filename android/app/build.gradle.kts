@@ -7,11 +7,11 @@ android {
     compileSdk = 35
 
     defaultConfig {
-        applicationId = "com.codexpocket.mobile"
+        applicationId = "com.codexpocket.optiona.demo.web"
         minSdk = 23
         targetSdk = 35
-        versionCode = 52
-        versionName = "1.17.31"
+        versionCode = 72
+        versionName = "1.20.0-demo-web"
     }
 
     buildTypes {
