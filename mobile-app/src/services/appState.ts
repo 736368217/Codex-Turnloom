@@ -4,6 +4,7 @@
  */
 import { useEffect, useState } from 'react';
 
+import { DEMO_MODE, DEMO_PAIRING } from './demoBootstrap';
 import { localGet, localSet } from './localStore';
 import { getTurnloomClient } from './turnloomClient';
 
@@ -12,10 +13,10 @@ export type Engine = 'codex' | 'pi';
 export const ACTIVE_TERMINAL_KEY = 'activeTerminalId';
 export const ENGINE_KEY = 'engine';
 export const SELECTED_THREAD_KEY = 'selectedThreadId';
-
-/** 轻量选择页的预置终端：APK 首启已注入同一地址，选中即跳过选择页。 */
+/** 预置终端：正式包为本机 de；演示包额外提供示例数据终端。 */
 export const BUILTIN_TERMINALS = [
   { id: 'builtin-de', name: '我的电脑', url: 'http://192.168.0.10:8787', token: 'test-code' },
+  { id: 'demo', name: '示例数据 · 本机', url: 'http://demo.invalid', token: 'demo' },
 ] as const;
 
 export type TerminalOption = {
@@ -25,8 +26,10 @@ export type TerminalOption = {
   token: string;
 };
 
-/** 读取「已选终端」；APK 预置设备存在时视为已选，跳过冷启动选择页。 */
 export async function readActiveTerminal(): Promise<TerminalOption | null> {
+  if (DEMO_MODE) {
+    return { id: 'demo', name: DEMO_PAIRING.machineName, url: DEMO_PAIRING.serverUrl, token: DEMO_PAIRING.token };
+  }
   const savedId = await localGet(ACTIVE_TERMINAL_KEY);
   if (savedId) {
     const builtin = BUILTIN_TERMINALS.find((item) => item.id === savedId);
