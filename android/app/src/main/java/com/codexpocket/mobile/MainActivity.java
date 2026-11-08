@@ -30,6 +30,7 @@ import android.webkit.ValueCallback;
 import android.webkit.WebChromeClient;
 import android.webkit.WebResourceError;
 import android.webkit.WebResourceRequest;
+import android.webkit.WebResourceResponse;
 import android.webkit.WebSettings;
 import android.webkit.WebView;
 import android.webkit.WebViewClient;
@@ -152,6 +153,15 @@ public class MainActivity extends ComponentActivity {
     private static final String REMINDERS_KEY = "thread_reminders";
     private static final String ONBOARDING_KEY = "turnloom_onboarding_seen_v1";
     private static final String ACTIVE_DEVICE_URL_KEY = "turnloom_active_device_url_v1";
+    // V7 离线演示包：内置单文件 HTML，零联网；正式包保持 false。
+    // 由 applicationId 判定：正式包 (…optiona.web) 走真实服务，演示包 (…optiona.demo.web) 走内置离线页面。
+    // 不能用 BuildConfig.APPLICATION_ID —— 本项目 AGP 8 默认未开启 buildConfig。
+    private boolean demoMode = false; // 在 onCreate 里由 applicationId 判定（构造函数阶段无 Context）
+    private static final String DEMO_ASSET_URL = "file:///android_asset/offline-demo.html";
+    private static final String DEFAULT_DEVICE_SEEDED_KEY = "turnloom_option_a_default_seeded_v1";
+    private static final String DEFAULT_DEVICE_NAME = "本机 · de";
+    private static final String DEFAULT_DEVICE_URL = "http://192.168.1.10:8787/option-a/index.html";
+    private static final String DEFAULT_DEVICE_TOKEN = "684271";
     private volatile boolean updateDownloadRunning = false;
     private static final int NOTIFICATION_PERMISSION_REQUEST = 7102;
 
@@ -242,25 +252,60 @@ public class MainActivity extends ComponentActivity {
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
+        demoMode = getPackageName().endsWith(".demo.web");
         handleNotificationIntent(getIntent());
-        getWindow().setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE);
-        devices.addAll(loadDevices());
+        if (demoMode) {
+            // 离线演示：不加载/保存任何真实设备，直接打开本地单文件页面。
+            activeDevice = demoDevice();
+        } else {
+            devices.addAll(loadDevices());
+            seedDefaultDeviceIfNeeded();
+        }
         root = new LinearLayout(this);
         root.setOrientation(LinearLayout.VERTICAL);
         root.setBackgroundColor(PAPER);
         setContentView(root);
-        Device startupDevice = findActiveDevice();
+        Device startupDevice = demoMode ? activeDevice : findActiveDevice();
         if (startupDevice != null) {
             openDevice(startupDevice, pendingNotificationThreadId);
             pendingNotificationThreadId = null;
         } else {
             showMachinePicker();
         }
-        if (!getSharedPreferences(PREFS, MODE_PRIVATE).getBoolean(ONBOARDING_KEY, false)) {
-            root.post(() -> showWelcomeGuide(true));
+        // 演示包不弹新手引导、不启动任何后台联网同步。
+        if (!demoMode) {
+            if (!getSharedPreferences(PREFS, MODE_PRIVATE).getBoolean(ONBOARDING_KEY, false)) {
+                root.post(() -> showWelcomeGuide(true));
+            }
+            clearLegacyReminderNotification();
+            ReminderScheduler.sync(this);
         }
-        clearLegacyReminderNotification();
-        ReminderScheduler.sync(this);
+    }
+
+    /** 演示包不读写任何真实设备：直接构造本地演示设备，跳过选电脑页。 */
+    private Device demoDevice() {
+        return new Device("离线演示 · 本机", DEMO_ASSET_URL, "demo", "演示数据 · 无需联网");
+    }
+
+    /**
+     * 独立新包首次启动（或删除全部设备后）注入默认电脑，免去扫码/手输。
+     * 保留原有扫码、手动添加、设备列表能力；用户删除后不会再次强行注入。
+     */
+    private void seedDefaultDeviceIfNeeded() {
+        android.content.SharedPreferences prefs = getSharedPreferences(PREFS, MODE_PRIVATE);
+        if (prefs.getBoolean(DEFAULT_DEVICE_SEEDED_KEY, false)) return;
+        if (!devices.isEmpty()) {
+            prefs.edit().putBoolean(DEFAULT_DEVICE_SEEDED_KEY, true).apply();
+            return;
+        }
+        Device builtin = new Device(DEFAULT_DEVICE_NAME, DEFAULT_DEVICE_URL, DEFAULT_DEVICE_TOKEN, "预置连接");
+        devices.add(builtin);
+        saveDevices();
+        prefs.edit()
+                .putBoolean(DEFAULT_DEVICE_SEEDED_KEY, true)
+                .putString(ACTIVE_DEVICE_URL_KEY, DEFAULT_DEVICE_URL)
+                .putBoolean(ONBOARDING_KEY, true)
+                .apply();
     }
 
     private Device findActiveDevice() {
@@ -553,48 +598,59 @@ public class MainActivity extends ComponentActivity {
         topBar.setGravity(Gravity.CENTER_VERTICAL);
         topBar.setPadding(dp(8), dp(2), dp(8), dp(2));
         topBar.setBackgroundColor(Color.WHITE);
-        Button switchComputer = new Button(this);
-        switchComputer.setText("切换电脑");
-        switchComputer.setAllCaps(false);
-        switchComputer.setTextSize(14);
-        switchComputer.setTextColor(ACCENT);
-        switchComputer.setTypeface(Typeface.DEFAULT, Typeface.BOLD);
-        switchComputer.setBackground(rounded(ACCENT_SOFT, 1, ACCENT_BORDER, 18));
-        switchComputer.setMinHeight(0);
-        switchComputer.setMinimumHeight(0);
-        switchComputer.setPadding(dp(14), 0, dp(14), 0);
-        switchComputer.setContentDescription("切换电脑");
-        switchComputer.setOnClickListener(v -> showMachinePicker(false));
-        topBar.addView(switchComputer, new LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, dp(44)));
-        connectionDot = label("●", 10, ONLINE);
-        connectionDot.setGravity(Gravity.CENTER);
-        topBar.addView(connectionDot, new LinearLayout.LayoutParams(dp(22), dp(44)));
-        LinearLayout connectedCopy = new LinearLayout(this);
-        connectedCopy.setOrientation(LinearLayout.VERTICAL);
-        connectedCopy.setGravity(Gravity.CENTER_VERTICAL);
-        TextView connectedTitle = label(device.name, 16, INK);
-        connectedTitle.setTypeface(Typeface.DEFAULT, Typeface.BOLD);
-        connectedTitle.setMaxLines(1);
-        connectedCopy.addView(connectedTitle);
-        if (!device.note.isEmpty()) {
-            TextView connectedNote = label(device.note, 11, MUTED);
-            connectedNote.setMaxLines(1);
-            connectedCopy.addView(connectedNote);
+        if (demoMode) {
+            // 演示包没有「切换电脑 / 在线圆点」这类会误导为真实连接的入口。
+            TextView demoBadge = label("离线演示 · 演示数据 · 无需联网", 13, ACCENT);
+            demoBadge.setTypeface(Typeface.DEFAULT, Typeface.BOLD);
+            demoBadge.setGravity(Gravity.CENTER_VERTICAL);
+            demoBadge.setMaxLines(1);
+            topBar.addView(demoBadge, new LinearLayout.LayoutParams(0, dp(48), 1));
+            connectionDot = null;
+        } else {
+            Button switchComputer = new Button(this);
+            switchComputer.setText("切换电脑");
+            switchComputer.setAllCaps(false);
+            switchComputer.setTextSize(14);
+            switchComputer.setTextColor(ACCENT);
+            switchComputer.setTypeface(Typeface.DEFAULT, Typeface.BOLD);
+            switchComputer.setBackground(rounded(ACCENT_SOFT, 1, ACCENT_BORDER, 18));
+            switchComputer.setMinHeight(0);
+            switchComputer.setMinimumHeight(0);
+            switchComputer.setPadding(dp(14), 0, dp(14), 0);
+            switchComputer.setContentDescription("切换电脑");
+            switchComputer.setOnClickListener(v -> showMachinePicker(false));
+            topBar.addView(switchComputer, new LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, dp(44)));
+            connectionDot = label("●", 10, ONLINE);
+            connectionDot.setGravity(Gravity.CENTER);
+            topBar.addView(connectionDot, new LinearLayout.LayoutParams(dp(22), dp(44)));
         }
-        topBar.addView(connectedCopy, new LinearLayout.LayoutParams(0, dp(48), 1));
-        Button refresh = iconButton("↻", "刷新当前页面", v -> {
-            if (webView != null && activeDevice != null) webView.loadUrl(targetUrl(activeDevice));
-        });
-        refresh.setTextSize(24);
-        refresh.setTextColor(INK);
-        topBar.addView(refresh, new LinearLayout.LayoutParams(dp(44), dp(44)));
+        if (!demoMode) {
+            LinearLayout connectedCopy = new LinearLayout(this);
+            connectedCopy.setOrientation(LinearLayout.VERTICAL);
+            connectedCopy.setGravity(Gravity.CENTER_VERTICAL);
+            TextView connectedTitle = label(device.name, 16, INK);
+            connectedTitle.setTypeface(Typeface.DEFAULT, Typeface.BOLD);
+            connectedTitle.setMaxLines(1);
+            connectedCopy.addView(connectedTitle);
+            if (!device.note.isEmpty()) {
+                TextView connectedNote = label(device.note, 11, MUTED);
+                connectedNote.setMaxLines(1);
+                connectedCopy.addView(connectedNote);
+            }
+            topBar.addView(connectedCopy, new LinearLayout.LayoutParams(0, dp(48), 1));
+            Button refresh = iconButton("↻", "刷新当前页面", v -> {
+                if (webView != null && activeDevice != null) webView.loadUrl(targetUrl(activeDevice));
+            });
+            refresh.setTextSize(24);
+            refresh.setTextColor(INK);
+            topBar.addView(refresh, new LinearLayout.LayoutParams(dp(44), dp(44)));
+        }
         root.addView(topBar, new LinearLayout.LayoutParams(-1, dp(52)));
 
         pageProgress = new ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal);
         pageProgress.setMax(100);
         pageProgress.setProgressTintList(android.content.res.ColorStateList.valueOf(ACCENT));
         root.addView(pageProgress, new LinearLayout.LayoutParams(-1, dp(2)));
-
         webContainer = new FrameLayout(this);
         webContainer.setBackgroundColor(Color.WHITE);
         webView = buildWebView();
@@ -604,13 +660,15 @@ public class MainActivity extends ComponentActivity {
     }
 
     private WebView buildWebView() {
+        if (demoMode && Build.VERSION.SDK_INT >= Build.VERSION_CODES.KITKAT) {
+            WebView.setWebContentsDebuggingEnabled(true);
+        }
         WebView view = new WebView(this);
         view.setBackgroundColor(Color.WHITE);
         view.setFocusableInTouchMode(true);
         view.setOverScrollMode(View.OVER_SCROLL_NEVER);
         view.addJavascriptInterface(new NativeBridge(), "CodexPocket");
-        // 长按由网页里的应用内操作单接管；不要让 WebView 弹出系统选词把手，
-        // 那样一眼就能看出这是浏览器。输入框仍允许聚焦与软键盘。
+        // 长按由网页里的应用内操作单接管；不要让 WebView 弹出系统选词把手。
         view.setLongClickable(false);
         view.setHapticFeedbackEnabled(false);
         view.setOnLongClickListener(v -> true);
@@ -621,6 +679,12 @@ public class MainActivity extends ComponentActivity {
         settings.setDatabaseEnabled(true);
         settings.setAllowFileAccess(true);
         settings.setAllowContentAccess(true);
+        if (demoMode) {
+            // file:// 页面需要 localStorage 与同文件脚本互相访问；全部限在本地 assets。
+            settings.setAllowFileAccessFromFileURLs(true);
+            settings.setAllowUniversalAccessFromFileURLs(true);
+            settings.setCacheMode(WebSettings.LOAD_NO_CACHE);
+        }
         settings.setSupportZoom(false);
         settings.setBuiltInZoomControls(false);
         settings.setDisplayZoomControls(false);
@@ -699,6 +763,20 @@ public class MainActivity extends ComponentActivity {
         });
         view.setWebViewClient(new WebViewClient() {
             @Override
+            public WebResourceResponse shouldInterceptRequest(WebView webView, WebResourceRequest request) {
+                if (demoMode && request != null && request.getUrl() != null) {
+                    String scheme = request.getUrl().getScheme();
+                    // 只放行本地 file/data 资源；任何 http/https 都被本地空响应吞掉，
+                    // 保证演示包绝不会产生真实外网请求。
+                    if (!"file".equalsIgnoreCase(scheme) && !"data".equalsIgnoreCase(scheme)) {
+                        return new WebResourceResponse("application/json", "utf-8",
+                                new java.io.ByteArrayInputStream(new byte[0]));
+                    }
+                }
+                return super.shouldInterceptRequest(webView, request);
+            }
+
+            @Override
             public void onPageStarted(WebView webView, String url, android.graphics.Bitmap favicon) {
                 currentMainFrameUrl = url == null ? "" : url;
                 setConnectionState(Color.rgb(244, 190, 74));
@@ -712,6 +790,7 @@ public class MainActivity extends ComponentActivity {
 
             @Override
             public void onReceivedError(WebView webView, WebResourceRequest request, WebResourceError error) {
+                if (demoMode) return; // 本地资源不弹「连不上电脑」误导提示
                 if (!request.isForMainFrame()) return;
                 setConnectionState(OFFLINE);
                 showLoadError(activeDevice == null ? "" : activeDevice.url);
@@ -721,11 +800,12 @@ public class MainActivity extends ComponentActivity {
             public boolean shouldOverrideUrlLoading(WebView webView, WebResourceRequest request) {
                 Uri uri = request.getUrl();
                 String scheme = uri.getScheme() == null ? "" : uri.getScheme();
+                if (demoMode) {
+                    // 演示包只允许 file:// 主文档，其余一律丢弃，绝不跳浏览器或联网。
+                    return !"file".equalsIgnoreCase(scheme);
+                }
                 boolean isWeb = "http".equalsIgnoreCase(scheme) || "https".equalsIgnoreCase(scheme);
                 if (isWeb) {
-                    // Everything web stays inside this WebView: the workspace redirects
-                    // through /login, and handing that to the system browser drops the
-                    // session and strands the user outside the app.
                     return false;
                 }
                 try {
@@ -943,7 +1023,7 @@ public class MainActivity extends ComponentActivity {
         if (newer) {
             builder.setPositiveButton("下载更新", (dialog, which) -> {
                 String path = health.optString("apkUrl", "/api/apk");
-                downloadUpdate(device, trimTrailingSlash(device.url) + path);
+                downloadUpdate(device, apiBaseUrl(device) + path);
             });
         }
         builder.show();
@@ -1248,11 +1328,24 @@ public class MainActivity extends ComponentActivity {
         }
     }
 
+    /** API 请求必须使用服务根地址；预置设备的 URL 带 /option-a/index.html 页面路径。 */
+    private String apiBaseUrl(Device device) {
+        try {
+            Uri uri = Uri.parse(device.url);
+            String scheme = uri.getScheme() == null ? "http" : uri.getScheme();
+            String authority = uri.getAuthority() == null ? "" : uri.getAuthority();
+            return scheme + "://" + authority;
+        } catch (Exception ignored) {
+            return trimTrailingSlash(device.url);
+        }
+    }
+
     private String targetUrl(Device device) {
         return targetUrl(device, null);
     }
 
     private String targetUrl(Device device, String threadId) {
+        if (demoMode) return DEMO_ASSET_URL;
         String url = device.url;
         StringBuilder query = new StringBuilder();
         if (device.token.isEmpty() || url.contains("token=")) {
@@ -1269,7 +1362,7 @@ public class MainActivity extends ComponentActivity {
     }
 
     private String httpGet(Device device, String path) throws Exception {
-        HttpURLConnection connection = (HttpURLConnection) new URL(trimTrailingSlash(device.url) + path).openConnection();
+        HttpURLConnection connection = (HttpURLConnection) new URL(apiBaseUrl(device) + path).openConnection();
         connection.setRequestMethod("GET");
         connection.setConnectTimeout(8000);
         connection.setReadTimeout(10000);
