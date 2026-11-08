@@ -38,7 +38,6 @@ export default function ChatDetailHeader({ title, subtitle, onBack, onRefresh }:
       </div>
       <div className="min-w-0 flex-1 text-center" data-qa="chat-title">
         <p className="truncate text-[15px] font-semibold text-[#1C1C1E]">{title}</p>
-        <p className="truncate text-[15px] font-semibold text-[#1C1C1E]">{title}</p>
         <p className="truncate text-[11px] text-[#8E8E93]">{subtitle}</p>
       </div>
 

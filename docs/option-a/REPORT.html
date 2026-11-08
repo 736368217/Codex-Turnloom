@@ -352,21 +352,21 @@
       <img class="qr" src="report-assets/qr-v7-web-demo.png" alt="Web 离线演示 APK 二维码" style="margin:0 auto 10px" />
       <div class="eyebrow">Web 线 · 离线演示 APK</div>
       <div style="font-size:15px;font-weight:750;margin:6px 0">会话总控 · 离线演示版</div>
-      <div class="small">包名 <code>com.codexpocket.optiona.demo.web</code><br>3,883,758 B · SHA <code>83AFCEBC…BAB9B7</code></div>
+      <div class="small">包名 <code>com.codexpocket.optiona.demo.web</code><br>4,343,499 B · SHA <code>0BBF6724…5FAAF</code></div>
       <a href="http://192.168.1.10:8787/downloads/Codex-Turnloom-Web-Demo.apk">下载 Web-Demo.apk</a>
     </div>
     <div class="download" style="display:block;text-align:center">
       <img class="qr" src="report-assets/qr-v7-native-demo.png" alt="原生离线演示 APK 二维码" style="margin:0 auto 10px" />
       <div class="eyebrow">原生线 · 离线演示 APK</div>
       <div style="font-size:15px;font-weight:750;margin:6px 0">会话总控 · 离线演示版</div>
-      <div class="small">包名 <code>com.codexpocket.optiona.demo.native</code><br>285,765,247 B · SHA <code>FE99B62A…636B</code></div>
+      <div class="small">包名 <code>com.codexpocket.optiona.demo.native</code><br>279,653,986 B · SHA <code>041650AC…A2B0AD</code></div>
       <a href="http://192.168.1.10:8787/downloads/Codex-Turnloom-Native-Demo.apk">下载 Native-Demo.apk</a>
     </div>
     <div class="download" style="display:block;text-align:center">
       <img class="qr" src="report-assets/qr-v7-html.png" alt="单文件 HTML 二维码" style="margin:0 auto 10px" />
       <div class="eyebrow">无需安装 · 单文件 HTML</div>
       <div style="font-size:15px;font-weight:750;margin:6px 0">Codex-Turnloom-离线演示.html</div>
-      <div class="small">1,875,814 B · SHA <code>3083370A…9A23</code><br>浏览器双击即开</div>
+      <div class="small">1,878,838 B · SHA <code>9A76331C…599C</code><br>浏览器双击即开</div>
       <a href="http://192.168.1.10:8787/downloads/Codex-Turnloom-%E7%A6%BB%E7%BA%BF%E6%BC%94%E7%A4%BA.html">下载 / 打开单文件 HTML</a>
     </div>
   </div>
@@ -469,7 +469,30 @@
     <tr><td><b>合计</b></td><td class="ok"><b>40 PASS / 0 FAIL</b></td><td>390 与 360 双视口各 20 项；<code>qa-v8-visual.mjs</code></td></tr>
     <tr><td>离线单文件 HTML（新输入舱）</td><td class="ok">29 PASS / 0 FAIL</td><td><code>qa-offline-demo.mjs</code>，零外部请求</td></tr>
     <tr><td>Chrome 强制断网（新输入舱）</td><td class="ok">24 PASS / 0 FAIL</td><td><code>qa-offline-hard.mjs</code>，双视口</td></tr>
+    <tr><td>真实 8787 只读复验</td><td class="ok">8 PASS / 0 FAIL</td><td><code>qa-v8-real.mjs</code>：标题 0.0px 偏差、左右 72/72、单行 46px、语音 0、业务写请求 0</td></tr>
+    <tr><td><b>MuMu 真机复验（Web 演示包）</b></td><td class="ok">通过</td><td>实测截图：单行输入舱、只有「停止」（空输入+运行中）、有输入时只有「发送」、回形针 → 相册/文件菜单、标题单行居中</td></tr>
   </table>
+
+  <h3>MuMu 真机实拍（1080×1920）</h3>
+  <div class="grid g4">
+    <figure class="phone"><img src="report-assets/v8-mumu-01-list.png" alt="真机会话列表" /><figcaption>会话列表（离线演示数据）</figcaption></figure>
+    <figure class="phone"><img src="report-assets/v8-mumu-02-chat.png" alt="真机聊天详情" /><figcaption><b>单行输入舱 + 标题单行居中 + 只有停止</b></figcaption></figure>
+    <figure class="phone"><img src="report-assets/v8-mumu-03-typed-send.png" alt="有输入只有发送" /><figcaption>有输入：只有「发送」，中断消失</figcaption></figure>
+    <figure class="phone"><img src="report-assets/v8-mumu-04-attach-menu.png" alt="附件菜单" /><figcaption>回形针 → 相册 / 文件（原版语义）</figcaption></figure>
+  </div>
+
+  <h3>原生演示 APK 真机（同一套改造）</h3>
+  <div class="grid g2">
+    <figure class="phone"><img src="report-assets/v8-mumu-rn-01-list.png" alt="RN 演示包会话列表" /><figcaption>RN 演示包：会话列表（离线演示数据）</figcaption></figure>
+    <figure class="phone"><img src="report-assets/v8-mumu-rn-02-chat.png" alt="RN 演示包聊天详情" /><figcaption>RN 聊天详情：<b>单行输入舱</b>（回形针 + 输入框 + 停止）、标题单行居中</figcaption></figure>
+  </div>
+  <div class="note warnbox">
+    <b>RN 端的「文件」入口有一个如实说明的降级</b>：RN 演示包原本靠 <code>npx gradlew assembleDebug</code> 全量重编，但本机 <code>LongPathsEnabled=0</code> 且 <code>react-native-worklets</code> 的 CMake 对象路径达 <b>269 字符</b>，ninja 的 <code>mkdir</code> 必然失败（已实测 junction 与 subst 两种绕法都会被 Gradle 解析回真实长路径）。
+    因此本轮改为<b>只重建 JS bundle 并热替换进已存在的演示 APK</b>（C++ 未变，1457 个条目原样保留，重签 V3 通过）。这带来一个限制：新增的 <code>expo-document-picker</code> <b>原生模块没被编入</b>，所以 RN 演示包点「文件」会提示「当前安装包未编入文件选择模块，请先用相册」，<b>不会崩溃</b>（已改为运行时 require + 降级，实测无红屏）。<b>「相册」入口正常，Web 端两个入口都正常。</b>
+    因此本轮改为<b>只重建 JS bundle 并热替换进已存在的演示 APK</b>（C++ 未变，1,437 个条目原样保留，重签 V3 通过）。这带来一个限制：新增的 <code>expo-document-picker</code> <b>原生模块没被编入</b>，所以 RN 演示包点「文件」会提示「当前安装包未编入文件选择模块，请先用相册」，<b>不会崩溃</b>（已改为运行时 require + 降级，实测无红屏）。<b>「相册」入口正常，Web 端两个入口都正常。</b>
+  <div class="note warnbox">
+    <b>真机又抓到并修掉一个缺陷（如实记录）</b>：首版真机截图里标题<b>重复显示两行</b>——上一轮我给标题容器加定位属性时，把旧的 <code>&lt;p&gt;{title}&lt;/p&gt;</code> 留在了下一行，DOM 里于是有两个标题。像素探针当时只取了第一个 <code>p</code>，所以自动化没发现，是真机肉眼才看出来。已删掉重复行，并<b>补了一条「标题只渲染一次」的断言</b>（现在 42 项，覆盖这类回归）。
+    <br>另修：附件菜单原用毛玻璃类，在 WebView 里背景透明导致「看不见」；已改为实色白底 + 阴影。离线提示 toast 原本每次点击都弹、会遮挡菜单，改为只在进入时显示一次。
 
   <h3>与原版功能对照盘点（你要求「仔细检查丢了什么」）</h3>
   <p class="sub">逐条比对 <code>public/index.html</code>（391 行）与 <code>public/app.js</code>（5,669 行）里的输入舱与页面能力。</p>

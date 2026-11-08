@@ -433,11 +433,12 @@ export class TurnloomClient {
     return data;
   }
 
-  async cancelQueuedSend(threadId: string, itemId: string, edit?: boolean): Promise<unknown> {
+  /** itemId 省略时即清空该会话全部排队消息（与 public/app.js clearQueueButton 同契约）。 */
+  async cancelQueuedSend(threadId: string, itemId?: string, edit?: boolean): Promise<unknown> {
     this.requireWritable();
     const { data } = await this.request(this.endpoint('/api/queue/cancel'), {
       method: 'POST',
-      body: { threadId, itemId, ...(edit ? { edit: true } : {}) },
+      body: { threadId, ...(itemId ? { itemId } : {}), ...(edit ? { edit: true } : {}) },
     });
     return data;
   }

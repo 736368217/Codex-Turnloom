@@ -275,7 +275,7 @@ export default function ThumbGlassBar({
           {attachMenu && (
             <div
               role="menu"
-              className="ios-sheet-glass absolute bottom-12 left-0 z-30 w-[152px] overflow-hidden rounded-[14px] border border-white/90 shadow-[0_10px_30px_rgba(16,30,60,0.18)]"
+              className="absolute bottom-12 left-0 z-30 w-[152px] overflow-hidden rounded-[14px] border border-[#E5E5EA] bg-white shadow-[0_10px_30px_rgba(16,30,60,0.22)]"
             >
               <button
                 type="button"

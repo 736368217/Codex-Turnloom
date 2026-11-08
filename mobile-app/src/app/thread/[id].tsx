@@ -28,7 +28,7 @@ import { OptionA } from '@/constants/optionA';
 import { AgentStepCard } from '@/components/AgentStepCard';
 import { ApprovalBottomSheet, type ApprovalSheetHandle } from '@/components/ApprovalBottomSheet';
 import { CodeDiffBlock } from '@/components/CodeDiffBlock';
-import { ThumbPromptBar } from '@/components/ThumbPromptBar';
+import { ThumbPromptBar, type QueuedItem } from '@/components/ThumbPromptBar';
 import { Badge, Card, EmptyState } from '@/components/ui';
 import {
   conversationCacheKey,
@@ -340,6 +340,25 @@ export default function ThreadScreen() {
         onInterrupt={async () => {
           try {
             await client.interrupt(threadId);
+            await load(true);
+          } catch (caught) {
+            setError(caught instanceof Error ? caught.message : String(caught));
+          }
+        }}
+        queueLength={status?.queueLength ?? 0}
+        queuedMessages={Array.isArray(status?.queuedMessages) ? (status!.queuedMessages as QueuedItem[]) : []}
+        onQueueAction={async (action, itemId) => {
+          try {
+            if (action === 'steer') await client.steerQueuedSend(threadId, itemId);
+            else await client.cancelQueuedSend(threadId, itemId);
+            await load(true);
+          } catch (caught) {
+            setError(caught instanceof Error ? caught.message : String(caught));
+          }
+        }}
+        onClearQueue={async () => {
+          try {
+            await client.cancelQueuedSend(threadId);
             await load(true);
           } catch (caught) {
             setError(caught instanceof Error ? caught.message : String(caught));
