@@ -121,7 +121,7 @@
     <div class="download">
       <img class="qr" src="report-assets/qr-web.png" alt="网页版 APK 下载二维码" />
       <div class="info">
-        <div class="eyebrow">Web 线 · WebView 壳</div>
+        <div class="eyebrow">Web 线 · 已停止投入（仍可用）</div>
         <div style="font-size:17px;font-weight:750;margin:6px 0">会话总控 · 网页版</div>
         <div class="kv"><span>包名</span><span>com.codexpocket.optiona.web</span></div>
         <div class="kv"><span>版本</span><span>1.19.0-web (70)</span></div>
@@ -133,18 +133,20 @@
     <div class="download">
       <img class="qr" src="report-assets/qr-native.png" alt="原生版 APK 下载二维码" />
       <div class="info">
-        <div class="eyebrow">原生线 · 本轮重编</div>
+        <div class="eyebrow">原生线 · 主线（V9 瘦身）</div>
         <div style="font-size:17px;font-weight:750;margin:6px 0">会话总控 · 原生版</div>
         <div class="kv"><span>包名</span><span>com.codexpocket.optiona.native</span></div>
         <div class="kv"><span>版本</span><span>1.19.0-native (71)</span></div>
-        <div class="kv"><span>大小</span><span>287,478,375 B</span></div>
-        <div class="kv"><span>SHA256</span><span><code>3DF7864E…C9</code></span></div>
+        <div class="kv"><span>大小</span><span>100,496,076 B（95.8 MB，−65.0%）</span></div>
+        <div class="kv"><span>SHA256</span><span><code>FE22DA8E…575B</code></span></div>
+        <div class="kv"><span>ABI</span><span>arm64-v8a（现代手机通用）</span></div>
         <a href="http://192.168.1.10:8787/downloads/Codex-Turnloom-Native.apk">下载 Codex-Turnloom-Native.apk</a>
+        <a href="http://192.168.1.10:8787/downloads/Codex-Turnloom-Native-universal.apk" style="margin-top:6px">兼容备用包 · 四 ABI 266.7 MB</a>
       </div>
     </div>
   </div>
   <div class="note">
-    <b>原生包是真原生，不是 WebView 壳</b>：<code>aapt dump badging</code> 实测 <code>package: name='com.codexpocket.optiona.native' versionCode='71' versionName='1.19.0-native'</code>、<code>application-label:'会话总控 · 原生版'</code>、<code>launchable-activity: name='com.app.MainActivity'</code>；包内自带 <code>assets/index.android.bundle</code>（3,876,868 B，Hermes 字节码）与四 ABI 的 <code>.so</code>，断网 / 无 Metro 也能启动。本轮新增 <code>expo-image-picker</code> 附件能力后 gradle <code>BUILD SUCCESSFUL in 1m 49s</code>（489 tasks），未破坏增量构建。本机 MuMu <code>adb install -r -t</code> 此最终包 Success。<b>网页版包本轮未改</b>（Web 改动在服务端静态页，壳只是加载 URL）。
+    <b>原生包是真原生，不是 WebView 壳</b>：<code>aapt dump badging</code> 实测 <code>package: name='com.codexpocket.optiona.native' versionCode='71' versionName='1.19.0-native'</code>、<code>application-label:'会话总控 · 原生版'</code>、<code>launchable-activity: name='com.app.MainActivity'</code>；包内自带 <code>assets/index.android.bundle</code>（3,886,136 B，Hermes 字节码）与 <code>lib/arm64-v8a/</code> 下 30 个 <code>.so</code>，断网 / 无 Metro 也能启动。V9 交付包为<b>单 ABI（arm64-v8a）</b>：删除 <code>armeabi-v7a / x86 / x86_64</code> 三个目录共 90 个 <code>.so</code> 条目后重签，<code>apksigner verify</code> V3 通过、<code>zipalign -c -p 4</code> 通过（<code>extractNativeLibs=false</code> 要求 4KB 对齐）。与已实机跑通的四 ABI 包逐条目比对：<b>1350 个共同条目中仅 3 个签名文件不同</b>，dex / bundle / 资源 / arm64 原生库全部字节一致。本机 MuMu <code>adb install -r -t</code> 此最终包 Success。<b>网页版包本轮未改</b>（Web 改动在服务端静态页，壳只是加载 URL）。
   </div>
   <p><a class="btn" href="http://192.168.1.10:8787/option-a/index.html">在手机浏览器打开中文版网页</a></p>
   <p class="small">最终页面产物 <code>index-CK8RDRND.js</code> / <code>index-DBvPYGeM.css</code>；127 与 LAN 页面 / 两个 APK 下载 URL 均 GET 200（<code>HEAD</code> 返回 405 是服务端行为，改用 GET 核验）。</p>
@@ -318,7 +320,7 @@
         <li>MuMu 真机上「排队 / 插队 / 附件 / 发送 / 中断 / 审批」的写点击未完成（自定义视图 UIA 限制）；这些功能在 Chrome 手机视口 + 隔离 mock 已 49/49 通过，但<b>不冒充真机通过</b>。</li>
         <li>RN 附件 <code>expo-image-picker</code> 在 Web 预览态返回空数组，图片库仅在真机 / 模拟器生效；本机未逐项真机点验图片选择器弹库。</li>
         <li>Web APK 是 WebView 壳，依赖 <code>192.168.1.10:8787</code> 可达；原生 APK 自带 Hermes bundle，但首次进入仍需配对服务。</li>
-        <li>原生包为 <b>debug 签名</b>、四 ABI 全量（约 287MB），非商店 release 精简包；手机摄像头扫码、触感震动、长时间稳定性未在本机模拟验证。</li>
+        <li>原生包为 <b>debug 签名</b>（R8 未开，dex 68MB 未压缩），V9 起交付包已按 ABI 拆成单 <code>arm64-v8a</code>（100,496,076 B）；真正的 release 精简包被本机 <code>LongPathsEnabled=0</code> 卡住（见 11.2）。手机摄像头扫码、触感震动、长时间稳定性未在本机模拟验证。</li>
         <li>Shiki 语言包本地打包后 JS 约 1.77MB，未做 code-splitting，不影响功能与 CSP。</li>
       </ul>
     </div>
@@ -336,13 +338,14 @@
   <div class="note">
     <b>本轮返工做了什么</b>：三条固定角色会话并行（Web 前端 / 原生 APK / QA-UX，pull 模式、不各自 commit），主对话负责改 MuMu 分辨率、本机实装复核、图片一致性审计与报告重写。修 3 个真缺陷（大标题重叠、文案截断、分辨率）、补 3 类功能（排队 / 插队 / 附件）、删 26 张旧图、重截 48 张当前构建图、全套回归 0 FAIL。构建自然跑完，未因时间取消任何任务。
   </div>
+</section>
 
 <!-- 9 离线演示（外网用户） -->
 <section>
   <h2><span class="num">9</span>离线演示：不在局域网 / 外网也能看全部页面与功能</h2>
   <p class="sub">你反馈「功能没法使用，我不在局域网，我在外网，只是想进去看下各种功能和页面」。根因是：两个正式包都是<b>远程遥控电脑端代理</b>的客户端，全部硬连 <code>http://192.168.1.10:8787</code>；在外网连不上这台机器，页面就没有会话、消息、审批任何数据，功能自然点不动。这不是界面 bug，是产品形态决定的。</p>
   <div class="note">
-    <b>解决方式</b>：另做一套<b>零联网、自包含</b>的离线演示产物，内置完整演示数据，装上 / 打开就能逐页点，每个功能都有真实反馈。<b>正式包一个字节都没改</b>（哈希仍为 <code>E9A78756…B8ED</code> / <code>3DF7864E…C9</code>），演示包用全新包名，可与正式包同时安装。
+    <b>解决方式</b>：另做一套<b>零联网、自包含</b>的离线演示产物，内置完整演示数据，装上 / 打开就能逐页点，每个功能都有真实反馈。<b>正式包的业务代码没被演示开关污染</b>（演示包用全新包名，可与正式包同时安装；正式包当前哈希见第 1 节）。
     <br><b>关键做法</b>：业务逻辑一行不改 —— 在页面里拦截 <code>fetch</code>，用内存演示数据应答所有 <code>/api/*</code>，并让写操作真的改内存状态。所以你点「发送」消息会追加到消息流、排队 / 插队会出现回执、中断会结束运行中状态、审批会消项，跟真连服务时的交互一致，而不是静态假页面。
   </div>
 
@@ -488,11 +491,12 @@
   </div>
   <div class="note warnbox">
     <b>RN 端的「文件」入口有一个如实说明的降级</b>：RN 演示包原本靠 <code>npx gradlew assembleDebug</code> 全量重编，但本机 <code>LongPathsEnabled=0</code> 且 <code>react-native-worklets</code> 的 CMake 对象路径达 <b>269 字符</b>，ninja 的 <code>mkdir</code> 必然失败（已实测 junction 与 subst 两种绕法都会被 Gradle 解析回真实长路径）。
-    因此本轮改为<b>只重建 JS bundle 并热替换进已存在的演示 APK</b>（C++ 未变，1457 个条目原样保留，重签 V3 通过）。这带来一个限制：新增的 <code>expo-document-picker</code> <b>原生模块没被编入</b>，所以 RN 演示包点「文件」会提示「当前安装包未编入文件选择模块，请先用相册」，<b>不会崩溃</b>（已改为运行时 require + 降级，实测无红屏）。<b>「相册」入口正常，Web 端两个入口都正常。</b>
-    因此本轮改为<b>只重建 JS bundle 并热替换进已存在的演示 APK</b>（C++ 未变，1,437 个条目原样保留，重签 V3 通过）。这带来一个限制：新增的 <code>expo-document-picker</code> <b>原生模块没被编入</b>，所以 RN 演示包点「文件」会提示「当前安装包未编入文件选择模块，请先用相册」，<b>不会崩溃</b>（已改为运行时 require + 降级，实测无红屏）。<b>「相册」入口正常，Web 端两个入口都正常。</b>
+    因此本轮改为只用「重建 JS bundle + 热替换进已存在的 APK」把新界面装进去（C++ 未变，其余条目原样保留，重签 V3 通过）。这带来一个限制：新增的 <code>expo-document-picker</code> <b>原生模块没被编入</b>，所以点「文件」会提示「当前安装包未编入文件选择模块，请先用相册」，<b>不会崩溃</b>（已改为运行时 require + 降级，实测无红屏）。<b>「相册」入口正常。</b>
+  </div>
   <div class="note warnbox">
     <b>真机又抓到并修掉一个缺陷（如实记录）</b>：首版真机截图里标题<b>重复显示两行</b>——上一轮我给标题容器加定位属性时，把旧的 <code>&lt;p&gt;{title}&lt;/p&gt;</code> 留在了下一行，DOM 里于是有两个标题。像素探针当时只取了第一个 <code>p</code>，所以自动化没发现，是真机肉眼才看出来。已删掉重复行，并<b>补了一条「标题只渲染一次」的断言</b>（现在 42 项，覆盖这类回归）。
     <br>另修：附件菜单原用毛玻璃类，在 WebView 里背景透明导致「看不见」；已改为实色白底 + 阴影。离线提示 toast 原本每次点击都弹、会遮挡菜单，改为只在进入时显示一次。
+  </div>
 
   <h3>与原版功能对照盘点（你要求「仔细检查丢了什么」）</h3>
   <p class="sub">逐条比对 <code>public/index.html</code>（391 行）与 <code>public/app.js</code>（5,669 行）里的输入舱与页面能力。</p>
@@ -520,8 +524,96 @@
   </div>
 </section>
 
+<!-- 11 V9 底栏 / 瘦身 / 真机功能实测 -->
+<section>
+  <h2><span class="num">11</span>V9：底栏白框、体积瘦身与真实 8787 功能实测</h2>
+  <p class="sub">你这一轮点了三件事：底栏「好几个白色方框叠加在一起太丑」、APK 200+MB 太大、做完推主分支并在模拟器上连本机真实服务做功能测试。这里逐条给结果、给数字、给截图；发现但没修的一并写在 11.4。</p>
+
+  <h3>11.1 底栏白框：三层半透明白叠成「白框套白框」</h3>
+  <table>
+    <tr><th>层级</th><th>修复前</th><th>为什么肉眼是多个白框</th></tr>
+    <tr><td>外层容器</td><td><code>rgba(255,255,255,0.62)</code>，方形，无圆角</td><td>先把半透明白铺满整条</td></tr>
+    <tr><td>内层</td><td><code>BlurView</code> + <code>bg-white/55</code> + <code>rounded-[26px]</code></td><td>Android 上 <code>expo-blur</code> 不做真实高斯模糊，等于<b>再叠一层半透明白矩形</b>，且圆角与外层不同</td></tr>
+    <tr><td>选中项</td><td><code>bg-[#007AFF]/10</code> + <code>rounded-[20px]</code></td><td>第三层不同圆角的半透明白块，套在最里面</td></tr>
+  </table>
+  <p>三层叠加 → 边缘出现三圈不同灰度的轮廓，就是你说的「好几个白色方框叠加」。</p>
+  <p><b>修复</b>：只保留<b>一层表面</b> —— 整条栏 <code>#FCFCFD</code> 实色 + 顶部 0.5px <code>rgba(60,60,67,0.14)</code> 发丝线 + <code>shadowOpacity 0.06 / elevation 6</code>；<b>移除 BlurView</b>；选中态只改图标与文字颜色，并在图标下加 4px 小圆点，<b>不再给整个 tab 铺背景块</b>。</p>
+  <table>
+    <tr><th>像素证据（1080×1920 真机截图，底栏带内空白列 x=12）</th><th>修复前</th><th>修复后</th></tr>
+    <tr><td>该列出现几种色阶</td><td class="warn">7 种（主色 <code>#EBEDF1</code>×95）</td><td class="ok"><b>1 种</b>（<code>#FCFCFD</code>×144）</td></tr>
+    <tr><td>y=1850 横扫的色阶变化次数</td><td class="warn">130 次</td><td class="ok">47 次（仅为 3 组图标/文字的边缘）</td></tr>
+    <tr><td>三个一级页是否一致</td><td class="warn">不一致</td><td class="ok">对话 / 终端 / 设置 三页均为 1 种色阶、144/144 行相同</td></tr>
+  </table>
+  <div class="grid g2" style="margin-top:12px">
+    <figure class="phone"><img src="report-assets/v8-mumu-rn-01-list.png" alt="修复前的底栏" /><figcaption><b>修复前</b>：外层半透明 + BlurView + 选中块三层叠加，空白列 7 种色阶</figcaption></figure>
+    <figure class="phone"><img src="report-assets/v9-tab-after-list.png" alt="修复后的底栏" /><figcaption><b>修复后</b>：单层 <code>#FCFCFD</code> + 0.5px 发丝线，选中态只有颜色与 4px 圆点</figcaption></figure>
+  </div>
+
+  <h3>11.2 体积：287,478,375 B → 100,496,076 B（−65.0%）</h3>
+  <p>先看钱花在哪（对 274 MiB 的四 ABI 包解压统计）：</p>
+  <table>
+    <tr><th>部分</th><th>原始大小</th><th>包内占位</th><th>说明</th></tr>
+    <tr><td>原生库 <code>lib/*/*.so</code></td><td>234.7 MB / 120 个</td><td>不压缩存储</td><td>4 个 ABI × 30 个 .so；单 arm64 一套就 67,708,432 B</td></tr>
+    <tr><td>dex</td><td>68,342,812 B / 24 个</td><td>26,469,532 B</td><td>debug 未过 R8，类名与调试信息全留</td></tr>
+    <tr><td>Hermes bundle</td><td>3,886,136 B</td><td>1,548,639 B</td><td><code>assets/index.android.bundle</code></td></tr>
+    <tr><td>resources.arsc</td><td>1,968,276 B</td><td>不压缩</td><td>含 100+ 语言标签</td></tr>
+  </table>
+  <table>
+    <tr><th>做法</th><th>结果</th><th>判定</th></tr>
+    <tr><td><b>单 ABI 拆分</b>：删掉 <code>armeabi-v7a / x86 / x86_64</code> 三个目录（共 <b>90 个</b> lib 条目），去旧签名后 <code>apksigner</code> 重签</td><td class="ok"><b>100,496,076 B（95.8 MiB）</b></td><td class="ok">采用（手机是 arm64）</td></tr>
+    <tr><td>用 NDK <code>llvm-strip --strip-unneeded</code> 再剥符号</td><td class="warn">0 字节变化</td><td>无效：AGP 构建时已 strip，<code>llvm-readelf -S</code> 里没有 <code>.debug*</code> / <code>.symtab</code></td></tr>
+    <tr><td>release + R8 重编（dex 68MB → 约 8MB）</td><td class="warn">构建失败</td><td>不可达：<code>LongPathsEnabled=0</code>，<code>react-native-worklets</code> 的 CMake 对象路径 269 字符，ninja <code>mkdir</code> 必失败（junction / subst / 全量真实拷贝 node_modules 都试过，Gradle 仍解析回长路径）</td></tr>
+    <tr><td>删掉 MLKit 扫码与相机原生库（约 5.8 MB）</td><td class="warn">未做</td><td>属于功能取舍，不在「不影响功能」范围内，留给你决定</td></tr>
+  </table>
+  <table>
+    <tr><th>校验项</th><th>结果</th></tr>
+    <tr><td><code>apksigner verify --print-certs</code></td><td class="ok">V3 通过，证书 <code>CN=Android Debug</code>（与四 ABI 包同一 keystore）</td></tr>
+    <tr><td><code>zipalign -c -p 4</code></td><td class="ok">通过 —— 这点必须验：<code>extractNativeLibs=false</code> 时系统直接从 APK 里 <code>dlopen</code>，<code>.so</code> 未按 4KB 页对齐会在真机上一启动就崩</td></tr>
+    <tr><td>与已实机跑通的四 ABI 包逐条目比对</td><td class="ok">1350 个共同条目中<b>仅 3 个</b>不同，且都是重签必然变的 <code>META-INF/ANDROIDD.RSA / .SF / MANIFEST.MF</code>；dex、bundle、资源、arm64 原生库<b>字节完全一致</b></td></tr>
+    <tr><td>模拟器能不能直接跑 arm64 包</td><td class="warn">不能：MuMu 主 ABI 是 x86_64，装上后 <code>SoLoaderDSONotFoundError: couldn't find DSO to load: libreactnative.so</code>（包内无 x86_64 lib）。因此功能实测用<b>同一条流水线拆出的 x86_64 包</b>跑的，两者除 ABI 目录外字节相同</td></tr>
+  </table>
+  <div class="note warnbox"><b>兼容性说明</b>：交付的 <code>Codex-Turnloom-Native.apk</code> 只含 <code>arm64-v8a</code>，2017 年以后的手机都是这个架构；若你的机器偏老（32 位 arm），用同目录下的 <code>Codex-Turnloom-Native-universal.apk</code>（四 ABI，266.7 MiB）。</div>
+
+  <h3>11.3 真实 8787 功能实测（MuMu · Android 15 · 1080×1920）</h3>
+  <table>
+    <tr><th>场景</th><th>实测结果</th><th>证据</th></tr>
+    <tr><td>干净安装 → 首次启动</td><td class="ok">进入「选择要连接的电脑」，列出 <code>本机 · de / http://192.168.1.10:8787</code> 与 <code>离线演示 · 本机 / http://demo.invalid</code></td><td>UIA 文本 + 截图</td></tr>
+    <tr><td>选中 8787 → 会话列表</td><td class="ok">拉到真实数据：<code>阿里云服务器（龙虾专修 (2)</code>、<code>回应问候</code>、<code>修复网关登录和网页访问</code>，状态「已完成」+ 相对时间</td><td><code>v9-fresh-list.png</code></td></tr>
+    <tr><td>终端页</td><td class="ok"><code>本机 · de</code> / <code>http://192.168.1.10:8787</code> / <b>已连接</b> / 切换并使用 / 测试连接 / 代理引擎 <code>Codex CLI</code>·<code>Pi Agent</code></td><td><code>v9-terminal.png</code></td></tr>
+    <tr><td>设置页</td><td class="ok"><code>已配对终端</code>、<code>写入权限</code>、<code>会话总控 · 原生版</code>、<code>版本 1.19.0-native</code></td><td><code>v9-settings.png</code></td></tr>
+    <tr><td>会话详情</td><td class="ok">真实消息流（ASSISTANT 正文、终端日志折叠、代码改动）；底栏消失（方案 A）</td><td><code>v9-chat.png</code></td></tr>
+    <tr><td>输入舱空态</td><td class="ok">右侧按钮为<b>浅蓝禁用</b>：浅蓝 2,119 px / 实心蓝 0 px / 输入区深色 0 px</td><td>像素统计</td></tr>
+    <tr><td>输入 <code>V10TEST</code></td><td class="ok">按钮变<b>实心蓝可发送</b>：实心蓝 2,085 px / 浅蓝 16 px（边缘）、输入区深色 1,314 px</td><td>像素统计</td></tr>
+    <tr><td>附件菜单</td><td class="ok">菜单渲染在输入行<b>上方</b>：白面板覆盖 y=1540–1740，两行蓝色图标 y≈1568–1602 / 1692–1722，菜单底边 1740 &lt; 输入行顶边 1787</td><td><code>v9-attach.png</code></td></tr>
+    <tr><td><b>运行中 · 空输入</b>（mock 服务的 thinking 会话）</td><td class="ok">只显示<b>红色停止</b>：<code>#FF3B30</code> 8,460 px，蓝色发送 0 px</td><td><code>v9-busy-stop.png</code></td></tr>
+    <tr><td><b>运行中 · 有输入</b></td><td class="ok">只显示<b>蓝色发送</b>（排队）：<code>#007AFF</code> 8,332 px，红色 0 px</td><td><code>v9-busy-send.png</code></td></tr>
+    <tr><td>Diff 面板</td><td class="warn">显示「Diff 暂时不可用 connect ENOENT \\.\pipe\codex-ipc」</td><td>环境侧：本机 Codex 管道实际叫 <code>pidesktop-codex-ipc</code>，<code>/api/host/diff</code> 返回 502；不是客户端问题，按约定不改 <code>server.js</code></td></tr>
+  </table>
+  <div class="grid g4" style="margin-top:12px">
+    <figure class="phone"><img src="report-assets/v9-fresh-list.png" alt="真实 8787 会话列表" /><figcaption>真实 8787：会话列表</figcaption></figure>
+    <figure class="phone"><img src="report-assets/v9-terminal.png" alt="终端页已连接" /><figcaption>终端页：<b>已连接</b> 8787</figcaption></figure>
+    <figure class="phone"><img src="report-assets/v9-chat.png" alt="会话详情" /><figcaption>会话详情：真实消息流、无底栏</figcaption></figure>
+    <figure class="phone"><img src="report-assets/v9-attach.png" alt="附件菜单在输入行上方" /><figcaption>附件菜单在输入行<b>上方</b></figcaption></figure>
+  </div>
+  <div class="grid g2" style="margin-top:10px">
+    <figure class="phone"><img src="report-assets/v9-busy-stop.png" alt="运行中空输入只有停止" /><figcaption>运行中 + 空输入：<b>只有红色停止</b>（8,460 px）</figcaption></figure>
+    <figure class="phone"><img src="report-assets/v9-busy-send.png" alt="运行中有输入只有发送" /><figcaption>运行中 + 有输入：<b>只有蓝色发送</b>（8,332 px）</figcaption></figure>
+  </div>
+
+  <h3>11.4 这轮真机发现、但<b>没有</b>修的（如实列出，不假装通过）</h3>
+  <table>
+    <tr><th>问题</th><th>实测证据</th><th>当前状态</th></tr>
+    <tr><td>「修改终端信息」展开后，<b>保存 / 取消 默认被裁掉</b></td><td>无障碍 bounds：<code>保存 [83,1722][526,1723]</code>、<code>取消 [554,1722][998,1723]</code> —— 高度只有 1px；向上滑动后变成 <code>[83,813][526,919]</code>（106px）才可点</td><td class="warn">未修。建议改法：进入编辑态后自动 <code>scrollToEnd</code>，或把按钮钉在卡片顶部。这条会让人以为「存不了」</td></tr>
+    <tr><td>保存后地址没真正切换</td><td>在同一台机器上把地址改成 <code>18997</code> 能生效；再改回 <code>8787</code> 时 toast 显示「终端信息已保存」，但卡片与后续请求仍是 <code>18997</code></td><td class="warn">未定位根因（<code>savePairing</code> 与 <code>activeTerminalId</code> 两套存储的关系还没查透）。<b>绕行已验证</b>：卸载重装 → 「选择要连接的电脑」→ 选中 8787，即恢复正常</td></tr>
+    <tr><td>聊天页 <code>uiautomator dump</code> 长期取不到 idle</td><td><code>ERROR: could not get idle state</code>（输入框光标动画导致窗口永不 idle）</td><td>测试方法问题，非产品缺陷；已改为像素统计取证，并在脚本里加了「先删远端文件 + 校验 package/视口」防读到上一次的残留 XML（本轮踩过一次，读到了旧 app 的 1620×2880 树）</td></tr>
+  </table>
+
+  <h3>11.5 关于「以后不做 Web」</h3>
+  <p class="sub">按你的决定：Web 线<b>停止投入</b>，不再修顶部标题栏那个「大额头」，也不再加功能；产物继续保留（<code>/option-a/index.html</code> 与离线演示 HTML 都能打开），但不作为交付主线。原生 App 是唯一主线。</p>
+</section>
+
 <footer>
-  Codex-Turnloom · Option A · V6 返工 + V7 离线演示报告 · 2026-11-08 · 图片与结果归档于 <code>docs/option-a/qa-shots/</code> 与主仓 <code>public/option-a/report/report-assets/</code>（<code>v6-*</code> 为 V6 当前构建重截，<code>v7-*</code> 为离线演示实拍）
+  Codex-Turnloom · Option A · V9 报告（底栏重做 / 体积 95.8 MiB / 真实 8787 功能实测）· 2026-11-09 · 图片与结果归档于 <code>docs/option-a/qa-shots/</code> 与主仓 <code>public/option-a/report/report-assets/</code>（<code>v6-*</code> V6 重截，<code>v7-*</code> 离线演示实拍，<code>v8-*</code> V8 输入舱，<code>v9-*</code> 本轮真机）
 </footer>
 </div>
 </body>

@@ -226,6 +226,37 @@ export function ThumbPromptBar({
             </Text>
           ) : null}
 
+          {/* 附件菜单：还原原版「相册 / 文件浏览」。
+              必须渲染在输入行**上方**——输入舱贴屏幕底，菜单放下面会被挤出可视区。 */}
+          {attachOpen ? (
+            <View className="mx-[14px] mb-[6px] overflow-hidden rounded-[12px] border border-[#E5E5EA] bg-white">
+              <Pressable
+                accessibilityRole="menuitem"
+                accessibilityLabel="相册"
+                onPress={() => void fromAlbum()}
+                className="min-h-[44px] flex-row items-center gap-2 border-b border-[#E5E5EA] px-3 active:opacity-80">
+                <SymbolView
+                  name={{ ios: 'photo.on.rectangle', android: 'image', web: 'image' }}
+                  size={17}
+                  tintColor={OptionA.blue}
+                />
+                <Text className="text-[14px] text-[#1C1C1E]">相册</Text>
+              </Pressable>
+              <Pressable
+                accessibilityRole="menuitem"
+                accessibilityLabel="文件"
+                onPress={() => void fromFiles()}
+                className="min-h-[44px] flex-row items-center gap-2 px-3 active:opacity-80">
+                <SymbolView
+                  name={{ ios: 'folder', android: 'folder', web: 'folder' }}
+                  size={17}
+                  tintColor={OptionA.blue}
+                />
+                <Text className="text-[14px] text-[#1C1C1E]">文件</Text>
+              </Pressable>
+            </View>
+          ) : null}
+
           {/* 单行主结构：附件 · 输入 · 发送/停止（互斥） */}
           <View className="flex-row items-center gap-2 px-[14px]">
             <Pressable
@@ -286,35 +317,6 @@ export function ThumbPromptBar({
             )}
           </View>
 
-          {/* 附件菜单：还原原版「相册 / 文件浏览」 */}
-          {attachOpen ? (
-            <View className="mx-[14px] mt-[6px] overflow-hidden rounded-[12px] border border-[#E5E5EA] bg-white">
-              <Pressable
-                accessibilityRole="menuitem"
-                accessibilityLabel="相册"
-                onPress={() => void fromAlbum()}
-                className="min-h-[44px] flex-row items-center gap-2 border-b border-[#E5E5EA] px-3 active:opacity-80">
-                <SymbolView
-                  name={{ ios: 'photo.on.rectangle', android: 'image', web: 'image' }}
-                  size={17}
-                  tintColor={OptionA.blue}
-                />
-                <Text className="text-[14px] text-[#1C1C1E]">相册</Text>
-              </Pressable>
-              <Pressable
-                accessibilityRole="menuitem"
-                accessibilityLabel="文件"
-                onPress={() => void fromFiles()}
-                className="min-h-[44px] flex-row items-center gap-2 px-3 active:opacity-80">
-                <SymbolView
-                  name={{ ios: 'folder', android: 'folder', web: 'folder' }}
-                  size={17}
-                  tintColor={OptionA.blue}
-                />
-                <Text className="text-[14px] text-[#1C1C1E]">文件</Text>
-              </Pressable>
-            </View>
-          ) : null}
 
           {readOnly ? (
             <Text className="pt-1 text-center text-[12px] text-[#D70015]">只读模式：发送 / 中断 / 审批已禁用</Text>
