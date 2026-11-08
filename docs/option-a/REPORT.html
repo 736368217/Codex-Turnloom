@@ -405,7 +405,7 @@
   <h3>验证结果（不把推测写成通过）</h3>
   <table>
     <tr><th>验证项</th><th>结果</th><th>证据</th></tr>
-    <tr><td>演示数据层单元验证</td><td class="ok">33 PASS / 0 FAIL</td><td><code>test-demo-data.cjs</code>：health / threads / messages / diff / send(queue,steer,images) / interrupt / approval / queue 管理 / new-thread / changes 幂等 / 绝对 URL / 写日志</td></tr>
+    <tr><td>演示数据层单元验证</td><td class="ok">33 PASS / 0 FAIL</td><td><code>selftest-demo-data.cjs</code>：health / threads / messages / diff / send(queue,steer,images) / interrupt / approval / queue 管理 / new-thread / changes 幂等 / 绝对 URL / 写日志</td></tr>
     <tr><td>单文件 HTML 真实 Chrome <code>file://</code> 逐页点击</td><td class="ok">26 PASS / 0 FAIL</td><td><code>qa-offline-demo.mjs</code>：会话列表 → 聊天详情（0 底栏）→ 分段控件 → 排队 → 插队 → 附件 → 中断 → 终端 / 设置；<code>externalRequests=0</code></td></tr>
     <tr><td><b>Chrome 强制断网</b>（<code>context.setOffline(true)</code>）双视口</td><td class="ok">22 PASS / 0 FAIL</td><td><code>qa-offline-hard.mjs</code>：390 与 360 下逐页点击、排队 / 插队 / 附件全部生效、零外部请求、无致命 JS 错误</td></tr>
     <tr><td>写操作真实带参</td><td class="ok">queue / steer / images[] 全命中</td><td><code>/__demo/log</code> 记录：<code>mode:"queue"</code>、<code>mode:"steer"</code>、<code>images:[{name,mimeType,data}]</code></td></tr>

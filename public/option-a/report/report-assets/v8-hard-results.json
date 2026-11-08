@@ -1,0 +1,131 @@
+{
+  "steps": [
+    {
+      "name": "390 强制离线下应用渲染",
+      "status": "PASS",
+      "detail": "len=322"
+    },
+    {
+      "name": "390 演示会话数据可见",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "name": "390 无横向溢出",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "name": "390 聊天详情 0 底栏",
+      "status": "PASS",
+      "detail": "{\"nav\":0,\"tabs\":0}"
+    },
+    {
+      "name": "390 消息流/审批/代码可见",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "name": "390 离线状态下排队发送生效",
+      "status": "PASS",
+      "detail": "[\"queue\",\"queue\"]"
+    },
+    {
+      "name": "390 离线状态下出现队列条",
+      "status": "PASS",
+      "detail": "queue-bar=1"
+    },
+    {
+      "name": "390 离线状态下队列插队生效",
+      "status": "PASS",
+      "detail": "[\"/api/queue/steer\"]"
+    },
+    {
+      "name": "390 附件预览出现",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "name": "390 一级页「终端」有内容",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "name": "390 一级页「设置」有内容",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "name": "360 强制离线下应用渲染",
+      "status": "PASS",
+      "detail": "len=322"
+    },
+    {
+      "name": "360 演示会话数据可见",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "name": "360 无横向溢出",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "name": "360 聊天详情 0 底栏",
+      "status": "PASS",
+      "detail": "{\"nav\":0,\"tabs\":0}"
+    },
+    {
+      "name": "360 消息流/审批/代码可见",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "name": "360 离线状态下排队发送生效",
+      "status": "PASS",
+      "detail": "[\"queue\",\"queue\"]"
+    },
+    {
+      "name": "360 离线状态下出现队列条",
+      "status": "PASS",
+      "detail": "queue-bar=1"
+    },
+    {
+      "name": "360 离线状态下队列插队生效",
+      "status": "PASS",
+      "detail": "[\"/api/queue/steer\"]"
+    },
+    {
+      "name": "360 附件预览出现",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "name": "360 一级页「终端」有内容",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "name": "360 一级页「设置」有内容",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "name": "全程零外部网络请求",
+      "status": "PASS",
+      "detail": "[]"
+    },
+    {
+      "name": "无致命 JS 错误",
+      "status": "PASS",
+      "detail": "[]"
+    }
+  ],
+  "externalRequests": [],
+  "consoleErrors": [],
+  "summary": {
+    "pass": 24,
+    "fail": 0,
+    "externalRequests": 0
+  }
+}

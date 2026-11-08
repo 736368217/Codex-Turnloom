@@ -265,7 +265,9 @@ public class MainActivity extends ComponentActivity {
         root.setOrientation(LinearLayout.VERTICAL);
         root.setBackgroundColor(PAPER);
         setContentView(root);
-        Device startupDevice = demoMode ? activeDevice : findActiveDevice();
+        Device startupDevice = findActiveDevice();
+        // 离线演示包没有真实设备，直接用内置演示设备启动（等价于原三元表达式）。
+        if (demoMode) startupDevice = activeDevice;
         if (startupDevice != null) {
             openDevice(startupDevice, pendingNotificationThreadId);
             pendingNotificationThreadId = null;

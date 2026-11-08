@@ -1,0 +1,210 @@
+{
+  "steps": [
+    {
+      "name": "390 标题水平居中（偏差≤2px）",
+      "status": "PASS",
+      "detail": "标题=\"修复登录网关超时\" 中心=195.0 视口中心=195.0 偏差=0.0px"
+    },
+    {
+      "name": "390 标题栏左右两侧等宽",
+      "status": "PASS",
+      "detail": "左=72.0px 右=72.0px"
+    },
+    {
+      "name": "390 量到的是真标题（非消息文本）",
+      "status": "PASS",
+      "detail": "\"修复登录网关超时\""
+    },
+    {
+      "name": "390 语音按钮已删除",
+      "status": "PASS",
+      "detail": "语音按钮数=0"
+    },
+    {
+      "name": "390 空输入+运行中：只显示「中断」",
+      "status": "PASS",
+      "detail": "{\"send\":0,\"stop\":1}"
+    },
+    {
+      "name": "390 有输入+运行中：只显示「发送」",
+      "status": "PASS",
+      "detail": "{\"send\":1,\"stop\":0}"
+    },
+    {
+      "name": "390 输入舱主结构为单行（行高<60px）",
+      "status": "PASS",
+      "detail": "输入行高=46.0px"
+    },
+    {
+      "name": "390 输入框宽度充足（>170px）",
+      "status": "PASS",
+      "detail": "textarea=250.0px 附件=44.0px"
+    },
+    {
+      "name": "390 队列条折叠时高度紧凑（<56px）",
+      "status": "PASS",
+      "detail": "队列条高=52.0px"
+    },
+    {
+      "name": "390 附件菜单有「相册」「文件」两项",
+      "status": "PASS",
+      "detail": "{\"photo\":1,\"file\":1}"
+    },
+    {
+      "name": "390 相册入口指向 accept=image/*",
+      "status": "PASS",
+      "detail": "image/*"
+    },
+    {
+      "name": "390 选图后出现附件缩略图",
+      "status": "PASS",
+      "detail": "缩略图=1"
+    },
+    {
+      "name": "390 可移除附件",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "name": "390 运行中+有排队 → 出现队列条",
+      "status": "PASS",
+      "detail": "队列条=1"
+    },
+    {
+      "name": "390 队列展开有「插队」「删除」「清空」",
+      "status": "PASS",
+      "detail": "{\"steer\":2,\"del\":2,\"clear\":1}"
+    },
+    {
+      "name": "390 点「插队」命中 /api/queue/steer",
+      "status": "PASS",
+      "detail": "[\"/api/queue/steer:q1\"]"
+    },
+    {
+      "name": "390 点「清空」命中 /api/queue/cancel（不带 itemId）",
+      "status": "PASS",
+      "detail": "[\"/api/queue/steer:q1\",\"/api/queue/cancel:ALL\"]"
+    },
+    {
+      "name": "390 空闲会话不显示队列条与中断",
+      "status": "PASS",
+      "detail": "队列条=0 中断=0"
+    },
+    {
+      "name": "390 无横向溢出",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "name": "360 标题水平居中（偏差≤2px）",
+      "status": "PASS",
+      "detail": "标题=\"修复登录网关超时\" 中心=180.0 视口中心=180.0 偏差=0.0px"
+    },
+    {
+      "name": "360 标题栏左右两侧等宽",
+      "status": "PASS",
+      "detail": "左=72.0px 右=72.0px"
+    },
+    {
+      "name": "360 量到的是真标题（非消息文本）",
+      "status": "PASS",
+      "detail": "\"修复登录网关超时\""
+    },
+    {
+      "name": "360 语音按钮已删除",
+      "status": "PASS",
+      "detail": "语音按钮数=0"
+    },
+    {
+      "name": "360 空输入+运行中：只显示「中断」",
+      "status": "PASS",
+      "detail": "{\"send\":0,\"stop\":1}"
+    },
+    {
+      "name": "360 有输入+运行中：只显示「发送」",
+      "status": "PASS",
+      "detail": "{\"send\":1,\"stop\":0}"
+    },
+    {
+      "name": "360 输入舱主结构为单行（行高<60px）",
+      "status": "PASS",
+      "detail": "输入行高=46.0px"
+    },
+    {
+      "name": "360 输入框宽度充足（>170px）",
+      "status": "PASS",
+      "detail": "textarea=220.0px 附件=44.0px"
+    },
+    {
+      "name": "360 队列条折叠时高度紧凑（<56px）",
+      "status": "PASS",
+      "detail": "队列条高=52.0px"
+    },
+    {
+      "name": "360 附件菜单有「相册」「文件」两项",
+      "status": "PASS",
+      "detail": "{\"photo\":1,\"file\":1}"
+    },
+    {
+      "name": "360 相册入口指向 accept=image/*",
+      "status": "PASS",
+      "detail": "image/*"
+    },
+    {
+      "name": "360 选图后出现附件缩略图",
+      "status": "PASS",
+      "detail": "缩略图=1"
+    },
+    {
+      "name": "360 可移除附件",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "name": "360 运行中+有排队 → 出现队列条",
+      "status": "PASS",
+      "detail": "队列条=1"
+    },
+    {
+      "name": "360 队列展开有「插队」「删除」「清空」",
+      "status": "PASS",
+      "detail": "{\"steer\":2,\"del\":2,\"clear\":1}"
+    },
+    {
+      "name": "360 点「插队」命中 /api/queue/steer",
+      "status": "PASS",
+      "detail": "[\"/api/queue/steer:q1\"]"
+    },
+    {
+      "name": "360 点「清空」命中 /api/queue/cancel（不带 itemId）",
+      "status": "PASS",
+      "detail": "[\"/api/queue/steer:q1\",\"/api/queue/cancel:ALL\"]"
+    },
+    {
+      "name": "360 空闲会话不显示队列条与中断",
+      "status": "PASS",
+      "detail": "队列条=0 中断=0"
+    },
+    {
+      "name": "360 无横向溢出",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "name": "零外部网络请求",
+      "status": "PASS",
+      "detail": "[]"
+    },
+    {
+      "name": "无致命 JS 错误",
+      "status": "PASS",
+      "detail": "[]"
+    }
+  ],
+  "externalRequests": [],
+  "consoleErrors": [],
+  "summary": {
+    "pass": 40,
+    "fail": 0
+  }
+}
