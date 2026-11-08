@@ -1,7 +1,8 @@
 /**
- * Root Expo Router stack. Light-only by constitution.
- * The Home tab group uses a native iOS large title with a translucent
- * `systemChromeMaterialLight` blur header; thread detail uses a compact header.
+ * 根 Expo Router Stack（light-only）。
+ * (tabs) 三个一级页各自在页内渲染唯一大标题，因此彻底隐藏根 Stack 的
+ * 透明大标题（headerShown:false），避免与页内「对话/终端管理/设置」重叠裁切。
+ * thread/[id] 详情页保留紧凑返回头，不受影响。
  */
 import { BottomSheetModalProvider } from '@gorhom/bottom-sheet';
 import { DefaultTheme, Stack, ThemeProvider } from 'expo-router';
@@ -32,11 +33,7 @@ export default function RootLayout() {
               <Stack.Screen
                 name="(tabs)"
                 options={{
-                  title: '会话总控',
-                  // Native iOS large title + chrome-material-light glass header.
-                  headerLargeTitle: true,
-                  headerBlurEffect: 'systemChromeMaterialLight',
-                  headerTransparent: true,
+                  headerShown: false,
                 }}
               />
               <Stack.Screen

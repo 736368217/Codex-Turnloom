@@ -25,7 +25,7 @@ import { PRESS, cx, truncate } from './lib/ui';
 import MachineHubHeader from './components/MachineHubHeader';
 import ChatDetailHeader from './components/ChatDetailHeader';
 import TaskStreamView from './components/TaskStreamView';
-import ThumbGlassBar from './components/ThumbGlassBar';
+import ThumbGlassBar, { type SendPayload } from './components/ThumbGlassBar';
 import GlassTabBar, { type TabKey } from './components/GlassTabBar';
 import CupertinoSheets, { type SheetKind } from './components/CupertinoSheets';
 import {
@@ -230,15 +230,16 @@ export default function App() {
   }, []);
 
   // --- Write actions (all guarded by allowWrite in the API layer) ----------
+  // --- Write actions (all guarded by allowWrite in the API layer) ----------
   const handleSend = useCallback(
-    async (message: string, mode?: 'start' | 'queue') => {
+    async (payload: SendPayload) => {
       try {
         const result = await api.sendMessage({
-          message,
+          message: payload.message,
           threadId: selectedThreadId || undefined,
           newThread: !selectedThreadId,
-          // 代理运行中把指令排队，而不是让用户填完字却发不出去。
-          ...(busy && mode !== 'start' ? { mode: 'queue' } : {}),
+          ...(payload.mode ? { mode: payload.mode } : {}),
+          ...(payload.images?.length ? { images: payload.images } : {}),
         });
         const nextId = result.threadId || selectedThreadId;
         if (nextId && nextId !== selectedThreadId) {
@@ -254,7 +255,7 @@ export default function App() {
         throw error;
       }
     },
-    [selectedThreadId, busy, refreshThreads, loadMessages, showError],
+    [selectedThreadId, refreshThreads, loadMessages, showError],
   );
 
   const handleInterrupt = useCallback(async () => {
