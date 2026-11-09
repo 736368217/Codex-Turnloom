@@ -1,5 +1,18 @@
 # Changelog
 
+## 1.20.0 - 2026-11-09
+
+原生 Android App 主线首次正式发布（tag `v1.20.0`；APK 内部 versionCode 71 / versionName `1.19.0-native`）。Web 端停止投入新功能，仅作兼容入口保留。
+
+- **原生 App 完整交付**：Expo / React Native 0.88，方案 A 导航（3 个一级 Tab + 全屏聊天详情）、iOS 大标题、日光雾白渐变、单层平面底栏（修复「白框叠加」）。
+- **补齐 5 项原版能力**：模型 + 思考强度（`/api/health.models`，逐会话持久化）、插件 / 技能引用（`/api/plugins`、`/api/skills`，按原版 markdown 协议拼装）、新建会话归档到项目（`/api/projects` + `projectId`）、会话搜索、消息复制全文。
+- **修 2 处真机缺陷**：终端编辑面板保存 / 取消不再被底栏裁掉；改地址增加回读校验并修复重启回退（配置优先于内置常量）。
+- **体积**：按 ABI 拆分 + 重签，287.5 MB → 95.9 MB（−65%）；`apksigner` V3 与 `zipalign -c -p 4` 通过。
+- **验收**：`npm test` 171/0、`npm run check` 0、`tsc --noEmit` 0；Android 15 真机 + 回归测试；回归通过。
+- **桌面控制台 适配**：健康 / 会话 / 消息 / 项目 / 技能 / Diff / `pidesktop-codex-ipc` 桥实测正常；该 profile 的插件目录为空（宿主数据未注册 Marketplace 插件），App 显示空状态而非报错。
+- **仓库维护**：删除 800+ 张过程截图、一次性脚本、内部文档与设计包原件；重写历史剥离本地产物（tracked 1361 → 375 文件、254 MB → 34 MB，`.git` 125.6 MB → 33.1 MB）；README 重写为专业介绍 + 5 分钟新用户教程；`.gitignore` 补齐排除规则。
+
+完整说明与下载见 [GitHub Release v1.20.0](https://github.com/736368217/Codex-Turnloom/releases/tag/v1.20.0) 与 [发布说明](https://github.com/736368217/Codex-Turnloom/releases)。
 ## 1.17.31 - 2026-11-07
 
 - **首页改为聊天工作台，电脑选择页不再日常抢占首页**：首次启动或没有活动电脑时才显示设备选择；`ACTIVE_DEVICE_URL_KEY` 保存后，下次启动直接打开聊天 WebView。系统返回在聊天页只后台化 App，不再跳转电脑列表；主动进入选择页时可取消并返回原电脑。
@@ -7,7 +20,7 @@
 - **小扳手彻底移出顶栏**：旧 `#toolToggle` 从标题栏删除，工具/内部记录显示开关收进「更多」面板，带 44px 触控区、选中态和实时刷新；引导文案同步改为「需要时在更多里打开」。
 - 细节回归：加载态无旧扳手占位、hidden 模型面板仍为 `display:none / 0 by 0`；CDP 真鼠标打开「更多」面板、命中 44px 切换电脑按钮、真鼠标切换工具开关、返回栈关闭面板并恢复消息列表/输入框命中。
 - 契约回归：`test/ui-host-overlays.test.js` 20/20、`test/server.test.js` 100/100、Android Java 编译与单测、`npm run verify:ci`、Android APK 构建。
-- 文档：新增 [`docs/MOBILE-BEFORE-AFTER-REPORT-2026-11-07.md`](docs/MOBILE-BEFORE-AFTER-REPORT-2026-11-07.md) 带图前后对比报告；真实历史截图 + CDP 盒模型/真鼠标证据，截图超时如实标注，不伪造图片。
+- 文档：新增 带图前后对比报告（原始过程文档已从仓库移除，见 [发布说明](https://github.com/736368217/Codex-Turnloom/releases)）；真实历史截图 + CDP 盒模型/真鼠标证据，截图超时如实标注，不伪造图片。
 
 ## 1.17.30 - 2026-11-07
 
