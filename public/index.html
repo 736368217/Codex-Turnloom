@@ -2,9 +2,14 @@
 <html lang="zh-CN">
   <head>
     <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="theme-color" content="#F2F2F7" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+    <meta name="apple-mobile-web-app-title" content="Codex-Turnloom" />
     <title>Codex-Turnloom</title>
     <link rel="icon" type="image/svg+xml" href="/assets/companion-mark.svg" />
+    <link rel="manifest" href="/site.webmanifest" />
     <link rel="stylesheet" href="/styles.css" />
     <!-- Shared mobile component styles, loaded after the base behavior rules.
          Leave the href bare: the server stamps every local css/js reference with a
@@ -44,7 +49,7 @@
     </div>
     <main class="shell" id="shell">
       <button id="sidebarToggle" class="drawer-tab" type="button" title="显示对话列表" aria-label="显示对话列表"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h16M4 12h16M4 18h10"></path></svg></button>
-      <button id="drawerOverlay" class="drawer-overlay" type="button" title="关闭对话列表" aria-label="关闭对话列表"></button>
+      <button id="drawerOverlay" class="drawer-overlay" type="button" title="关闭对话列表" aria-label="关闭对话列表" tabindex="-1"></button>
       <aside class="sidebar">
         <div class="sidebar-top">
           <div class="sidebar-brand">
@@ -141,6 +146,7 @@
         <div id="hostSheet" class="host-sheet" role="dialog" aria-modal="true" aria-labelledby="hostSheetTitle" hidden>
           <div class="host-sheet-backdrop" data-host-sheet-close></div>
           <div class="host-sheet-card" role="document">
+            <span class="sheet-grabber" aria-hidden="true"></span>
             <header class="host-sheet-header">
               <h3 id="hostSheetTitle">更多能力</h3>
               <button class="host-sheet-close" type="button" data-host-sheet-close aria-label="关闭">×</button>
@@ -151,6 +157,7 @@
         <div id="goalEditDialog" class="goal-edit-dialog" role="dialog" aria-modal="true" aria-labelledby="goalEditDialogTitle" hidden>
           <div class="goal-dialog-backdrop" data-goal-dialog-close></div>
           <div class="goal-dialog-card" role="document">
+            <span class="sheet-grabber" aria-hidden="true"></span>
             <div class="goal-dialog-header">
               <h3 id="goalEditDialogTitle">目标详情</h3>
               <button id="goalDialogClose" class="goal-dialog-close" type="button" title="关闭" aria-label="关闭">×</button>
@@ -173,7 +180,7 @@
           </div>
         </div>
         <div id="messageList" class="message-list">
-          <div class="empty-state">从左侧选择一个 Codex 对话。</div>
+          <div class="empty-state">点左上角打开对话列表</div>
         </div>
         <button id="scrollToBottomButton" class="scroll-to-bottom-button" type="button" title="滚到最后" aria-label="滚到最后" hidden>
           <svg viewBox="0 0 24 24" aria-hidden="true">
@@ -345,12 +352,14 @@
     </div>
     <button id="messageActionBackdrop" class="message-action-backdrop" type="button" aria-label="关闭" hidden></button>
     <div id="messageActionSheet" class="message-action-sheet" role="menu" aria-label="消息操作" hidden>
+      <span class="sheet-grabber" aria-hidden="true"></span>
       <button id="messageCopyItem" type="button" role="menuitem">复制全文</button>
       <button id="messageSelectItem" type="button" role="menuitem">选择文字</button>
       <button id="messageBranchItem" type="button" role="menuitem">从这里创建分支</button>
     </div>
     <button id="appDialogBackdrop" class="app-dialog-backdrop" type="button" aria-label="关闭" hidden></button>
     <div id="appDialog" class="app-dialog" role="alertdialog" aria-modal="true" aria-labelledby="appDialogTitle" hidden>
+      <span class="sheet-grabber" aria-hidden="true"></span>
       <h3 id="appDialogTitle"></h3>
       <p id="appDialogBody"></p>
       <div class="app-dialog-actions">
@@ -362,6 +371,7 @@
     <div id="welcomeDialog" class="welcome-dialog" role="dialog" aria-modal="true" aria-labelledby="welcomeTitle" hidden>
       <button class="welcome-backdrop" type="button" data-guide-close aria-label="关闭指引"></button>
       <section class="welcome-card" tabindex="-1">
+        <span class="sheet-grabber" aria-hidden="true"></span>
         <header class="welcome-header">
           <img src="/assets/companion-mark.svg" alt="" />
           <button id="welcomeClose" class="welcome-close" type="button" title="关闭" aria-label="关闭">
