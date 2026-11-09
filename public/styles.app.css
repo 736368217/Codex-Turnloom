@@ -2388,3 +2388,342 @@ html.large-text #shell .queue-status-error {
 #shell [hidden] {
   display: none !important;
 }
+
+/* ══════════════════════════════════════════════════════════════════════════
+   Web UI 视觉检定修复层（2026-11-10）
+
+   这是最后加载的权威层。三层 CSS 共 9,209 行，分散的 !important 互相打架，
+   所以这里不重写旧规则，只对可复现的 P0/P1/P2 缺陷做单点收口：
+     · P0 切换电脑文字 1.06:1、模型面板末行被输入框盖住、会话列表末项被页脚盖住
+     · P1 次要文字对比度、11px 小字、焦点环、隐藏侧栏跑焦、宽屏空白、深色/居中弹窗
+     · P2 桌面滚动条、标题省略号、行高、composer-height 兜底
+   保持 [hidden] / host-sheet 既有测试契约不变。
+   ══════════════════════════════════════════════════════════════════════════ */
+
+:root {
+  /* 5.46:1 on white, 4.76:1 on #E8F0FF; old #6B7C93 was 3.72-4.26:1. */
+  --app-ink-3: #5A6B80;
+  --c-ink-3: #5A6B80;
+  --c-ink-4: #5A6B80;
+  --t-11: 13px;
+  --t-12: 13px;
+  --composer-height: 141px;
+}
+
+/* P1-5: 访问码页背后不再布局整套聊天 UI，也不接收键盘/点击。 */
+body.auth-locked #shell {
+  display: none !important;
+}
+body.auth-locked .welcome-dialog {
+  display: none !important;
+}
+body.auth-locked #sidebarToggle {
+  display: none !important;
+}
+
+/* P1-4: 统一焦点环；drawerOverlay 已从 Tab 序列移除。 */
+#shell button:focus-visible,
+#shell a:focus-visible,
+#shell input:focus-visible,
+#shell select:focus-visible,
+#shell textarea:focus-visible,
+.auth-gate button:focus-visible,
+.auth-gate input:focus-visible,
+.welcome-dialog button:focus-visible,
+.goal-edit-dialog button:focus-visible,
+.goal-edit-dialog input:focus-visible,
+.goal-edit-dialog select:focus-visible,
+.goal-edit-dialog textarea:focus-visible,
+.app-dialog button:focus-visible,
+.message-action-sheet button:focus-visible {
+  outline: 3px solid #1D4ED8 !important;
+  outline-offset: 2px;
+  border-radius: 10px;
+}
+
+/* P1-4: 折叠侧栏由 renderSidebarState() 设置 inert，保留 240ms 滑出动画。 */
+
+/* P0-4 / P1-4: 列表底部留出页脚高度；桌面滚动条不再占 10px。 */
+#shell .thread-list {
+  padding-bottom: 88px !important;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+#shell .thread-list::-webkit-scrollbar,
+#shell .message-list::-webkit-scrollbar,
+#shell .model-list::-webkit-scrollbar,
+#shell .model-panel::-webkit-scrollbar {
+  width: 0;
+  height: 0;
+  display: none;
+}
+#shell .message-list,
+#shell .model-list,
+#shell .model-panel {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+#shell .sidebar-footer {
+  position: relative;
+  z-index: 1;
+  flex: 0 0 auto;
+  min-height: 62px;
+  background: var(--app-surface-2);
+  border-top: 1px solid var(--app-line);
+}
+
+/* P2-2 / P2-3: 窄屏标题省略号、行高与字号分离。 */
+#shell .conversation-title > h2 {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+#shell #newThreadLabel,
+#shell #statusCountEnded {
+  font-size: 13px;
+  line-height: 1.4;
+}
+
+/* P1-3: 所有二级控件至少 44×44，勾选框至少 24×24。 */
+#shell .composer-left .icon-button.attach-button,
+#shell .composer-left .plugin-picker-button,
+#shell .composer-left .mention-button,
+#shell .conversation-header .icon-button,
+#shell .conversation-header .drawer-tab,
+#shell .host-sheet-close,
+#shell .model-summary,
+#shell .thread-more-button {
+  min-width: 44px;
+  min-height: 44px;
+  height: 44px;
+  width: 44px;
+  flex: 0 0 44px;
+}
+#shell .model-summary {
+  width: auto;
+  min-width: 128px;
+  flex: 0 1 auto;
+}
+#shell .host-tools-button span,
+#shell .host-sheet-close {
+  min-width: 44px;
+  min-height: 44px;
+}
+#shell .host-tools-button {
+  width: auto;
+  min-width: 44px;
+  min-height: 44px;
+  height: 44px;
+  flex: 0 0 auto;
+}
+#shell .host-tools-button span {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: auto;
+  height: auto;
+  font-size: 13px;
+}
+#shell input[type="checkbox"],
+#shell input[type="radio"],
+.auth-gate input[type="checkbox"] {
+  width: 24px;
+  height: 24px;
+  min-width: 24px;
+  min-height: 24px;
+  accent-color: var(--app-brand-deep);
+}
+
+/* P0-3: 面板严格收在 composer 上方，末行不落进 textarea。 */
+#shell .model-panel {
+  position: absolute;
+  bottom: calc(100% + 10px);
+  left: 0;
+  right: 0;
+  width: auto;
+  max-width: min(560px, calc(100vw - 24px));
+  max-height: min(360px, calc(100dvh - var(--composer-height, 141px) - 88px));
+  overflow-y: auto;
+  overflow-x: hidden;
+  overscroll-behavior: contain;
+  z-index: 46;
+}
+#shell .model-list {
+  max-height: 180px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+#shell .model-panel .model-row:last-child {
+  margin-bottom: 4px;
+}
+html.keyboard-open #shell .model-panel {
+  max-height: min(220px, calc(var(--app-visible-height, 100dvh) - var(--composer-height, 141px) - 64px));
+  bottom: calc(100% + 6px);
+}
+
+/* P0-2 / P1-9: 「更多能力」恢复浅色 Cupertino 面板；切电脑按钮不再吃深色卡片字色。 */
+#shell .host-sheet-card {
+  background: #FFFFFF;
+  color: #142033;
+  box-shadow: 0 -8px 32px rgba(20, 32, 51, 0.16);
+  border: 1px solid #E2E8F0;
+  border-bottom: 0;
+}
+#shell .host-sheet-card,
+#shell .host-sheet-card button,
+#shell .host-sheet-card select,
+#shell .host-sheet-card input,
+#shell .host-sheet-card pre,
+#shell .host-sheet-card li,
+#shell .host-sheet-card h3 {
+  color: #142033;
+}
+#shell .host-sheet-card .host-muted,
+#shell .host-sheet-card .approval-kind {
+  color: #5A6B80;
+}
+#shell .host-sheet-card .host-list li,
+#shell .host-sheet-card .host-file,
+#shell .host-sheet-card .host-command,
+#shell .host-sheet-card .host-secondary,
+#shell .host-sheet-card .host-crumb,
+#shell .host-sheet-card .host-form-actions button,
+#shell .host-sheet-card .host-tools button,
+#shell .host-sheet-card .host-code {
+  background: #F7F9FC;
+  color: #142033;
+  border-color: #E2E8F0;
+}
+#shell .host-sheet-card .host-sheet-close {
+  color: #142033;
+  background: #F7F9FC;
+  border: 1px solid #E2E8F0;
+}
+#shell .host-sheet-card .host-switch-computer,
+#shell .host-sheet-card button.host-switch-computer {
+  color: #1D4ED8;
+  background: #E8F0FF;
+  border: 1px solid #A9C2F5;
+}
+#shell .host-sheet-card select option {
+  color: #142033;
+  background: #FFFFFF;
+}
+
+/* P1-9 / Option A: 二级交互一律底部半屏抽屉，带 36×6 圆角 grabber。 */
+.sheet-grabber {
+  display: block;
+  width: 36px;
+  height: 6px;
+  margin: 8px auto 2px;
+  border-radius: 3px;
+  background: #C9D3E1;
+  flex: 0 0 auto;
+}
+#shell .host-sheet-card,
+#shell .goal-dialog-card,
+#shell .app-dialog,
+#shell .message-action-sheet,
+.welcome-card {
+  border-radius: 20px 20px 0 0 !important;
+  background: #FFFFFF;
+  color: #142033;
+}
+.welcome-dialog,
+.goal-edit-dialog {
+  display: flex !important;
+  align-items: flex-end;
+  justify-content: center;
+  padding: 0 !important;
+}
+.welcome-card,
+#shell .goal-dialog-card {
+  display: flex;
+  flex-direction: column;
+  width: min(680px, 100%) !important;
+  max-width: 100% !important;
+  max-height: min(86dvh, 720px);
+  margin: 0;
+  box-shadow: 0 -8px 32px rgba(20, 32, 51, 0.16);
+  border: 1px solid #E2E8F0;
+  border-bottom: 0;
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+  overflow: hidden;
+}
+.welcome-card > .welcome-body,
+#shell .goal-dialog-card > .goal-detail-view,
+#shell .goal-dialog-card > .goal-form {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+}
+.welcome-card > .welcome-header,
+.welcome-card > .welcome-footer,
+#shell .goal-dialog-card > .goal-dialog-header {
+  flex: 0 0 auto;
+}
+#shell .app-dialog {
+  position: fixed;
+  z-index: 71;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  top: auto;
+  transform: none;
+  width: auto;
+  max-width: none;
+  padding: 6px 20px max(20px, env(safe-area-inset-bottom, 0px));
+  border: 1px solid #E2E8F0;
+  border-bottom: 0;
+  box-shadow: 0 -8px 32px rgba(20, 32, 51, 0.16);
+}
+#shell .message-action-sheet {
+  position: fixed;
+  z-index: 61;
+  left: 0;
+  right: 0;
+  top: auto;
+  bottom: 0;
+  transform: none;
+  width: auto;
+  max-width: none;
+  padding: 6px 12px max(12px, env(safe-area-inset-bottom, 0px));
+  border-bottom: 0;
+  box-shadow: 0 -8px 32px rgba(20, 32, 51, 0.16);
+}
+#shell .app-dialog .sheet-grabber,
+#shell .message-action-sheet .sheet-grabber {
+  margin-bottom: 8px;
+}
+
+/* P1-8: 超宽屏居中收口，右侧不再空 584px；车机/桌面同样成立。 */
+@media (min-width: 1180px) {
+  #shell {
+    grid-template-columns: minmax(280px, 360px) minmax(0, 1fr);
+  }
+  #shell .conversation {
+    width: 100%;
+    max-width: 1400px;
+    margin-inline: auto;
+    border-left: 1px solid #E2E8F0;
+    border-right: 1px solid #E2E8F0;
+  }
+}
+
+/* 大会话首屏给足反馈， spinner 与文字不挤在一行。 */
+#shell .message-loading {
+  min-height: 64px;
+  gap: 10px;
+  color: var(--app-ink-3);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+/* [hidden] 仍是最后的权威契约，任何 display 规则都不能赢过它。 */
+#shell [hidden],
+.welcome-dialog[hidden],
+.goal-edit-dialog[hidden],
+.app-dialog[hidden],
+.message-action-sheet[hidden] {
+  display: none !important;
+}

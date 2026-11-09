@@ -5481,6 +5481,97 @@ function scheduleNativeQueuedSendDrain(threadId, delayMs = 250) {
   timer.unref?.();
 }
 
+const MAX_CLIENT_INLINE_IMAGE_CHARS = 16 * 1024;
+const MAX_CLIENT_MESSAGE_CONTENT_CHARS = 24 * 1024;
+
+function offloadInlineImageForClient(image, threadId, sequence) {
+  const dataUrl = typeof image === "string" ? image : "";
+  const match = /^data:image\/(png|jpe?g|webp|gif|bmp|heic);base64,([A-Za-z0-9+/]+={0,2})$/i.exec(dataUrl);
+  if (!match) return { image, savedChars: 0 };
+  const mimeType = `image/${match[1].toLowerCase() === "jpg" ? "jpeg" : match[1].toLowerCase()}`;
+  const ext = mimeType === "image/jpeg" ? "jpg" : match[1].toLowerCase();
+  const safeThreadId = String(threadId || "");
+  if (!/^[A-Za-z0-9._-]+$/.test(safeThreadId)) return { image, savedChars: 0 };
+  const name = `turnloom-client-${createHash("sha256").update(dataUrl).digest("hex").slice(0, 20)}.${ext}`;
+  const target = path.resolve(PI_DATA_ROOT, "scratch", safeThreadId, name);
+  const bytes = Buffer.from(match[2], "base64");
+  try {
+    if (!existsSync(target)) {
+      mkdirSync(path.dirname(target), { recursive: true });
+      writeFileSync(target, bytes);
+    }
+  } catch {
+    return { image, savedChars: 0 };
+  }
+  const url = `/api/thread-image?threadId=${encodeURIComponent(safeThreadId)}&name=${encodeURIComponent(name)}`;
+  return {
+    image: { name, mimeType, size: bytes.byteLength, url, dataUrl: url, offloadedImage: true },
+    savedChars: dataUrl.length - url.length
+  };
+}
+
+// Only inline base64 images embedded in message *text* are pathological. Long
+// prose is left intact so "copy full text" stays lossless.
+const CLIENT_INLINE_IMAGE_TEXT = /data:image\/[a-z0-9.+-]+;base64,[A-Za-z0-9+/]+={0,2}/gi;
+
+function compactOversizedMessageContent(value) {
+  if (typeof value !== "string" || value.length <= MAX_CLIENT_MESSAGE_CONTENT_CHARS) return { value, savedChars: 0 };
+  const replaced = value.replace(CLIENT_INLINE_IMAGE_TEXT, "[内联图片已移出正文]");
+  if (replaced.length <= MAX_CLIENT_MESSAGE_CONTENT_CHARS) {
+    return { value: replaced, savedChars: value.length - replaced.length };
+  }
+  const notice = `\n\n… 内容过长，已省略 ${replaced.length - MAX_CLIENT_MESSAGE_CONTENT_CHARS} 个字符`;
+  return {
+    value: `${replaced.slice(0, MAX_CLIENT_MESSAGE_CONTENT_CHARS)}${notice}`,
+    savedChars: value.length - MAX_CLIENT_MESSAGE_CONTENT_CHARS - notice.length
+  };
+}
+
+function capMessagesResponseForClient(response, threadId) {
+  if (!response || !Array.isArray(response.messages)) return response;
+  let savedChars = 0;
+  let sequence = 0;
+  const messages = response.messages.map((message) => {
+    if (!message || typeof message !== "object") return message;
+    const next = { ...message };
+    if (Array.isArray(next.images)) {
+      next.images = next.images.map((image) => {
+        if (typeof image !== "string" || image.length <= MAX_CLIENT_INLINE_IMAGE_CHARS) return image;
+        const result = offloadInlineImageForClient(image, threadId, sequence++);
+        savedChars += result.savedChars;
+        return result.image;
+      });
+    }
+    for (const key of ["content", "text"]) {
+      if (typeof next[key] === "string") {
+        const result = compactOversizedMessageContent(next[key]);
+        next[key] = result.value;
+        savedChars += result.savedChars;
+      }
+    }
+    return next;
+  });
+  const result = { ...response, messages };
+  // base_instructions / dynamic_tools in the rollout meta are session setup,
+  // not chat content: ~49 KB here, never rendered by the phone UI. Bound large
+  // fields (including nested objects) while keeping the meta shape intact.
+  if (result.meta && typeof result.meta === "object" && !Array.isArray(result.meta)) {
+    const meta = {};
+    for (const [key, value] of Object.entries(result.meta)) {
+      const text = typeof value === "string" ? value : JSON.stringify(value);
+      if (text && text.length > 1024) {
+        meta[key] = `[已省略 ${text.length} 字符]`;
+        savedChars += text.length;
+      } else {
+        meta[key] = value;
+      }
+    }
+    result.meta = meta;
+  }
+  if (savedChars) result.clientPayloadBytesSaved = savedChars;
+  return result;
+}
+
 async function finalizeMessagesResponse(threadId, response) {
   const queueStatus = await queuedSendStatus(threadId);
   // 服务端持久回显：只要该会话存在 receipt，就把暂存附件补到对应纯文本用户消息。
@@ -5503,7 +5594,7 @@ async function finalizeMessagesResponse(threadId, response) {
   } else if (!localQueueDrainEnabled() && !result.status.thinking && queueStatus.queueLength && !result.status.queueStale) {
     scheduleNativeQueuedSendDrain(threadId);
   }
-  return result;
+  return capMessagesResponseForClient(result, threadId);
 }
 
 
@@ -7172,7 +7263,8 @@ async function serveStatic(res, pathname, { versioned = false } = {}) {
     ".css": "text/css; charset=utf-8",
     ".js": "application/javascript; charset=utf-8",
     ".png": "image/png",
-    ".svg": "image/svg+xml"
+    ".svg": "image/svg+xml",
+    ".webmanifest": "application/manifest+json; charset=utf-8"
   };
   // 只有带 ?v= 指纹的资源才能长缓存：否则改完桌面端还在跑旧 UI。
   // 反过来，全站 no-store 又让 ?v= 指纹彻底失去意义（每次冷启动重传 230KB app.js）。
@@ -7495,7 +7587,7 @@ async function handleHttpBackendApi(req, res, url, profile = null) {
       });
       const override = adapterStatusOverrideFor(threadId);
       if (override) data.status = { ...data.status, ...statusFieldsFromOverride(override) };
-      sendJson(res, 200, data);
+      sendJson(res, 200, capMessagesResponseForClient(data, threadId));
       return true;
     }
 
@@ -8524,6 +8616,9 @@ export {
   nativeQueueFallbackStatus,
   safeQueuedNativeAttachment,
   restoreLocalImages,
+  capMessagesResponseForClient,
+  offloadInlineImageForClient,
+  compactOversizedMessageContent,
   safeThreadScratchPath,
   appendImageReceipt,
   readImageReceipts,

@@ -1,0 +1,20 @@
+{
+  "id": "/",
+  "name": "Codex-Turnloom",
+  "short_name": "Turnloom",
+  "description": "在手机上继续查看和控制电脑上的 Codex 会话。",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#F2F2F7",
+  "theme_color": "#F2F2F7",
+  "icons": [
+    {
+      "src": "/assets/companion-mark.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}

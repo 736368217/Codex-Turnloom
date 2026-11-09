@@ -195,6 +195,9 @@ const state = {
   messageSyncBackoffMs: 0,
   messageStreamController: null,
   messageStreamGeneration: 0,
+  messageLoadingStartedAt: 0,
+  messageLoadingTimer: 0,
+  backgroundSyncStarted: false,
   accountSyncBackoffMs: 0,
   lastSyncActivityAt: Date.now()
 };
@@ -334,6 +337,7 @@ const I18N = {
     hideThreads: "隐藏对话列表",
     refresh: "刷新",
     loading: "加载中",
+    loadingElapsed: "仍在加载（已 {seconds}s）",
     searchThreads: "搜索对话",
     newConversation: "新对话",
     newConversationDraft: "新对话",
@@ -342,7 +346,7 @@ const I18N = {
     threadList: "对话列表",
     selectThread: "选择一个对话",
     syncEvery: "每 3 秒自动同步",
-    pickThread: "从左侧选择一个 Codex 对话。",
+    pickThread: "点左上角打开对话列表",
     tool: "工具",
     roleTool: "工具",
     roleInteraction: "交互",
@@ -551,6 +555,7 @@ const I18N = {
     hideThreads: "Hide conversations",
     refresh: "Refresh",
     loading: "Loading",
+    loadingElapsed: "Still loading ({seconds}s elapsed)",
     searchThreads: "Search conversations",
     newConversation: "New chat",
     newConversationDraft: "New chat",
@@ -559,7 +564,7 @@ const I18N = {
     threadList: "Conversation list",
     selectThread: "Select a conversation",
     syncEvery: "Auto-syncs every 3 seconds",
-    pickThread: "Select a Codex conversation from the left.",
+    pickThread: "Tap the top-left button to open conversations.",
     tool: "Tools",
     roleTool: "Tool",
     roleInteraction: "Interaction",
@@ -1211,14 +1216,32 @@ function authHeaders(extra = {}) {
   return state.authToken ? { ...extra, "x-access-token": state.authToken } : extra;
 }
 
+function setShellAuthLocked(locked) {
+  const shell = els.shell;
+  if (!shell) return;
+  // A visually covered chat shell still laid out 1,599 DOM nodes and accepted
+  // Tab focus behind the access-code gate. `inert` removes it from focus and
+  // hit-testing in modern WebViews; the body class is the CSS/legacy fallback.
+  shell.inert = Boolean(locked);
+  if (locked) {
+    shell.setAttribute("aria-hidden", "true");
+    document.body.classList.add("auth-locked");
+  } else {
+    shell.removeAttribute("aria-hidden");
+    document.body.classList.remove("auth-locked");
+  }
+}
+
 function showAuthGate(message = "") {
   els.authGate.hidden = false;
+  setShellAuthLocked(true);
   els.authError.textContent = message;
   window.setTimeout(() => els.authInput.focus(), 0);
 }
 
 function hideAuthGate() {
   els.authGate.hidden = true;
+  setShellAuthLocked(false);
   els.authError.textContent = "";
   state.authLocked = false;
 }
@@ -2015,6 +2038,11 @@ els.threadList.addEventListener("click", (event) => {
 function renderSidebarState() {
   els.shell.classList.toggle("sidebar-collapsed", state.sidebarCollapsed);
   els.sidebarToggle.setAttribute("aria-expanded", String(!state.sidebarCollapsed));
+  // A collapsed drawer is translated off-screen but still in the DOM; without
+  // inert the first Tab stops on its invisible controls. inert keeps the
+  // 240ms slide transition while removing the subtree from focus/hit-testing.
+  const sidebar = els.shell.querySelector(".sidebar");
+  if (sidebar) sidebar.inert = Boolean(state.sidebarCollapsed);
 }
 
 function isCompactPortrait() {
@@ -2285,9 +2313,30 @@ function renderCurrentMessages(scrollToBottom = true) {
   updateScrollToBottomButton();
 }
 
+function stopMessageLoadingFeedback() {
+  if (state.messageLoadingTimer) {
+    window.clearInterval(state.messageLoadingTimer);
+    state.messageLoadingTimer = 0;
+  }
+  state.messageLoadingStartedAt = 0;
+}
+
 function renderMessageLoading() {
-  els.messageList.innerHTML = `<div class="message-loading" role="status" aria-live="polite"><span class="message-loading-spinner" aria-hidden="true"></span><span>${escapeHtml(t("loading"))}</span></div>`;
+  els.messageList.innerHTML = `<div class="message-loading" role="status" aria-live="polite"><span class="message-loading-spinner" aria-hidden="true"></span><span data-message-loading-text>${escapeHtml(t("loading"))}</span></div>`;
   updateScrollToBottomButton();
+  stopMessageLoadingFeedback();
+  // A 391 KB history with two inline base64 images took 23-35 s on loopback.
+  // Keep the skeleton honest with elapsed time instead of looking frozen.
+  state.messageLoadingStartedAt = Date.now();
+  state.messageLoadingTimer = window.setInterval(() => {
+    const label = els.messageList.querySelector("[data-message-loading-text]");
+    if (!label) {
+      stopMessageLoadingFeedback();
+      return;
+    }
+    const seconds = Math.max(1, Math.round((Date.now() - state.messageLoadingStartedAt) / 1000));
+    label.textContent = t("loadingElapsed", { seconds });
+  }, 1000);
 }
 
 function isMessageListNearBottom() {
@@ -2300,7 +2349,17 @@ function updateScrollToBottomButton() {
 }
 
 function updateComposerHeightVariable() {
-  els.composerForm.parentElement?.style.setProperty("--composer-height", `${els.composerForm.offsetHeight}px`);
+  // While the access-code gate owns the screen the shell is display:none, so
+  // offsetHeight is 0. Keeping the last known value avoids a 0px composer
+  // anchor when the user signs in.
+  const height = els.composerForm.offsetHeight;
+  if (!height) return;
+  const value = `${height}px`;
+  // The scroll-to-bottom button and model panel both read this variable from
+  // ancestors of the composer; write it to :root as well so neither depends on
+  // which element happens to be the composer's parent.
+  els.composerForm.parentElement?.style.setProperty("--composer-height", value);
+  document.documentElement.style.setProperty("--composer-height", value);
 }
 
 function scrollMessagesToBottom({ smooth = true } = {}) {
@@ -3634,6 +3693,7 @@ async function loadMessages(force = false, threadId = state.selectedId, { preser
     state.threadStatus = state.lastMessagesData.status;
     renderComposerMode();
     renderMessages(state.lastMessagesData);
+    stopMessageLoadingFeedback();
     state.activeMessageRequest = null;
     state.messageLoading = false;
     return;
@@ -3752,7 +3812,10 @@ async function loadMessages(force = false, threadId = state.selectedId, { preser
     }
   } finally {
     if (state.activeMessageRequest === request) state.activeMessageRequest = null;
-    if (state.activeMessageRequest === null) state.messageLoading = false;
+    if (state.activeMessageRequest === null) {
+      state.messageLoading = false;
+      stopMessageLoadingFeedback();
+    }
   }
 }
 
@@ -3831,7 +3894,7 @@ function stopMessageStream() {
 
 async function startMessageStream(threadId = state.selectedId) {
   stopMessageStream();
-  if (!threadId || threadId === DRAFT_THREAD_ID) return;
+  if (!threadId || threadId === DRAFT_THREAD_ID || !shouldSync()) return;
   const generation = state.messageStreamGeneration;
   const controller = new AbortController();
   state.messageStreamController = controller;
@@ -3839,6 +3902,11 @@ async function startMessageStream(threadId = state.selectedId) {
   while (!controller.signal.aborted && generation === state.messageStreamGeneration && state.selectedId === threadId) {
     try {
       const result = await fetchJson(`/api/threads/${encodeURIComponent(threadId)}/changes?timeout=25000&cursor=${encodeURIComponent(cursor)}`, { signal: controller.signal });
+      if (!shouldSync()) {
+        // The access-code gate can appear between long-poll responses. Stop
+        // cleanly; startBackgroundServices()/thread selection restarts it.
+        break;
+      }
       if (result.changed && generation === state.messageStreamGeneration && state.selectedId === threadId) {
         await loadMessages(true, threadId);
         cursor = result.cursor || messageChangeCursor();
@@ -3857,6 +3925,7 @@ async function startMessageStream(threadId = state.selectedId) {
       cursor = messageChangeCursor();
     }
   }
+  if (state.messageStreamController === controller) state.messageStreamController = null;
 }
 
 function scheduleThreadSync(delayMs = syncDelay(THREAD_SYNC_INTERVAL_MS, state.threadSyncBackoffMs)) {
@@ -4528,7 +4597,7 @@ els.authForm.addEventListener("submit", async (event) => {
   try {
     await loadConfig();
     await refresh(true);
-    maybeOpenWelcomeGuide();
+    startBackgroundServices();
   } catch (error) {
     if (error.status === 401) {
       lockApp(t("accessCodeWrong"));
@@ -5627,8 +5696,22 @@ async function bootstrap() {
   loadPersistedThreadDrafts();
   if (state.selectedId) restoreThreadDraft(state.selectedId);
   adoptSelectedThreadModel();
-  // The project list only matters once the user starts a new conversation, but
-  // loading it here keeps the picker instant when they do.
+  startBackgroundServices();
+}
+
+function startBackgroundServices() {
+  // An unauthenticated first paint must not lay out the chat shell or fire
+  // /api/projects, /api/threads and the long-poll stream as 401s. Once a token
+  // is accepted (or the server has auth disabled), start each service exactly
+  // once; the auth form calls this again after a successful sign-in.
+  if (state.authLocked || !state.config) return;
+  if (state.backgroundSyncStarted) {
+    // Re-authentication after a 401: the old long-poll exited on shouldSync()=false.
+    // The thread timer self-reschedules, but the stream needs an explicit restart.
+    if (!state.messageStreamController) void startMessageStream();
+    return;
+  }
+  state.backgroundSyncStarted = true;
   void loadProjects();
   maybeOpenWelcomeGuide();
   scheduleThreadSync();
