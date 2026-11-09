@@ -53,6 +53,7 @@ test("bottom sheets keep a usable, bottom-aligned scroll area", () => {
   assert.match(text, /justifyContent:\s*["']flex-end["']/);
   assert.doesNotMatch(text, /style=\{\{\s*flexGrow:\s*0\s*\}\}/);
   assert.match(text, /flexShrink:\s*1/);
+  assert.match(text, /contentContainerStyle=\{\{ paddingVertical: 4, paddingHorizontal: 18 \}\}/, "sheet list rows need a consistent inset");
   assert.doesNotMatch(text, /contentContainerStyle=\{\{[^}]*flexGrow:\s*1/);
 });
 
@@ -70,4 +71,9 @@ test("README visual assets are refreshed from the fixed build", () => {
     assert.match(readme, new RegExp(name.replace(".", "\\.")));
     assert.ok(statSync(path.join(ROOT, "docs", "screenshots", name)).isFile());
   }
+});
+
+test("desktop console has a stable minimum layout width", () => {
+  const css = readFileSync(path.join(ROOT, "desktop", "renderer", "styles.css"), "utf8");
+  assert.match(css, /\.app\s*\{[^}]*min-width:\s*1120px/);
 });

@@ -123,7 +123,7 @@ function SheetShell({
           <View style={{ height: 0.5, backgroundColor: OptionA.separator }} />
           <ScrollView
             style={{ flexShrink: 1, flexGrow: 0 }}
-            contentContainerStyle={{ paddingVertical: 4 }}
+            contentContainerStyle={{ paddingVertical: 4, paddingHorizontal: 18 }}
             keyboardShouldPersistTaps="handled"
             showsVerticalScrollIndicator={false}>
             {children}
@@ -156,12 +156,14 @@ function Row({
       accessibilityState={{ selected: Boolean(selected) }}
       onPress={onPress}
       style={({ pressed }) => ({
-        minHeight: 52,
+        minHeight: 60,
         flexDirection: 'row',
         alignItems: 'center',
         gap: 10,
-        paddingHorizontal: 18,
-        paddingVertical: 10,
+        paddingHorizontal: 16,
+        paddingVertical: 12,
+        marginHorizontal: 2,
+        borderRadius: 12,
         borderTopWidth: first ? 0 : 0.5,
         borderTopColor: OptionA.separator,
         backgroundColor: pressed ? OptionA.fill : 'transparent',
