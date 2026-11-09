@@ -13,9 +13,13 @@ export type Engine = 'codex' | 'pi';
 export const ACTIVE_TERMINAL_KEY = 'activeTerminalId';
 export const ENGINE_KEY = 'engine';
 export const SELECTED_THREAD_KEY = 'selectedThreadId';
-/** 预置终端：正式包为本机 de；演示包额外提供离线演示终端。 */
+/**
+ * 预置终端只提供地址占位，不携带任何访问码。
+ * 口令必须来自用户配对（配对配置或手输）；写死进包等于把访问码公开分发。
+ * 演示包额外提供离线演示终端（demo 只对本地假数据生效，不是真实凭据）。
+ */
 export const BUILTIN_TERMINALS = [
-  { id: 'builtin-de', name: '本机 · de', url: 'http://192.168.1.10:8787', token: '684271' },
+  { id: 'builtin-de', name: '本机 · de', url: 'http://192.168.1.10:8787', token: '' },
   { id: 'demo', name: '离线演示 · 本机', url: 'http://demo.invalid', token: 'demo' },
 ] as const;
 
@@ -39,7 +43,7 @@ export async function readActiveTerminal(): Promise<TerminalOption | null> {
       id: savedId || builtin?.id || 'paired-device',
       name: config.machineName || builtin?.name || new URL(config.serverUrl).host,
       url: config.serverUrl,
-      token: config.token || builtin?.token || '',
+      token: config.token || '',
     };
   }
   if (savedId) {

@@ -31,11 +31,48 @@ export type TerminalPatch = Partial<Pick<TerminalEntry, 'name' | 'url' | 'token'
 const TERMINALS_KEY = 'option-a:terminals:v1';
 const ACTIVE_TERMINAL_KEY = 'option-a:selected-terminal:v1';
 
+let cachedUrlToken: string | null = null;
+
+/**
+ * 从配对链接里取一次访问码，并立刻把它从地址栏抹掉。
+ * 不抹掉的话访问码会留在浏览器/WebView 历史、截图和转发出去的链接里。
+ */
 function readUrlToken(): string {
+  if (cachedUrlToken !== null) return cachedUrlToken;
   try {
-    return new URLSearchParams(window.location.search).get('token') || '';
+    const url = new URL(window.location.href);
+    const hash = new URLSearchParams(url.hash.replace(/^#/, ''));
+    const token = url.searchParams.get('token') || hash.get('login') || hash.get('token') || '';
+    if (token) {
+      url.searchParams.delete('token');
+      hash.delete('login');
+      hash.delete('token');
+      url.hash = hash.toString() ? `#${hash.toString()}` : '';
+      window.history.replaceState({}, document.title, `${url.pathname}${url.search}${url.hash}`);
+    }
+    cachedUrlToken = token;
+    return token;
   } catch {
+    cachedUrlToken = '';
     return '';
+  }
+}
+
+/** 清掉本机保存的所有访问码（终端列表 + 连接设置），供「清除已保存的访问码」使用。 */
+export function forgetAccessCodes(): void {
+  const store = safeStorage();
+  try {
+    const list = loadTerminals().map((item) => ({ ...item, token: '' }));
+    store?.setItem(TERMINALS_KEY, JSON.stringify(list));
+    const raw = store?.getItem('option-a:connection:v1');
+    if (raw) {
+      const parsed: unknown = JSON.parse(raw);
+      if (parsed && typeof parsed === 'object') {
+        store?.setItem('option-a:connection:v1', JSON.stringify({ ...(parsed as Record<string, unknown>), token: '' }));
+      }
+    }
+  } catch {
+    // 存储不可用时无需提示：下一次连接本来就会重新要访问码。
   }
 }
 
@@ -65,7 +102,11 @@ export function loadTerminals(): TerminalEntry[] {
           .filter((item) => item.id);
         if (list.length) {
           const urlToken = readUrlToken();
-          return urlToken ? list.map((item, i) => (i === 0 ? { ...item, token: urlToken } : item)) : list;
+          if (!urlToken) return list;
+          // 只在终端还没存访问码时采用链接里的码：否则用户在设置里改过的码
+          // 会被一个旧配对链接覆盖回去（表现为「改了保存、重启又变回去」）。
+          const [first, ...rest] = list;
+          return first.token ? list : [{ ...first, token: urlToken }, ...rest];
         }
       }
     }
@@ -78,7 +119,7 @@ export function loadTerminals(): TerminalEntry[] {
       id: 'local',
       name: '本机 · de',
       url: current.url || '',
-      token: readUrlToken() || current.token || '',
+      token: current.token || readUrlToken() || '',
     },
   ];
 }

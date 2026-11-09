@@ -2472,6 +2472,49 @@ async function updateGoalStatus(status) {
   }
 }
 
+/**
+ * 应用内确认层。WebChromeClient 默认会把 confirm() 画成安卓系统对话框，
+ * 一眼看出是网页。所有需要确认的动作都走这里，样式与 App 其余弹层一致。
+ *
+ * 必须留在模块顶层：它被 resolveApprovalCard / deleteCurrentThread 等顶层函数调用，
+ * 之前误嵌进 renderMessages() 的 .map() 回调里，导致这些操作全部 ReferenceError。
+ */
+function appConfirm(message, { title = "请确认", confirmText = "确定", cancelText = "取消", danger = false } = {}) {
+  const backdrop = document.querySelector("#appDialogBackdrop");
+  const dialog = document.querySelector("#appDialog");
+  if (!backdrop || !dialog) return Promise.resolve(window.confirm(message));
+  document.querySelector("#appDialogTitle").textContent = title;
+  document.querySelector("#appDialogBody").textContent = message;
+  const cancel = document.querySelector("#appDialogCancel");
+  const ok = document.querySelector("#appDialogConfirm");
+  cancel.textContent = cancelText;
+  ok.textContent = confirmText;
+  dialog.classList.toggle("danger", danger);
+  backdrop.hidden = false;
+  dialog.hidden = false;
+  ok.focus({ preventScroll: true });
+  return new Promise((resolve) => {
+    const done = (value) => {
+      backdrop.hidden = true;
+      dialog.hidden = true;
+      backdrop.removeEventListener("click", onCancel);
+      cancel.removeEventListener("click", onCancel);
+      ok.removeEventListener("click", onOk);
+      document.removeEventListener("keydown", onKey);
+      resolve(value);
+    };
+    const onCancel = () => done(false);
+    const onOk = () => done(true);
+    const onKey = (event) => {
+      if (event.key === "Escape") done(false);
+    };
+    backdrop.addEventListener("click", onCancel);
+    cancel.addEventListener("click", onCancel);
+    ok.addEventListener("click", onOk);
+    document.addEventListener("keydown", onKey);
+  });
+}
+
 function renderMessages(data) {
   const selected = state.selectedId === DRAFT_THREAD_ID ? state.draftThread : state.threads.find((thread) => thread.id === state.selectedId);
   els.threadTitle.textContent = selected?.title || data.thread?.title || t("untitled");
@@ -2565,45 +2608,6 @@ function renderMessages(data) {
         </article>
       `;
 
-/**
- * 应用内确认层。WebChromeClient 默认会把 confirm() 画成安卓系统对话框，
- * 一眼看出是网页。所有需要确认的动作都走这里，样式与 App 其余弹层一致。
- */
-function appConfirm(message, { title = "请确认", confirmText = "确定", cancelText = "取消", danger = false } = {}) {
-  const backdrop = document.querySelector("#appDialogBackdrop");
-  const dialog = document.querySelector("#appDialog");
-  if (!backdrop || !dialog) return Promise.resolve(window.confirm(message));
-  document.querySelector("#appDialogTitle").textContent = title;
-  document.querySelector("#appDialogBody").textContent = message;
-  const cancel = document.querySelector("#appDialogCancel");
-  const ok = document.querySelector("#appDialogConfirm");
-  cancel.textContent = cancelText;
-  ok.textContent = confirmText;
-  dialog.classList.toggle("danger", danger);
-  backdrop.hidden = false;
-  dialog.hidden = false;
-  ok.focus({ preventScroll: true });
-  return new Promise((resolve) => {
-    const done = (value) => {
-      backdrop.hidden = true;
-      dialog.hidden = true;
-      backdrop.removeEventListener("click", onCancel);
-      cancel.removeEventListener("click", onCancel);
-      ok.removeEventListener("click", onOk);
-      document.removeEventListener("keydown", onKey);
-      resolve(value);
-    };
-    const onCancel = () => done(false);
-    const onOk = () => done(true);
-    const onKey = (event) => {
-      if (event.key === "Escape") done(false);
-    };
-    backdrop.addEventListener("click", onCancel);
-    cancel.addEventListener("click", onCancel);
-    ok.addEventListener("click", onOk);
-    document.addEventListener("keydown", onKey);
-  });
-}
       return `${messageArticle}${isTool ? renderPromotedToolImages(message) : ""}`;
     })
     .join("");

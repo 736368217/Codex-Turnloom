@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 import { execFile, spawn } from "node:child_process";
 import { AsyncLocalStorage } from "node:async_hooks";
-import { createHash, randomInt, randomUUID } from "node:crypto";
+import { createHash, randomBytes, randomUUID, timingSafeEqual } from "node:crypto";
 import {
   createReadStream,
   existsSync,
@@ -301,7 +301,13 @@ const CODEX_HOME_FIXED = Boolean(cli.codexHome || process.env.CODEX_LAN_FIXED_CO
 const HOST = cli.host || process.env.HOST || "0.0.0.0";
 const PORT = Number(cli.port || process.env.PORT || 8787);
 let AUTH_REQUIRED = !cli.noAuth && process.env.CODEX_LAN_NO_AUTH !== "1";
-let ACCESS_TOKEN = cli.password || cli.token || process.env.CODEX_LAN_PASSWORD || process.env.CODEX_LAN_TOKEN || String(randomInt(100000, 1000000));
+let ACCESS_TOKEN =
+  cli.password ||
+  cli.token ||
+  process.env.CODEX_LAN_PASSWORD ||
+  process.env.CODEX_LAN_TOKEN ||
+  // 24 字符 base64url（144 bit）：旧的 6 位数字默认码在公网隧道下可在线枚举。
+  randomBytes(18).toString("base64url");
 const ALLOW_WRITE = !cli.readonly && process.env.CODEX_LAN_READONLY !== "1";
 const CODEX_IPC_SOCKET =
   cli.ipcSocket ||
@@ -620,8 +626,8 @@ function cookieValue(req, name) {
 function findAuthProfileByToken(token) {
   const value = String(token || "");
   if (!value) return null;
-  if (PROFILE_MODE) return PROFILES.find((profile) => profile.token === value) || null;
-  return value === ACCESS_TOKEN
+  if (PROFILE_MODE) return PROFILES.find((profile) => tokensEqual(value, profile.token)) || null;
+  return tokensEqual(value, ACCESS_TOKEN)
     ? { id: null, label: "Codex", backend: BACKEND_KIND, token: value }
     : null;
 }
@@ -742,17 +748,136 @@ function requestToken(req, url) {
   return url.searchParams.get("token") || "";
 }
 
+/**
+ * 恒时比较访问码：先各自 sha256 成定长再 timingSafeEqual，
+ * 避免逐字符比较用响应时间泄漏前缀（默认 6 位数字码在线可枚举）。
+ */
+function tokensEqual(candidate, expected) {
+  const left = createHash("sha256").update(String(candidate ?? "")).digest();
+  const right = createHash("sha256").update(String(expected ?? "")).digest();
+  return timingSafeEqual(left, right);
+}
+
+/**
+ * 访问码尝试限速：同一来源在窗口内失败到阈值后指数退避（30s 起，上限 30 分钟），
+ * 成功即清零。只统计「带显式令牌却被拒」的请求——手机端轮询靠 cookie 会话，
+ * 会话过期会持续 401，不能把正常用户锁在门外。
+ */
+const AUTH_FAILURE_WINDOW_MS = 10 * 60 * 1000;
+const AUTH_MAX_FAILURES = 10;
+const AUTH_MAX_TRACKED_SOURCES = 2048;
+const authFailureState = new Map();
+
+function authSourceKey(req) {
+  const forwarded = String(req.headers["x-forwarded-for"] || "").split(",")[0].trim();
+  return forwarded || req.socket?.remoteAddress || "unknown";
+}
+
+function authBlockRemainingMs(req) {
+  const key = authSourceKey(req);
+  const state = authFailureState.get(key);
+  if (!state?.blockedUntilMs) return 0;
+  const remaining = state.blockedUntilMs - Date.now();
+  if (remaining <= 0) {
+    authFailureState.delete(key);
+    return 0;
+  }
+  return remaining;
+}
+
+function noteAuthFailure(req) {
+  const key = authSourceKey(req);
+  const now = Date.now();
+  const state = authFailureState.get(key);
+  if (!state || now - state.firstAtMs > AUTH_FAILURE_WINDOW_MS) {
+    if (authFailureState.size >= AUTH_MAX_TRACKED_SOURCES) {
+      authFailureState.delete(authFailureState.keys().next().value);
+    }
+    authFailureState.set(key, { failures: 1, firstAtMs: now, blockedUntilMs: 0 });
+    return;
+  }
+  state.failures += 1;
+  if (state.failures >= AUTH_MAX_FAILURES) {
+    const backoff = Math.min(30 * 60 * 1000, 30_000 * 2 ** (state.failures - AUTH_MAX_FAILURES));
+    state.blockedUntilMs = now + backoff;
+  }
+}
+
+function clearAuthFailures(req) {
+  authFailureState.delete(authSourceKey(req));
+}
+
+function sendRateLimited(res, remainingMs) {
+  sendJson(res, 429, { error: "Too many failed access-code attempts", retryAfterMs: remainingMs }, {
+    "retry-after": String(Math.max(1, Math.ceil(remainingMs / 1000))),
+    "cache-control": "no-store"
+  });
+}
+
 function isAuthorized(req, url) {
   if (!AUTH_REQUIRED) return true;
   const token = requestToken(req, url);
-  if (PROFILE_MODE ? PROFILES.some((profile) => profile.token === token) : token === ACCESS_TOKEN) return true;
+  if (PROFILE_MODE ? PROFILES.some((profile) => tokensEqual(token, profile.token)) : tokensEqual(token, ACCESS_TOKEN)) {
+    return true;
+  }
   return Boolean(sessionForRequest(req));
 }
 
 function requireAuthorized(req, res, url) {
-  if (isAuthorized(req, url)) return true;
+  const blockedFor = authBlockRemainingMs(req);
+  if (blockedFor > 0) {
+    sendRateLimited(res, blockedFor);
+    return false;
+  }
+  if (isAuthorized(req, url)) {
+    clearAuthFailures(req);
+    return true;
+  }
+  if (requestToken(req, url)) noteAuthFailure(req);
   sendJson(res, 401, { error: "Unauthorized", authRequired: true });
   return false;
+}
+
+/** 只读模式的统一闸门：写操作一律 403，而不是只在发送/置顶几个入口挡一下。 */
+function requireWriteEnabled(res) {
+  if (ALLOW_WRITE) return true;
+  sendJson(res, 403, {
+    error: "Read-only mode is enabled. Restart without --readonly to change anything.",
+    readOnly: true
+  });
+  return false;
+}
+
+/**
+ * /api/host/file|file-image|files 会把路径直接交给宿主 fs/read，本服务必须先自己收口：
+ * 只允许已知项目根之内的真实路径，其余一律拒绝（旧实现等于把任意绝对路径交给宿主）。
+ */
+async function allowedHostFilePath(rawPath) {
+  const requested = String(rawPath || "").trim();
+  if (!requested || requested.includes("\0") || !path.isAbsolute(requested)) return "";
+  let canonical;
+  try {
+    canonical = await fs.realpath(path.resolve(requested));
+  } catch {
+    return "";
+  }
+  const canonicalKey = canonical.toLowerCase();
+  let roots;
+  try {
+    roots = await readProjectRoots();
+  } catch {
+    roots = new Map();
+  }
+  for (const candidates of roots.values()) {
+    for (const entry of Array.isArray(candidates) ? candidates : []) {
+      const root = String(entry?.root || "").replace(/[\\/]+$/, "");
+      if (!root) continue;
+      const rootKey = root.toLowerCase();
+      if (canonicalKey === rootKey) return canonical;
+      if (canonicalKey.startsWith(`${rootKey}${path.sep}`) || canonicalKey.startsWith(`${rootKey}/`)) return canonical;
+    }
+  }
+  return "";
 }
 
 function loginUrlFor(baseUrl) {
@@ -1271,8 +1396,8 @@ async function loadNodeSqliteModule() {
   return nodeSqliteModulePromise;
 }
 
-function querySqlJsonWithNode(DatabaseSync, sql, dbPath) {
-  const database = new DatabaseSync(dbPath, { readOnly: true });
+function querySqlJsonWithNode(DatabaseSync, sql, dbPath, { write = false } = {}) {
+  const database = new DatabaseSync(dbPath, { readOnly: !write });
   try {
     database.exec("PRAGMA busy_timeout = 5000");
     return database.prepare(sql).all();
@@ -1281,12 +1406,12 @@ function querySqlJsonWithNode(DatabaseSync, sql, dbPath) {
   }
 }
 
-async function runSqlJsonAttempt(sql, dbPath = codexPaths().stateDb) {
+async function runSqlJsonAttempt(sql, dbPath = codexPaths().stateDb, options = {}) {
   if (SQLITE_DRIVER_PREFERENCE !== "cli") {
     const module = await loadNodeSqliteModule();
     if (module?.DatabaseSync) {
       try {
-        const rows = querySqlJsonWithNode(module.DatabaseSync, sql, dbPath);
+        const rows = querySqlJsonWithNode(module.DatabaseSync, sql, dbPath, options);
         sqliteDriverState.active = "node:sqlite";
         sqliteDriverState.nodeQueries += 1;
         return rows;
@@ -1320,12 +1445,12 @@ function sqliteDriverInfo() {
   };
 }
 
-async function runSqlJsonFromDb(dbPath, sql) {
+async function runSqlJsonFromDb(dbPath, sql, options = {}) {
   const work = async () => {
     let lastError;
     for (let attempt = 0; attempt < 5; attempt += 1) {
       try {
-        return await runSqlJsonAttempt(sql, dbPath);
+        return await runSqlJsonAttempt(sql, dbPath, options);
       } catch (error) {
         lastError = error;
         if (!isSqliteLocked(error) && !isSqliteResourceTransient(error)) throw error;
@@ -1344,6 +1469,15 @@ async function runSqlJsonFromDb(dbPath, sql) {
 async function runSqlJson(sql) {
   const { stateDb } = codexPaths((await refreshCodexHomeContext()).home);
   return runSqlJsonFromDb(stateDb, sql);
+}
+
+/**
+ * 写库必须走可写连接：node:sqlite 的 readOnly 连接会直接拒绝 BEGIN/INSERT/UPDATE，
+ * 置顶写入此前因此静默回退到 sqlite3 CLI（换台没有该命令的机器就变成 500）。
+ */
+async function runSqlWrite(sql) {
+  const { stateDb } = codexPaths((await refreshCodexHomeContext()).home);
+  return runSqlJsonFromDb(stateDb, sql, { write: true });
 }
 
 const STATUS_STATES = new Set(["running", "waiting", "ended"]);
@@ -1526,18 +1660,24 @@ function safeResolveRolloutPath(rolloutPath, threadId = "") {
 }
 
 async function readJsonBody(req, limit = 128 * 1024) {
-  let body = "";
+  const chunks = [];
+  let receivedBytes = 0;
   for await (const chunk of req) {
-    body += chunk;
+    const buffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
+    receivedBytes += buffer.length;
     // The limit is measured in UTF-8 bytes, not JavaScript string characters.
-    if (Buffer.byteLength(body) > limit) {
+    if (receivedBytes > limit) {
       const err = new Error("Request body too large");
       err.status = 413;
       throw err;
     }
+    chunks.push(buffer);
   }
+  // 必须整体解码：逐块 body += chunk 会把跨块的 UTF-8 汉字/emoji 撕成替换字符，
+  // 并且每块都重算整串字节数，在上限很大时退化成 O(n²)。
+  const body = Buffer.concat(chunks, receivedBytes).toString("utf8");
   try {
-    return body ? JSON.parse(body) : {};
+    return body.trim() ? JSON.parse(body) : {};
   } catch {
     const err = new Error("Invalid JSON body");
     err.status = 400;
@@ -6227,7 +6367,7 @@ async function setThreadPinned(threadId, pinned) {
     if (pinned) {
       const sections = await runSqlJson(`SELECT id FROM thread_sections WHERE lower(name) = 'pinned' ORDER BY id LIMIT 1;`);
       const sectionId = String(sections[0]?.id || randomUUID());
-      await runSqlJson(`
+      await runSqlWrite(`
         BEGIN IMMEDIATE;
         INSERT OR IGNORE INTO thread_sections (id, name, appearance)
         VALUES ('${sqlString(sectionId)}', 'Pinned', NULL);
@@ -6244,7 +6384,7 @@ async function setThreadPinned(threadId, pinned) {
         COMMIT;
       `);
     } else {
-      await runSqlJson(`
+      await runSqlWrite(`
         UPDATE threads
         SET is_pinned = 0, thread_section_id = NULL, section_position = NULL, section_entered_at_ms = NULL
         WHERE id = '${sqlString(id)}';
@@ -6996,30 +7136,69 @@ async function withAssetVersions(html) {
   }
   return out;
 }
-async function serveStatic(res, pathname) {
+/**
+ * 流式发送必须自带 error 兜底：全局 uncaughtException 是 process.exit(1)，
+ * 一次 ENOENT/EPIPE（发布时替换 APK、清理 scratch 图片）就会把整个服务带走。
+ */
+function streamFileToResponse(filePath, res, options = {}) {
+  const stream = createReadStream(filePath, options);
+  stream.on("error", (error) => {
+    logError(`[stream] ${filePath}: ${error?.message || error}`);
+    if (!res.headersSent) {
+      sendText(res, 500, "Read failed");
+      return;
+    }
+    res.destroy(error);
+  });
+  // 客户端中断（手机切后台）时释放文件句柄，别让 fd 泄漏。
+  res.on("close", () => stream.destroy());
+  stream.pipe(res);
+  return stream;
+}
+
+/** 大于这个体积的静态文件一律走流式，避免把 260MB 的 APK 读进内存。 */
+const MAX_STATIC_INLINE_BYTES = 2 * 1024 * 1024;
+
+async function serveStatic(res, pathname, { versioned = false } = {}) {
   const requested = pathname === "/" ? "/index.html" : pathname;
   const filePath = path.normalize(path.join(PUBLIC_DIR, requested));
   if (!filePath.startsWith(path.normalize(PUBLIC_DIR + path.sep))) {
     sendText(res, 403, "Forbidden");
     return;
   }
+  const ext = path.extname(filePath);
+  const types = {
+    ".html": "text/html; charset=utf-8",
+    ".css": "text/css; charset=utf-8",
+    ".js": "application/javascript; charset=utf-8",
+    ".png": "image/png",
+    ".svg": "image/svg+xml"
+  };
+  // 只有带 ?v= 指纹的资源才能长缓存：否则改完桌面端还在跑旧 UI。
+  // 反过来，全站 no-store 又让 ?v= 指纹彻底失去意义（每次冷启动重传 230KB app.js）。
+  const cacheControl = ext === ".html" || !versioned ? "no-store, must-revalidate" : "public, max-age=31536000, immutable";
   try {
-    let data = await fs.readFile(filePath);
-    const ext = path.extname(filePath);
-    const types = {
-      ".html": "text/html; charset=utf-8",
-      ".css": "text/css; charset=utf-8",
-      ".js": "application/javascript; charset=utf-8",
-      ".png": "image/png",
-      ".svg": "image/svg+xml"
-    };
-    res.writeHead(200, {
+    const stat = await fs.stat(filePath);
+    if (!stat.isFile()) throw new Error("not a file");
+    const headers = {
       "content-type": types[ext] || "application/octet-stream",
-      "cache-control": "no-store, must-revalidate",
+      "cache-control": cacheControl,
       ...staticSecurityHeaders
-    });
-    if (ext === ".html") data = Buffer.from(await withAssetVersions(data.toString("utf8")), "utf8");
-    res.end(data);
+    };
+    if (ext === ".html") {
+      const data = Buffer.from(await withAssetVersions(await fs.readFile(filePath, "utf8")), "utf8");
+      res.writeHead(200, { ...headers, "content-length": data.length });
+      res.end(data);
+      return;
+    }
+    if (stat.size <= MAX_STATIC_INLINE_BYTES) {
+      const data = await fs.readFile(filePath);
+      res.writeHead(200, { ...headers, "content-length": data.length });
+      res.end(data);
+      return;
+    }
+    res.writeHead(200, { ...headers, "content-length": stat.size });
+    streamFileToResponse(filePath, res);
   } catch {
     sendText(res, 404, "Not found");
   }
@@ -7144,7 +7323,7 @@ async function serveLocalFile(req, res, filePath, threadId = "") {
     };
     if (range) headers["content-range"] = `bytes ${start}-${end}/${stat.size}`;
     res.writeHead(range ? 206 : 200, headers);
-    createReadStream(normalized, { start, end }).pipe(res);
+    streamFileToResponse(normalized, res, { start, end });
   } catch {
     sendText(res, 404, "Not found");
   }
@@ -7163,20 +7342,27 @@ async function serveApk(res) {
       "content-disposition": contentDispositionForDownload("Codex-Turnloom.apk"),
       "cache-control": "no-cache, must-revalidate"
     });
-    createReadStream(APK_PATH).pipe(res);
+    streamFileToResponse(APK_PATH, res);
   } catch {
     sendText(res, 404, "APK not found");
   }
 }
 
 async function handleAuthSessionExchange(req, res) {
+  const blockedFor = authBlockRemainingMs(req);
+  if (blockedFor > 0) {
+    sendRateLimited(res, blockedFor);
+    return;
+  }
   try {
     const body = await readJsonBody(req);
     const profile = findAuthProfileByToken(body.token);
     if (!profile) {
+      noteAuthFailure(req);
       sendJson(res, 401, { error: "Unauthorized", authRequired: true });
       return;
     }
+    clearAuthFailures(req);
     const session = issueAuthSession(profile);
     sendJson(res, 200, {
       ok: true,
@@ -7201,13 +7387,20 @@ function handleAuthLogout(req, res) {
 }
 
 function handleLoginRedirect(req, res, url) {
+  const blockedFor = authBlockRemainingMs(req);
+  if (blockedFor > 0) {
+    sendRateLimited(res, blockedFor);
+    return;
+  }
   const token = url.searchParams.get("login") || url.searchParams.get("token") || "";
   const profile = findAuthProfileByToken(token);
   if (!profile) {
+    noteAuthFailure(req);
     res.writeHead(302, { location: "/", "cache-control": "no-store", "referrer-policy": "no-referrer" });
     res.end();
     return;
   }
+  clearAuthFailures(req);
   const session = issueAuthSession(profile);
   const target = new URL(url.pathname === "/login" ? "/" : url.pathname, `http://${req.headers.host || "localhost"}`);
   for (const [key, value] of url.searchParams) {
@@ -7540,6 +7733,9 @@ const server = http.createServer(async (req, res) => {
       return;
     }
     req.turnloomProfile = profileForRequest(req, url);
+    // --backend http 必须在本地处理之前转发：否则配置了 backend:"http"
+    // 仍然读写本机 Codex，属于静默的错误路由（handleHttpBackendApi 自己会鉴权）。
+    if (await handleHttpBackendApi(req, res, url, req.turnloomProfile)) return;
     if (req.method === "GET" && url.pathname === "/api/local-image") {
       if (!requireAuthorized(req, res, url)) return;
       await serveLocalImage(res, url.searchParams.get("path"), url.searchParams.get("threadId"));
@@ -7650,6 +7846,7 @@ const server = http.createServer(async (req, res) => {
     // ── 手机端「更多能力」：统一委托给桥的白名单宿主调用层 ──────────────
     if (req.method === "POST" && url.pathname === "/api/host") {
       if (!requireAuthorized(req, res, url)) return;
+      if (!requireWriteEnabled(res)) return;
       const body = await readJsonBody(req, MAX_SEND_BODY_BYTES);
       const operation = String(body.operation || "").trim();
       if (!operation) {
@@ -7728,10 +7925,16 @@ const server = http.createServer(async (req, res) => {
         return;
       }
       if (name === "files") {
+        // 空 path 表示「按会话 cwd 列出」，非空则必须是已知项目根之内的真实路径。
+        const listedPath = filePath ? await allowedHostFilePath(filePath) : "";
+        if (filePath && !listedPath) {
+          sendJson(res, 403, { error: "path is outside the known project roots" });
+          return;
+        }
         await hostReply(res, () =>
           requestBridge("host/invoke", {
             operation: "fs/list",
-            args: [{ sessionId: threadId, path: filePath }]
+            args: [{ sessionId: threadId, path: listedPath }]
           })
         );
         return;
@@ -7741,10 +7944,15 @@ const server = http.createServer(async (req, res) => {
           sendJson(res, 400, { error: "threadId and path are required" });
           return;
         }
+        const imagePath = await allowedHostFilePath(filePath);
+        if (!imagePath) {
+          sendJson(res, 403, { error: "path is outside the known project roots" });
+          return;
+        }
         await hostReply(res, () =>
           requestBridge("host/invoke", {
             operation: "fs/readImageDataUrl",
-            args: [{ sessionId: threadId, path: filePath }]
+            args: [{ sessionId: threadId, path: imagePath }]
           })
         );
         return;
@@ -7754,10 +7962,15 @@ const server = http.createServer(async (req, res) => {
           sendJson(res, 400, { error: "threadId and path are required" });
           return;
         }
+        const safePath = await allowedHostFilePath(filePath);
+        if (!safePath) {
+          sendJson(res, 403, { error: "path is outside the known project roots" });
+          return;
+        }
         await hostReply(res, async () => {
           const result = await requestBridge("host/invoke", {
             operation: "fs/read",
-            args: [{ sessionId: threadId, path: filePath }]
+            args: [{ sessionId: threadId, path: safePath }]
           });
           // 文本预览上限：手机不需要把几十 MB 的文件塞进 JSON。
           const payload = result?.result ?? result;
@@ -7812,18 +8025,21 @@ const server = http.createServer(async (req, res) => {
     }
     if (req.method === "POST" && url.pathname === "/api/queue/cancel") {
       if (!requireAuthorized(req, res, url)) return;
+      if (!requireWriteEnabled(res)) return;
       const body = await readJsonBody(req);
       sendJson(res, 200, await cancelQueuedSend(body.threadId, body.itemId, { edit: body.edit === true }));
       return;
     }
     if (req.method === "POST" && url.pathname === "/api/queue/steer") {
       if (!requireAuthorized(req, res, url)) return;
+      if (!requireWriteEnabled(res)) return;
       const body = await readJsonBody(req);
       sendJson(res, 200, await steerQueuedSend(body.threadId, body.itemId));
       return;
     }
     if (req.method === "POST" && url.pathname === "/api/queue/retry") {
       if (!requireAuthorized(req, res, url)) return;
+      if (!requireWriteEnabled(res)) return;
       const body = await readJsonBody(req);
       const threadId = String(body?.threadId || "").trim();
       const itemId = String(body?.itemId || "").trim();
@@ -7867,7 +8083,7 @@ const server = http.createServer(async (req, res) => {
           : "";
         if (safePath && existsSync(safePath)) {
           res.writeHead(200, { "content-type": String(attachment.mimeType || "image/png"), "cache-control": "private, no-store", "x-content-type-options": "nosniff" });
-          createReadStream(safePath).pipe(res);
+          streamFileToResponse(safePath, res);
           return;
         }
       } else {
@@ -7893,7 +8109,7 @@ const server = http.createServer(async (req, res) => {
       }
       const mimeType = imageMimeTypeFromName(name);
       res.writeHead(200, { "content-type": mimeType, "cache-control": "private, no-store", "x-content-type-options": "nosniff" });
-      createReadStream(safePath).pipe(res);
+      streamFileToResponse(safePath, res);
       return;
     }
     if (req.method === "POST" && url.pathname === "/api/new-thread") {
@@ -7979,23 +8195,27 @@ const server = http.createServer(async (req, res) => {
     }
     if (goalMatch && req.method === "PUT") {
       if (!requireAuthorized(req, res, url)) return;
+      if (!requireWriteEnabled(res)) return;
       sendJson(res, 200, { goal: await setThreadGoal(goalMatch[1], await readJsonBody(req)) });
       return;
     }
     if (goalMatch && req.method === "DELETE") {
       if (!requireAuthorized(req, res, url)) return;
+      if (!requireWriteEnabled(res)) return;
       sendJson(res, 200, await clearThreadGoal(goalMatch[1]));
       return;
     }
     const compactMatch = url.pathname.match(/^\/api\/threads\/([0-9a-fA-F-]{20,})\/compact$/);
     if (req.method === "POST" && compactMatch) {
       if (!requireAuthorized(req, res, url)) return;
+      if (!requireWriteEnabled(res)) return;
       sendJson(res, 200, await compactThread(compactMatch[1]));
       return;
     }
     const branchMatch = url.pathname.match(/^\/api\/threads\/([0-9a-fA-F-]{20,})\/branch$/);
     if (req.method === "POST" && branchMatch) {
       if (!requireAuthorized(req, res, url)) return;
+      if (!requireWriteEnabled(res)) return;
       const body = await readJsonBody(req);
       const source = await findThread(branchMatch[1]);
       if (!source) {
@@ -8045,7 +8265,7 @@ const server = http.createServer(async (req, res) => {
       sendText(res, 405, "Method not allowed");
       return;
     }
-    await serveStatic(res, decodeURIComponent(url.pathname));
+    await serveStatic(res, decodeURIComponent(url.pathname), { versioned: url.searchParams.has("v") });
   } catch (error) {
     logError(`[http:error] ${requestMethod} ${url.pathname}: ${error?.stack || error?.message || String(error)}`);
     sendJson(res, error.status || 500, { error: error.message || "Internal server error" });
@@ -8135,7 +8355,12 @@ if (IS_MAIN) {
   logInfo(`Start:  ${PROCESS_STARTED_AT_ISO}`);
   logInfo(`Origin: ${START_SOURCE}${IS_INTERACTIVE_TTY ? " · interactive terminal" : " · background service"}`);
   printRuntimeUrls();
-  if (AUTH_REQUIRED) logInfo(`Access code: ${ACCESS_TOKEN}`);
+  if (AUTH_REQUIRED) {
+    // 后台日志会被守护脚本、控制台导出和用户随手粘贴带走，访问码不能明文落盘。
+    logInfo(
+      `Access code: ${IS_INTERACTIVE_TTY ? ACCESS_TOKEN : "(masked in background logs — start interactively or open the console to read it)"}`
+    );
+  }
   logInfo(
     `Mode:   ${ALLOW_WRITE ? "write enabled" : "read-only"}${
       AUTH_REQUIRED ? " · access-code protected" : " · auth disabled"

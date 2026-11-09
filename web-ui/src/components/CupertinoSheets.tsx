@@ -33,6 +33,8 @@ export interface CupertinoSheetsProps {
   onNewTask: (message: string) => Promise<void>;
   onPairing: (settings: ConnectionSettings) => Promise<void>;
   onAccessCode: (token: string) => Promise<void>;
+  /** 可选：清掉本机保存的访问码。不传则不显示这个入口。 */
+  onForgetAccessCode?: () => void;
   health: HealthResponse | null;
   readOnly: boolean;
 }
@@ -418,6 +420,15 @@ export default function CupertinoSheets(props: CupertinoSheetsProps) {
                 >
                   {submitting ? '连接中…' : '连接'}
                 </button>
+                {props.onForgetAccessCode && (
+                  <button
+                    type="button"
+                    onClick={() => props.onForgetAccessCode?.()}
+                    className={`mt-2 min-h-[44px] w-full rounded-2xl bg-[#EFEFF4] px-4 py-3 text-[14px] font-medium text-[#8E8E93] ${PRESS}`}
+                  >
+                    清除本机已保存的访问码
+                  </button>
+                )}
                 {error && <ErrorBox message={error} />}
               </>
             )}

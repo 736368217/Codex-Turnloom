@@ -77,6 +77,9 @@ export default function ThreadScreen() {
   const approvalRef = useRef<ApprovalSheetHandle>(null);
   const pollController = useRef<AbortController | null>(null);
   const cursorRef = useRef<string>('');
+  // thread 只用于「缓存里没有 thread 时」的兜底字段；放进依赖会让 applyMessages 每次
+  // setThread 后换身份，进而让挂载 effect 重跑 → 无限重新拉消息 + 重置长轮询游标。
+  const threadRef = useRef<Thread | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
   const [thread, setThread] = useState<Thread | null>(null);
   const [status, setStatus] = useState<MessagesResponse['status']>({});
@@ -124,13 +127,14 @@ export default function ThreadScreen() {
       setMessages(nextMessages);
       setStatus(response?.status || {});
       if (response?.thread) setThread(response.thread);
+      threadRef.current = response?.thread ?? threadRef.current;
       setCached(false);
       if (persist) {
         try {
           await writeConversationCache({
             key: cacheKey,
             savedAtMs: Date.now(),
-            thread: response.thread ?? thread,
+            thread: response.thread ?? threadRef.current,
             messages: response,
           });
         } catch {
@@ -138,7 +142,7 @@ export default function ThreadScreen() {
         }
       }
     },
-    [cacheKey, thread]
+    [cacheKey]
   );
 
   const load = useCallback(

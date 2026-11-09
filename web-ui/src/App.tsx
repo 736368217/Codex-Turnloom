@@ -29,6 +29,7 @@ import ThumbGlassBar, { type QueuedItem, type SendPayload } from './components/T
 import GlassTabBar, { type TabKey } from './components/GlassTabBar';
 import CupertinoSheets, { type SheetKind } from './components/CupertinoSheets';
 import {
+  forgetAccessCodes,
   loadTerminals,
   readActiveTerminalId,
   saveTerminals,
@@ -78,6 +79,10 @@ export default function App() {
   const pollerRef = useRef<(() => void) | null>(null);
   const threadIdRef = useRef(selectedThreadId);
   threadIdRef.current = selectedThreadId;
+  // loadMessages 只把 threads 用于「缓存归属」判断；一旦它进依赖，就会随每次刷新换身份，
+  // 把下面的长轮询 effect 无限重启（每次重启游标归零 → 服务端立刻返回 changed，紧循环）。
+  const threadsRef = useRef<Thread[]>(threads);
+  threadsRef.current = threads;
 
   const readOnly = health?.allowWrite === false;
   const busy = Boolean(status?.thinking);
@@ -120,7 +125,12 @@ export default function App() {
   const refreshThreads = useCallback(async () => {
     try {
       const list = await api.getThreadsWithEtag({ limit: 60, selectedId: threadIdRef.current });
-      setThreads(list.threads || []);
+      setThreads((previous) => {
+        const next = list.threads || [];
+        // 引用稳定：轮询每次刷新都换新数组的话，所有依赖 threads 的 memo/effect 都会重跑。
+        if (JSON.stringify(previous) === JSON.stringify(next)) return previous;
+        return next;
+      });
     } catch (error) {
       if (error instanceof ApiError && error.isAuth) {
         setSheet('accessCode');
@@ -142,7 +152,7 @@ export default function App() {
       const key = conversationCacheKey(threadId);
       if (useCache) {
         const cached = await readConversationCache(key);
-        const thread = threads.find((t) => t.id === threadId);
+        const thread = threadsRef.current.find((t) => t.id === threadId);
         if (cached && isConversationCacheFresh(cached, thread)) {
           setMessages(cached.data.messages || []);
           setStatus(cached.data.status || EMPTY_STATUS);
@@ -155,7 +165,7 @@ export default function App() {
         setStatus(result.status || EMPTY_STATUS);
         void writeConversationCache(key, {
           threadId,
-          thread: threads.find((t) => t.id === threadId),
+          thread: threadsRef.current.find((t) => t.id === threadId),
           data: result,
         });
         setNotice('');
@@ -167,7 +177,7 @@ export default function App() {
         showError(error);
       }
     },
-    [threads, showError],
+    [showError],
   );
 
   useEffect(() => {
@@ -451,6 +461,11 @@ export default function App() {
       onNewTask={handleNewTask}
       onPairing={handlePairing}
       onAccessCode={handleAccessCode}
+      onForgetAccessCode={() => {
+        forgetAccessCodes();
+        setTerminals(loadTerminals());
+        setSheet(null);
+      }}
       health={health}
       readOnly={Boolean(readOnly)}
     />

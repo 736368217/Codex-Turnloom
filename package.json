@@ -27,7 +27,7 @@
     "LICENSE"
   ],
   "scripts": {
-    "check": "node --check server.js && node --check backends/http-backend.js && node --check public/app.js && node --check public/auth.js && node --check public/markdown.js && node --check public/threads.js",
+    "check": "node --check server.js && node --check backends/http-backend.js && node --check public/app.js && node --check public/auth.js && node --check public/markdown.js && node --check public/threads.js && node --check public/history.js && node --check public/runtime.js && node --check public/conversation-cache.js",
     "test": "node --test",
     "verify:ci": "node scripts/verify-ci.mjs",
     "start": "node server.js",
@@ -63,7 +63,7 @@
   },
   "license": "MIT",
   "engines": {
-    "node": ">=18"
+    "node": ">=22.5"
   },
   "dependencies": {
     "dompurify": "^3.4.14",

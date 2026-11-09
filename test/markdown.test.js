@@ -43,3 +43,25 @@ test("preserves trusted local embeds and strips unsafe message HTML", () => {
   assert.equal(document.querySelector("img[onerror]"), null);
   assert.doesNotMatch(html, /javascript:/i);
 });
+
+test("embed replacement never interprets $ patterns from the alt text", () => {
+  const html = render("![a$'b](C:\\\\Temp\\\\shot.png)\\n\\n![c$&d](C:\\\\Temp\\\\shot2.png)");
+  const document = new JSDOM(`<body>${html}</body>`).window.document;
+  const images = [...document.querySelectorAll("img.generated-image")];
+  assert.equal(images.length, 2);
+  // 字符串形式的 replaceAll 会把 $' 当成「匹配之后的整段内容」，于是图片被复制两遍、
+  // 占位符也会漏进正文。函数式替换后这里必须恰好两张、且没有占位符残留。
+  assert.equal((html.match(/generated-image/g) || []).length, 2);
+  assert.doesNotMatch(html, /@@CODEXPOCKET/);
+  assert.ok(images.some((image) => String(image.getAttribute("alt") || "").includes("a$'b")));
+});
+
+test("falls back to escaped text when marked or DOMPurify is unavailable", () => {
+  const window = new JSDOM("<!doctype html><html><body></body></html>").window;
+  const html = renderMarkdown("<b>hi</b>", {
+    parseMarkdown: () => undefined,
+    sanitizeHtml: (value) => value,
+    document: window.document
+  });
+  assert.equal(html, "<p>&lt;b&gt;hi&lt;/b&gt;</p>");
+});
