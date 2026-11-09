@@ -36,9 +36,11 @@ import type {
   HostDiffResponse,
   MessagesResponse,
   NewThreadResult,
+  PluginsResponse,
   ProjectsResponse,
   SendMode,
   SendResult,
+  SkillsResponse,
   ThreadsResponse,
 } from './types';
 
@@ -331,6 +333,18 @@ export class TurnloomClient {
 
   async getProjects(options?: Pick<RequestOptions, 'signal'>): Promise<ProjectsResponse> {
     const { data } = await this.request<ProjectsResponse>(this.endpoint('/api/projects'), options);
+    return data;
+  }
+
+  /** 宿主已安装插件（原版 public/app.js 的 loadPlugins 同一接口）。 */
+  async getPlugins(options?: Pick<RequestOptions, 'signal'>): Promise<PluginsResponse> {
+    const { data } = await this.request<PluginsResponse>(this.endpoint('/api/plugins'), options);
+    return data;
+  }
+
+  /** 技能目录（含 builtin 操作；引用时 builtin 不写进 "Use skill" 行，与原版一致）。 */
+  async getSkills(options?: Pick<RequestOptions, 'signal'>): Promise<SkillsResponse> {
+    const { data } = await this.request<SkillsResponse>(this.endpoint('/api/skills'), options);
     return data;
   }
 

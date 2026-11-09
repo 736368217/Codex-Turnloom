@@ -1,4 +1,4 @@
-/**
+﻿/**
  * Thread detail / live remote-control screen.
  *
  * Data flow:
@@ -10,6 +10,7 @@
  *    POST /api/interrupt; approvals via the bottom sheet (POST /api/approval).
  */
 import { FlashList } from '@shopify/flash-list';
+import * as Haptics from 'expo-haptics';
 import { Stack, useLocalSearchParams } from 'expo-router';
 import { SymbolView } from 'expo-symbols';
 import { useCallback, useEffect, useRef, useState } from 'react';
@@ -28,8 +29,18 @@ import { OptionA } from '@/constants/optionA';
 import { AgentStepCard } from '@/components/AgentStepCard';
 import { ApprovalBottomSheet, type ApprovalSheetHandle } from '@/components/ApprovalBottomSheet';
 import { CodeDiffBlock } from '@/components/CodeDiffBlock';
+import {
+  effortLabel,
+  MentionSheet,
+  MessageActionSheet,
+  ModelEffortSheet,
+  type ModelOption,
+} from '@/components/OptionASheets';
 import { ThumbPromptBar, type QueuedItem } from '@/components/ThumbPromptBar';
 import { Badge, Card, EmptyState } from '@/components/ui';
+import { copyText } from '@/services/clipboard';
+import { composeMessage, type PluginRef, type SkillRef } from '@/services/mentions';
+import { readThreadPrefs, writeThreadPrefs } from '@/services/threadPrefs';
 import {
   conversationCacheKey,
   isConversationCacheFresh,
@@ -80,6 +91,26 @@ export default function ThreadScreen() {
   const [now, setNow] = useState(Date.now());
   const [cached, setCached] = useState(false);
 
+  // 模型 / 思考强度：目录来自 /api/health 的 models，选择按 threadId 落盘。
+  const [models, setModels] = useState<ModelOption[]>([]);
+  const [model, setModel] = useState('');
+  const [effort, setEffort] = useState('');
+  const [modelSheet, setModelSheet] = useState(false);
+
+  // 插件 / 技能引用：目录来自 /api/plugins 与 /api/skills。
+  const [plugins, setPlugins] = useState<PluginRef[]>([]);
+  const [skills, setSkills] = useState<SkillRef[]>([]);
+  const [mentionLoading, setMentionLoading] = useState(false);
+  const [mentionError, setMentionError] = useState('');
+  const [mentionSheet, setMentionSheet] = useState(false);
+  const [pickedPlugins, setPickedPlugins] = useState<PluginRef[]>([]);
+  const [pickedSkills, setPickedSkills] = useState<SkillRef[]>([]);
+
+  // 消息长按 → 复制全文
+  const [actionText, setActionText] = useState('');
+  const [actionOpen, setActionOpen] = useState(false);
+  const [toast, setToast] = useState('');
+
   const cacheKey = conversationCacheKey({
     origin: client.getConfig()?.serverUrl || 'unknown',
     codexHomeVersion: 'native',
@@ -95,12 +126,16 @@ export default function ThreadScreen() {
       if (response?.thread) setThread(response.thread);
       setCached(false);
       if (persist) {
-        await writeConversationCache({
-          key: cacheKey,
-          savedAtMs: Date.now(),
-          thread: response.thread ?? thread,
-          messages: response,
-        });
+        try {
+          await writeConversationCache({
+            key: cacheKey,
+            savedAtMs: Date.now(),
+            thread: response.thread ?? thread,
+            messages: response,
+          });
+        } catch {
+          // 缓存只是弱网加速用；写不进去不能影响消息展示与后续步骤。
+        }
       }
     },
     [cacheKey, thread]
@@ -132,6 +167,8 @@ export default function ThreadScreen() {
         const response = await client.getMessages(threadId, { limit: MESSAGE_LIMIT });
         await applyMessages(response, true);
         setAuthGate(false);
+
+        // 模型目录改由下面的独立 effect 加载：不依赖消息/缓存的成败。
 
         // Diff is a separate host endpoint; never guessed from message text.
         try {
@@ -202,6 +239,102 @@ export default function ThreadScreen() {
 
   useEffect(() => client.onAuthRequired(() => setAuthGate(true)), []);
 
+  /**
+   * 模型目录与「本会话上次选择」独立加载。
+   * 之前把它写在 load() 的 try 里，任何一步（消息拉取 / 写缓存）抛错都会整段跳过，
+   * 结果就是入口消失、用户以为没有这个功能。现在它自己管自己的失败。
+   */
+  const modelResolved = useRef(false);
+  useEffect(() => {
+    if (!threadId) return undefined;
+    let alive = true;
+    void (async () => {
+      try {
+        // 必须先 load()：endpoint() 在未配对时会抛「尚未配对电脑节点」，
+        // 而这个 effect 可能早于页面 load() 的第一次 await 完成。
+        await client.load();
+        const health = await client.getHealth();
+        if (!alive) return;
+        const catalog = Array.isArray(health?.models) ? (health.models as ModelOption[]) : [];
+        setModels(catalog);
+        if (!modelResolved.current && catalog.length) {
+          const prefs = await readThreadPrefs(threadId);
+          if (!alive) return;
+          const known = catalog.map((entry) => entry.id);
+          const threadModel = String(thread?.model || '');
+          const nextModel =
+            (prefs.model && known.includes(prefs.model) ? prefs.model : '') ||
+            (threadModel && known.includes(threadModel) ? threadModel : '') ||
+            catalog[0]?.id ||
+            '';
+          const entry = catalog.find((item) => item.id === nextModel);
+          const efforts = entry?.efforts || [];
+          const nextEffort =
+            (prefs.effort && (!efforts.length || efforts.includes(prefs.effort)) ? prefs.effort : '') ||
+            entry?.defaultEffort ||
+            efforts[0] ||
+            '';
+          setModel((current) => current || nextModel);
+          setEffort((current) => current || nextEffort);
+          modelResolved.current = true;
+        }
+      } catch {
+      }
+    })();
+    return () => {
+      alive = false;
+    };
+  }, [threadId, thread?.model]);
+
+  /** 首次打开引用抽屉时才拉目录，避免每进一个会话都多两个请求。 */
+  const openMention = useCallback(async () => {
+    setMentionSheet(true);
+    if (mentionLoading || plugins.length || skills.length) return;
+    setMentionLoading(true);
+    setMentionError('');
+    try {
+      const [pluginData, skillData] = await Promise.all([
+        client.getPlugins().catch(() => ({ plugins: [] })),
+        client.getSkills().catch(() => ({ skills: [] })),
+      ]);
+      const nextPlugins = Array.isArray(pluginData?.plugins) ? (pluginData.plugins as PluginRef[]) : [];
+      const nextSkills = Array.isArray(skillData?.skills) ? (skillData.skills as SkillRef[]) : [];
+      setPlugins(nextPlugins);
+      setSkills(nextSkills);
+      if (!nextPlugins.length && !nextSkills.length) setMentionError('服务器没有返回可引用的插件或技能');
+    } catch (caught) {
+      setMentionError(caught instanceof Error ? caught.message : String(caught));
+    } finally {
+      setMentionLoading(false);
+    }
+  }, [mentionLoading, plugins.length, skills.length]);
+
+  const applyModel = useCallback(
+    (modelId: string, level: string) => {
+      setModel(modelId);
+      setEffort(level);
+      setModelSheet(false);
+      void writeThreadPrefs(threadId, { model: modelId, effort: level });
+    },
+    [threadId]
+  );
+
+  const togglePlugin = useCallback((plugin: PluginRef) => {
+    setPickedPlugins((current) => {
+      const key = plugin.uri || plugin.name;
+      const exists = current.some((item) => (item.uri || item.name) === key);
+      return exists ? current.filter((item) => (item.uri || item.name) !== key) : [...current, plugin];
+    });
+  }, []);
+
+  const toggleSkill = useCallback((skill: SkillRef) => {
+    setPickedSkills((current) => {
+      const key = skill.uri || skill.name;
+      const exists = current.some((item) => (item.uri || item.name) === key);
+      return exists ? current.filter((item) => (item.uri || item.name) !== key) : [...current, skill];
+    });
+  }, []);
+
   const busy = Boolean(status?.thinking || status?.queueLength || status?.interactionRequired);
   const approvals = approvableMessages(messages);
   const timer = runningTimeLabel(status, now, 'zh');
@@ -258,9 +391,39 @@ export default function ThreadScreen() {
     const isInteraction = message.role === 'interaction';
     return (
       <View style={[styles.messageRow, isUser && styles.messageRowUser]}>
-        <View style={[styles.messageCard, isUser && styles.messageCardUser, isInteraction && styles.messageCardInteraction]}>
-          <Text style={styles.messageRole}>{message.title || message.role}</Text>
-          <Text style={styles.messageText} selectable>
+        <Pressable
+          accessibilityHint="长按可复制全文"
+          delayLongPress={350}
+          onLongPress={() => {
+            void Haptics.selectionAsync();
+            setActionText(message.content || '');
+            setActionOpen(true);
+          }}
+          style={({ pressed }) => [
+            styles.messageCard,
+            isUser && styles.messageCardUser,
+            isInteraction && styles.messageCardInteraction,
+            pressed && styles.pressed,
+          ]}>
+          <View style={styles.messageHead}>
+            <Text style={styles.messageRole}>{message.title || message.role}</Text>
+            {message.content ? (
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel="复制这条消息"
+                hitSlop={8}
+                onPress={() => {
+                  void Haptics.selectionAsync();
+                  const ok = copyText(message.content || '');
+                  setToast(ok ? '已复制全文' : '复制失败：系统剪贴板不可用');
+                  setTimeout(() => setToast(''), 1800);
+                }}
+                style={({ pressed }) => [styles.copyButton, pressed && styles.pressed]}>
+                <Text style={styles.copyButtonText}>复制</Text>
+              </Pressable>
+            ) : null}
+          </View>
+          <Text style={styles.messageText}>
             {message.content || ''}
           </Text>
           {isInteraction && message.canApprove && message.requestId ? (
@@ -271,7 +434,7 @@ export default function ThreadScreen() {
               <SymbolView name={{ ios: 'chevron.right', android: 'chevron_right', web: 'chevron_right' }} size={13} tintColor="#007AFF" />
             </Pressable>
           ) : null}
-        </View>
+        </Pressable>
       </View>
     );
   };
@@ -284,6 +447,35 @@ export default function ThreadScreen() {
         <Badge label={busy ? '运行中' : '空闲'} tone={busy ? 'blue' : 'neutral'} />
         {readOnly ? <Badge label="只读模式" tone="neutral" /> : null}
         {cached ? <Badge label="缓存" tone="neutral" /> : null}
+        {/* 入口无条件可见：目录没拉到也要能点开，由抽屉说明「服务器没有返回可用模型」。
+            样式写在行内：曾用 StyleSheet key，实机只渲染出文字没有胶囊底色。 */}
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="选择模型与思考强度"
+          onPress={() => setModelSheet(true)}
+          style={({ pressed }) => ({
+            flexDirection: 'row',
+            alignItems: 'center',
+            gap: 3,
+            maxWidth: 210,
+            paddingHorizontal: 9,
+            paddingVertical: 5,
+            borderRadius: 999,
+            borderWidth: StyleSheet.hairlineWidth,
+            borderColor: OptionA.separator,
+            backgroundColor: OptionA.card,
+            opacity: pressed ? 0.8 : 1,
+          })}>
+          <Text style={{ fontSize: 12, fontWeight: '600', color: OptionA.ink }} numberOfLines={1}>
+            {(models.find((entry) => entry.id === model)?.label || model || '选择模型') +
+              (effort ? ` · ${effortLabel(effort)}` : '')}
+          </Text>
+          <SymbolView
+            name={{ ios: 'chevron.down', android: 'keyboard_arrow_down', web: 'keyboard_arrow_down' }}
+            size={12}
+            tintColor={OptionA.inkSoft}
+          />
+        </Pressable>
         {approvals.length ? (
           <Pressable onPress={() => approvalRef.current?.present(null)} style={styles.approvalButton}>
             <Text style={styles.approvalButtonText}>{approvals.length} 项待审批</Text>
@@ -323,12 +515,19 @@ export default function ThreadScreen() {
           setSending(true);
           setError('');
           try {
+            // 与原版 composerSendMessage 一致：技能行 + 插件 markdown + 正文。
+            const composed = composeMessage({ text: message, plugins: pickedPlugins, skills: pickedSkills });
+            if (!composed) throw new Error('请输入消息，或先选择要引用的插件 / 技能');
             await client.sendMessage({
-              message,
+              message: composed,
               threadId,
               mode: mode ?? (busy ? 'queue' : 'start'),
+              ...(model ? { model } : {}),
+              ...(effort ? { effort } : {}),
               ...(images?.length ? { images } : {}),
             });
+            setPickedPlugins([]);
+            setPickedSkills([]);
             await load(true);
           } catch (caught) {
             if (caught instanceof ReadOnlyError || caught instanceof AuthRequiredError) throw caught;
@@ -364,6 +563,11 @@ export default function ThreadScreen() {
             setError(caught instanceof Error ? caught.message : String(caught));
           }
         }}
+        plugins={pickedPlugins}
+        skills={pickedSkills}
+        onOpenMention={() => void openMention()}
+        onRemovePlugin={togglePlugin}
+        onRemoveSkill={toggleSkill}
       />
 
       <ApprovalBottomSheet
@@ -375,6 +579,46 @@ export default function ThreadScreen() {
           await load(true);
         }}
       />
+
+      <ModelEffortSheet
+        visible={modelSheet}
+        models={models}
+        model={model}
+        effort={effort}
+        onApply={applyModel}
+        onClose={() => setModelSheet(false)}
+      />
+
+      <MentionSheet
+        visible={mentionSheet}
+        plugins={plugins}
+        skills={skills}
+        loading={mentionLoading}
+        error={mentionError}
+        selectedPlugins={pickedPlugins}
+        selectedSkills={pickedSkills}
+        onTogglePlugin={togglePlugin}
+        onToggleSkill={toggleSkill}
+        onClose={() => setMentionSheet(false)}
+      />
+
+      <MessageActionSheet
+        visible={actionOpen}
+        preview={actionText}
+        onCopy={() => {
+          const ok = copyText(actionText);
+          setActionOpen(false);
+          setToast(ok ? '已复制全文' : '复制失败：系统剪贴板不可用');
+          setTimeout(() => setToast(''), 1800);
+        }}
+        onClose={() => setActionOpen(false)}
+      />
+
+      {toast ? (
+        <View style={styles.toast} pointerEvents="none">
+          <Text style={styles.toastText}>{toast}</Text>
+        </View>
+      ) : null}
     </View>
   );
 }
@@ -402,6 +646,40 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '600',
     color: OptionA.greenInk,
+  },
+  modelChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 3,
+    maxWidth: 190,
+    paddingHorizontal: 9,
+    paddingVertical: 5,
+    borderRadius: 999,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: OptionA.separator,
+    backgroundColor: OptionA.card,
+  },
+  modelChipText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: OptionA.ink,
+  },
+  toast: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    bottom: 128,
+    alignItems: 'center',
+  },
+  toastText: {
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 999,
+    overflow: 'hidden',
+    backgroundColor: 'rgba(28,28,30,0.88)',
+    color: '#FFFFFF',
+    fontSize: 12,
+    fontWeight: '600',
   },
   noticeCard: {
     marginHorizontal: 16,
@@ -447,6 +725,26 @@ const styles = StyleSheet.create({
   },
   messageCardInteraction: {
     backgroundColor: '#FFF8E5',
+  },
+  messageHead: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  copyButton: {
+    marginLeft: 'auto',
+    minWidth: 44,
+    height: 28,
+    paddingHorizontal: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: 8,
+    backgroundColor: '#EFEFF4',
+  },
+  copyButtonText: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: OptionA.inkSoft,
   },
   messageRole: {
     fontSize: 11,

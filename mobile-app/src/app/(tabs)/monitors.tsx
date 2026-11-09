@@ -4,7 +4,7 @@
  */
 import { router, useFocusEffect } from 'expo-router';
 import * as Haptics from 'expo-haptics';
-import { useCallback, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState, type ComponentRef } from 'react';
 import { ActivityIndicator, Pressable, ScrollView, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -13,7 +13,7 @@ import { PairingSheet, type PairingSheetHandle } from '@/components/PairingSheet
 import { Badge, Button, Card, Input, Text } from '@/components/ui/rnr';
 import { useEnginePreference, type Engine } from '@/services/appState';
 import { localGet, localSet } from '@/services/localStore';
-import { savePairing, type QRParseResult } from '@/services/pairing';
+import { normalizeServerUrl, readPairing, savePairing, type QRParseResult } from '@/services/pairing';
 import { getTurnloomClient } from '@/services/turnloomClient';
 
 const client = getTurnloomClient();
@@ -22,6 +22,7 @@ const ACTIVE_TERMINAL_KEY = 'activeTerminalId';
 export default function TerminalsScreen() {
   const insets = useSafeAreaInsets();
   const pairingRef = useRef<PairingSheetHandle>(null);
+  const scrollRef = useRef<ComponentRef<typeof ScrollView>>(null);
   const { engine, setEngine } = useEnginePreference();
   const [serverUrl, setServerUrl] = useState('');
   const [token, setToken] = useState('');
@@ -29,6 +30,7 @@ export default function TerminalsScreen() {
   const [connected, setConnected] = useState<boolean | null>(null);
   const [activeId, setActiveId] = useState('');
   const [message, setMessage] = useState('');
+  const [messageTone, setMessageTone] = useState<'ok' | 'error'>('ok');
   const [editing, setEditing] = useState(false);
 
   const load = useCallback(async () => {
@@ -75,20 +77,49 @@ export default function TerminalsScreen() {
   );
 
   const saveEdit = useCallback(async () => {
+    setMessage('');
+    const nextUrl = normalizeServerUrl(serverUrl);
+    if (!nextUrl) {
+      setMessageTone('error');
+      setMessage('服务地址格式不正确，请检查后重试（需要 http:// 或 https:// 开头）');
+      return;
+    }
     try {
-      await client.load();
-      await savePairing({ serverUrl, token, machineName });
+      const nextName = machineName.trim() || new URL(nextUrl).host;
+      await savePairing({ serverUrl: nextUrl, token: token.trim(), machineName: nextName });
+      // 回读校验：写进去必须能读回来才算成功。上一版是「先弹已保存」，所以
+      // 即使地址没真正切换也显示保存成功，重启后又回到旧地址。
+      const persisted = await readPairing();
+      if (!persisted || persisted.serverUrl !== nextUrl) {
+        setMessageTone('error');
+        setMessage('保存未生效：安全存储没有读回刚写入的地址，请重试');
+        return;
+      }
       await client.refreshConfig();
-      if (token) await client.exchangeAuthSession(token).catch(() => undefined);
+      if (persisted.token) await client.exchangeAuthSession(persisted.token).catch(() => undefined);
+      // 编辑后这台设备就是「已配对终端」，不再让内置常量覆盖地址。
       await localSet(ACTIVE_TERMINAL_KEY, 'paired-device');
+      setActiveId('paired-device');
+      // 以落盘值为准回填，界面与真实配置永远一致。
+      setServerUrl(persisted.serverUrl);
+      setToken(persisted.token);
+      setMachineName(persisted.machineName || nextName);
       setEditing(false);
-      setMessage('终端信息已保存');
-      await load();
+      setMessageTone('ok');
+      setMessage(`终端信息已保存 · 当前地址 ${persisted.serverUrl}`);
       await checkConnection();
     } catch (caught) {
+      setMessageTone('error');
       setMessage(caught instanceof Error ? caught.message : String(caught));
     }
-  }, [serverUrl, token, machineName, load, checkConnection]);
+  }, [serverUrl, token, machineName, checkConnection]);
+
+  /** 进入编辑态后自动滚到底：否则「保存 / 取消」会被底栏裁掉（实测只剩 1px 高）。 */
+  useEffect(() => {
+    if (!editing) return undefined;
+    const timer = setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 90);
+    return () => clearTimeout(timer);
+  }, [editing]);
 
   const switchTo = useCallback(async () => {
     void Haptics.selectionAsync();
@@ -99,8 +130,16 @@ export default function TerminalsScreen() {
 
   return (
     <ScrollView
+      ref={scrollRef}
       className="flex-1 bg-transparent"
-      contentContainerStyle={{ paddingHorizontal: 16, paddingTop: insets.top + 16, paddingBottom: 120, gap: 10 }}
+      contentContainerStyle={{
+        paddingHorizontal: 16,
+        paddingTop: insets.top + 16,
+        // 编辑态多留一屏底部空间，保证「保存 / 取消」永远滚得出来。
+        paddingBottom: editing ? 220 : 120,
+        gap: 10,
+      }}
+      keyboardShouldPersistTaps="handled"
       showsVerticalScrollIndicator={false}>
       <Text className="text-[11px] font-bold uppercase tracking-[2px] text-[#8E8E93]">Codex-Turnloom</Text>
       <Text className="text-[30px] font-bold leading-[34px] tracking-[-1px] text-[#1C1C1E]">终端管理</Text>
@@ -211,7 +250,11 @@ export default function TerminalsScreen() {
         </Text>
       </Card>
 
-      {message ? <Text className="py-[6px] text-[13px] text-[#248A3D]">{message}</Text> : null}
+      {message ? (
+        <Text className={`py-[6px] text-[13px] leading-[18px] ${messageTone === 'error' ? 'text-[#D70015]' : 'text-[#248A3D]'}`}>
+          {message}
+        </Text>
+      ) : null}
 
       <PairingSheet ref={pairingRef} onPaired={handlePaired} />
     </ScrollView>
