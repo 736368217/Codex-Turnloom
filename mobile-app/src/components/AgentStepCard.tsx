@@ -5,7 +5,7 @@
 import { useEffect, useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import Animated, { useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
-import { SymbolView } from 'expo-symbols';
+import { SymbolView } from './ui/icon';
 
 import { OptionA } from '@/constants/optionA';
 

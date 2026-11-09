@@ -68,12 +68,13 @@ test("README no longer references retired static mockups", () => {
   }
 });
 
-test("README documents the current runtime and security boundary", () => {
+test("README documents the current runtime, security boundary and visual report", () => {
   assert.match(README, /Node\.js 22\.5\+/);
   assert.match(README, /npm run verify:ci/);
   assert.match(README, /mobile-app\//);
   assert.match(README, /可信局域网/);
   assert.match(README, /不要直接公网暴露服务/);
+  assert.match(README, /docs\/visual-report\/index\.html/);
   assert.doesNotMatch(README, /Node\.js 18\+/);
   assert.doesNotMatch(README, /\breading、/);
 });
