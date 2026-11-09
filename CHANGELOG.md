@@ -1,5 +1,30 @@
 # Changelog
 
+## 未发布 — 代码审计修复（20 项）
+
+> 来源：2026-11-09 只读代码审计。本分支只修缺陷，不合并、不改动既有工作区。
+
+- **P0 手机端所有确认动作失效**：`public/app.js` 的 `appConfirm()` 曾被写在 `renderMessages()` 的 `.map()` 回调里，5 个模块顶层调用点（批准/拒绝、删除会话、移除会话、压缩上下文、删除目标）全部 `ReferenceError`，表现是「点了没反应」、审批条永远 pending。现已移回模块顶层，并加静态契约回归。
+- **P0 会话详情页无限请求循环**：`mobile-app/src/app/thread/[id].tsx` 的 `applyMessages` 依赖 `thread`，而它自身 `setThread()`，导致挂载 effect 重跑、长轮询游标归零（空游标必然立即 `changed`）。改用 `threadRef`，依赖只留 `cacheKey`。
+- **P0 访问码硬编码进客户端**：移动端 `BUILTIN_TERMINALS` 不再内置 6 位访问码，只保留地址占位；口令必须来自配对或手输。
+- **P0 服务端口令可爆破**：默认访问码由 6 位数字改为 18 字节随机（base64url，144 bit）；令牌比较改为 `timingSafeEqual`（先 sha256 定长）；新增按来源的登录失败限速（10 次后指数退避，最长 30 分钟，成功清零），只统计「带显式令牌却被拒」的请求，避免把靠 cookie 会话轮询的手机端锁在门外。
+- **P1 访问码不再明文落盘**：后台服务日志只在交互式终端打印完整访问码，其余显示 masked 提示。
+- **P1 `--backend http` 真正生效**：`handleHttpBackendApi` 之前只有定义、主分发从不调用，配置 http 后端时仍读写本机 Codex；现在在本地路由之前转发。
+- **P1 文件流不再能杀死进程**：4 处 `createReadStream().pipe(res)` 改走 `streamFileToResponse()`，带 `error` 兜底与 `close` 释放（全局 `uncaughtException` 是 `process.exit(1)`）。
+- **P1 请求体解码**：`readJsonBody` 改为收集 Buffer 后一次 `Buffer.concat().toString("utf8")`，跨块汉字/emoji 不再变替换字符，也不再每块重算整串字节数。
+- **P1 写库用可写连接**：新增 `runSqlWrite()`，置顶的 `BEGIN IMMEDIATE/INSERT/UPDATE` 不再落在 `readOnly: true` 连接上（此前静默回退到 `sqlite3` CLI）。
+- **P1 `--readonly` 覆盖全部写路由**：`requireWriteEnabled()` 加到 `/api/host`、`queue/cancel|steer|retry`、目标 PUT/DELETE、`compact`、`branch`，不再只有发送/置顶/中断/审批受控。
+- **P1 清理脚本不再误删真实会话**：`0 消息` 只在创建超过 24 小时后才判 `EMPTY`；`--apply` 现在必须同时给 `--since`；干跑用只读连接打开数据库。
+- **P1 控制台健康检查不再把状态锁死**：`probeHealth()` 单飞（原来 2.5s 探测 + 5s 定时会重叠）、失败计数在触发重启前清零；`restart()` 串行化，避免并发「先 stop 后 start」互相 kill。
+- **P2 markdown 回填不再走 `$` 语义**：占位符替换改为函数式 `replaceAll`（`$&`、`$'` 曾可让占位符漏出或整段 HTML 复制）；`marked`/`DOMPurify` 缺失时退回转义文本，不再渲染出字面量 `undefined`。
+- **P2 web-ui 访问码卫生**：配对链接里的 `?token=` 读完即 `history.replaceState` 抹除；链接里的码只在终端尚未保存口令时采用（原来会覆盖用户改过的码）；访问码抽屉新增「清除本机已保存的访问码」。
+- **P2 静态资源缓存与体积**：带 `?v=` 指纹的资源改为长缓存（`no-store` 让指纹彻底失效），HTML 仍然不缓存；超过 2MB 的静态文件改为流式，`public/downloads` 里的大 APK 不再被 `readFile` 读进内存。
+- **P2 `/api/host/file|file-image|files` 路径收口**：只允许已知项目根之内的真实路径，不再把任意绝对路径直接交给宿主 `fs/read`。
+- **P2 CI 门禁**：`verify-ci.mjs` 只对 `npm`/`npx`（Windows `.cmd` shim）开 shell，`node` 自身用 `shell:false`（Node 装在 `C:\Program Files` 时旧写法会假失败）；TAP 摘要同时解析 `# fail` 与 `ℹ fail`（此前本地 Node 24 恒读 0，cancelled 门禁形同虚设）；`npm run check` 补上 `history.js`、`runtime.js`、`conversation-cache.js`。
+- **P2 `engines`**：`>=18` → `>=22.5`（`prune-session-artifacts.mjs` 顶层 `import "node:sqlite"`）。
+- 回归：新增 `test/audit-regressions.test.js`（10 项静态/行为契约）与 `markdown.test.js` 两项行为用例；`node --test` 183/183，`npm run verify:ci` 在 Node 24 与 Node 22 下均 PASS。
+- 未覆盖：`web-ui/` 与 `mobile-app/` 未安装依赖，因此没有跑 `tsc --noEmit` 与 Expo 构建；这两处的改动只做了静态审查。Android/真机未复验。
+
 ## 1.20.0 - 2026-11-09
 
 原生 Android App 主线首次正式发布（tag `v1.20.0`；APK 内部 versionCode 71 / versionName `1.19.0-native`）。Web 端停止投入新功能，仅作兼容入口保留。

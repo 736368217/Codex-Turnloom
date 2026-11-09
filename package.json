@@ -27,7 +27,7 @@
     "LICENSE"
   ],
   "scripts": {
-    "check": "node --check server.js && node --check backends/http-backend.js && node --check public/app.js && node --check public/auth.js && node --check public/markdown.js && node --check public/threads.js",
+    "check": "node --check server.js && node --check backends/http-backend.js && node --check public/app.js && node --check public/auth.js && node --check public/markdown.js && node --check public/threads.js && node --check public/history.js && node --check public/runtime.js && node --check public/conversation-cache.js",
     "test": "node --test",
     "verify:ci": "node scripts/verify-ci.mjs",
     "start": "node server.js",
@@ -35,6 +35,8 @@
     "device:qr": "node scripts/print-device-qr.js",
     "windows:install": "powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts/install-windows.ps1",
     "windows:uninstall": "powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts/uninstall-windows.ps1",
+    "android:test": "cd android && gradlew.bat testDebugUnitTest",
+    "android:build": "cd android && gradlew.bat assembleDebug && node ../scripts/stage-apk.js",
     "service:install": "node scripts/install-service.js",
     "service:uninstall": "node scripts/uninstall-service.js",
     "desktop:dev": "electron .",
@@ -61,7 +63,7 @@
   },
   "license": "MIT",
   "engines": {
-    "node": ">=18"
+    "node": ">=22.5"
   },
   "dependencies": {
     "dompurify": "^3.4.14",

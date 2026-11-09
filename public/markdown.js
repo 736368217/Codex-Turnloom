@@ -71,7 +71,15 @@ export function renderMarkdown(
       (_match, alt, imagePath) => placeholder(renderLocalImage(alt, imagePath))
     );
   const parsed = parseMarkdown(withEmbeds, { gfm: true, breaks: true });
-  let rendered = decorateRenderedHtml(sanitizeHtml(parsed), document);
-  for (const replacement of replacements) rendered = rendered.replaceAll(replacement.token, replacement.html);
+  const sanitized = sanitizeHtml(parsed);
+  // marked / DOMPurify 缺失时上游的箭头函数返回 undefined：必须退回转义文本，
+  // 否则 decorateRenderedHtml 会把 undefined 写成字面量，用户看到的是一条“空消息”。
+  if (typeof sanitized !== "string" || !sanitized.trim()) return fallbackMarkdown(source);
+  let rendered = decorateRenderedHtml(sanitized, document);
+  // 必须用函数式替换：字符串形式的 replaceAll 会把 $&、$'、$` 当成替换语法，
+  // 消息里出现 alt="a$'b" 就能让占位符漏出、或把整段 HTML 复制一遍。
+  for (const replacement of replacements) {
+    rendered = rendered.replaceAll(replacement.token, () => replacement.html);
+  }
   return rendered;
 }
