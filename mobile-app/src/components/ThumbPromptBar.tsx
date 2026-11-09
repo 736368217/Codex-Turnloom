@@ -19,7 +19,7 @@
  * - 提前发送在不同队列后端可能是调整优先级，也可能立即插入当前轮次；操作前要求确认。
  * 组件原语来自 React Native Reusables 复制式用法，布局用 NativeWind className。
  */
-import { SymbolView } from 'expo-symbols';
+import { SymbolView } from './ui/icon';
 import { BlurView } from 'expo-blur';
 import * as Haptics from 'expo-haptics';
 import { useRef, useState } from 'react';

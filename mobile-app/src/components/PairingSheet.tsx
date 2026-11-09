@@ -19,7 +19,7 @@ import {
   BottomSheetTextInput,
 } from '@gorhom/bottom-sheet';
 import { CameraView, useCameraPermissions } from 'expo-camera';
-import { SymbolView } from 'expo-symbols';
+import { SymbolView } from './ui/icon';
 import * as Haptics from 'expo-haptics';
 import {
   forwardRef,

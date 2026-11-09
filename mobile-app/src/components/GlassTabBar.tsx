@@ -15,7 +15,7 @@
  */
 import type { BottomTabBarProps } from 'expo-router/tabs';
 import * as Haptics from 'expo-haptics';
-import { SymbolView } from 'expo-symbols';
+import { SymbolView } from './ui/icon';
 import { Pressable, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 

@@ -9,7 +9,7 @@
  * 视觉仍遵守宪法 §3：只有底部抽屉，没有居中 Modal；顶部有 36×6 的拖拽条；
  * 主色 #007AFF、分隔线 #E5E5EA、次级文字 #6D6D72。
  */
-import { SymbolView } from 'expo-symbols';
+import { SymbolView } from './ui/icon';
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import {
   ActivityIndicator,
@@ -67,7 +67,7 @@ function SheetShell({
   const insets = useSafeAreaInsets();
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose} statusBarTranslucent>
-      <View style={{ flex: 1 }}>
+      <View style={{ flex: 1, justifyContent: "flex-end" }}>
         <Pressable
           accessibilityRole="button"
           accessibilityLabel="关闭"
@@ -99,7 +99,7 @@ function SheetShell({
               paddingTop: 12,
               paddingBottom: 10,
             }}>
-            <View style={{ flex: 1 }}>
+            <View style={{ flex: 1, justifyContent: "flex-end" }}>
               <Text style={{ fontSize: 17, fontWeight: '700', color: OptionA.ink }}>{title}</Text>
               {subtitle ? (
                 <Text style={{ marginTop: 3, fontSize: 13, lineHeight: 17, color: OptionA.inkSoft }}>{subtitle}</Text>
@@ -122,7 +122,7 @@ function SheetShell({
           </View>
           <View style={{ height: 0.5, backgroundColor: OptionA.separator }} />
           <ScrollView
-            style={{ flexGrow: 0 }}
+            style={{ flexShrink: 1, flexGrow: 0 }}
             contentContainerStyle={{ paddingVertical: 4 }}
             keyboardShouldPersistTaps="handled"
             showsVerticalScrollIndicator={false}>
