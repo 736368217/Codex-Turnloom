@@ -183,6 +183,7 @@ body.app-hidden *::after {
 /* ---------- window chrome ---------- */
 .app {
   height: 100vh;
+  min-width: 1120px;
   display: flex;
   flex-direction: column;
   background: var(--bg);
