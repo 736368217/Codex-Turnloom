@@ -1,46 +1,86 @@
+# ============================================================================
+# Codex-Turnloom — repository hygiene
+# Only source, docs intended for users, and release metadata belong in git.
+# Local build output, QA evidence, machine state and credentials never do.
+# ============================================================================
+
+# Dependencies & runtime caches
 node_modules/
-.DS_Store
-
-*.log
-npm-debug.log*
-app-session-*.js
-main-*.js
-
-.env
-.env.*
-
-coverage/
-dist/
-tmp/
-temp/
+**/node_modules/
+**/.expo/
+**/dist/
+**/web-build/
+**/.gradle/
 dist-desktop/
 desktop/assets/runtime/
+coverage/
+tmp/
+temp/
 *.tgz
 
-# Android build and machine-local configuration.
-android/.gradle/
-android/local.properties
-android/**/build/
-*.apk
-*.aab
+# Logs, temp & editor/OS noise
+*.log
+npm-debug.log*
+*.tmp
+*.bak
+*.orig
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+
+# Secrets & machine-local configuration
+.env
+.env.*
+config.local.json
 *.jks
 *.keystore
-config.local.json
-
-# Private Codex/Codex-Turnloom working memory and deployment records.
+android/local.properties
 AGENTS.md
-# Option A design constitution is public documentation (the root private memory stays ignored).
 !docs/option-a/AGENTS.md
-# Option A front-end dependency / build artifacts (additive; never committed).
-web-ui/node_modules/
-public/option-a/assets/option-a-legacy/
-mobile-app/node_modules/
-mobile-app/.expo/
-mobile-app/dist/
-mobile-app/web-build/
+
+# Private working memory / deployment records (never public)
 docs/PROJECT_MEMORY.md
 docs/OPERATIONS.md
 docs/OPERATIONS-CHANGELOG.md
+
+# QA evidence: generated locally, must not be committed
+docs/option-a/qa-shots/
+docs/option-a/qa-scripts/
+docs/option-a/coordination/
+docs/option-a/report-assets/
+public/option-a/report/report-assets/*
+!public/option-a/report/report-assets/qr-web.png
+!public/option-a/report/report-assets/qr-native.png
+!public/option-a/report/report-assets/qr-v7-web-demo.png
+!public/option-a/report/report-assets/qr-v7-native-demo.png
+!public/option-a/report/report-assets/qr-v7-html.png
+!public/option-a/report/report-assets/ref1.jpg
+!public/option-a/report/report-assets/ref2.jpg
+!public/option-a/report/report-assets/v6-*.png
+!public/option-a/report/report-assets/v7-*.png
+!public/option-a/report/report-assets/v8-*.png
+!public/option-a/report/report-assets/v9-*.png
+!public/option-a/report/report-assets/v10-*.png
+
+# Design source packages & screenshot working sets
+Codex-Turnloom_*设计方案*.zip
+Codex-Turnloom_*设计方案_*/
+docs/design/mobile-v2/reference/
+docs/design/tray-console/
+docs/evidence/
+docs/assets/tray-console/
+docs/assets/turnloom-logo-candidates/
+public/assets/turnloom-logo-candidates/
+public/option-a/assets/option-a-legacy/
+
+# Android / release artifacts (APKs are distributed via GitHub Releases)
+*.apk
+*.aab
+*.idsig
+android/**/build/
+public/downloads/_archive/
+public/downloads/*.apk
 
 # Screenshots may contain private conversation content, local paths, or device data.
 docs/assets/phone-*.png
@@ -52,4 +92,3 @@ docs/assets/phone-*.png
 docs/assets/promo*.png
 docs/assets/promo*.jpg
 !docs/assets/promo-Codex-Turnloom.png
-public/assets/turnloom-logo-candidates/

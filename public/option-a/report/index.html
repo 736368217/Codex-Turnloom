@@ -635,6 +635,14 @@
     <tr><td>保存后地址没真正切换 / 重启回退</td><td>根因两层：① <code>readActiveTerminal()</code> 让 <code>BUILTIN_TERMINALS</code> 的硬编码 URL 优先于用户保存的配对配置；② 保存只弹 toast，没有回读校验。已改为「配置优先 + <code>savePairing</code> 后 <code>readPairing()</code> 回读比对 + 按落盘值回填界面」。</td><td class="ok">改成 <code>18997</code> → 提示「终端信息已保存 · 当前地址 …18997」→ <b>force-stop 重启后仍是 18997</b>（状态「离线」）；再改回 8787 并保存，重启后加载真实 68 条会话。截图 <code>v10-terminal-restored.png</code></td></tr>
   </table>
 
+  <h3>12.2.1 本轮真机截图</h3>
+  <div class="grid g2" style="margin-top:10px">
+    <figure class="phone"><img src="report-assets/v10-model-sheet.png" alt="模型与思考强度抽屉" /><figcaption>模型抽屉：目录来自真实 8787，选中项显示当前强度</figcaption></figure>
+    <figure class="phone"><img src="report-assets/v10-search.png" alt="会话搜索" /><figcaption>搜索「回应」后只剩匹配会话</figcaption></figure>
+    <figure class="phone"><img src="report-assets/v10-mention.png" alt="插件技能引用抽屉" /><figcaption>引用抽屉：技能 / 插件分页与搜索</figcaption></figure>
+    <figure class="phone"><img src="report-assets/v10-terminal-edit.png" alt="终端编辑面板" /><figcaption>编辑面板：保存 / 取消完整可见</figcaption></figure>
+    <figure class="phone"><img src="report-assets/v10-terminal-restored.png" alt="地址切回真实服务" /><figcaption>改回 8787 并重启后，真实会话重新加载</figcaption></figure>
+  </div>
   <h3>12.3 写链路：发出的请求真的带上了所有参数</h3>
   <p class="sub">用隔离 mock（18997）记录 <code>POST /api/send</code> 请求体，避免污染真实 Codex 会话。以下三条是实测原文：</p>
   <table>
