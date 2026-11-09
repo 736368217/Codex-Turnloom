@@ -1,6 +1,6 @@
 /**
- * Light-only Cupertino Daylight Glass tokens — single source of truth.
- * There is deliberately NO dark palette:
+ * Option A · Cupertino Daylight Glass — single source of truth for light-only tokens.
+ * Mirrors docs/option-a/AGENTS.md §2.1. There is deliberately NO dark palette:
  * app.json pins `userInterfaceStyle: "light"` and every screen uses these values.
  */
 export const OptionA = {
@@ -10,11 +10,11 @@ export const OptionA = {
   separator: '#E5E5EA',
   drag: '#C7C7CC',
   ink: '#1C1C1E',
-  inkSoft: '#8E8E93',
-  blue: '#007AFF',
-  green: '#34C759',
-  red: '#FF3B30',
-  greenInk: '#248A3D',
+  inkSoft: '#6D6D72',
+  blue: '#0065D1',
+  green: '#16713A',
+  red: '#D70015',
+  greenInk: '#16713A',
   redInk: '#D70015',
   diffAdd: '#E8F8EE',
   diffAddInk: '#1E7E34',
@@ -32,7 +32,7 @@ export const A = {
   fill: 'bg-[#EFEFF4] rounded-2xl border border-[#E5E5EA]',
   separator: 'border-[#E5E5EA]',
   ink: 'text-[#1C1C1E]',
-  soft: 'text-[#8E8E93]',
+  soft: 'text-[#6D6D72]',
   press: 'active:opacity-80 active:scale-[0.98]',
   dragHandle: 'h-1.5 w-9 rounded-full bg-[#C7C7CC]',
 } as const;

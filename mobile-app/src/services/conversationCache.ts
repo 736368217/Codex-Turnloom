@@ -7,9 +7,17 @@
  * Cache keys mirror the web implementation:
  *   [origin, codexHomeVersion, threadId, messageLimit].join('|')
  */
-import * as FileSystem from 'expo-file-system/legacy';
 import { Platform } from 'react-native';
 
+type FileSystemModule = typeof import('expo-file-system/legacy');
+
+function getFileSystem(): FileSystemModule | null {
+  try {
+    return require('expo-file-system/legacy') as FileSystemModule;
+  } catch {
+    return null;
+  }
+}
 import type { Thread, MessagesResponse } from './types';
 
 export const DEFAULT_MESSAGE_LIMIT = 40;
@@ -27,6 +35,10 @@ const memory = new Map<string, CachedConversation>();
 
 function safeKeyPart(value: string | number | null | undefined): string {
   return encodeURIComponent(String(value ?? ''));
+}
+
+export function terminalCacheOrigin(serverUrl: string, terminalId: string, cacheVersion: number): string {
+  return `${serverUrl}#terminal=${encodeURIComponent(terminalId)}&version=${cacheVersion}`;
 }
 
 export function conversationCacheKey({
@@ -55,7 +67,9 @@ export function isConversationCacheFresh(cached: CachedConversation | null, thre
 }
 
 function fileUriFor(key: string): string | null {
-  const base = FileSystem.documentDirectory || FileSystem.cacheDirectory;
+  const fileSystem = getFileSystem();
+  if (!fileSystem) return null;
+  const base = fileSystem.documentDirectory || fileSystem.cacheDirectory;
   if (!base) return null;
   // A stable, filesystem-safe filename derived from the cache key.
   let hash = 5381;
@@ -94,12 +108,14 @@ export async function readConversationCache(key: string): Promise<CachedConversa
     return cached;
   }
 
+  const fileSystem = getFileSystem();
+  if (!fileSystem) return null;
   const uri = fileUriFor(key);
   if (!uri) return null;
   try {
-    const info = await FileSystem.getInfoAsync(uri);
+    const info = await fileSystem.getInfoAsync(uri);
     if (!info.exists) return null;
-    const raw = await FileSystem.readAsStringAsync(uri, { encoding: FileSystem.EncodingType.UTF8 });
+    const raw = await fileSystem.readAsStringAsync(uri, { encoding: fileSystem.EncodingType.UTF8 });
     const cached = JSON.parse(raw) as CachedConversation;
     if (cached?.key !== key || !cached.messages) return null;
     remember(key, cached);
@@ -122,11 +138,13 @@ export async function writeConversationCache(value: CachedConversation): Promise
     return;
   }
 
+  const fileSystem = getFileSystem();
+  if (!fileSystem) return;
   const uri = fileUriFor(value.key);
   if (!uri) return;
   try {
-    await FileSystem.writeAsStringAsync(uri, serialized, {
-      encoding: FileSystem.EncodingType.UTF8,
+    await fileSystem.writeAsStringAsync(uri, serialized, {
+      encoding: fileSystem.EncodingType.UTF8,
     });
   } catch {
     /* best-effort persistence */
@@ -150,16 +168,57 @@ export async function clearConversationCache(): Promise<void> {
     }
     return;
   }
-  const base = FileSystem.documentDirectory || FileSystem.cacheDirectory;
+  const fileSystem = getFileSystem();
+  if (!fileSystem) return;
+  const base = fileSystem.documentDirectory || fileSystem.cacheDirectory;
   if (!base) return;
   try {
-    const entries = await FileSystem.readDirectoryAsync(base);
+    const entries = await fileSystem.readDirectoryAsync(base);
     await Promise.all(
       entries
         .filter((name) => name.startsWith('turnloom-cache-') && name.endsWith('.json'))
-        .map((name) => FileSystem.deleteAsync(`${base}${name}`, { idempotent: true }).catch(() => undefined))
+        .map((name) => fileSystem.deleteAsync(`${base}${name}`, { idempotent: true }).catch(() => undefined))
     );
   } catch {
     /* ignore */
+  }
+}
+
+/** Remove only cache entries belonging to one unpaired server. */
+export async function clearConversationCacheForOrigin(origin: string): Promise<void> {
+  const prefix = `${safeKeyPart(origin)}|`;
+  for (const key of memory.keys()) {
+    if (key.startsWith(prefix)) memory.delete(key);
+  }
+  if (Platform.OS === 'web') {
+    if (typeof localStorage === 'undefined') return;
+    const keys: string[] = [];
+    for (let index = 0; index < localStorage.length; index += 1) {
+      const key = localStorage.key(index);
+      if (key?.startsWith(WEB_PREFIX + prefix)) keys.push(key);
+    }
+    keys.forEach((key) => localStorage.removeItem(key));
+    return;
+  }
+  const fileSystem = getFileSystem();
+  if (!fileSystem) return;
+  const base = fileSystem.documentDirectory || fileSystem.cacheDirectory;
+  if (!base) return;
+  try {
+    const entries = await fileSystem.readDirectoryAsync(base);
+    for (const name of entries) {
+      if (!name.startsWith('turnloom-cache-') || !name.endsWith('.json')) continue;
+      const uri = `${base}${name}`;
+      try {
+        const cached = JSON.parse(await fileSystem.readAsStringAsync(uri, { encoding: fileSystem.EncodingType.UTF8 })) as CachedConversation;
+        if (typeof cached?.key === 'string' && cached.key.startsWith(prefix)) {
+          await fileSystem.deleteAsync(uri, { idempotent: true });
+        }
+      } catch {
+        // Unreadable or unrelated cache files are left untouched.
+      }
+    }
+  } catch {
+    /* best-effort cleanup */
   }
 }

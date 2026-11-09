@@ -7,8 +7,18 @@
  * base64 不含 data: 前缀，直接作为 /api/send 的 images[].data 传给服务端 normalizeSendImages。
  * 两个入口都只采纳图片：服务端 /api/send 只接受 images[]，原版 fileToImageAttachment 同样只接受图片格式。
  */
+import { requireOptionalNativeModule } from 'expo';
 import * as ImagePicker from 'expo-image-picker';
 import { Platform } from 'react-native';
+type FileSystemModule = typeof import('expo-file-system/legacy');
+
+function getFileSystem(): FileSystemModule | null {
+  try {
+    return require('expo-file-system/legacy') as FileSystemModule;
+  } catch {
+    return null;
+  }
+}
 
 export type PickedImage = {
   name: string;
@@ -46,38 +56,35 @@ export async function pickImages(): Promise<PickedImage[]> {
     }));
 }
 
-/**
- * 「文件」入口：打开系统文件浏览器（对齐原版「文件浏览」accept 任意类型的语义）。
- *
- * 关键：这里用**运行时 require** 而不是顶层静态 import。
- * expo-document-picker 是原生模块；若安装包没有把它的 native module 编进去
- * （例如只热替换了 JS bundle），顶层 import 会在模块加载阶段就抛
- * "Cannot find native module"，把整个页面带崩，try/catch 也救不回来。
- * 放到 try 里 require，才能优雅降级成 unavailable。
- */
+/** The native capability is checked before loading the picker JS module. */
 export async function pickFiles(): Promise<{ images: PickedImage[]; skipped: number; unavailable: boolean }> {
   if (Platform.OS === 'web') return { images: [], skipped: 0, unavailable: false };
+  if (!requireOptionalNativeModule('ExpoDocumentPicker')) return { images: [], skipped: 0, unavailable: true };
+  let DocumentPicker: typeof import('expo-document-picker');
   try {
-    // eslint-disable-next-line @typescript-eslint/no-var-requires
-    const DocumentPicker = require('expo-document-picker') as typeof import('expo-document-picker');
-    const result = await DocumentPicker.getDocumentAsync({
-      type: '*/*',
-      multiple: true,
-      base64: true,
-      copyToCacheDirectory: true,
-    });
-    if (result.canceled || !result.assets) return { images: [], skipped: 0, unavailable: false };
-    const all = result.assets;
-    const images = all
-      .filter((asset) => String(asset.mimeType || '').startsWith('image/') && Boolean(asset.base64))
-      .map((asset, index) => ({
-        name: asset.name || `file-${Date.now()}-${index + 1}.png`,
-        mimeType: asset.mimeType || 'image/png',
-        data: String(asset.base64),
-        uri: asset.uri,
-      }));
-    return { images, skipped: all.length - images.length, unavailable: false };
+    DocumentPicker = require('expo-document-picker') as typeof import('expo-document-picker');
   } catch {
     return { images: [], skipped: 0, unavailable: true };
   }
+  const result = await DocumentPicker.getDocumentAsync({ type: '*/*', multiple: true, copyToCacheDirectory: true });
+  if (result.canceled || !result.assets) return { images: [], skipped: 0, unavailable: false };
+  const images: PickedImage[] = [];
+  let skipped = 0;
+  for (const asset of result.assets) {
+    if (images.length >= 4) { skipped += 1; continue; }
+    const mimeType = String(asset.mimeType || '').toLowerCase();
+    if (!['image/jpeg', 'image/png', 'image/webp'].includes(mimeType) || (asset.size && asset.size > 5 * 1024 * 1024)) {
+      skipped += 1;
+      continue;
+    }
+    try {
+      const fileSystem = getFileSystem();
+      const data = asset.base64 || (fileSystem ? await fileSystem.readAsStringAsync(asset.uri, { encoding: fileSystem.EncodingType.Base64 }) : '');
+      if (!data || data.length > Math.ceil((5 * 1024 * 1024) / 3) * 4) { skipped += 1; continue; }
+      images.push({ name: asset.name || `image-${images.length + 1}`, mimeType, data, uri: asset.uri });
+    } catch {
+      skipped += 1;
+    }
+  }
+  return { images, skipped, unavailable: false };
 }

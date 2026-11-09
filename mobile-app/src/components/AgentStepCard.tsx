@@ -119,7 +119,7 @@ const styles = StyleSheet.create({
     color: OptionA.ink,
   },
   timer: {
-    fontSize: 12,
+    fontSize: 13,
     color: OptionA.inkSoft,
     maxWidth: 130,
   },
@@ -138,7 +138,7 @@ const styles = StyleSheet.create({
     pointerEvents: 'none',
   },
   log: {
-    fontSize: 12,
+    fontSize: 13,
     lineHeight: 18,
     color: OptionA.ink,
     fontFamily: 'monospace',

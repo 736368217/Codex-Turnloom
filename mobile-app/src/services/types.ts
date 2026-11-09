@@ -1,5 +1,6 @@
 /**
- * Server contract types — verified against server.js.
+ * Server contract types — verified against server.js and
+ * docs/option-a/coordination/API_CONTRACT_VERIFIED.md.
  *
  * IMPORTANT: messages use `content`, NOT `text`; message `id` is usually null;
  * `/api/threads/:id/changes` returns ONLY `{ cursor, changed }`.
@@ -149,30 +150,13 @@ export type ProjectsResponse = {
   projects: Project[];
 };
 
-/** GET /api/plugins —— 真实 Codex 后端返回宿主已安装插件。 */
 export type PluginsResponse = {
-  plugins: Array<{
-    name?: string;
-    displayName?: string;
-    description?: string;
-    marketplace?: string;
-    uri?: string;
-    iconDataUrl?: string;
-  }>;
+  plugins: Array<{ name?: string; displayName?: string; description?: string; marketplace?: string; uri?: string; iconDataUrl?: string }>;
   codexHome?: string | null;
 };
 
-/** GET /api/skills —— 真实 Codex 后端返回技能目录（含 builtin）。 */
 export type SkillsResponse = {
-  skills: Array<{
-    name?: string;
-    displayName?: string;
-    description?: string;
-    source?: string;
-    kind?: string;
-    action?: string;
-    uri?: string;
-  }>;
+  skills: Array<{ name?: string; displayName?: string; description?: string; source?: string; kind?: string; action?: string; uri?: string }>;
   codexHome?: string | null;
 };
 

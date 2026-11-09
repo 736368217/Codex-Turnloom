@@ -13,13 +13,13 @@ function Card({ className, ...props }: React.ComponentProps<typeof View>) {
   return (
     <TextClassContext.Provider value="text-[#1C1C1E]">
       <View
-        className={cn('flex flex-col gap-3 rounded-[20px] border border-white/90 bg-white/90 p-4', className)}
+        className={cn('flex flex-col gap-3 rounded-2xl border border-[#E5E5EA] bg-white p-4', className)}
         style={{
           shadowColor: '#101E3C',
-          shadowOffset: { width: 0, height: 6 },
-          shadowOpacity: 0.08,
-          shadowRadius: 18,
-          elevation: 4,
+          shadowOffset: { width: 0, height: 1 },
+          shadowOpacity: 0.05,
+          shadowRadius: 3,
+          elevation: 1,
         }}
         {...props}
       />
@@ -36,7 +36,7 @@ function CardTitle({ className, ...props }: React.ComponentProps<typeof Text>) {
 }
 
 function CardDescription({ className, ...props }: React.ComponentProps<typeof Text>) {
-  return <Text className={cn('text-[13px] text-[#8E8E93]', className)} {...props} />;
+  return <Text className={cn('text-[13px] text-[#6D6D72]', className)} {...props} />;
 }
 
 function CardContent({ className, ...props }: React.ComponentProps<typeof View>) {

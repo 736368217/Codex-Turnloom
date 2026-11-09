@@ -7,7 +7,7 @@
  * 在真机上也不会出现「抽屉盖住键盘无法关闭」。
  *
  * 视觉仍遵守宪法 §3：只有底部抽屉，没有居中 Modal；顶部有 36×6 的拖拽条；
- * 主色 #007AFF、分隔线 #E5E5EA、次级文字 #8E8E93。
+ * 主色 #007AFF、分隔线 #E5E5EA、次级文字 #6D6D72。
  */
 import { SymbolView } from 'expo-symbols';
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
@@ -102,7 +102,7 @@ function SheetShell({
             <View style={{ flex: 1 }}>
               <Text style={{ fontSize: 17, fontWeight: '700', color: OptionA.ink }}>{title}</Text>
               {subtitle ? (
-                <Text style={{ marginTop: 3, fontSize: 12, lineHeight: 17, color: OptionA.inkSoft }}>{subtitle}</Text>
+                <Text style={{ marginTop: 3, fontSize: 13, lineHeight: 17, color: OptionA.inkSoft }}>{subtitle}</Text>
               ) : null}
             </View>
             <Pressable
@@ -171,13 +171,13 @@ function Row({
           {title}
         </Text>
         {subtitle ? (
-          <Text style={{ fontSize: 12, lineHeight: 16, color: OptionA.inkSoft }} numberOfLines={2}>
+          <Text style={{ fontSize: 13, lineHeight: 16, color: OptionA.inkSoft }} numberOfLines={2}>
             {subtitle}
           </Text>
         ) : null}
       </View>
       {trailing ? (
-        <Text style={{ fontSize: 12, fontWeight: '600', color: OptionA.inkSoft }} numberOfLines={1}>
+        <Text style={{ fontSize: 13, fontWeight: '600', color: OptionA.inkSoft }} numberOfLines={1}>
           {trailing}
         </Text>
       ) : null}
@@ -417,7 +417,7 @@ export function MentionSheet({
       {loading ? (
         <View style={{ paddingVertical: 28, alignItems: 'center', gap: 10 }}>
           <ActivityIndicator color={OptionA.blue} />
-          <Text style={{ fontSize: 12, color: OptionA.inkSoft }}>正在加载…</Text>
+          <Text style={{ fontSize: 13, color: OptionA.inkSoft }}>正在加载…</Text>
         </View>
       ) : error ? (
         <View style={{ padding: 20 }}>
@@ -462,7 +462,7 @@ export function MessageActionSheet({
   return (
     <SheetShell visible={visible} title="消息操作" onClose={onClose} maxHeightRatio={0.5}>
       <View style={{ paddingHorizontal: 18, paddingVertical: 12 }}>
-        <Text style={{ fontSize: 12, lineHeight: 18, color: OptionA.inkSoft }} numberOfLines={4}>
+        <Text style={{ fontSize: 13, lineHeight: 18, color: OptionA.inkSoft }} numberOfLines={4}>
           {preview || '（空消息）'}
         </Text>
       </View>
@@ -511,11 +511,11 @@ export function NewThreadSheet({
       onClose={onClose}
       maxHeightRatio={0.86}>
       <View style={{ paddingHorizontal: 18, paddingTop: 12, gap: 8 }}>
-        <Text style={{ fontSize: 12, fontWeight: '600', color: OptionA.inkSoft }}>归档到项目</Text>
+        <Text style={{ fontSize: 13, fontWeight: '600', color: OptionA.inkSoft }}>归档到项目</Text>
         {projectsLoading ? (
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 6 }}>
             <ActivityIndicator color={OptionA.blue} />
-            <Text style={{ fontSize: 12, color: OptionA.inkSoft }}>正在读取项目列表…</Text>
+            <Text style={{ fontSize: 13, color: OptionA.inkSoft }}>正在读取项目列表…</Text>
           </View>
         ) : (
           <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8 }}>
@@ -553,7 +553,7 @@ export function NewThreadSheet({
             })}
           </ScrollView>
         )}
-        <Text style={{ marginTop: 4, fontSize: 12, fontWeight: '600', color: OptionA.inkSoft }}>第一条消息</Text>
+        <Text style={{ marginTop: 4, fontSize: 13, fontWeight: '600', color: OptionA.inkSoft }}>第一条消息</Text>
         <TextInput
           value={draft}
           onChangeText={onChangeDraft}
@@ -572,7 +572,7 @@ export function NewThreadSheet({
             color: OptionA.ink,
           }}
         />
-        {error ? <Text style={{ fontSize: 12, color: OptionA.redInk }}>{error}</Text> : null}
+        {error ? <Text style={{ fontSize: 13, color: OptionA.redInk }}>{error}</Text> : null}
       </View>
 
       <View style={{ paddingHorizontal: 18, paddingTop: 12 }}>

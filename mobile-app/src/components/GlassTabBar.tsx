@@ -64,7 +64,7 @@ export function GlassTabBar({ state, descriptors, navigateToTab }: BottomTabBarP
         {routes.map((route, index) => {
           const focused = state.index === index;
           const meta = metaFor(route.name);
-          const color = focused ? OptionA.blue : '#9A9AA0';
+          const color = focused ? OptionA.blue : '#6D6D72';
           return (
             <Pressable
               key={route.key}
@@ -82,7 +82,7 @@ export function GlassTabBar({ state, descriptors, navigateToTab }: BottomTabBarP
                 tintColor={color}
                 style={{ width: 24, height: 24 }}
               />
-              <Text className="text-[10px] font-semibold" style={{ color }} numberOfLines={1}>
+              <Text className="text-[13px] font-semibold" style={{ color }} numberOfLines={1}>
                 {meta.label}
               </Text>
               {/* 选中标识：图标下方一个小点，不再铺整块背景 */}
