@@ -10,17 +10,19 @@ import { FlashList } from '@shopify/flash-list';
 import { router, useFocusEffect } from 'expo-router';
 import * as Haptics from 'expo-haptics';
 import { SymbolView } from 'expo-symbols';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   Pressable,
   RefreshControl,
   ScrollView,
+  TextInput,
   View,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { OptionA } from '@/constants/optionA';
+import { NewThreadSheet, type ProjectOption } from '@/components/OptionASheets';
 import { Badge, Card, Text } from '@/components/ui/rnr';
 import { DEMO_MODE, DEMO_LABEL } from '@/services/demoBootstrap';
 import {
@@ -108,6 +110,16 @@ export default function HomeScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState('');
   const [authGate, setAuthGate] = useState(false);
+  const [query, setQuery] = useState('');
+
+  // 新建会话（可归档到项目）
+  const [composeOpen, setComposeOpen] = useState(false);
+  const [projects, setProjects] = useState<ProjectOption[]>([]);
+  const [projectsLoading, setProjectsLoading] = useState(false);
+  const [projectId, setProjectId] = useState('');
+  const [draft, setDraft] = useState('');
+  const [creating, setCreating] = useState(false);
+  const [composeError, setComposeError] = useState('');
 
   const load = useCallback(async (isRefresh = false) => {
     if (isRefresh) setRefreshing(true);
@@ -147,6 +159,56 @@ export default function HomeScreen() {
     },
     [choose],
   );
+
+  /** 会话搜索：本地过滤标题 / 预览 / 项目 / 路径，不发请求、不改服务端顺序。 */
+  const filtered = useMemo(() => {
+    const term = query.trim().toLowerCase();
+    if (!term) return threads;
+    return threads.filter((item) =>
+      [item.title, item.preview, item.project?.name, item.cwd]
+        .filter(Boolean)
+        .some((value) => String(value).toLowerCase().includes(term))
+    );
+  }, [threads, query]);
+
+  const openCompose = useCallback(async () => {
+    setComposeOpen(true);
+    setComposeError('');
+    if (projects.length || projectsLoading) return;
+    setProjectsLoading(true);
+    try {
+      const data = await client.getProjects();
+      setProjects(Array.isArray(data?.projects) ? (data.projects as ProjectOption[]) : []);
+    } catch (caught) {
+      setComposeError(caught instanceof Error ? caught.message : String(caught));
+    } finally {
+      setProjectsLoading(false);
+    }
+  }, [projects.length, projectsLoading]);
+
+  const createThread = useCallback(async () => {
+    const message = draft.trim();
+    if (!message || creating) return;
+    setCreating(true);
+    setComposeError('');
+    try {
+      const result = await client.sendMessage({
+        message,
+        newThread: true,
+        ...(projectId ? { projectId } : {}),
+      });
+      const nextId = String(result?.threadId || '');
+      setComposeOpen(false);
+      setDraft('');
+      setProjectId('');
+      await load(true);
+      if (nextId) router.push({ pathname: '/thread/[id]', params: { id: nextId } });
+    } catch (caught) {
+      setComposeError(caught instanceof Error ? caught.message : String(caught));
+    } finally {
+      setCreating(false);
+    }
+  }, [draft, creating, projectId, load]);
 
   const renderThread = useCallback(({ item, index }: { item: Thread; index: number }) => {
     const kind = threadStatusKind(item.status);
@@ -204,10 +266,37 @@ export default function HomeScreen() {
 
   return (
     <View className="flex-1 bg-transparent">
-      <View className="gap-[3px] px-5 pb-[12px]" style={{ paddingTop: insets.top + 12 }}>
+      <View className="gap-[3px] px-5 pb-[10px]" style={{ paddingTop: insets.top + 12 }}>
         <Text className="text-[11px] font-bold uppercase tracking-[2px] text-[#8E8E93]">Codex-Turnloom</Text>
-        <Text className="text-[30px] font-bold leading-[34px] tracking-[-1px] text-[#1C1C1E]">对话</Text>
+        <View className="flex-row items-center gap-3">
+          <Text className="flex-1 text-[30px] font-bold leading-[34px] tracking-[-1px] text-[#1C1C1E]">对话</Text>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="新建会话"
+            onPress={() => void openCompose()}
+            className="h-11 w-11 items-center justify-center rounded-full bg-[#007AFF] active:opacity-80">
+            <SymbolView name={{ ios: 'square.and.pencil', android: 'edit_square', web: 'edit_square' }} size={19} tintColor="#FFFFFF" />
+          </Pressable>
+        </View>
         <Text className="text-[12px] text-[#8E8E93]">选择一条会话，查看实时任务流并继续指挥</Text>
+        <View className="mt-[6px] h-9 flex-row items-center gap-2 rounded-[10px] bg-[#EFEFF4] px-3">
+          <SymbolView name={{ ios: 'magnifyingglass', android: 'search', web: 'search' }} size={15} tintColor={OptionA.inkSoft} />
+          <TextInput
+            value={query}
+            onChangeText={setQuery}
+            placeholder="搜索会话标题、预览或项目"
+            placeholderTextColor={OptionA.inkSoft}
+            autoCapitalize="none"
+            autoCorrect={false}
+            returnKeyType="search"
+            className="min-w-0 flex-1 text-[14px] text-[#1C1C1E]"
+          />
+          {query ? (
+            <Pressable accessibilityRole="button" accessibilityLabel="清除搜索" onPress={() => setQuery('')} hitSlop={8}>
+              <SymbolView name={{ ios: 'xmark.circle.fill', android: 'cancel', web: 'cancel' }} size={16} tintColor={OptionA.inkSoft} />
+            </Pressable>
+          ) : null}
+        </View>
         {DEMO_MODE ? (
           <View className="mt-1 self-start rounded-full bg-[#E5F1FF] px-[10px] py-[4px]">
             <Text className="text-[11px] font-semibold text-[#007AFF]">{DEMO_LABEL}</Text>
@@ -222,7 +311,7 @@ export default function HomeScreen() {
         </View>
       ) : null}
       <FlashList
-        data={threads}
+        data={filtered}
         renderItem={renderThread}
         keyExtractor={(item, index) => item.id || `thread-${index}`}
         showsVerticalScrollIndicator={false}
@@ -233,14 +322,32 @@ export default function HomeScreen() {
           loading ? null : (
             <View className="items-center py-7">
               <Text className="text-[15px] font-semibold text-[#1C1C1E]">
-                {error ? '暂时无法加载会话' : '暂无会话'}
+                {query.trim() ? '没有匹配的会话' : error ? '暂时无法加载会话' : '暂无会话'}
               </Text>
               <Text className="mt-2 text-center text-[13px] text-[#8E8E93]">
-                {error ? '下拉刷新重试，或到「终端」页检查连接' : '配对成功后，这里会显示真实会话'}
+                {query.trim()
+                  ? '换个关键词，或点右上角新建一条会话'
+                  : error
+                    ? '下拉刷新重试，或到「终端」页检查连接'
+                    : '点右上角开始第一条会话'}
               </Text>
             </View>
           )
         }
+      />
+
+      <NewThreadSheet
+        visible={composeOpen}
+        projects={projects}
+        projectsLoading={projectsLoading}
+        projectId={projectId}
+        draft={draft}
+        creating={creating}
+        error={composeError}
+        onChangeDraft={setDraft}
+        onSelectProject={setProjectId}
+        onCreate={() => void createThread()}
+        onClose={() => setComposeOpen(false)}
       />
     </View>
   );

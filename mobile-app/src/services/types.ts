@@ -54,7 +54,7 @@ export type HealthResponse = {
   allowWrite: boolean;
   backend?: { kind?: string; url?: string; profile?: string | null } | null;
   profile?: { id?: string; label?: string; backend?: string } | null;
-  models?: Array<{ id: string; label?: string; efforts?: string[]; supportsImages?: boolean }>;
+  models?: Array<{ id: string; label?: string; efforts?: string[]; defaultEffort?: string; supportsImages?: boolean }>;
   defaultModel?: string;
   defaultEffort?: string;
   codexHome?: string | null;
@@ -148,6 +148,33 @@ export type Project = {
 
 export type ProjectsResponse = {
   projects: Project[];
+};
+
+/** GET /api/plugins —— 真实 Codex 后端返回宿主已安装插件。 */
+export type PluginsResponse = {
+  plugins: Array<{
+    name?: string;
+    displayName?: string;
+    description?: string;
+    marketplace?: string;
+    uri?: string;
+    iconDataUrl?: string;
+  }>;
+  codexHome?: string | null;
+};
+
+/** GET /api/skills —— 真实 Codex 后端返回技能目录（含 builtin）。 */
+export type SkillsResponse = {
+  skills: Array<{
+    name?: string;
+    displayName?: string;
+    description?: string;
+    source?: string;
+    kind?: string;
+    action?: string;
+    uri?: string;
+  }>;
+  codexHome?: string | null;
 };
 
 export type SendMode = 'start' | 'queue' | 'steer';

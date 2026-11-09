@@ -30,20 +30,21 @@ export async function readActiveTerminal(): Promise<TerminalOption | null> {
   if (DEMO_MODE) {
     return { id: 'demo', name: DEMO_PAIRING.machineName, url: DEMO_PAIRING.serverUrl, token: DEMO_PAIRING.token };
   }
-  const savedId = await localGet(ACTIVE_TERMINAL_KEY);
-  if (savedId) {
-    const builtin = BUILTIN_TERMINALS.find((item) => item.id === savedId);
-    if (builtin) return { ...builtin };
-  }
-  const config = await getTurnloomClient().load();
+  const [savedId, config] = await Promise.all([localGet(ACTIVE_TERMINAL_KEY), getTurnloomClient().load()]);
+  // 真实配对配置优先：用户在「终端」页改过地址后，内置常量的硬编码 URL 不能再盖回去
+  // （这正是上一版「改了保存、重启又变回旧地址」的根因）。
   if (config?.serverUrl) {
     const builtin = BUILTIN_TERMINALS.find((item) => config.serverUrl.startsWith(item.url));
     return {
-      id: builtin?.id ?? 'paired-device',
+      id: savedId || builtin?.id || 'paired-device',
       name: config.machineName || builtin?.name || new URL(config.serverUrl).host,
       url: config.serverUrl,
       token: config.token || builtin?.token || '',
     };
+  }
+  if (savedId) {
+    const builtin = BUILTIN_TERMINALS.find((item) => item.id === savedId);
+    if (builtin) return { ...builtin };
   }
   return null;
 }

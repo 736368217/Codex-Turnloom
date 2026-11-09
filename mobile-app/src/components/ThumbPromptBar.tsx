@@ -20,6 +20,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { GLASS_TINT, OptionA, THUMB_GLASS_INTENSITY } from '@/constants/optionA';
 import { Text } from '@/components/ui/rnr';
 import { pickFiles, pickImages, type PickedImage } from '@/services/imagePicker';
+import type { PluginRef, SkillRef } from '@/services/mentions';
 
 export type SendMode = 'start' | 'queue' | 'steer';
 
@@ -41,6 +42,13 @@ export type ThumbPromptBarProps = {
   queuedMessages?: QueuedItem[];
   onQueueAction?: (action: 'steer' | 'cancel', itemId: string) => void | Promise<void>;
   onClearQueue?: () => void | Promise<void>;
+  /** 已选中的插件引用；拼装成消息文本由页面负责（见 services/mentions.ts）。 */
+  plugins?: PluginRef[];
+  /** 已选中的技能引用。 */
+  skills?: SkillRef[];
+  onOpenMention?: () => void;
+  onRemovePlugin?: (plugin: PluginRef) => void;
+  onRemoveSkill?: (skill: SkillRef) => void;
 };
 
 export function ThumbPromptBar({
@@ -53,6 +61,11 @@ export function ThumbPromptBar({
   queuedMessages = [],
   onQueueAction,
   onClearQueue,
+  plugins = [],
+  skills = [],
+  onOpenMention,
+  onRemovePlugin,
+  onRemoveSkill,
 }: ThumbPromptBarProps) {
   const insets = useSafeAreaInsets();
   const [value, setValue] = useState('');
@@ -62,14 +75,16 @@ export function ThumbPromptBar({
   const [queueOpen, setQueueOpen] = useState(false);
   const [notice, setNotice] = useState('');
 
-  const hasPayload = Boolean(value.trim() || images.length);
+  const mentionCount = plugins.length + skills.length;
+  const hasPayload = Boolean(value.trim() || images.length || mentionCount);
   /** 互斥：空输入且运行中才显示停止。 */
   const showStop = busy && !hasPayload && !readOnly;
   const blocked = readOnly || sending;
 
   const submit = async () => {
     const message = value.trim();
-    if ((!message && images.length === 0) || blocked) return;
+    // 只有引用（插件/技能）也能发：原版同样允许「引用 + 空正文」。
+    if ((!message && images.length === 0 && mentionCount === 0) || blocked) return;
     await onSend({
       message,
       // 运行中默认排队（不打断）；要插队去队列条里操作。
@@ -220,6 +235,49 @@ export function ThumbPromptBar({
             </ScrollView>
           ) : null}
 
+          {/* 已选引用（插件 / 技能）：只有选中时才占一行，逐条可移除 */}
+          {mentionCount ? (
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              testID="mention-chips"
+              className="mb-[6px] pl-[14px]"
+              contentContainerStyle={{ gap: 8, paddingRight: 14 }}>
+              {skills.map((skill, index) => (
+                <View
+                  key={`skill-${skill.uri || skill.name || index}`}
+                  className="flex-row items-center gap-1 rounded-full bg-[#007AFF]/12 py-1 pl-2 pr-1">
+                  <Text className="max-w-[130px] text-[11px] font-semibold text-[#007AFF]" numberOfLines={1}>
+                    技能 · {skill.displayName || skill.name}
+                  </Text>
+                  <Pressable
+                    accessibilityRole="button"
+                    accessibilityLabel="移除技能引用"
+                    onPress={() => onRemoveSkill?.(skill)}
+                    className="h-[24px] w-[24px] items-center justify-center rounded-full bg-white active:opacity-80">
+                    <SymbolView name={{ ios: 'xmark.circle.fill', android: 'cancel', web: 'cancel' }} size={16} tintColor={OptionA.blue} />
+                  </Pressable>
+                </View>
+              ))}
+              {plugins.map((plugin, index) => (
+                <View
+                  key={`plugin-${plugin.uri || plugin.name || index}`}
+                  className="flex-row items-center gap-1 rounded-full bg-[#EFEFF4] py-1 pl-2 pr-1">
+                  <Text className="max-w-[130px] text-[11px] font-semibold text-[#1C1C1E]" numberOfLines={1}>
+                    插件 · {plugin.displayName || plugin.name}
+                  </Text>
+                  <Pressable
+                    accessibilityRole="button"
+                    accessibilityLabel="移除插件引用"
+                    onPress={() => onRemovePlugin?.(plugin)}
+                    className="h-[24px] w-[24px] items-center justify-center rounded-full bg-white active:opacity-80">
+                    <SymbolView name={{ ios: 'xmark.circle.fill', android: 'cancel', web: 'cancel' }} size={16} tintColor={OptionA.inkSoft} />
+                  </Pressable>
+                </View>
+              ))}
+            </ScrollView>
+          ) : null}
+
           {notice ? (
             <Text className="mb-[4px] px-[14px] text-[11px] text-[#B26A00]" numberOfLines={1}>
               {notice}
@@ -272,6 +330,24 @@ export function ThumbPromptBar({
                 tintColor={OptionA.blue}
               />
             </Pressable>
+
+            {onOpenMention ? (
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel="引用插件或技能"
+                accessibilityState={{ selected: mentionCount > 0 }}
+                disabled={blocked}
+                onPress={onOpenMention}
+                className={`h-11 w-11 items-center justify-center rounded-full active:opacity-80 ${
+                  mentionCount ? 'bg-[#007AFF]/12' : 'bg-[#EFEFF4]'
+                }`}>
+                <SymbolView
+                  name={{ ios: 'at', android: 'alternate_email', web: 'alternate_email' }}
+                  size={19}
+                  tintColor={OptionA.blue}
+                />
+              </Pressable>
+            ) : null}
 
             <TextInput
               value={value}

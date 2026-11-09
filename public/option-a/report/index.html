@@ -137,8 +137,8 @@
         <div style="font-size:17px;font-weight:750;margin:6px 0">会话总控 · 原生版</div>
         <div class="kv"><span>包名</span><span>com.codexpocket.optiona.native</span></div>
         <div class="kv"><span>版本</span><span>1.19.0-native (71)</span></div>
-        <div class="kv"><span>大小</span><span>100,496,076 B（95.8 MB，−65.0%）</span></div>
-        <div class="kv"><span>SHA256</span><span><code>FE22DA8E…575B</code></span></div>
+        <div class="kv"><span>大小</span><span>100,512,460 B（95.9 MB，−65.0%）</span></div>
+        <div class="kv"><span>SHA256</span><span><code>FEE55D17…2BC2</code></span></div>
         <div class="kv"><span>ABI</span><span>arm64-v8a（现代手机通用）</span></div>
         <a href="http://192.168.1.10:8787/downloads/Codex-Turnloom-Native.apk">下载 Codex-Turnloom-Native.apk</a>
         <a href="http://192.168.1.10:8787/downloads/Codex-Turnloom-Native-universal.apk" style="margin-top:6px">兼容备用包 · 四 ABI 266.7 MB</a>
@@ -612,8 +612,63 @@
   <p class="sub">按你的决定：Web 线<b>停止投入</b>，不再修顶部标题栏那个「大额头」，也不再加功能；产物继续保留（<code>/option-a/index.html</code> 与离线演示 HTML 都能打开），但不作为交付主线。原生 App 是唯一主线。</p>
 </section>
 
+<!-- 12 V10 功能补齐与真机验收 -->
+<section>
+  <h2><span class="num">12</span>V10：补齐原版缺口、修两个真机缺陷、全功能写链路验收</h2>
+  <p class="sub">上一轮列出的 5 项原版能力和 2 条真机缺陷，本轮全部处理。所有结论来自 MuMu 安卓 15（1080×1920）+ 本机真实 8787 服务 + 隔离 mock 18997 的实测，不把推测写成通过。</p>
+
+  <h3>12.1 补齐的 5 项能力</h3>
+  <table>
+    <tr><th>原版能力</th><th>V10 实现</th><th>真机 / 请求体验证</th></tr>
+    <tr><td>模型 + 思考强度选择</td><td>目录来自 <code>GET /api/health.models</code>（真实服务返回 10 个模型）。会话页顶部常驻胶囊显示当前选择；点开是「模型列表 → 强度」两步底部抽屉；选择按 threadId 落盘，重启恢复。</td><td class="ok">真机抽屉列出 GPT-6-Astra / 5.6-Sol / 5.2 / 5.4 / 5.4-Mini；选 <b>gpt-5.2 · 高</b> 后重启，logcat 实测 <code>healthCatalog=10</code>、<code>resolved model=gpt-5.2 effort=high</code>。截图 <code>v10-model-sheet.png</code></td></tr>
+    <tr><td>插件 / 技能 / @ 引用</td><td>新增 <code>GET /api/plugins</code>、<code>GET /api/skills</code> 客户端方法；输入舱新增 <code>@</code> 按钮（expo-symbols 图标），抽屉支持搜索与逐项选中/取消，选中项以 chip 出现在输入行上方，可单独移除。发送时按原版格式拼装：技能 <code>Use skill: code-review.</code>、插件 <code>[@Browser](plugin://browser@openai-bundled)</code>。</td><td class="ok">真实 8787 抽屉显示技能（压缩上下文 / 计划 / 目标 / code-review…）与插件；mock 请求体见 12.3。截图 <code>v10-mention.png</code></td></tr>
+    <tr><td>新建会话选项目</td><td>列表页右上新增「新建会话」按钮；抽屉拉 <code>GET /api/projects</code> 的真实项目（控制隔壁电脑 / 飞牛nas / fast监控…），可选「不归档」，输入首条消息后 <code>POST /api/send</code> 带 <code>newThread:true</code> + <code>projectId</code>，成功后跳新会话详情。</td><td class="ok">真机抽屉列出 5 个真实项目；mock 实测 <code>{"newThread":true,"projectId":"p1"}</code>。创建按钮在无正文时 <code>enabled=false</code></td></tr>
+    <tr><td>会话搜索</td><td>列表页新增搜索框，本地过滤标题 / 预览 / 项目名 / cwd，带清除按钮；不额外发请求、不改服务端顺序。</td><td class="ok">输入「回应」后列表只剩「回应问候」，其余会话全部消失。截图 <code>v10-search.png</code></td></tr>
+    <tr><td>消息复制全文</td><td>消息卡右上角新增 44×28 的「复制」文字按钮（图标在该 Android 图标字体下不渲染，已改为文字），走 RN 内置 Clipboard 原生模块（现有 APK 已编入，无需重编 C++），按真实写入结果显示「已复制全文 / 复制失败」toast。</td><td class="ok">代码路径实测；不谎称剪贴板内容已读出（Android 10+ 后台读剪贴板受限）</td></tr>
+  </table>
+  <div class="note">原版协议逐字对齐 <code>public/app.js</code>：<code>pluginMentionMarkdown</code>、<code>selectedSkillPrompt</code>、<code>composerSendMessage</code> 的拼装顺序（技能行 → 插件行 → 正文），没有自创一套「引用协议」，也没有改 <code>server.js</code>。</div>
+
+  <h3>12.2 上一轮遗留的两条真机缺陷（已修）</h3>
+  <table>
+    <tr><th>缺陷</th><th>修复</th><th>真机复验</th></tr>
+    <tr><td>「修改终端信息」的保存 / 取消被底栏裁掉</td><td>编辑态自动 <code>scrollToEnd</code>，并把 ScrollView 底部 padding 从 120 加到 220。</td><td class="ok">修复前 bounds 高度 <b>1px</b>（<code>[83,1722][526,1723]</code>）；现在 <b>58px</b>（<code>[265,561][343,619]</code>），不滚动即可点。截图 <code>v10-terminal-edit.png</code></td></tr>
+    <tr><td>保存后地址没真正切换 / 重启回退</td><td>根因两层：① <code>readActiveTerminal()</code> 让 <code>BUILTIN_TERMINALS</code> 的硬编码 URL 优先于用户保存的配对配置；② 保存只弹 toast，没有回读校验。已改为「配置优先 + <code>savePairing</code> 后 <code>readPairing()</code> 回读比对 + 按落盘值回填界面」。</td><td class="ok">改成 <code>18997</code> → 提示「终端信息已保存 · 当前地址 …18997」→ <b>force-stop 重启后仍是 18997</b>（状态「离线」）；再改回 8787 并保存，重启后加载真实 68 条会话。截图 <code>v10-terminal-restored.png</code></td></tr>
+  </table>
+
+  <h3>12.3 写链路：发出的请求真的带上了所有参数</h3>
+  <p class="sub">用隔离 mock（18997）记录 <code>POST /api/send</code> 请求体，避免污染真实 Codex 会话。以下三条是实测原文：</p>
+  <table>
+    <tr><th>场景</th><th>请求体关键字段</th><th>判定</th></tr>
+    <tr><td>选中技能 <code>code-review</code> + 输入正文 + 发送</td><td><code>message="Use skill: code-review.\n\nV10FULLTEST"</code>、<code>model="gpt-5-codex"</code>、<code>effort="medium"</code>、<code>mode="queue"</code>、<code>clientRequestId</code> 每次新 UUID</td><td class="ok">通过</td></tr>
+    <tr><td>选中插件 Browser + 输入正文 + 发送</td><td><code>message="[@Browser](plugin://browser@openai-bundled)\n\nPLUGINTEST"</code>、<code>model</code> / <code>effort</code> 同上</td><td class="ok">通过</td></tr>
+    <tr><td>新建会话并归档到「网关重构」</td><td><code>newThread=true</code>、<code>projectId="p1"</code>、<code>threadId=null</code>、<code>mode="start"</code></td><td class="ok">通过</td></tr>
+  </table>
+  <p>另外：发送键与中断键互斥、运行中排队 / 插队 / 清空、附件菜单在输入行上方等 V8 结论在 V10 包上复验未回归；新加的 <code>@</code> 按钮不改变「有内容→发送、空且运行中→停止」的互斥规则（引用也算内容）。</p>
+
+  <h3>12.4 本轮踩到并修掉的工程坑（如实记录）</h3>
+  <table>
+    <tr><th>问题</th><th>根因</th><th>处理</th></tr>
+    <tr><td>模型入口不显示</td><td>模型 effect 早于 <code>client.load()</code> 执行，<code>getHealth()</code> 因「尚未配对」抛错；且它原本写在 <code>load()</code> 的 try 里，写缓存失败会整段跳过。</td><td>独立 effect 里先 <code>await client.load()</code>；写缓存改为非致命；入口无条件渲染，失败时抽屉明确提示</td></tr>
+    <tr><td>长按复制不触发</td><td>消息 <code>Text</code> 的 <code>selectable</code> 抢占了长按手势；且 adb 注入的 long-press 在这台模拟器上不可靠</td><td>去掉 <code>selectable</code>，保留长按菜单，另加一个点按即用的「复制」按钮</td></tr>
+    <tr><td>复制按钮看不见</td><td><code>content_copy</code> 图标在该 Android 图标字体下没有字形</td><td>改为 44×28 文字按钮，不再依赖字体图标</td></tr>
+    <tr><td>bundle 内容查不到关键字</td><td>Hermes 字节码用 UTF-16 存中文、并剥离局部变量名；按 UTF-8 文本搜会误判「没打进去」</td><td>改按字节 / UTF-16 校验，并以 logcat 的运行时日志与真机行为为最终判据</td></tr>
+  </table>
+
+  <h3>12.5 交付物与回归</h3>
+  <table>
+    <tr><th>项</th><th>结果</th></tr>
+    <tr><td>原生交付包（arm64-v8a）</td><td class="ok">100,512,460 B / 95.9 MiB，SHA256 <code>fee55d176d4d7297fd3b57c7dbe47d4dce67170304d03636f6604aed62797bc2</code>；<code>apksigner verify</code> V3 通过、<code>zipalign -c -p 4</code> 通过</td></tr>
+    <tr><td>兼容备用包（四 ABI）</td><td>279,653,986 B，SHA256 <code>bcb2740d3f82b2b34b18fef4f7389b08694ba3ce1510acbc356fb03b888ed3d8</code></td></tr>
+    <tr><td>TypeScript</td><td class="ok"><code>npx tsc --noEmit</code> exit 0（每次出包前跑）</td></tr>
+    <tr><td>JS bundle</td><td class="ok"><code>gradlew :app:createBundleDebugJsAndAssets --rerun-tasks</code> BUILD SUCCESSFUL；APK 内 bundle SHA256 与构建产物逐字节一致</td></tr>
+    <tr><td>主仓回归</td><td class="ok"><code>node --test</code> 171 通过 / 0 失败；<code>npm run check</code> exit 0</td></tr>
+    <tr><td>服务状态</td><td class="ok">验收结束时 App 已切回 <code>http://192.168.1.10:8787</code>，<code>/api/health ok=true</code>，列表加载真实会话</td></tr>
+  </table>
+  <div class="note warnbox"><b>如实说明</b>：真实 8787 上我们只做只读操作（列表 / 详情 / 健康 / 项目 / 插件 / 技能目录），所有发送消息与新建会话的写验证都在隔离 mock 上完成，以免真的指挥你的 Codex 会话。真实服务上的 <code>/api/host/diff</code> 仍因本机缺少 <code>codex-ipc</code> 命名管道返回 502（环境侧，非客户端缺陷），未改 <code>server.js</code>。</div>
+</section>
+
 <footer>
-  Codex-Turnloom · Option A · V9 报告（底栏重做 / 体积 95.8 MiB / 真实 8787 功能实测）· 2026-11-09 · 图片与结果归档于 <code>docs/option-a/qa-shots/</code> 与主仓 <code>public/option-a/report/report-assets/</code>（<code>v6-*</code> V6 重截，<code>v7-*</code> 离线演示实拍，<code>v8-*</code> V8 输入舱，<code>v9-*</code> 本轮真机）
+  Codex-Turnloom · Option A · V10 报告（功能补齐 / 95.9 MiB / 真机 + mock 写链路验收）· 2026-11-09 · 图片归档于主仓 <code>public/option-a/report/report-assets/</code>（<code>v6-*</code> ~ <code>v10-*</code>）
 </footer>
 </div>
 </body>
