@@ -36,11 +36,9 @@ import type {
   HostDiffResponse,
   MessagesResponse,
   NewThreadResult,
-  PluginsResponse,
   ProjectsResponse,
   SendMode,
   SendResult,
-  SkillsResponse,
   ThreadsResponse,
 } from './types';
 
@@ -94,7 +92,7 @@ type ConfigListener = (config: PairingConfig | null) => void;
 const DEFAULT_TIMEOUT_MS = 12_000;
 const LONG_POLL_TIMEOUT_MS = 32_000;
 
-function uuid(): string {
+export function uuid(): string {
   const globalCrypto = globalThis.crypto;
   if (globalCrypto && typeof globalCrypto.randomUUID === 'function') return globalCrypto.randomUUID();
   // RFC4122-ish fallback for engines without randomUUID.
@@ -125,6 +123,31 @@ function errorMessage(payload: unknown, fallback: string): string {
   return fallback;
 }
 
+/** Check a candidate connection without changing the active device or credentials. */
+export async function probeConnection(config: PairingConfig): Promise<HealthResponse> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), DEFAULT_TIMEOUT_MS);
+  try {
+    const headers: Record<string, string> = { accept: 'application/json' };
+    if (config.token) headers['x-access-token'] = config.token;
+    const response = await fetch(buildUrl(config.serverUrl, '/api/health'), {
+      headers,
+      signal: controller.signal,
+      credentials: 'omit',
+    });
+    if (response.status === 401) throw new AuthRequiredError('访问码无效或已过期');
+    if (!response.ok) throw new Error(`连接失败（HTTP ${response.status}）`);
+    const data = (await response.json()) as HealthResponse;
+    if (!data?.ok) throw new Error('电脑服务未就绪');
+    return data;
+  } catch (error) {
+    if (controller.signal.aborted) throw new Error('连接超时，请检查电脑与网络');
+    throw error;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 let sharedClient: TurnloomClient | null = null;
 
 export class TurnloomClient {
@@ -132,10 +155,18 @@ export class TurnloomClient {
   private allowWrite: boolean | null = null;
   private authListeners = new Set<AuthListener>();
   private configListeners = new Set<ConfigListener>();
+  private loadSequence = 0;
+  private configGeneration = 0;
 
-  /** Load persisted pairing once at startup. */
   async load(): Promise<PairingConfig | null> {
-    this.config = await readPairing();
+    const sequence = ++this.loadSequence;
+    const next = await readPairing();
+    if (sequence !== this.loadSequence) return this.config;
+    if (this.config?.serverUrl !== next?.serverUrl || this.config?.token !== next?.token) {
+      this.configGeneration += 1;
+      this.allowWrite = null;
+    }
+    this.config = next;
     this.configListeners.forEach((listener) => listener(this.config));
     return this.config;
   }
@@ -183,6 +214,7 @@ export class TurnloomClient {
   async request<T>(path: string, options: RequestOptions = {}): Promise<RequestResult<T>> {
     const config = this.config;
     if (!config) throw new Error('尚未配对电脑节点，请先扫码或输入服务器地址');
+    const generation = this.configGeneration;
 
     const controller = new AbortController();
     const timeoutMs = options.timeoutMs ?? DEFAULT_TIMEOUT_MS;
@@ -210,6 +242,7 @@ export class TurnloomClient {
           signal: controller.signal,
         }
       );
+      if (generation !== this.configGeneration) throw new Error('电脑连接已切换，请重试');
 
       const etag = response.headers.get('etag');
       if (response.status === 304) {
@@ -225,6 +258,7 @@ export class TurnloomClient {
           payload = text;
         }
       }
+      if (generation !== this.configGeneration) throw new Error('电脑连接已切换，请重试');
 
       if (response.status === 401) {
         const message = errorMessage(payload, '需要访问码');
@@ -333,18 +367,6 @@ export class TurnloomClient {
 
   async getProjects(options?: Pick<RequestOptions, 'signal'>): Promise<ProjectsResponse> {
     const { data } = await this.request<ProjectsResponse>(this.endpoint('/api/projects'), options);
-    return data;
-  }
-
-  /** 宿主已安装插件（原版 public/app.js 的 loadPlugins 同一接口）。 */
-  async getPlugins(options?: Pick<RequestOptions, 'signal'>): Promise<PluginsResponse> {
-    const { data } = await this.request<PluginsResponse>(this.endpoint('/api/plugins'), options);
-    return data;
-  }
-
-  /** 技能目录（含 builtin 操作；引用时 builtin 不写进 "Use skill" 行，与原版一致）。 */
-  async getSkills(options?: Pick<RequestOptions, 'signal'>): Promise<SkillsResponse> {
-    const { data } = await this.request<SkillsResponse>(this.endpoint('/api/skills'), options);
     return data;
   }
 

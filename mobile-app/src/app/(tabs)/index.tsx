@@ -1,364 +1,224 @@
-/**
- * 「对话」Tab（一级页）= 会话列表，微信/QQ 模型。
- *
- * 冷启动未选终端时显示选终端页；已配对后显示真实会话列表，点某条会话
- * 进入全屏聊天详情页 `thread/[id]`（该页不在 Tabs 内，天然无底栏）。
- * 本页不再包含聊天输入舱 —— 聊天只存在于详情页。
- * v5：NativeWind className + React Native Reusables 复制式组件。
- */
 import { FlashList } from '@shopify/flash-list';
 import { router, useFocusEffect } from 'expo-router';
 import * as Haptics from 'expo-haptics';
 import { SymbolView } from 'expo-symbols';
-import { useCallback, useEffect, useMemo, useState } from 'react';
-import {
-  ActivityIndicator,
-  Pressable,
-  RefreshControl,
-  ScrollView,
-  TextInput,
-  View,
-} from 'react-native';
+import { useCallback, useMemo, useRef, useState } from 'react';
+import { ActivityIndicator, Pressable, RefreshControl, ScrollView, TextInput, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { NewTaskSheet, type NewTaskSheetHandle } from '@/components/NewTaskSheet';
+import { PairingSheet, type PairingSheetHandle } from '@/components/PairingSheet';
+import { Card, Text } from '@/components/ui/rnr';
 import { OptionA } from '@/constants/optionA';
-import { NewThreadSheet, type ProjectOption } from '@/components/OptionASheets';
-import { Badge, Card, Text } from '@/components/ui/rnr';
-import { DEMO_MODE, DEMO_LABEL } from '@/services/demoBootstrap';
-import {
-  BUILTIN_TERMINALS,
-  useTerminalSelection,
-  type TerminalOption,
-} from '@/services/appState';
-import { savePairing } from '@/services/pairing';
-import { getTurnloomClient, AuthRequiredError } from '@/services/turnloomClient';
-import { threadStatusKind, type Thread } from '@/services/types';
+import { useTerminalSelection } from '@/services/appState';
+import { DEMO_LABEL, DEMO_MODE } from '@/services/demoBootstrap';
+import type { QRParseResult } from '@/services/pairing';
+import { AuthRequiredError, getTurnloomClient } from '@/services/turnloomClient';
+import { threadStatusKind, type Thread, type ThreadStatusKind } from '@/services/types';
 
 const client = getTurnloomClient();
+type Filter = 'all' | 'running' | 'waiting';
+const STATUS: Record<ThreadStatusKind, { label: string; background: string; color: string }> = {
+  waiting: { label: '待处理', background: '#FFF1D6', color: '#8A5100' },
+  running: { label: '进行中', background: '#E5F1FF', color: '#0065D1' },
+  stale: { label: '疑似停滞', background: '#FFF1D6', color: '#8A5100' },
+  ended: { label: '已完成', background: '#E4F8E9', color: '#16713A' },
+  unknown: { label: '空闲', background: '#EFEFF4', color: '#636366' },
+};
 
-const STATUS_LABEL = {
-  waiting: '待处理',
-  running: '进行中',
-  stale: '已停滞',
-  ended: '已完成',
-  unknown: '进行中',
-} as const;
-
-const BADGE_VARIANT = {
-  waiting: 'default',
-  running: 'default',
-  stale: 'secondary',
-  ended: 'secondary',
-  unknown: 'default',
-} as const;
-
-/** 冷启动：品牌大标题 + 「这是什么/要做什么」说明 + 引导卡 + 两个明确按钮。 */
-function TerminalPicker({ onChoose }: { onChoose: (option: TerminalOption) => void }) {
-  return (
-    <View className="gap-3 pt-3">
-      <Text className="text-[11px] font-bold uppercase tracking-[2px] text-[#8E8E93]">Codex-Turnloom</Text>
-      <Text className="text-[30px] font-bold leading-[34px] tracking-[-1px] text-[#1C1C1E]">会话总控</Text>
-      <Text className="text-[13px] leading-[20px] text-[#8E8E93]">
-        在手机上远程查看并指挥电脑端代理。先选一台要连接的电脑，之后即可收发指令、查看改动与审批。
-      </Text>
-
-      <View className="mt-3 rounded-[20px] border border-white/90 bg-white/90 p-4">
-        <Text className="text-[14px] font-semibold text-[#1C1C1E]">选择要连接的电脑</Text>
-        <Text className="mt-1 text-[12px] leading-[18px] text-[#8E8E93]">
-          选好后进入会话列表；之后可在「终端」里随时切换或新增。
-        </Text>
-      </View>
-
-      {BUILTIN_TERMINALS.map((item) => (
-        <Pressable
-          key={item.id}
-          accessibilityRole="button"
-          onPress={() => onChoose({ ...item })}
-          className="min-h-[64px] flex-row items-center gap-3 rounded-[20px] border border-white/90 bg-white/95 p-4 active:opacity-80">
-          <View className="h-9 w-9 items-center justify-center rounded-[12px] bg-[#007AFF]/12">
-            <View className="h-[9px] w-[9px] rounded-full bg-[#34C759]" />
-          </View>
-          <View className="flex-1 gap-[3px]">
-            <Text className="text-[15px] font-semibold text-[#1C1C1E]">{item.name}</Text>
-            <Text className="text-[11px] text-[#8E8E93]" numberOfLines={1}>
-              {item.url}
-            </Text>
-          </View>
-          <SymbolView name={{ ios: 'chevron.right', android: 'chevron_right', web: 'chevron_right' }} size={18} tintColor="#8E8E93" />
-        </Pressable>
-      ))}
-
-      <Pressable
-        accessibilityRole="button"
-        onPress={() => router.push('/(tabs)/monitors')}
-        className="min-h-[48px] items-center justify-center rounded-[16px] bg-[#007AFF] active:opacity-80">
-        <Text className="text-[14px] font-semibold text-white">扫码添加其他电脑</Text>
-      </Pressable>
-
-      <Text className="pt-6 text-center text-[11px] leading-[17px] text-[#8E8E93]">
-        配对码由电脑端 Codex-Turnloom 生成 · 格式为 codexpocket://add?...
-      </Text>
-    </View>
-  );
+function relativeTime(ms: number): string {
+  const seconds = Math.max(0, Math.floor((Date.now() - ms) / 1000));
+  if (seconds < 60) return '刚刚';
+  const minutes = Math.floor(seconds / 60);
+  if (minutes < 60) return `${minutes} 分钟前`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours} 小时前`;
+  return `${Math.floor(hours / 24)} 天前`;
 }
 
 export default function HomeScreen() {
   const insets = useSafeAreaInsets();
-  const { terminal, checking, choose } = useTerminalSelection();
+  const { terminal, connectionRevision, checking, storageError, reload, connect, health, connectionState, requestAuth } = useTerminalSelection();
+  const ownerKey = `${terminal?.id || ''}|${connectionRevision}`;
+  const pairingRef = useRef<PairingSheetHandle>(null);
+  const newTaskRef = useRef<NewTaskSheetHandle>(null);
+  const sequence = useRef(0);
+  const loadingMore = useRef(false);
   const [threads, setThreads] = useState<Thread[]>([]);
+  const [ownerId, setOwnerId] = useState('');
+  const [nextCursor, setNextCursor] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState('');
-  const [authGate, setAuthGate] = useState(false);
+  const [notice, setNotice] = useState('');
   const [query, setQuery] = useState('');
+  const [filter, setFilter] = useState<Filter>('all');
 
-  // 新建会话（可归档到项目）
-  const [composeOpen, setComposeOpen] = useState(false);
-  const [projects, setProjects] = useState<ProjectOption[]>([]);
-  const [projectsLoading, setProjectsLoading] = useState(false);
-  const [projectId, setProjectId] = useState('');
-  const [draft, setDraft] = useState('');
-  const [creating, setCreating] = useState(false);
-  const [composeError, setComposeError] = useState('');
-
-  const load = useCallback(async (isRefresh = false) => {
-    if (isRefresh) setRefreshing(true);
+  const load = useCallback(async (refresh = false) => {
+    if (!terminal) return;
+    const request = ++sequence.current;
+    if (refresh) setRefreshing(true);
     else setLoading(true);
     setError('');
     try {
-      const config = await client.load();
-      if (!config) {
-        setThreads([]);
-        setError('尚未选择终端，请到「终端」页添加');
-        return;
+      const result = await client.getThreads({ limit: 100 });
+      if (request !== sequence.current) return;
+      if (result.status !== 304) {
+        setOwnerId(ownerKey);
+        setThreads(result.data?.threads || []);
+        setNextCursor(result.data?.nextCursor || null);
       }
-      const result = await client.getThreads({ limit: 60 });
-      if (result.status !== 304 && result.data?.threads) setThreads(result.data.threads);
-      setAuthGate(false);
     } catch (caught) {
-      if (caught instanceof AuthRequiredError) setAuthGate(true);
-      else setError(caught instanceof Error ? caught.message : String(caught));
+      if (request !== sequence.current) return;
+      if (caught instanceof AuthRequiredError) requestAuth();
+      else setError(caught instanceof Error ? caught.message : '暂时无法加载会话');
     } finally {
-      setLoading(false);
-      setRefreshing(false);
+      if (request === sequence.current) { setLoading(false); setRefreshing(false); }
     }
-  }, []);
+  }, [terminal?.id, terminal?.serverUrl, terminal?.token, ownerKey, requestAuth]);
 
-  useEffect(() => { if (terminal) void load(); }, [terminal, load]);
-  useFocusEffect(useCallback(() => { if (terminal) void load(true); return undefined; }, [terminal, load]));
-  useEffect(() => client.onAuthRequired(() => setAuthGate(true)), []);
+  useFocusEffect(useCallback(() => {
+    if (terminal) void load();
+    return () => { sequence.current += 1; };
+  }, [terminal?.id, load]));
 
-  const handleChoose = useCallback(
-    async (option: TerminalOption) => {
-      try {
-        await savePairing({ serverUrl: option.url, token: option.token, machineName: option.name });
-        await client.refreshConfig();
-        if (option.token) await client.exchangeAuthSession(option.token).catch(() => undefined);
-      } catch { /* 配对失败仍进入列表，由错误提示反馈 */ }
-      await choose(option);
-    },
-    [choose],
-  );
+  // Dismiss drawers only when the screen actually loses focus, not whenever a
+  // data refresh changes `load`'s identity. Re-running the previous combined
+  // effect could immediately close a sheet that had just been presented.
+  useFocusEffect(useCallback(() => () => {
+    newTaskRef.current?.dismiss();
+    pairingRef.current?.dismiss();
+  }, []));
 
-  /** 会话搜索：本地过滤标题 / 预览 / 项目 / 路径，不发请求、不改服务端顺序。 */
-  const filtered = useMemo(() => {
-    const term = query.trim().toLowerCase();
-    if (!term) return threads;
-    return threads.filter((item) =>
-      [item.title, item.preview, item.project?.name, item.cwd]
-        .filter(Boolean)
-        .some((value) => String(value).toLowerCase().includes(term))
-    );
-  }, [threads, query]);
-
-  const openCompose = useCallback(async () => {
-    setComposeOpen(true);
-    setComposeError('');
-    if (projects.length || projectsLoading) return;
-    setProjectsLoading(true);
+  const loadMore = useCallback(async () => {
+    if (!nextCursor || loadingMore.current || !terminal || ownerId !== ownerKey) return;
+    const request = sequence.current;
+    loadingMore.current = true;
     try {
-      const data = await client.getProjects();
-      setProjects(Array.isArray(data?.projects) ? (data.projects as ProjectOption[]) : []);
-    } catch (caught) {
-      setComposeError(caught instanceof Error ? caught.message : String(caught));
-    } finally {
-      setProjectsLoading(false);
-    }
-  }, [projects.length, projectsLoading]);
-
-  const createThread = useCallback(async () => {
-    const message = draft.trim();
-    if (!message || creating) return;
-    setCreating(true);
-    setComposeError('');
-    try {
-      const result = await client.sendMessage({
-        message,
-        newThread: true,
-        ...(projectId ? { projectId } : {}),
+      const result = await client.getThreads({ limit: 100, cursor: nextCursor });
+      if (request !== sequence.current || result.status === 304) return;
+      setThreads((current) => {
+        const ids = new Set(current.map((item) => item.id));
+        return [...current, ...(result.data?.threads || []).filter((item) => !ids.has(item.id))];
       });
-      const nextId = String(result?.threadId || '');
-      setComposeOpen(false);
-      setDraft('');
-      setProjectId('');
-      await load(true);
-      if (nextId) router.push({ pathname: '/thread/[id]', params: { id: nextId } });
+      setNextCursor(result.data?.nextCursor || null);
     } catch (caught) {
-      setComposeError(caught instanceof Error ? caught.message : String(caught));
+      if (request === sequence.current) setError(caught instanceof Error ? caught.message : '加载更多失败');
     } finally {
-      setCreating(false);
+      loadingMore.current = false;
     }
-  }, [draft, creating, projectId, load]);
+  }, [nextCursor, terminal?.id, ownerId, ownerKey]);
 
-  const renderThread = useCallback(({ item, index }: { item: Thread; index: number }) => {
-    const kind = threadStatusKind(item.status);
+  const currentThreads = useMemo(() => ownerId === ownerKey ? threads : [], [ownerId, ownerKey, threads]);
+
+  const visibleThreads = useMemo(() => {
+    const search = query.trim().toLocaleLowerCase();
+    return currentThreads.filter((thread) => {
+      const kind = threadStatusKind(thread.status);
+      if (filter === 'running' && kind !== 'running' && kind !== 'stale') return false;
+      if (filter === 'waiting' && kind !== 'waiting') return false;
+      return !search || [thread.title, thread.preview, thread.project?.name, thread.cwd]
+        .some((value) => String(value || '').toLocaleLowerCase().includes(search));
+    });
+  }, [currentThreads, query, filter]);
+
+  const renderThread = useCallback(({ item }: { item: Thread }) => {
+    const status = STATUS[threadStatusKind(item.status)];
     return (
-      <Pressable
-        accessibilityRole="button"
-        onPress={() => {
-          void Haptics.selectionAsync();
-          router.push({ pathname: '/thread/[id]', params: { id: item.id } });
-        }}
-        className="active:opacity-80">
+      <Pressable accessibilityRole="button" onPress={() => {
+        void Haptics.selectionAsync().catch(() => undefined);
+        router.push({ pathname: '/thread/[id]', params: { id: item.id } });
+      }} className="active:opacity-80">
         <Card className="gap-[6px] p-[14px]">
-          <View className="flex-row items-center">
-            <Text className="flex-1 text-[15px] font-semibold text-[#1C1C1E]" numberOfLines={1}>
-              {item.title || '未命名会话'}
-            </Text>
-            <SymbolView name={{ ios: 'chevron.right', android: 'chevron_right', web: 'chevron_right' }} size={18} tintColor="#8E8E93" />
+          <View className="flex-row items-center gap-2">
+            <Text className="flex-1 text-[15px] font-semibold text-[#1C1C1E]" numberOfLines={1}>{item.title || '未命名会话'}</Text>
+            <SymbolView name={{ ios: 'chevron.right', android: 'chevron_right', web: 'chevron_right' }} size={18} tintColor="#6D6D72" />
           </View>
-          <Text className="text-[13px] leading-[18px] text-[#8E8E93]" numberOfLines={2}>
-            {item.preview || item.project?.name || item.cwd || '暂无预览'}
-          </Text>
+          <Text className="text-[13px] leading-[19px] text-[#6D6D72]" numberOfLines={2}>{item.preview || item.project?.name || item.cwd || '暂无预览'}</Text>
           <View className="flex-row items-center gap-2 pt-[2px]">
-            <Badge variant={BADGE_VARIANT[kind]}>
-              <Text className="text-[12px] font-semibold text-[#007AFF]">{STATUS_LABEL[kind]}</Text>
-            </Badge>
-            {item.status?.interactionRequired ? (
-              <Badge variant="default">
-                <Text className="text-[12px] font-semibold text-[#007AFF]">待合并</Text>
-              </Badge>
-            ) : null}
-            <Text className="ml-auto text-[12px] text-[#8E8E93]">
-              {item.updatedAtMs ? relativeTime(item.updatedAtMs) : `#${index + 1}`}
-            </Text>
+            <View style={{ backgroundColor: status.background, borderRadius: 999, paddingHorizontal: 10, paddingVertical: 4 }}>
+              <Text style={{ color: status.color, fontSize: 12, fontWeight: '600' }}>{status.label}</Text>
+            </View>
+            {item.project?.name ? <Text className="flex-1 text-[12px] text-[#6D6D72]" numberOfLines={1}>{item.project.name}</Text> : <View className="flex-1" />}
+            <Text className="text-[12px] text-[#6D6D72]">{item.updatedAtMs ? relativeTime(item.updatedAtMs) : ''}</Text>
           </View>
         </Card>
       </Pressable>
     );
   }, []);
 
-  if (checking) {
-    return (
-      <View className="flex-1 items-center justify-center bg-transparent">
-        <ActivityIndicator color={OptionA.blue} />
-      </View>
-    );
-  }
-
-  if (!terminal) {
-    return (
-      <ScrollView className="flex-1 bg-transparent" contentContainerStyle={{ paddingHorizontal: 20, paddingTop: 72, paddingBottom: 112 }}>
-        <TerminalPicker onChoose={(option) => void handleChoose(option)} />
-      </ScrollView>
-    );
-  }
-
-  return (
-    <View className="flex-1 bg-transparent">
-      <View className="gap-[3px] px-5 pb-[10px]" style={{ paddingTop: insets.top + 12 }}>
-        <Text className="text-[11px] font-bold uppercase tracking-[2px] text-[#8E8E93]">Codex-Turnloom</Text>
-        <View className="flex-row items-center gap-3">
-          <Text className="flex-1 text-[30px] font-bold leading-[34px] tracking-[-1px] text-[#1C1C1E]">对话</Text>
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel="新建会话"
-            onPress={() => void openCompose()}
-            className="h-11 w-11 items-center justify-center rounded-full bg-[#007AFF] active:opacity-80">
-            <SymbolView name={{ ios: 'square.and.pencil', android: 'edit_square', web: 'edit_square' }} size={19} tintColor="#FFFFFF" />
-          </Pressable>
-        </View>
-        <Text className="text-[12px] text-[#8E8E93]">选择一条会话，查看实时任务流并继续指挥</Text>
-        <View className="mt-[6px] h-9 flex-row items-center gap-2 rounded-[10px] bg-[#EFEFF4] px-3">
-          <SymbolView name={{ ios: 'magnifyingglass', android: 'search', web: 'search' }} size={15} tintColor={OptionA.inkSoft} />
-          <TextInput
-            value={query}
-            onChangeText={setQuery}
-            placeholder="搜索会话标题、预览或项目"
-            placeholderTextColor={OptionA.inkSoft}
-            autoCapitalize="none"
-            autoCorrect={false}
-            returnKeyType="search"
-            className="min-w-0 flex-1 text-[14px] text-[#1C1C1E]"
-          />
-          {query ? (
-            <Pressable accessibilityRole="button" accessibilityLabel="清除搜索" onPress={() => setQuery('')} hitSlop={8}>
-              <SymbolView name={{ ios: 'xmark.circle.fill', android: 'cancel', web: 'cancel' }} size={16} tintColor={OptionA.inkSoft} />
-            </Pressable>
-          ) : null}
-        </View>
-        {DEMO_MODE ? (
-          <View className="mt-1 self-start rounded-full bg-[#E5F1FF] px-[10px] py-[4px]">
-            <Text className="text-[11px] font-semibold text-[#007AFF]">{DEMO_LABEL}</Text>
-          </View>
-        ) : null}
-      </View>
-      {authGate ? <Text className="px-4 pb-[6px] text-[12px] text-[#D70015]">需要访问码，请到「终端」页重新输入</Text> : null}
-      {error ? <Text className="px-4 pb-[6px] text-[12px] text-[#D70015]">{error}</Text> : null}
-      {loading && threads.length === 0 ? (
-        <View className="items-center justify-center p-6">
-          <ActivityIndicator color={OptionA.blue} />
-        </View>
-      ) : null}
-      <FlashList
-        data={filtered}
-        renderItem={renderThread}
-        keyExtractor={(item, index) => item.id || `thread-${index}`}
-        showsVerticalScrollIndicator={false}
-        contentContainerStyle={{ paddingTop: 8, paddingBottom: 112 + insets.bottom, paddingHorizontal: 16 }}
-        ItemSeparatorComponent={() => <View className="h-[10px]" />}
-        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => void load(true)} tintColor={OptionA.blue} />}
-        ListEmptyComponent={
-          loading ? null : (
-            <View className="items-center py-7">
-              <Text className="text-[15px] font-semibold text-[#1C1C1E]">
-                {query.trim() ? '没有匹配的会话' : error ? '暂时无法加载会话' : '暂无会话'}
-              </Text>
-              <Text className="mt-2 text-center text-[13px] text-[#8E8E93]">
-                {query.trim()
-                  ? '换个关键词，或点右上角新建一条会话'
-                  : error
-                    ? '下拉刷新重试，或到「终端」页检查连接'
-                    : '点右上角开始第一条会话'}
-              </Text>
-            </View>
-          )
-        }
-      />
-
-      <NewThreadSheet
-        visible={composeOpen}
-        projects={projects}
-        projectsLoading={projectsLoading}
-        projectId={projectId}
-        draft={draft}
-        creating={creating}
-        error={composeError}
-        onChangeDraft={setDraft}
-        onSelectProject={setProjectId}
-        onCreate={() => void createThread()}
-        onClose={() => setComposeOpen(false)}
-      />
+  if (checking) return <View className="flex-1 items-center justify-center"><ActivityIndicator color={OptionA.blue} /></View>;
+  if (storageError) return (
+    <View className="flex-1 items-center justify-center px-6 gap-4">
+      <Text className="text-[16px] font-semibold text-[#1C1C1E]">无法读取电脑连接</Text>
+      <Text className="text-center text-[14px] text-[#6D6D72]">{storageError}</Text>
+      <Pressable accessibilityRole="button" onPress={() => void reload()} className="min-h-[48px] justify-center rounded-xl bg-[#0065D1] px-6"><Text className="text-white font-semibold">重试</Text></Pressable>
     </View>
   );
-}
 
-function relativeTime(ms: number): string {
-  const seconds = Math.max(0, Math.floor((Date.now() - ms) / 1000));
-  if (seconds < 60) return `${seconds} 秒前`;
-  const minutes = Math.floor(seconds / 60);
-  if (minutes < 60) return `${minutes} 分钟前`;
-  const hours = Math.floor(minutes / 60);
-  if (hours < 24) return `${hours} 小时前`;
-  return `${Math.floor(hours / 24)} 天前`;
+  const onPaired = async (result: QRParseResult) => { await connect(result); };
+  if (!terminal) return (
+    <>
+      <ScrollView className="flex-1" contentContainerStyle={{ paddingHorizontal: 20, paddingTop: insets.top + 28, paddingBottom: 32, gap: 16 }}>
+        <Text className="text-[13px] font-semibold text-[#6D6D72]">Codex-Turnloom</Text>
+        <Text className="text-[30px] font-bold text-[#1C1C1E]">连接电脑</Text>
+        <Text className="text-[14px] leading-[21px] text-[#6D6D72]">在电脑端打开配对二维码，用手机扫码连接。</Text>
+        <Card className="items-center gap-3 p-5">
+          <View className="h-14 w-14 items-center justify-center rounded-2xl bg-[#E5F1FF]">
+            <SymbolView name={{ ios: 'qrcode.viewfinder', android: 'qr_code_scanner', web: 'qr_code_scanner' }} size={26} tintColor="#0065D1" />
+          </View>
+          <Text className="text-[17px] font-semibold text-[#1C1C1E]">扫码连接电脑</Text>
+          <Pressable testID="pair-device" accessibilityRole="button" onPress={() => pairingRef.current?.present()} className="min-h-[48px] w-full items-center justify-center rounded-xl bg-[#0065D1] active:opacity-80">
+            <Text className="text-[15px] font-semibold text-white">扫码或手动连接</Text>
+          </Pressable>
+        </Card>
+      </ScrollView>
+      <PairingSheet ref={pairingRef} onPaired={onPaired} />
+    </>
+  );
+
+  return (
+    <View className="flex-1">
+      <View className="gap-2 px-5 pb-2" style={{ paddingTop: insets.top + 12 }}>
+        <View className="flex-row items-center gap-3">
+          <Text className="flex-1 text-[28px] font-bold text-[#1C1C1E]">对话</Text>
+          <Pressable testID="new-task" accessibilityRole="button" accessibilityLabel="新建任务" disabled={connectionState !== 'online' || health?.allowWrite === false} onPress={() => newTaskRef.current?.present()} className="min-h-[44px] flex-row items-center gap-1 rounded-xl bg-[#0065D1] px-3 disabled:opacity-40">
+            <SymbolView name={{ ios: 'plus', android: 'add', web: 'add' }} size={18} tintColor="#FFFFFF" />
+            <Text className="text-[14px] font-semibold text-white">新建</Text>
+          </Pressable>
+        </View>
+        <Pressable accessibilityRole="button" accessibilityLabel="管理当前电脑" onPress={() => router.push('/(tabs)/monitors')} className="min-h-[44px] flex-row items-center gap-2 self-start pr-3">
+          <View className={`h-2 w-2 rounded-full ${connectionState === 'online' ? 'bg-[#248A3D]' : 'bg-[#D70015]'}`} />
+          <Text className="text-[13px] text-[#1C1C1E]" numberOfLines={1}>{terminal.machineName || '当前电脑'} · {connectionState === 'online' ? '已连接' : connectionState === 'checking' ? '连接中' : '离线'}</Text>
+          <SymbolView name={{ ios: 'chevron.right', android: 'chevron_right', web: 'chevron_right' }} size={16} tintColor="#6D6D72" />
+        </Pressable>
+        {DEMO_MODE ? <Text className="text-[12px] font-semibold text-[#0065D1]">{DEMO_LABEL}</Text> : null}
+        {currentThreads.length ? <TextInput accessibilityLabel="搜索会话" value={query} onChangeText={setQuery} placeholder="搜索会话或项目" placeholderTextColor="#6D6D72" className="min-h-[44px] rounded-xl bg-white px-3 text-[15px] text-[#1C1C1E]" /> : null}
+        {currentThreads.length ? <View className="flex-row gap-2">{([{ key: 'all', label: '全部' }, { key: 'running', label: '进行中' }, { key: 'waiting', label: '待处理' }] as const).map((item) => (
+          <Pressable key={item.key} accessibilityRole="button" accessibilityState={{ selected: filter === item.key }} onPress={() => setFilter(item.key)} className={`min-h-[44px] justify-center rounded-xl px-3 ${filter === item.key ? 'bg-[#E5F1FF]' : 'bg-white'}`}>
+            <Text className={`text-[13px] font-semibold ${filter === item.key ? 'text-[#0065D1]' : 'text-[#6D6D72]'}`}>{item.label}</Text>
+          </Pressable>
+        ))}</View> : null}
+      </View>
+      {error ? <Text accessibilityRole="alert" className="px-5 pb-2 text-[13px] text-[#D70015]">{error}</Text> : null}
+      {notice ? <Text className="px-5 pb-2 text-[13px] text-[#0065D1]">{notice}</Text> : null}
+      {loading && currentThreads.length === 0 ? <ActivityIndicator color={OptionA.blue} /> : null}
+      <FlashList
+        data={visibleThreads}
+        renderItem={renderThread}
+        keyExtractor={(item) => item.id}
+        showsVerticalScrollIndicator={false}
+        contentContainerStyle={{ paddingTop: 8, paddingBottom: 32 + insets.bottom, paddingHorizontal: 16 }}
+        ItemSeparatorComponent={() => <View className="h-[10px]" />}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => void load(true)} tintColor={OptionA.blue} />}
+        onEndReached={() => void loadMore()}
+        onEndReachedThreshold={0.5}
+        ListEmptyComponent={!loading ? <View className="items-center gap-3 py-8"><Text className="text-[15px] font-semibold text-[#1C1C1E]">{error ? '暂时无法加载会话' : query || filter !== 'all' ? '没有匹配的会话' : '暂无会话'}</Text><Pressable accessibilityRole="button" onPress={() => error ? void load(true) : connectionState !== 'online' ? router.push('/(tabs)/monitors') : newTaskRef.current?.present()} className="min-h-[44px] justify-center px-4"><Text className="text-[14px] font-semibold text-[#0065D1]">{error ? '重新加载' : connectionState !== 'online' ? '检查连接' : '新建任务'}</Text></Pressable></View> : null}
+      />
+      <NewTaskSheet ref={newTaskRef} readOnly={health?.allowWrite === false} onCreated={async (result) => {
+        if (result.threadId) router.push({ pathname: '/thread/[id]', params: { id: result.threadId } });
+        else { setNotice('任务已提交，请刷新会话列表确认。'); await load(true); }
+      }} />
+    </View>
+  );
 }

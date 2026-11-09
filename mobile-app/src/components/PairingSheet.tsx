@@ -1,9 +1,23 @@
 /**
- * Bottom-sheet based pairing drawer. Uses expo-camera's CameraView barcode
- * scanner inside a @gorhom/bottom-sheet half-screen drawer — never a centred
- * Modal. Parses both real QR formats (codexpocket://add and /login?token=).
+ * Bottom-sheet pairing drawer. CameraView barcode scanning plus manual entry
+ * live inside a scrollable @gorhom/bottom-sheet drawer — never a centred Modal.
+ * Parses both real QR formats (codexpocket://add and /login?token=).
+ *
+ * Contract kept from the previous version:
+ *  - `present()` / `dismiss()` handle, `onPaired(result)` prop.
+ * Hardened behaviour:
+ *  - content is scrollable (small screens / large font) and the drawer tracks
+ *    the keyboard so the manual fields and the action stay reachable;
+ *  - the access code is masked, one submit at a time (in-flight guard),
+ *  - a failure shows the reason and keeps every field value,
+ *  - the drawer closes only after `onPaired` really resolved.
  */
-import { BottomSheetModal, BottomSheetView, BottomSheetBackdrop } from '@gorhom/bottom-sheet';
+import {
+  BottomSheetBackdrop,
+  BottomSheetModal,
+  BottomSheetScrollView,
+  BottomSheetTextInput,
+} from '@gorhom/bottom-sheet';
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import * as Haptics from 'expo-haptics';
 import {
@@ -15,12 +29,20 @@ import {
   useState,
   type Ref,
 } from 'react';
-import { Platform, StyleSheet, Text, View } from 'react-native';
+import { Platform, Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { GLASS_INTENSITY, GLASS_TINT, OptionA } from '@/constants/optionA';
 import { parsePairingQR, type QRParseResult } from '@/services/pairing';
 
-import { DragHandle, EmptyState, PrimaryButton, RoundedInput, Separator } from './ui';
+import {
+  accessCodeSummary,
+  blockScanAfterFailure,
+  composeManualPairingInput,
+  pairingErrorMessage,
+  shouldHandleScan,
+  type ScanThrottle,
+} from './sheetLogic';
+import { DragHandle, EmptyState, PrimaryButton, Separator } from './ui';
 
 export type PairingSheetHandle = {
   present: () => void;
@@ -31,22 +53,28 @@ type Props = {
   onPaired: (result: QRParseResult) => void | Promise<void>;
 };
 
+/** Same code cannot re-trigger while in flight or right after a failure. */
+const SCAN_LOCKED_UNTIL_SETTLED = Number.MAX_SAFE_INTEGER;
+
 export const PairingSheet = forwardRef<PairingSheetHandle, Props>(function PairingSheet(
   { onPaired },
   ref: Ref<PairingSheetHandle>
 ) {
   const sheetRef = useRef<BottomSheetModal>(null);
+  const inFlightRef = useRef(false);
+  const scanThrottleRef = useRef<ScanThrottle | null>(null);
   const [permission, requestPermission] = useCameraPermissions();
   const [sheetOpen, setSheetOpen] = useState(false);
-  const [scanned, setScanned] = useState<string | null>(null);
   const [error, setError] = useState('');
+  const [pending, setPending] = useState(false);
   const [manualUrl, setManualUrl] = useState('');
   const [manualToken, setManualToken] = useState('');
+  const [showToken, setShowToken] = useState(false);
 
   useImperativeHandle(ref, () => ({
     present: () => {
       setError('');
-      setScanned(null);
+      scanThrottleRef.current = null;
       setSheetOpen(true);
       sheetRef.current?.present();
     },
@@ -59,19 +87,65 @@ export const PairingSheet = forwardRef<PairingSheetHandle, Props>(function Pairi
     if (sheetOpen && !permission?.granted) void requestPermission().catch(() => undefined);
   }, [sheetOpen, permission?.granted, requestPermission]);
 
-  const accept = useCallback(
-    async (result: QRParseResult | null, source: string) => {
-      if (!result) {
-        setError('无法识别二维码，请扫描 Turnloom 终端配对码或手动输入');
-        return;
+  /**
+   * 唯一的提交出口：成功（onPaired 已完成）才返回 true 并关闭抽屉；
+   * 失败返回 false，保留输入内容与错误文案。
+   */
+  const submit = useCallback(
+    async (raw: string): Promise<boolean> => {
+      if (inFlightRef.current) return false;
+      const parsed = parsePairingQR(raw);
+      if (!parsed) {
+        setError('无法识别配对码：请扫描终端二维码，或手动输入服务地址');
+        return false;
       }
-      setScanned(source);
+      inFlightRef.current = true;
+      setPending(true);
       setError('');
-      await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-      await onPaired(result);
+      try {
+        await onPaired(parsed);
+      } catch (caught) {
+        setError(pairingErrorMessage(caught, '配对失败，请确认电脑端已启动'));
+        void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error).catch(
+          () => undefined
+        );
+        return false;
+      } finally {
+        inFlightRef.current = false;
+        setPending(false);
+      }
+      void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(
+        () => undefined
+      );
       sheetRef.current?.dismiss();
+      return true;
     },
     [onPaired]
+  );
+
+  const submitManual = useCallback(() => {
+    const target = composeManualPairingInput({ url: manualUrl, token: manualToken });
+    if (!target.ok) {
+      setError(target.error);
+      return;
+    }
+    void submit(target.raw);
+  }, [manualToken, manualUrl, submit]);
+
+  const handleBarcode = useCallback(
+    (data: string) => {
+      const now = Date.now();
+      if (!shouldHandleScan(scanThrottleRef.current, data, now)) return;
+      scanThrottleRef.current = {
+        code: String(data).trim(),
+        blockedUntil: SCAN_LOCKED_UNTIL_SETTLED,
+      };
+      void submit(data).then((ok) => {
+        // 失败后给同一个码一个冷却窗口，避免相机回调连环重试。
+        if (!ok) scanThrottleRef.current = blockScanAfterFailure(data, Date.now());
+      });
+    },
+    [submit]
   );
 
   const cameraAvailable = Platform.OS !== 'web' && permission?.granted === true;
@@ -79,8 +153,12 @@ export const PairingSheet = forwardRef<PairingSheetHandle, Props>(function Pairi
   return (
     <BottomSheetModal
       ref={sheetRef}
-      snapPoints={['62%']}
-      enablePanDownToClose
+      snapPoints={['62%', '90%']}
+      enableDynamicSizing={false}
+      enablePanDownToClose={!pending}
+      keyboardBehavior="interactive"
+      keyboardBlurBehavior="restore"
+      android_keyboardInputMode="adjustResize"
       onChange={(index) => setSheetOpen(index >= 0)}
       backgroundStyle={styles.sheetBackground}
       handleComponent={() => (
@@ -89,11 +167,14 @@ export const PairingSheet = forwardRef<PairingSheetHandle, Props>(function Pairi
         </View>
       )}
       backdropComponent={(props) => (
-        <BottomSheetBackdrop {...props} appearsOnIndex={0} disappearsOnIndex={-1} opacity={0.35} />
+        <BottomSheetBackdrop {...props} appearsOnIndex={0} disappearsOnIndex={-1} opacity={0.35} pressBehavior={pending ? 'none' : 'close'} />
       )}>
-      <BottomSheetView style={styles.content}>
+      <BottomSheetScrollView
+        contentContainerStyle={styles.content}
+        keyboardShouldPersistTaps="handled"
+        showsVerticalScrollIndicator={false}>
         <Text style={styles.title}>扫码配对</Text>
-        <Text style={styles.subtitle}>扫描电脑终端显示的 Codex-Turnloom 配对二维码</Text>
+        <Text style={styles.subtitle}>扫描电脑终端的配对二维码，或手动输入地址</Text>
 
         <View style={styles.cameraFrame}>
           {cameraAvailable ? (
@@ -101,16 +182,18 @@ export const PairingSheet = forwardRef<PairingSheetHandle, Props>(function Pairi
               style={StyleSheet.absoluteFill}
               facing="back"
               barcodeScannerSettings={{ barcodeTypes: ['qr'] }}
-              onBarcodeScanned={(event) => {
-                if (scanned === event.data) return;
-                setScanned(event.data);
-                void accept(parsePairingQR(event.data), event.data);
-              }}
+              onBarcodeScanned={(event) => handleBarcode(event?.data ?? '')}
             />
           ) : (
             <EmptyState
               title={sheetOpen ? '相机尚未授权' : '准备启用相机'}
-              hint={Platform.OS === 'web' ? 'Web 预览不支持原生扫码，请使用下方手动输入' : (sheetOpen ? '请在系统弹窗中允许相机权限' : '打开扫码抽屉后会自动请求相机权限；也可直接使用下方手动输入')}
+              hint={
+                Platform.OS === 'web'
+                  ? '预览环境不支持扫码，请用下方手动输入'
+                  : sheetOpen
+                    ? '允许相机权限，或直接用下方手动输入'
+                    : '打开抽屉后会申请相机权限'
+              }
             />
           )}
           <View style={styles.glassLabel}>
@@ -119,36 +202,53 @@ export const PairingSheet = forwardRef<PairingSheetHandle, Props>(function Pairi
         </View>
 
         <Separator />
-        <Text style={styles.manualTitle}>手动输入服务地址</Text>
-        <RoundedInput
+        <Text style={styles.manualTitle}>手动输入</Text>
+        <BottomSheetTextInput
           value={manualUrl}
           onChangeText={setManualUrl}
           placeholder="http://192.168.1.10:8787"
+          placeholderTextColor={OptionA.inkSoft}
           autoCapitalize="none"
           autoCorrect={false}
           keyboardType="url"
-          style={styles.manualInput}
+          returnKeyType="next"
+          editable={!pending}
+          accessibilityLabel="服务地址"
+          style={styles.input}
         />
-        <RoundedInput
-          value={manualToken}
-          onChangeText={setManualToken}
-          placeholder="访问码（可选）"
-          autoCapitalize="none"
-          autoCorrect={false}
-          style={styles.manualInput}
-        />
+        <View style={styles.tokenRow}>
+          <BottomSheetTextInput
+            value={manualToken}
+            onChangeText={setManualToken}
+            placeholder="访问码（可选）"
+            placeholderTextColor={OptionA.inkSoft}
+            autoCapitalize="none"
+            autoCorrect={false}
+            secureTextEntry={!showToken}
+            editable={!pending}
+            accessibilityLabel="访问码"
+            style={[styles.input, styles.tokenInput]}
+          />
+          <Pressable
+            onPress={() => setShowToken((shown) => !shown)}
+            accessibilityRole="button"
+            accessibilityLabel={showToken ? '隐藏访问码' : '显示访问码'}
+            hitSlop={8}
+            style={({ pressed }) => [styles.tokenToggle, pressed && styles.pressed]}>
+            <Text style={styles.tokenToggleText}>{showToken ? '隐藏' : '显示'}</Text>
+          </Pressable>
+        </View>
+        <Text style={styles.hint}>{accessCodeSummary(manualToken)}</Text>
+
         {error ? <Text style={styles.error}>{error}</Text> : null}
+
         <PrimaryButton
-          label="配对并保存"
-          onPress={() => {
-            const combined = manualToken.trim()
-              ? `${manualUrl.trim().replace(/\?.*$/, '')}/login?token=${encodeURIComponent(manualToken.trim())}`
-              : manualUrl.trim();
-            void accept(parsePairingQR(combined), 'manual');
-          }}
+          label={pending ? '配对中…' : '配对并保存'}
+          onPress={submitManual}
+          disabled={pending}
           style={styles.action}
         />
-      </BottomSheetView>
+      </BottomSheetScrollView>
     </BottomSheetModal>
   );
 });
@@ -165,7 +265,7 @@ const styles = StyleSheet.create({
   },
   content: {
     paddingHorizontal: 20,
-    paddingBottom: 24,
+    paddingBottom: 28,
     gap: 10,
   },
   title: {
@@ -205,8 +305,47 @@ const styles = StyleSheet.create({
     color: OptionA.inkSoft,
     marginTop: 4,
   },
-  manualInput: {
-    minHeight: 42,
+  input: {
+    minHeight: 44,
+    borderRadius: 999,
+    backgroundColor: OptionA.fill,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: OptionA.separator,
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    color: OptionA.ink,
+    fontSize: 15,
+  },
+  tokenRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  tokenInput: {
+    flex: 1,
+  },
+  tokenToggle: {
+    minHeight: 44,
+    minWidth: 56,
+    paddingHorizontal: 12,
+    borderRadius: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: OptionA.fill,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: OptionA.separator,
+  },
+  tokenToggleText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: OptionA.blue,
+  },
+  pressed: {
+    opacity: 0.8,
+  },
+  hint: {
+    fontSize: 12,
+    color: OptionA.inkSoft,
   },
   error: {
     color: OptionA.redInk,

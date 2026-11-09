@@ -1,122 +1,221 @@
-/**
- * 信息架构 v4 的轻量共享状态：当前选中的终端、当前会话、引擎偏好。
- * 数据来自真实配对配置 / 用户选择，不伪造服务端数据。
- */
-import { useEffect, useState } from 'react';
+/** Shared terminal state for the tab layout, screens and authentication recovery. */
+import { createContext, createElement, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 
-import { DEMO_MODE, DEMO_PAIRING } from './demoBootstrap';
-import { localGet, localSet } from './localStore';
-import { getTurnloomClient } from './turnloomClient';
-
-export type Engine = 'codex' | 'pi';
+import { clearConversationCacheForOrigin, terminalCacheOrigin } from './conversationCache';
+import { DEMO_MODE } from './demoBootstrap';
+import { localRemove } from './localStore';
+import {
+  activateTerminal,
+  normalizeServerUrl,
+  readTerminals,
+  removeTerminal,
+  saveTerminal,
+  type PairingConfig,
+  type StoredTerminal,
+  type TerminalSnapshot,
+} from './pairing';
+import { getTurnloomClient, probeConnection } from './turnloomClient';
+import type { HealthResponse } from './types';
 
 export const ACTIVE_TERMINAL_KEY = 'activeTerminalId';
-export const ENGINE_KEY = 'engine';
-export const SELECTED_THREAD_KEY = 'selectedThreadId';
-/** 预置终端：正式包为本机 de；演示包额外提供离线演示终端。 */
-export const BUILTIN_TERMINALS = [
-  { id: 'builtin-de', name: '本机 · de', url: 'http://192.168.1.10:8787', token: '684271' },
-  { id: 'demo', name: '离线演示 · 本机', url: 'http://demo.invalid', token: 'demo' },
-] as const;
+const client = getTurnloomClient();
+const EMPTY: TerminalSnapshot = { terminals: [], activeId: null };
 
-export type TerminalOption = {
-  id: string;
-  name: string;
-  url: string;
-  token: string;
+type TerminalContextValue = {
+  terminals: StoredTerminal[];
+  terminal: StoredTerminal | null;
+  connectionRevision: number;
+  checking: boolean;
+  storageError: string;
+  health: HealthResponse | null;
+  connectionState: 'checking' | 'online' | 'offline';
+  authRequired: boolean;
+  reload: () => Promise<void>;
+  refreshHealth: () => Promise<void>;
+  connect: (config: PairingConfig) => Promise<void>;
+  select: (id: string) => Promise<void>;
+  update: (id: string, config: PairingConfig) => Promise<void>;
+  remove: (id: string) => Promise<void>;
+  requestAuth: () => void;
+  dismissAuth: () => void;
+  reauthenticate: (token: string) => Promise<void>;
 };
 
-export async function readActiveTerminal(): Promise<TerminalOption | null> {
-  if (DEMO_MODE) {
-    return { id: 'demo', name: DEMO_PAIRING.machineName, url: DEMO_PAIRING.serverUrl, token: DEMO_PAIRING.token };
-  }
-  const [savedId, config] = await Promise.all([localGet(ACTIVE_TERMINAL_KEY), getTurnloomClient().load()]);
-  // 真实配对配置优先：用户在「终端」页改过地址后，内置常量的硬编码 URL 不能再盖回去
-  // （这正是上一版「改了保存、重启又变回旧地址」的根因）。
-  if (config?.serverUrl) {
-    const builtin = BUILTIN_TERMINALS.find((item) => config.serverUrl.startsWith(item.url));
-    return {
-      id: savedId || builtin?.id || 'paired-device',
-      name: config.machineName || builtin?.name || new URL(config.serverUrl).host,
-      url: config.serverUrl,
-      token: config.token || builtin?.token || '',
-    };
-  }
-  if (savedId) {
-    const builtin = BUILTIN_TERMINALS.find((item) => item.id === savedId);
-    if (builtin) return { ...builtin };
-  }
-  return null;
-}
+const TerminalContext = createContext<TerminalContextValue | null>(null);
 
-export async function saveActiveTerminal(id: string): Promise<void> {
-  await localSet(ACTIVE_TERMINAL_KEY, id);
-}
-
-/** 冷启动判定：已有已选终端或已配对设备时跳过轻量选择页。 */
-export function useTerminalSelection() {
-  const [terminal, setTerminal] = useState<TerminalOption | null>(null);
+export function TerminalProvider({ children }: { children: ReactNode }) {
+  const [snapshot, setSnapshot] = useState<TerminalSnapshot>(EMPTY);
+  const snapshotRef = useRef<TerminalSnapshot>(EMPTY);
   const [checking, setChecking] = useState(true);
+  const [storageError, setStorageError] = useState('');
+  const [health, setHealth] = useState<HealthResponse | null>(null);
+  const [connectionState, setConnectionState] = useState<'checking' | 'online' | 'offline'>('checking');
+  const [authRequired, setAuthRequired] = useState(false);
+  const healthSequence = useRef(0);
+  const mutating = useRef(false);
+  const [connectionRevision, setConnectionRevision] = useState(0);
 
-  useEffect(() => {
-    let alive = true;
-    void readActiveTerminal().then((value) => {
-      if (!alive) return;
-      setTerminal(value);
+  const sync = useCallback(async () => {
+    const next = await readTerminals();
+    const previous = snapshotRef.current.terminals.find((item) => item.id === snapshotRef.current.activeId);
+    const active = next.terminals.find((item) => item.id === next.activeId);
+    await client.refreshConfig();
+    if (previous?.id !== active?.id || previous?.serverUrl !== active?.serverUrl || previous?.token !== active?.token) {
+      healthSequence.current += 1;
+      setHealth(null);
+      setConnectionState(active ? 'checking' : 'offline');
+      setConnectionRevision((value) => value + 1);
+    }
+    snapshotRef.current = next;
+    setSnapshot(next);
+    setStorageError('');
+    return next;
+  }, []);
+
+  const runMutation = useCallback(async (action: () => Promise<void>) => {
+    if (mutating.current) throw new Error('正在更新电脑连接，请稍后重试');
+    mutating.current = true;
+    try { await action(); } finally { mutating.current = false; }
+  }, []);
+
+  const reload = useCallback(async () => {
+    setChecking(true);
+    try {
+      await sync();
+    } catch (error) {
+      setStorageError(error instanceof Error ? error.message : String(error));
+    } finally {
       setChecking(false);
-    });
-    return () => {
-      alive = false;
-    };
+    }
+  }, [sync]);
+
+  useEffect(() => { void reload(); }, [reload]);
+  useEffect(() => client.onAuthRequired(() => setAuthRequired(true)), []);
+
+  const refreshHealth = useCallback(async () => {
+    const activeId = snapshotRef.current.activeId;
+    const sequence = ++healthSequence.current;
+    if (!activeId) {
+      setHealth(null);
+      setConnectionState('offline');
+      return;
+    }
+    setConnectionState('checking');
+    try {
+      const result = await client.getHealth();
+      if (sequence !== healthSequence.current || snapshotRef.current.activeId !== activeId) return;
+      setHealth(result);
+      setConnectionState(result?.ok ? 'online' : 'offline');
+    } catch (error) {
+      if (sequence !== healthSequence.current || snapshotRef.current.activeId !== activeId) return;
+      setHealth(null);
+      setConnectionState('offline');
+      throw error;
+    }
   }, []);
 
-  const choose = async (option: TerminalOption) => {
-    await saveActiveTerminal(option.id);
-    setTerminal(option);
-  };
-
-  return { terminal, checking, choose };
-}
-
-/** 引擎偏好（Codex CLI / Pi Agent），只影响「终端」页的选择展示。 */
-export function useEnginePreference() {
-  const [engine, setEngineState] = useState<Engine>('codex');
+  const terminal = useMemo(
+    () => snapshot.terminals.find((item) => item.id === snapshot.activeId) || null,
+    [snapshot],
+  );
 
   useEffect(() => {
-    let alive = true;
-    void localGet(ENGINE_KEY).then((value) => {
-      if (alive && (value === 'codex' || value === 'pi')) setEngineState(value);
-    });
-    return () => {
-      alive = false;
-    };
+    void refreshHealth().catch(() => undefined);
+    return () => { healthSequence.current += 1; };
+  }, [terminal?.id, terminal?.serverUrl, terminal?.token, refreshHealth]);
+
+  const connect = useCallback((config: PairingConfig) => runMutation(async () => {
+    const serverUrl = normalizeServerUrl(config.serverUrl);
+    if (!serverUrl) throw new Error('服务地址格式不正确，请检查后重试');
+    const normalized = { ...config, serverUrl };
+    await probeConnection(normalized);
+    await saveTerminal(normalized, { activate: true });
+    await sync();
+    setAuthRequired(false);
+  }), [sync, runMutation]);
+
+  const select = useCallback((id: string) => runMutation(async () => {
+    await activateTerminal(id);
+    await sync();
+    setAuthRequired(false);
+  }), [sync, runMutation]);
+
+  const update = useCallback((id: string, config: PairingConfig) => runMutation(async () => {
+    const old = snapshotRef.current.terminals.find((item) => item.id === id);
+    const serverUrl = normalizeServerUrl(config.serverUrl);
+    if (!serverUrl) throw new Error('服务地址格式不正确，请检查后重试');
+    const normalized = { ...config, serverUrl };
+    await probeConnection(normalized);
+    await saveTerminal(normalized, { id });
+    if (old && (old.serverUrl !== serverUrl || old.token !== config.token)) {
+      await clearConversationCacheForOrigin(terminalCacheOrigin(old.serverUrl, old.id, old.cacheVersion)).catch(() => undefined);
+    }
+    await sync();
+    setAuthRequired(false);
+  }), [sync, runMutation]);
+
+  const remove = useCallback((id: string) => runMutation(async () => {
+    const old = snapshotRef.current.terminals.find((item) => item.id === id);
+    const sharedOrigin = old && snapshotRef.current.terminals.some((item) => item.id !== id && item.serverUrl === old.serverUrl);
+    await removeTerminal(id);
+    const next = await sync();
+    if (old) {
+      await clearConversationCacheForOrigin(terminalCacheOrigin(old.serverUrl, old.id, old.cacheVersion)).catch(() => undefined);
+      if (old.id === 'legacy' && !sharedOrigin) await clearConversationCacheForOrigin(old.serverUrl).catch(() => undefined);
+    }
+    if (!next.activeId) await localRemove(ACTIVE_TERMINAL_KEY);
+    setAuthRequired(false);
+  }), [sync, runMutation]);
+
+  const reauthenticate = useCallback((token: string) => runMutation(async () => {
+    const selected = snapshotRef.current.terminals.find((item) => item.id === snapshotRef.current.activeId);
+    if (!selected) throw new Error('请先连接电脑');
+    const next = { serverUrl: selected.serverUrl, token: token.trim(), machineName: selected.machineName };
+    await probeConnection(next);
+    await saveTerminal(next, { id: selected.id });
+    if (selected.token !== next.token) await clearConversationCacheForOrigin(terminalCacheOrigin(selected.serverUrl, selected.id, selected.cacheVersion)).catch(() => undefined);
+    await sync();
+    // Re-entering the *same* access code is a valid recovery, yet it changes no
+    // terminal field, so sync() would not bump the revision. Bump it explicitly
+    // so thread screens restart their long poll after a 401 is cleared.
+    setConnectionRevision((value) => value + 1);
+    setAuthRequired(false);
+  }), [sync, runMutation]);
+  const requestAuth = useCallback(() => setAuthRequired(true), []);
+  const dismissAuth = useCallback(() => {
+    setAuthRequired(false);
+    // Closing the sheet without changing credentials also has to wake up any
+    // thread screen whose poll was waiting behind the authentication prompt.
+    setConnectionRevision((value) => value + 1);
   }, []);
 
-  const setEngine = (value: Engine) => {
-    setEngineState(value);
-    void localSet(ENGINE_KEY, value);
-  };
+  const value = useMemo<TerminalContextValue>(() => ({
+    terminals: snapshot.terminals,
+    terminal,
+    connectionRevision,
+    checking,
+    storageError,
+    health,
+    connectionState,
+    authRequired,
+    reload,
+    refreshHealth,
+    connect,
+    select,
+    update,
+    remove,
+    requestAuth,
+    dismissAuth,
+    reauthenticate,
+  }), [snapshot, terminal, connectionRevision, checking, storageError, health, connectionState, authRequired, reload, refreshHealth, connect, select, update, remove, reauthenticate, requestAuth, dismissAuth]);
 
-  return { engine, setEngine };
+  return createElement(TerminalContext.Provider, { value }, children);
 }
 
-export function useSelectedThread() {
-  const [threadId, setThreadIdState] = useState('');
-
-  useEffect(() => {
-    let alive = true;
-    void localGet(SELECTED_THREAD_KEY).then((value) => {
-      if (alive && value) setThreadIdState(value);
-    });
-    return () => {
-      alive = false;
-    };
-  }, []);
-
-  const selectThread = (id: string) => {
-    setThreadIdState(id);
-    void localSet(SELECTED_THREAD_KEY, id);
-  };
-
-  return { threadId, selectThread };
+export function useTerminalSelection(): TerminalContextValue {
+  const context = useContext(TerminalContext);
+  if (!context) throw new Error('TerminalProvider is missing');
+  return context;
 }
+
+export { DEMO_MODE };

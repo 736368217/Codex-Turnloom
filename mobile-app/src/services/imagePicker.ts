@@ -8,6 +8,7 @@
  * 两个入口都只采纳图片：服务端 /api/send 只接受 images[]，原版 fileToImageAttachment 同样只接受图片格式。
  */
 import * as ImagePicker from 'expo-image-picker';
+import * as FileSystem from 'expo-file-system/legacy';
 import { Platform } from 'react-native';
 
 export type PickedImage = {
@@ -57,27 +58,30 @@ export async function pickImages(): Promise<PickedImage[]> {
  */
 export async function pickFiles(): Promise<{ images: PickedImage[]; skipped: number; unavailable: boolean }> {
   if (Platform.OS === 'web') return { images: [], skipped: 0, unavailable: false };
+  let DocumentPicker: typeof import('expo-document-picker');
   try {
-    // eslint-disable-next-line @typescript-eslint/no-var-requires
-    const DocumentPicker = require('expo-document-picker') as typeof import('expo-document-picker');
-    const result = await DocumentPicker.getDocumentAsync({
-      type: '*/*',
-      multiple: true,
-      base64: true,
-      copyToCacheDirectory: true,
-    });
-    if (result.canceled || !result.assets) return { images: [], skipped: 0, unavailable: false };
-    const all = result.assets;
-    const images = all
-      .filter((asset) => String(asset.mimeType || '').startsWith('image/') && Boolean(asset.base64))
-      .map((asset, index) => ({
-        name: asset.name || `file-${Date.now()}-${index + 1}.png`,
-        mimeType: asset.mimeType || 'image/png',
-        data: String(asset.base64),
-        uri: asset.uri,
-      }));
-    return { images, skipped: all.length - images.length, unavailable: false };
+    DocumentPicker = require('expo-document-picker') as typeof import('expo-document-picker');
   } catch {
     return { images: [], skipped: 0, unavailable: true };
   }
+  const result = await DocumentPicker.getDocumentAsync({ type: '*/*', multiple: true, copyToCacheDirectory: true });
+  if (result.canceled || !result.assets) return { images: [], skipped: 0, unavailable: false };
+  const images: PickedImage[] = [];
+  let skipped = 0;
+  for (const asset of result.assets) {
+    if (images.length >= 4) { skipped += 1; continue; }
+    const mimeType = String(asset.mimeType || '').toLowerCase();
+    if (!['image/jpeg', 'image/png', 'image/webp'].includes(mimeType) || (asset.size && asset.size > 5 * 1024 * 1024)) {
+      skipped += 1;
+      continue;
+    }
+    try {
+      const data = asset.base64 || await FileSystem.readAsStringAsync(asset.uri, { encoding: FileSystem.EncodingType.Base64 });
+      if (!data || data.length > Math.ceil((5 * 1024 * 1024) / 3) * 4) { skipped += 1; continue; }
+      images.push({ name: asset.name || `image-${images.length + 1}`, mimeType, data, uri: asset.uri });
+    } catch {
+      skipped += 1;
+    }
+  }
+  return { images, skipped, unavailable: false };
 }

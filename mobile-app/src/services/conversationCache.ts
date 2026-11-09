@@ -29,6 +29,10 @@ function safeKeyPart(value: string | number | null | undefined): string {
   return encodeURIComponent(String(value ?? ''));
 }
 
+export function terminalCacheOrigin(serverUrl: string, terminalId: string, cacheVersion: number): string {
+  return `${serverUrl}#terminal=${encodeURIComponent(terminalId)}&version=${cacheVersion}`;
+}
+
 export function conversationCacheKey({
   origin = 'unknown',
   codexHomeVersion = 'unknown',
@@ -161,5 +165,38 @@ export async function clearConversationCache(): Promise<void> {
     );
   } catch {
     /* ignore */
+  }
+}
+
+/** Remove only cache entries belonging to one unpaired server. */
+export async function clearConversationCacheForOrigin(origin: string): Promise<void> {
+  const prefix = `${safeKeyPart(origin)}|`;
+  for (const key of memory.keys()) {
+    if (key.startsWith(prefix)) memory.delete(key);
+  }
+  if (Platform.OS === 'web') {
+    if (typeof localStorage === 'undefined') return;
+    const keys: string[] = [];
+    for (let index = 0; index < localStorage.length; index += 1) {
+      const key = localStorage.key(index);
+      if (key?.startsWith(WEB_PREFIX + prefix)) keys.push(key);
+    }
+    keys.forEach((key) => localStorage.removeItem(key));
+    return;
+  }
+  const base = FileSystem.documentDirectory || FileSystem.cacheDirectory;
+  if (!base) return;
+  const entries = await FileSystem.readDirectoryAsync(base);
+  for (const name of entries) {
+    if (!name.startsWith('turnloom-cache-') || !name.endsWith('.json')) continue;
+    const uri = `${base}${name}`;
+    try {
+      const cached = JSON.parse(await FileSystem.readAsStringAsync(uri, { encoding: FileSystem.EncodingType.UTF8 })) as CachedConversation;
+      if (typeof cached?.key === 'string' && cached.key.startsWith(prefix)) {
+        await FileSystem.deleteAsync(uri, { idempotent: true });
+      }
+    } catch {
+      // Unreadable or unrelated cache files are left untouched.
+    }
   }
 }

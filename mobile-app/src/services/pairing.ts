@@ -1,129 +1,97 @@
-/**
- * Turnloom pairing/storage layer.
- *
- * `expo-secure-store` is the iOS Keychain / Android Keystore on native. It has
- * no web implementation in SDK 58, so a localStorage mirror is used on web for
- * `expo export --platform web` validation. Connection credentials remain the
- * only secret held here; conversation cache goes through `conversationCache.ts`.
- */
+/** Secure terminal storage with migration from the original single-device keys. */
 import * as SecureStore from 'expo-secure-store';
 import { Platform } from 'react-native';
 
 import { DEMO_MODE, DEMO_PAIRING } from './demoBootstrap';
+import { createTerminalStore, type StorageAdapter, type StoredTerminal, type TerminalSnapshot } from './terminalStore';
 
 export type PairingConfig = {
   serverUrl: string;
   token: string;
   machineName: string;
 };
-
-const KEY_URL = 'turnloom.pairing.serverUrl';
-const KEY_TOKEN = 'turnloom.pairing.token';
-const KEY_NAME = 'turnloom.pairing.machineName';
+export type { StoredTerminal, TerminalSnapshot };
 
 const WEB_PREFIX = 'turnloom.pairing.';
-
-function webGet(key: string): string | null {
-  try {
-    if (typeof localStorage === 'undefined') return null;
+const storage: StorageAdapter = {
+  async get(key) {
+    if (Platform.OS !== 'web') return SecureStore.getItemAsync(key);
+    if (typeof localStorage === 'undefined') throw new Error('本机存储不可用');
     return localStorage.getItem(WEB_PREFIX + key);
-  } catch {
-    return null;
-  }
-}
+  },
+  async set(key, value) {
+    if (Platform.OS !== 'web') return SecureStore.setItemAsync(key, value);
+    if (typeof localStorage === 'undefined') throw new Error('本机存储不可用');
+    localStorage.setItem(WEB_PREFIX + key, value);
+  },
+  async remove(key) {
+    if (Platform.OS !== 'web') return SecureStore.deleteItemAsync(key);
+    if (typeof localStorage === 'undefined') throw new Error('本机存储不可用');
+    localStorage.removeItem(WEB_PREFIX + key);
+  },
+};
 
-function webSet(key: string, value: string): void {
-  try {
-    if (typeof localStorage !== 'undefined') localStorage.setItem(WEB_PREFIX + key, value);
-  } catch {
-    /* storage unavailable (private mode) — pairing just won't persist */
-  }
-}
-
-async function getItem(key: string): Promise<string | null> {
-  if (Platform.OS === 'web') return webGet(key);
-  try {
-    return await SecureStore.getItemAsync(key);
-  } catch {
-    return null;
-  }
-}
-
-async function setItem(key: string, value: string): Promise<void> {
-  if (Platform.OS === 'web') {
-    webSet(key, value);
-    return;
-  }
-  await SecureStore.setItemAsync(key, value);
-}
-
-/** Normalizes a user/QR supplied URL into an absolute origin without a trailing slash. */
 export function normalizeServerUrl(raw: string): string {
   const trimmed = String(raw || '').trim().replace(/\/+$/, '');
   if (!trimmed) return '';
+  if (/^[a-z][a-z0-9+.-]*:\/\//i.test(trimmed) && !/^https?:\/\//i.test(trimmed)) return '';
   const withProtocol = /^https?:\/\//i.test(trimmed) ? trimmed : `http://${trimmed}`;
   try {
     const url = new URL(withProtocol);
-    if (url.protocol !== 'http:' && url.protocol !== 'https:') return '';
+    if ((url.protocol !== 'http:' && url.protocol !== 'https:') || url.username || url.password) return '';
     return url.toString().replace(/\/+$/, '');
   } catch {
     return '';
   }
 }
 
+const terminalStore = createTerminalStore(storage, normalizeServerUrl, () =>
+  `device-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`
+);
+const demoTerminal: StoredTerminal = { id: 'demo', ...DEMO_PAIRING, cacheVersion: 0 };
+
+export async function readTerminals(): Promise<TerminalSnapshot> {
+  if (DEMO_MODE) return { terminals: [demoTerminal], activeId: demoTerminal.id };
+  return terminalStore.read();
+}
+
+export async function saveTerminal(config: PairingConfig, options: { id?: string; activate?: boolean } = {}): Promise<StoredTerminal> {
+  if (DEMO_MODE) throw new Error('演示模式不能修改电脑连接');
+  return terminalStore.upsert(config, options);
+}
+
+export async function activateTerminal(id: string): Promise<StoredTerminal> {
+  if (DEMO_MODE && id === demoTerminal.id) return demoTerminal;
+  if (DEMO_MODE) throw new Error('演示模式不能切换电脑');
+  return terminalStore.activate(id);
+}
+
+export async function removeTerminal(id: string): Promise<void> {
+  if (DEMO_MODE) throw new Error('演示模式不能解除配对');
+  await terminalStore.remove(id);
+}
+
 export async function readPairing(): Promise<PairingConfig | null> {
-  if (DEMO_MODE) return { serverUrl: DEMO_PAIRING.serverUrl, token: DEMO_PAIRING.token, machineName: DEMO_PAIRING.machineName };
-  const [serverUrl, token, machineName] = await Promise.all([
-    getItem(KEY_URL),
-    getItem(KEY_TOKEN),
-    getItem(KEY_NAME),
-  ]);
-  const normalized = normalizeServerUrl(serverUrl || '');
-  if (!normalized) return null;
-  return {
-    serverUrl: normalized,
-    token: token || '',
-    machineName: machineName || '',
-  };
+  const snapshot = await readTerminals();
+  const selected = snapshot.terminals.find((item) => item.id === snapshot.activeId);
+  return selected ? { serverUrl: selected.serverUrl, token: selected.token, machineName: selected.machineName } : null;
 }
 
 export async function savePairing(config: PairingConfig): Promise<PairingConfig> {
-  const normalized = normalizeServerUrl(config.serverUrl);
-  if (!normalized) throw new Error('服务地址格式不正确，请检查后重试');
-  const next: PairingConfig = {
-    serverUrl: normalized,
-    token: String(config.token || ''),
-    machineName: String(config.machineName || '').trim(),
-  };
-  await Promise.all([
-    setItem(KEY_URL, next.serverUrl),
-    setItem(KEY_TOKEN, next.token),
-    setItem(KEY_NAME, next.machineName),
-  ]);
-  return next;
+  const selected = await saveTerminal(config, { activate: true });
+  return { serverUrl: selected.serverUrl, token: selected.token, machineName: selected.machineName };
 }
 
 export async function clearPairing(): Promise<void> {
-  if (Platform.OS === 'web') {
-    [KEY_URL, KEY_TOKEN, KEY_NAME].forEach((key) => {
-      try {
-        if (typeof localStorage !== 'undefined') localStorage.removeItem(WEB_PREFIX + key);
-      } catch {
-        /* ignore */
-      }
-    });
-    return;
-  }
-  await Promise.all(
-    [KEY_URL, KEY_TOKEN, KEY_NAME].map((key) =>
-      SecureStore.deleteItemAsync(key).catch(() => undefined)
-    )
-  );
+  const snapshot = await readTerminals();
+  if (snapshot.activeId) await removeTerminal(snapshot.activeId);
 }
 
-/** Only updates the access code (used by the 401 re-auth gate). */
 export async function updateAccessToken(token: string): Promise<void> {
-  await setItem(KEY_TOKEN, String(token || ''));
+  const snapshot = await readTerminals();
+  const selected = snapshot.terminals.find((item) => item.id === snapshot.activeId);
+  if (!selected) throw new Error('请先连接电脑');
+  await saveTerminal({ ...selected, token }, { id: selected.id });
 }
 
 export type QRParseResult = {
