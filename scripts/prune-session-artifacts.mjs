@@ -47,6 +47,11 @@ if (Number.isNaN(SINCE)) {
   console.error("--since 需要一个可解析的日期，例如 2026-10-31");
   process.exit(2);
 }
+if (APPLY && !SINCE) {
+  console.error("--apply 必须同时给 --since（例如 --since 2026-10-31）：没有时间窗就会连历史会话一起算进来。");
+  console.error("先不带 --apply 干跑，确认候选清单后再执行。");
+  process.exit(2);
+}
 
 const ARTIFACT_ROOTS = [];
 // 巡检线提示词的开头。只有这几条才允许被判成机器产物。
@@ -54,12 +59,14 @@ const REVIEW_PROMPTS = ["你是独立", "你是一条独立", "你是**独立", 
 const GREETING_RE = /^(你好|nihao|hi|hello)[。.!！\s]*$/i;
 const MARKER = "可删";
 const SMALL_TALK_MAX_MSGS = 8;
+/** 0 消息会话至少要「空置」这么久才允许判成空壳。 */
+const EMPTY_MIN_AGE_MS = 24 * 60 * 60 * 1000;
 
 if (!DB_PATH) {
   console.error("请通过 --db <数据库路径> 指定要清理的数据库");
   process.exit(2);
 }
-const db = new DatabaseSync(DB_PATH);
+const db = new DatabaseSync(DB_PATH, { readOnly: !APPLY });
 const now = Date.now();
 
 const rows = db
@@ -86,7 +93,9 @@ const artifactExists = () => ARTIFACT_ROOTS.some((root) => fs.existsSync(root));
 
 const classify = (row) => {
   const first = String(row.first || "").trim();
-  if (row.msgs === 0) return "EMPTY";
+  // 0 消息的会话可能是用户刚建、还没发第一句的（「每次收尾都跑一次」正是这种时机）：
+  // 只有创建超过一天仍然空着，才可能是发送失败留下的空壳。
+  if (row.msgs === 0) return now - Number(row.created_at) >= EMPTY_MIN_AGE_MS ? "EMPTY" : "KEEP";
   if (first.includes(MARKER)) return "MARKED";
   if (isReviewLine(row)) {
     if (!artifactExists()) return "KEEP";

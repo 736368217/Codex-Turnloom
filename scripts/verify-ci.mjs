@@ -11,21 +11,34 @@ function fail(message) {
   process.exitCode = 1;
 }
 
+/**
+ * node --test 有两种输出：CI 里的 Node 22 用 TAP（"# fail 0"），
+ * 本地 Node 24 在非 TTY 下可能用 spec reporter（"ℹ fail 0"）。
+ * 只认一种会让另一种永远读到 0，把 fail/cancelled 门禁变成摆设。
+ */
 function tapSummary(text) {
+  const pick = (label) => {
+    const tap = new RegExp(`# ${label} (\\d+)`).exec(text);
+    if (tap) return Number(tap[1]);
+    const spec = new RegExp(`^\\u2139 ${label} (\\d+)`, "m").exec(text);
+    return spec ? Number(spec[1]) : 0;
+  };
   return {
-    failed: Number(/# fail (\d+)/.exec(text)?.[1] || 0),
-    cancelled: Number(/# cancelled (\d+)/.exec(text)?.[1] || 0),
-    passed: Number(/# pass (\d+)/.exec(text)?.[1] || 0)
+    failed: pick("fail"),
+    cancelled: pick("cancelled"),
+    passed: pick("pass")
   };
 }
 
-function run(label, command, args, { capture = false } = {}) {
+function run(label, command, args, { capture = false, shell = false } = {}) {
   console.log(`\n[verify-ci] ${label}`);
   const result = spawnSync(command, args, {
     cwd: ROOT,
     encoding: capture ? "utf8" : undefined,
     stdio: capture ? "pipe" : "inherit",
-    shell: process.platform === "win32"
+    // 只有 npm/npx 这类 .cmd shim 才走 shell。node 自身明确用 shell:false：
+    // 一旦 Node 装在 "C:\Program Files\nodejs"，shell 会把未加引号的路径当成两条命令。
+    shell
   });
   if (capture) {
     process.stdout.write(result.stdout || "");
@@ -39,8 +52,8 @@ function run(label, command, args, { capture = false } = {}) {
   return result;
 }
 
-function runNodeTests(label, command, args) {
-  const result = run(label, command, args, { capture: true });
+function runNodeTests(label, command, args, options = {}) {
+  const result = run(label, command, args, { capture: true, ...options });
   if (!result) return;
   const output = `${result.stdout || ""}\n${result.stderr || ""}`;
   const summary = tapSummary(output);
@@ -65,10 +78,11 @@ if (!process.exitCode) runNodeTests("node --test (local runtime)", process.execP
 if (!process.exitCode) {
   // Keep the local check honest: CI currently runs Node 22, whose scheduler
   // exposed the cancelledByParent regression that local Node 24 did not.
-  runNodeTests(`node ${CI_NODE_VERSION} --test (CI runtime)`, "npx", ["--yes", `node@${CI_NODE_VERSION}`, "--test"]);
+  // npx / npm 在 Windows 上是 .cmd shim，必须经 shell 才能启动。
+  runNodeTests(`node ${CI_NODE_VERSION} --test (CI runtime)`, "npx", ["--yes", `node@${CI_NODE_VERSION}`, "--test"], { shell: true });
 }
-if (!process.exitCode) run("npm run check", "npm", ["run", "check"]);
-if (!process.exitCode) run("npm run desktop:check", "npm", ["run", "desktop:check"]);
+if (!process.exitCode) run("npm run check", "npm", ["run", "check"], { shell: true });
+if (!process.exitCode) run("npm run desktop:check", "npm", ["run", "desktop:check"], { shell: true });
 if (!process.exitCode) {
   console.log("\n[verify-ci] PASS: this commit would satisfy the GitHub Actions server job");
 }

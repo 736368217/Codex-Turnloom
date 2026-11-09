@@ -62,6 +62,9 @@ class ServiceController extends EventEmitter {
     this.intendedStop = false;
     this.starting = false;
     this.stopping = false;
+    this.probing = false;
+    this.restarting = false;
+    this.restartPromise = null;
     this.memoryBytes = 0;
     this._stdoutBuffer = "";
     this._stderrBuffer = "";
@@ -317,27 +320,40 @@ class ServiceController extends EventEmitter {
 
   async probeHealth() {
     if ((!this.child && !this.pid) || this.intendedStop) return;
-    const result = await this.healthApi.check(this.config, { timeoutMs: 2500 });
-    this.health.lastCheckAt = Date.now();
-    this.health.latencyMs = result.latencyMs || 0;
-    this.health.info = healthSummary(result.data) || this.health.info;
-    if (result.ok) {
-      this.healthFailures = 0;
-      this.health.ok = true;
-      if (this.state === "degraded") {
-        this.setState("running", this.managed ? "手机端可以访问" : "服务已由守护运行，手机端可以访问");
+    // 单飞：单次探测最长 2.5s，而定时间隔是 5s；重叠的两次探测会各自触发 restart，
+    // 后一次把前一次刚拉起的子进程 kill 掉，健康定时器随后被清空，状态永久停在 error。
+    if (this.probing) return;
+    this.probing = true;
+    try {
+      const result = await this.healthApi.check(this.config, { timeoutMs: 2500 });
+      this.health.lastCheckAt = Date.now();
+      this.health.latencyMs = result.latencyMs || 0;
+      this.health.info = healthSummary(result.data) || this.health.info;
+      if (result.ok) {
+        this.healthFailures = 0;
+        this.health.ok = true;
+        if (this.state === "degraded") {
+          this.setState("running", this.managed ? "手机端可以访问" : "服务已由守护运行，手机端可以访问");
+        }
+        return;
       }
-      return;
-    }
-    this.healthFailures += 1;
-    this.health.ok = false;
-    if (this.healthFailures === 3 && this.state === "running") {
-      this.setState("degraded", "服务响应异常，正在重试…");
-      this.logger.warn("service", `健康检查连续失败：${result.error || result.status}`);
-    }
-    if (this.healthFailures >= 6) {
-      this.logger.error("service", "健康检查连续失败，刷新服务状态。");
-      this.restart().catch(() => {});
+      this.healthFailures += 1;
+      this.health.ok = false;
+      if (this.healthFailures === 3 && this.state === "running") {
+        this.setState("degraded", "服务响应异常，正在重试…");
+        this.logger.warn("service", `健康检查连续失败：${result.error || result.status}`);
+      }
+      if (this.healthFailures >= 6) {
+        // 先清零再重启：restart() 内部的 stop() 会清掉健康定时器，
+        // 若保留 >=6 的状态，下一次 tick 会立刻再次 kill/start，永远起不来。
+        this.healthFailures = 0;
+        if (!this.restarting) {
+          this.logger.error("service", "健康检查连续失败，刷新服务状态。");
+          this.restart().catch(() => {});
+        }
+      }
+    } finally {
+      this.probing = false;
     }
   }
 
@@ -375,20 +391,33 @@ class ServiceController extends EventEmitter {
   }
 
   async restart() {
-    if (this.state === "running" || this.state === "degraded") {
-      const refreshed = await this.healthApi.check(this.config, { timeoutMs: 2500 });
-      if (refreshed.ok) {
-        this.applyHealthy(refreshed);
-        this.healthFailures = 0;
-        this.setState("running", this.managed ? "手机端可以访问" : "服务已由守护运行，手机端可以访问");
-        return { ok: true, refreshed: true, external: !this.managed };
+    // 串行化：健康检查、用户点击和崩溃重启会同时进来。
+    // 并发的「先 stop 后 start」会互相 kill 掉刚拉起的子进程，
+    // 失败计数没人重置，最后把状态永久锁死在 error。
+    if (this.restarting) return this.restartPromise ?? { ok: false, busy: true };
+    this.restarting = true;
+    this.restartPromise = (async () => {
+      try {
+        if (this.state === "running" || this.state === "degraded") {
+          const refreshed = await this.healthApi.check(this.config, { timeoutMs: 2500 });
+          if (refreshed.ok) {
+            this.applyHealthy(refreshed);
+            this.healthFailures = 0;
+            this.setState("running", this.managed ? "手机端可以访问" : "服务已由守护运行，手机端可以访问");
+            return { ok: true, refreshed: true, external: !this.managed };
+          }
+          await this.stop({ silent: true });
+        } else if (this.managed) {
+          await this.stop({ silent: true });
+        }
+        this.restartAttempt = 0;
+        return await this.start({ manual: true });
+      } finally {
+        this.restarting = false;
+        this.restartPromise = null;
       }
-      await this.stop({ silent: true });
-    } else if (this.managed) {
-      await this.stop({ silent: true });
-    }
-    this.restartAttempt = 0;
-    return this.start({ manual: true });
+    })();
+    return this.restartPromise;
   }
 
   async stop({ silent = false } = {}) {
