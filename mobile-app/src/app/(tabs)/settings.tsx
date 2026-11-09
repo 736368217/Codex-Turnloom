@@ -1,90 +1,72 @@
-/**
- * 「设置」Tab：访问码说明、只读模式、关于。
- * v5：NativeWind className + React Native Reusables 复制式 Card/Button/Text。
- */
-import { useCallback, useEffect, useState } from 'react';
-import { ScrollView, View } from 'react-native';
+import Constants from 'expo-constants';
+import { router } from 'expo-router';
+import { useState } from 'react';
+import { Pressable, ScrollView, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { Button, Card, Text } from '@/components/ui/rnr';
-import { getTurnloomClient } from '@/services/turnloomClient';
+import { Card, Text } from '@/components/ui/rnr';
 
-const client = getTurnloomClient();
-
+import { useTerminalSelection } from '@/services/appState';
 export default function SettingsScreen() {
   const insets = useSafeAreaInsets();
+  const { terminal, health, connectionState, requestAuth, refreshHealth, remove } = useTerminalSelection();
+  const [confirming, setConfirming] = useState(false);
+  const [pending, setPending] = useState(false);
   const [message, setMessage] = useState('');
-  const [readOnly, setReadOnly] = useState(false);
-  const [paired, setPaired] = useState(false);
+  const [error, setError] = useState('');
 
-  useEffect(() => {
-    let alive = true;
-    void client.load().then(async (config) => {
-      if (!alive) return;
-      setPaired(Boolean(config?.serverUrl));
-      if (!config) return;
-      try {
-        const health = await client.getHealth();
-        if (alive) setReadOnly(health?.allowWrite === false);
-      } catch {
-        if (alive) setReadOnly(false);
-      }
-    });
-    return () => {
-      alive = false;
-    };
-  }, []);
-
-  const clearPairing = useCallback(async () => {
-    await client.signOut();
-    setPaired(false);
-    setMessage('已清除配对信息，请到「终端」页重新添加');
-  }, []);
+  const reconnect = async () => {
+    setError('');
+    try { await refreshHealth(); setMessage('连接已更新'); }
+    catch (caught) { setError(caught instanceof Error ? caught.message : '连接失败'); }
+  };
+  const unpair = async () => {
+    if (!terminal || pending) return;
+    setPending(true);
+    setError('');
+    try {
+      await remove(terminal.id);
+      setConfirming(false);
+      router.replace('/(tabs)/');
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : '解除配对失败');
+    } finally {
+      setPending(false);
+    }
+  };
 
   return (
-    <ScrollView
-      className="flex-1 bg-transparent"
-      contentContainerStyle={{ paddingHorizontal: 20, paddingTop: insets.top + 16, paddingBottom: 120, gap: 10 }}
-      showsVerticalScrollIndicator={false}>
-      <Text className="text-[11px] font-bold uppercase tracking-[2px] text-[#8E8E93]">Codex-Turnloom</Text>
-      <Text className="pb-[2px] text-[30px] font-bold leading-[34px] tracking-[-1px] text-[#1C1C1E]">设置</Text>
-      <Text className="pb-[6px] text-[12px] text-[#8E8E93]">访问码、权限与关于</Text>
-      <Text className="mb-2 text-[13px] font-semibold uppercase tracking-[0.6px] text-[#8E8E93]">连接</Text>
-      <Card className="gap-2 p-4">
-        <Text className="text-[15px] font-semibold text-[#1C1C1E]">当前服务</Text>
-        <Text className="text-[14px] text-[#8E8E93]">{paired ? '已配对终端' : '未配对'}</Text>
-        <Text className="text-[12px] leading-[18px] text-[#8E8E93]">
-          访问码将作为 x-access-token 请求头发送，只保存在本机。
-        </Text>
+    <ScrollView contentContainerStyle={{ paddingHorizontal: 16, paddingTop: insets.top + 16, paddingBottom: 32 + insets.bottom, gap: 12 }} showsVerticalScrollIndicator={false}>
+      <Text className="text-[28px] font-bold text-[#1C1C1E]">设置</Text>
+      <Text className="text-[13px] font-semibold text-[#6D6D72]">当前电脑</Text>
+      <Card className="gap-1 p-4">
+        <Text className="text-[16px] font-semibold text-[#1C1C1E]">{terminal?.machineName || '未连接电脑'}</Text>
+        <Text className="text-[13px] text-[#6D6D72]">{connectionState === 'online' ? '已连接' : connectionState === 'checking' ? '正在连接' : '离线'}</Text>
+        <Pressable accessibilityRole="button" disabled={!terminal} onPress={requestAuth} className="min-h-[44px] justify-center border-t border-[#E5E5EA] mt-2 disabled:opacity-40"><Text className="text-[14px] font-semibold text-[#0065D1]">修改访问码</Text></Pressable>
+        <Pressable accessibilityRole="button" disabled={!terminal} onPress={() => void reconnect()} className="min-h-[44px] justify-center border-t border-[#E5E5EA] disabled:opacity-40"><Text className="text-[14px] font-semibold text-[#0065D1]">重新连接</Text></Pressable>
       </Card>
-
-      <Text className="mb-2 text-[13px] font-semibold uppercase tracking-[0.6px] text-[#8E8E93]">权限</Text>
-      <Card className="gap-2 p-4">
-        <Text className="text-[15px] font-semibold text-[#1C1C1E]">{readOnly ? '只读模式' : '写入权限'}</Text>
-        <Text className="text-[12px] leading-[18px] text-[#8E8E93]">
-          {readOnly
-            ? '服务端处于只读模式，发送、中断、审批已禁用。'
-            : '可发送消息、中断运行中的任务，并处理待审批项。'}
-        </Text>
+      <Text className="text-[13px] font-semibold text-[#6D6D72]">权限</Text>
+      <Card className="gap-1 p-4">
+        <Text className="text-[15px] font-semibold text-[#1C1C1E]">{health ? health.allowWrite === false ? '只读模式' : '可发送与审批' : '尚未确认'}</Text>
+        <Text className="text-[13px] text-[#6D6D72]">{health ? '权限由当前电脑的服务端决定。' : '连接电脑后显示当前权限。'}</Text>
       </Card>
-
-      <Text className="mb-2 text-[13px] font-semibold uppercase tracking-[0.6px] text-[#8E8E93]">关于</Text>
-      <Card className="gap-2 p-4">
-        <Text className="text-[15px] font-semibold text-[#1C1C1E]">会话总控 · 原生版</Text>
-        <Text className="text-[12px] leading-[18px] text-[#8E8E93]">
-          浅色界面，中文优先。终端与会话数据均来自本机服务，不经过云端账号。
-        </Text>
-        <Text className="text-[12px] leading-[18px] text-[#8E8E93]">版本 1.19.0-native</Text>
+      <Text className="text-[13px] font-semibold text-[#6D6D72]">关于</Text>
+      <Card className="gap-1 p-4">
+        <Text className="text-[15px] font-semibold text-[#1C1C1E]">Codex-Turnloom · 原生版</Text>
+        <Text className="text-[13px] text-[#6D6D72]">配置版本 {Constants.expoConfig?.version || '未知'}；安装版本以系统应用信息为准。</Text>
       </Card>
-
-      <Button variant="secondary" onPress={() => void clearPairing()}>
-        <Text className="text-[15px] font-semibold text-[#1C1C1E]">清除配对</Text>
-      </Button>
-      {message ? (
-        <View className="py-[6px]">
-          <Text className="text-[13px] text-[#248A3D]">{message}</Text>
-        </View>
-      ) : null}
+      {terminal ? confirming ? (
+        <Card className="gap-2 p-4">
+          <Text className="text-[14px] text-[#1C1C1E]">解除 {terminal.machineName || '当前电脑'} 的配对？</Text>
+          <Text className="text-[13px] text-[#6D6D72]">只删除本机连接信息，不影响电脑上的会话。</Text>
+          <View className="flex-row gap-2">
+            <Pressable accessibilityRole="button" disabled={pending} onPress={() => setConfirming(false)} className="min-h-[44px] flex-1 items-center justify-center rounded-xl bg-[#EFEFF4]"><Text className="font-semibold text-[#1C1C1E]">取消</Text></Pressable>
+            <Pressable accessibilityRole="button" disabled={pending} onPress={() => void unpair()} className="min-h-[44px] flex-1 items-center justify-center rounded-xl bg-[#FDECEC]"><Text className="font-semibold text-[#D70015]">确认解除</Text></Pressable>
+          </View>
+        </Card>
+      ) : <Pressable accessibilityRole="button" onPress={() => setConfirming(true)} className="min-h-[48px] items-center justify-center rounded-xl bg-white"><Text className="text-[14px] font-semibold text-[#D70015]">解除这台电脑的配对</Text></Pressable> : null}
+      {error ? <Text accessibilityRole="alert" className="text-[13px] text-[#D70015]">{error}</Text> : null}
+      {message ? <Text className="text-[13px] text-[#16713A]">{message}</Text> : null}
     </ScrollView>
   );
 }

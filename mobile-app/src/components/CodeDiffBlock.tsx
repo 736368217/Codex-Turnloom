@@ -125,7 +125,7 @@ const styles = StyleSheet.create({
   },
   repo: {
     flex: 1,
-    fontSize: 12,
+    fontSize: 13,
     color: OptionA.inkSoft,
     textAlign: 'right',
   },
@@ -145,12 +145,12 @@ const styles = StyleSheet.create({
   },
   filePath: {
     flex: 1,
-    fontSize: 12,
+    fontSize: 13,
     color: OptionA.ink,
     fontFamily: 'monospace',
   },
   fileStats: {
-    fontSize: 12,
+    fontSize: 13,
     color: OptionA.greenInk,
     fontFamily: 'monospace',
   },
@@ -166,7 +166,7 @@ const styles = StyleSheet.create({
     backgroundColor: OptionA.diffDel,
   },
   lineText: {
-    fontSize: 12,
+    fontSize: 13,
     lineHeight: 17,
     color: OptionA.ink,
     fontFamily: 'monospace',

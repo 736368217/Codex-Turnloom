@@ -14,8 +14,9 @@ import { TextClassContext } from './text';
 const buttonVariants = cva('shrink-0 flex-row items-center justify-center gap-2 rounded-xl', {
   variants: {
     variant: {
-      default: 'bg-[#007AFF] active:opacity-90',
-      destructive: 'bg-[#FF3B30] active:opacity-90',
+      default: 'bg-[#0065D1] active:opacity-90',
+      destructive: 'bg-[#D70015] active:opacity-90',
+      success: 'bg-[#16713A] active:opacity-90',
       outline: 'border border-[#E5E5EA] bg-white active:opacity-80',
       secondary: 'bg-[#EFEFF4] active:opacity-80',
       ghost: 'active:opacity-70',
@@ -36,17 +37,18 @@ const buttonTextVariants = cva('text-[15px] font-semibold', {
     variant: {
       default: 'text-white',
       destructive: 'text-white',
-      outline: 'text-[#007AFF]',
+      success: 'text-white',
+      outline: 'text-[#0065D1]',
       secondary: 'text-[#1C1C1E]',
-      ghost: 'text-[#007AFF]',
-      link: 'text-[#007AFF]',
+      ghost: 'text-[#0065D1]',
+      link: 'text-[#0065D1]',
     },
     size: { default: '', sm: '', lg: '', icon: '' },
   },
   defaultVariants: { variant: 'default', size: 'default' },
 });
 
-type ButtonVariant = 'default' | 'destructive' | 'outline' | 'secondary' | 'ghost' | 'link';
+type ButtonVariant = 'default' | 'destructive' | 'success' | 'outline' | 'secondary' | 'ghost' | 'link';
 type ButtonSize = 'default' | 'sm' | 'lg' | 'icon';
 
 type ButtonProps = React.ComponentProps<typeof Pressable> & {

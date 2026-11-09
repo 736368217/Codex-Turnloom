@@ -1,6 +1,7 @@
 /**
- * Cupertino Daylight Glass tokens. Dark mode is deliberately absent:
- * the app is light-only (`userInterfaceStyle: "light"`).
+ * Option A · Cupertino Daylight Glass tokens.
+ * Every colour here maps 1:1 to docs/option-a/AGENTS.md §2.1. Dark mode is
+ * deliberately absent: the app is light-only (`userInterfaceStyle: "light"`).
  */
 /** @type {import('tailwindcss').Config} */
 module.exports = {

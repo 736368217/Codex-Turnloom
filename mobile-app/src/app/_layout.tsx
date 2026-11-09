@@ -10,6 +10,8 @@ import { StatusBar } from 'expo-status-bar';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 
+import { AccessCodeSheet } from '@/components/AccessCodeSheet';
+import { TerminalProvider } from '@/services/appState';
 import { OptionA } from '@/constants/optionA';
 
 import '@/../global.css';
@@ -19,6 +21,7 @@ export default function RootLayout() {
     <GestureHandlerRootView style={{ flex: 1, backgroundColor: OptionA.canvas }}>
       <SafeAreaProvider>
         <BottomSheetModalProvider>
+          <TerminalProvider>
           <ThemeProvider value={DefaultTheme}>
             <StatusBar style="dark" />
             <Stack
@@ -41,12 +44,13 @@ export default function RootLayout() {
                 options={{
                   title: '会话详情',
                   headerLargeTitleEnabled: false,
-                  headerBlurEffect: 'systemChromeMaterialLight',
-                  headerTransparent: true,
+                  headerTransparent: false,
                 }}
               />
             </Stack>
           </ThemeProvider>
+          <AccessCodeSheet />
+          </TerminalProvider>
         </BottomSheetModalProvider>
       </SafeAreaProvider>
     </GestureHandlerRootView>

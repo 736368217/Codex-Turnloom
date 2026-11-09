@@ -6,6 +6,7 @@
  * 本工程未装这些 peer，utils.ts 提供同签名零依赖 cn/cva，详见各文件注释。
  */
 export { Button, buttonVariants, buttonTextVariants } from './button';
+export type { ButtonProps } from './button';
 export { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter } from './card';
 export { Badge, badgeVariants, badgeTextVariants } from './badge';
 export { Text, TextClassContext, textVariants } from './text';
