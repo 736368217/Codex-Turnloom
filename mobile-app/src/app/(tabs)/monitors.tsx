@@ -155,7 +155,7 @@ export default function TerminalsScreen() {
               {machineName || '我的电脑'}
             </Text>
             <Text className="text-[12px] text-[#8E8E93]" numberOfLines={1}>
-              {serverUrl || 'http://192.168.0.10:8787'}
+              {serverUrl || 'http://<电脑 IP>:8787'}
             </Text>
           </View>
           {connected === null ? (
@@ -211,7 +211,7 @@ export default function TerminalsScreen() {
             <Input
               value={serverUrl}
               onChangeText={setServerUrl}
-              placeholder="http://192.168.0.10:8787"
+              placeholder="http://<电脑 IP>:8787"
               autoCapitalize="none"
               autoCorrect={false}
               keyboardType="url"

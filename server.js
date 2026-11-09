@@ -3176,7 +3176,7 @@ function resolveRolloutPath(rolloutPath) {
   const normalizedHome = path.resolve(home);
   const relative = path.relative(normalizedHome, normalized);
   if (relative === ".." || relative.startsWith(`..${path.sep}`) || path.isAbsolute(relative)) {
-    // A junction/symlinked home (for example C:\Users\<user>\.codex -> Codex 数据目录) makes a
+    // A junction/symlinked home (for example <user home>\.codex -> <Codex data dir>) makes a
     // rollout that really lives inside the home look external. Resolve both sides before
     // rejecting, so migrated profiles keep working instead of failing the whole thread list.
     let realHome = null;

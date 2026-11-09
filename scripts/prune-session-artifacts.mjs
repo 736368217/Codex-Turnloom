@@ -37,7 +37,7 @@ const flag = (name, fallback = "") => {
 };
 
 const APPLY = args.includes("--apply");
-const DB_PATH = flag("--db", "数据目录\\data\\pi.sqlite");
+const DB_PATH = flag("--db", "");
 const OUT_DIR = flag("--out", path.join(os.tmpdir(), "turnloom-session-prune"));
 
 // 只清理某个时间点之后创建的会话：更早的巡检线可能对应已不在盘上的交付物，
@@ -48,16 +48,17 @@ if (Number.isNaN(SINCE)) {
   process.exit(2);
 }
 
-const ARTIFACT_ROOTS = [
-  "用户目录\\Documents\\GitHub\\tarot-app\\.review-artifacts",
-  "项目目录\\tarot-app\\.review-artifacts",
-];
+const ARTIFACT_ROOTS = [];
 // 巡检线提示词的开头。只有这几条才允许被判成机器产物。
 const REVIEW_PROMPTS = ["你是独立", "你是一条独立", "你是**独立", "你是一个**零产品知识"];
 const GREETING_RE = /^(你好|nihao|hi|hello)[。.!！\s]*$/i;
 const MARKER = "可删";
 const SMALL_TALK_MAX_MSGS = 8;
 
+if (!DB_PATH) {
+  console.error("请通过 --db <数据库路径> 指定要清理的数据库");
+  process.exit(2);
+}
 const db = new DatabaseSync(DB_PATH);
 const now = Date.now();
 

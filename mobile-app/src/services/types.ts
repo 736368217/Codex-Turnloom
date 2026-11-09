@@ -1,6 +1,5 @@
 /**
- * Server contract types — verified against server.js and
- * server.js.
+ * Server contract types — verified against server.js.
  *
  * IMPORTANT: messages use `content`, NOT `text`; message `id` is usually null;
  * `/api/threads/:id/changes` returns ONLY `{ cursor, changed }`.

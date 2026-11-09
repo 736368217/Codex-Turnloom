@@ -4,7 +4,6 @@
  */
 import { useEffect, useState } from 'react';
 
-import { DEMO_MODE, DEMO_PAIRING } from './demoBootstrap';
 import { localGet, localSet } from './localStore';
 import { getTurnloomClient } from './turnloomClient';
 
@@ -13,11 +12,9 @@ export type Engine = 'codex' | 'pi';
 export const ACTIVE_TERMINAL_KEY = 'activeTerminalId';
 export const ENGINE_KEY = 'engine';
 export const SELECTED_THREAD_KEY = 'selectedThreadId';
-/** 预置终端：正式包为本机 de；演示包额外提供示例数据终端。 */
-export const BUILTIN_TERMINALS = [
-  { id: 'builtin-de', name: '我的电脑', url: 'http://192.168.0.10:8787', token: 'test-code' },
-  { id: 'demo', name: '示例数据 · 本机', url: 'http://demo.invalid', token: 'demo' },
-] as const;
+
+/** 连接信息由用户扫码 / 手动输入并加密保存；仓库内不预置任何终端。 */
+const BUILTIN_TERMINALS: readonly TerminalOption[] = [];
 
 export type TerminalOption = {
   id: string;
@@ -27,12 +24,8 @@ export type TerminalOption = {
 };
 
 export async function readActiveTerminal(): Promise<TerminalOption | null> {
-  if (DEMO_MODE) {
-    return { id: 'demo', name: DEMO_PAIRING.machineName, url: DEMO_PAIRING.serverUrl, token: DEMO_PAIRING.token };
-  }
   const [savedId, config] = await Promise.all([localGet(ACTIVE_TERMINAL_KEY), getTurnloomClient().load()]);
-  // 真实配对配置优先：用户在「终端」页改过地址后，内置常量的硬编码 URL 不能再盖回去
-  // （这正是上一版「改了保存、重启又变回旧地址」的根因）。
+  // 真实配对配置优先：用户在「终端」页改过地址后，内置常量不能再盖回去。
   if (config?.serverUrl) {
     const builtin = BUILTIN_TERMINALS.find((item) => config.serverUrl.startsWith(item.url));
     return {

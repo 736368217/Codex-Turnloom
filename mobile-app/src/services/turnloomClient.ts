@@ -1,7 +1,6 @@
 /**
  * Turnloom HTTP client — the ONLY place in the app that knows the real server
- * routes. Every path here was verified against server.js (see
- * server.js). The spec's
+ * routes. Every path here follows server.js. The spec's
  * `/threads`, `/threads/:id/messages`, `/threads/:id/interrupt` DO NOT exist.
  *
  * Endpoint map (client function -> real endpoint):

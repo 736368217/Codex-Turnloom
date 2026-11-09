@@ -24,9 +24,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { OptionA } from '@/constants/optionA';
 import { NewThreadSheet, type ProjectOption } from '@/components/OptionASheets';
 import { Badge, Card, Text } from '@/components/ui/rnr';
-import { DEMO_MODE, DEMO_LABEL } from '@/services/demoBootstrap';
 import {
-  BUILTIN_TERMINALS,
   useTerminalSelection,
   type TerminalOption,
 } from '@/services/appState';
@@ -68,25 +66,6 @@ function TerminalPicker({ onChoose }: { onChoose: (option: TerminalOption) => vo
           选好后进入会话列表；之后可在「终端」里随时切换或新增。
         </Text>
       </View>
-
-      {BUILTIN_TERMINALS.map((item) => (
-        <Pressable
-          key={item.id}
-          accessibilityRole="button"
-          onPress={() => onChoose({ ...item })}
-          className="min-h-[64px] flex-row items-center gap-3 rounded-[20px] border border-white/90 bg-white/95 p-4 active:opacity-80">
-          <View className="h-9 w-9 items-center justify-center rounded-[12px] bg-[#007AFF]/12">
-            <View className="h-[9px] w-[9px] rounded-full bg-[#34C759]" />
-          </View>
-          <View className="flex-1 gap-[3px]">
-            <Text className="text-[15px] font-semibold text-[#1C1C1E]">{item.name}</Text>
-            <Text className="text-[11px] text-[#8E8E93]" numberOfLines={1}>
-              {item.url}
-            </Text>
-          </View>
-          <SymbolView name={{ ios: 'chevron.right', android: 'chevron_right', web: 'chevron_right' }} size={18} tintColor="#8E8E93" />
-        </Pressable>
-      ))}
 
       <Pressable
         accessibilityRole="button"
@@ -297,11 +276,6 @@ export default function HomeScreen() {
             </Pressable>
           ) : null}
         </View>
-        {DEMO_MODE ? (
-          <View className="mt-1 self-start rounded-full bg-[#E5F1FF] px-[10px] py-[4px]">
-            <Text className="text-[11px] font-semibold text-[#007AFF]">{DEMO_LABEL}</Text>
-          </View>
-        ) : null}
       </View>
       {authGate ? <Text className="px-4 pb-[6px] text-[12px] text-[#D70015]">需要访问码，请到「终端」页重新输入</Text> : null}
       {error ? <Text className="px-4 pb-[6px] text-[12px] text-[#D70015]">{error}</Text> : null}

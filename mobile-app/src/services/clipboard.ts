@@ -3,7 +3,7 @@
  *
  * 为什么不用 `expo-clipboard` / `@react-native-clipboard/clipboard`：
  * 那两个都要新增原生模块，而本机 release/原生重编被 Windows MAX_PATH 卡死
- * （见 https://github.com/736368217/Codex-Turnloom/releases 11.2），加进去只会得到一个「JS 里有、APK 里没有」
+ * 加进去只会得到一个「JS 里有、APK 里没有」
  * 的崩溃点。RN 核心的 `NativeClipboard` 早已编进现有 APK，所以这里走它，
  * 代价只是一条 deprecation 警告。
  *

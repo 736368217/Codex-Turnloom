@@ -4,8 +4,7 @@
  *
  * The data root can be relocated (see %APPDATA%\PI-Desktop\storage-location.json), and the
  * plugin registry lives next to the data root, so both must be resolved instead of hardcoded:
- * writing to ~/.pi-desktop/plugins while the app reads 插件目录 silently
- * updates nothing (that mistake cost one debugging round).
+ * writing to a different data root than the one the app reads updates nothing.
  *
  * The deploy directory is taken from the registry entry the app already has, so an existing
  * install keeps its path and only the files are refreshed. Idempotent.

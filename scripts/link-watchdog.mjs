@@ -29,7 +29,7 @@ const ONCE = !LOOP && !INSTALL && !UNINSTALL;
 const localPath = (u) => u.pathname.replace(/^\/([A-Za-z]):/, "$1:");
 const SCRIPT = localPath(new URL(import.meta.url));
 const REPO = path.resolve(path.dirname(SCRIPT), "..");
-const DUAL_DIR = "项目目录\\11\\turnloom-pidesktop\\dual";
+const DUAL_DIR = path.resolve(REPO, "..", "turnloom-pidesktop", "dual");
 const DUAL_CONFIG = path.join(DUAL_DIR, "config.json");
 const MAIN_CONFIG = path.join(process.env.LOCALAPPDATA || "", "CodexPocket", "config.json");
 const LOG_DIR = path.join(process.env.LOCALAPPDATA || "", "CodexPocket", "logs");

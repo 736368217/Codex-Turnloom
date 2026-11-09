@@ -9,7 +9,6 @@
 import * as SecureStore from 'expo-secure-store';
 import { Platform } from 'react-native';
 
-import { DEMO_MODE, DEMO_PAIRING } from './demoBootstrap';
 
 export type PairingConfig = {
   serverUrl: string;
@@ -72,7 +71,6 @@ export function normalizeServerUrl(raw: string): string {
 }
 
 export async function readPairing(): Promise<PairingConfig | null> {
-  if (DEMO_MODE) return { serverUrl: DEMO_PAIRING.serverUrl, token: DEMO_PAIRING.token, machineName: DEMO_PAIRING.machineName };
   const [serverUrl, token, machineName] = await Promise.all([
     getItem(KEY_URL),
     getItem(KEY_TOKEN),

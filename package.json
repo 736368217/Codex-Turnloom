@@ -35,8 +35,6 @@
     "device:qr": "node scripts/print-device-qr.js",
     "windows:install": "powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts/install-windows.ps1",
     "windows:uninstall": "powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts/uninstall-windows.ps1",
-    "android:test": "cd android && gradlew.bat testDebugUnitTest",
-    "android:build": "cd android && gradlew.bat assembleDebug && node ../scripts/stage-apk.js",
     "service:install": "node scripts/install-service.js",
     "service:uninstall": "node scripts/uninstall-service.js",
     "desktop:dev": "electron .",

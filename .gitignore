@@ -1,6 +1,6 @@
 # ============================================================================
 # Codex-Turnloom — repository hygiene
-# Only source, docs intended for users, and release metadata belong in git.
+# Only source, user-facing docs and release metadata belong in git.
 # Local build output, QA evidence, machine state and credentials never do.
 # ============================================================================
 
@@ -37,42 +37,11 @@ config.local.json
 *.keystore
 android/local.properties
 AGENTS.md
-!mobile-app/src/constants/optionA.ts
 
 # Private working memory / deployment records (never public)
 docs/PROJECT_MEMORY.md
 docs/OPERATIONS.md
 docs/OPERATIONS-CHANGELOG.md
-
-# QA evidence: generated locally, must not be committed
-docs/option-a/qa-shots/
-docs/option-a/qa-scripts/
-docs/option-a/coordination/
-docs/option-a/report-assets/
-public/option-a/report/report-assets/*
-!public/option-a/report/report-assets/qr-web.png
-!public/option-a/report/report-assets/qr-native.png
-!public/option-a/report/report-assets/qr-v7-web-demo.png
-!public/option-a/report/report-assets/qr-v7-native-demo.png
-!public/option-a/report/report-assets/qr-v7-html.png
-!public/option-a/report/report-assets/ref1.jpg
-!public/option-a/report/report-assets/ref2.jpg
-!public/option-a/report/report-assets/v6-*.png
-!public/option-a/report/report-assets/v7-*.png
-!public/option-a/report/report-assets/v8-*.png
-!public/option-a/report/report-assets/v9-*.png
-!public/option-a/report/report-assets/v10-*.png
-
-# Design source packages & screenshot working sets
-Codex-Turnloom_*设计方案*.zip
-Codex-Turnloom_*设计方案_*/
-docs/reference/
-docs/design/tray-console/
-docs/evidence/
-docs/assets/tray-console/
-docs/assets/turnloom-logo-candidates/
-public/assets/turnloom-logo-candidates/
-public/option-a/assets/option-a-legacy/
 
 # Android / release artifacts (APKs are distributed via GitHub Releases)
 *.apk
@@ -82,13 +51,19 @@ android/**/build/
 public/downloads/_archive/
 public/downloads/*.apk
 
-# Screenshots may contain private conversation content, local paths, or device data.
+# Internal acceptance reports, design drafts, real-data screenshots and
+# offline demos are never published.
+docs/option-a/
+public/option-a/report/
+docs/design/
 docs/assets/phone-*.png
-!docs/assets/phone-thread-list.png
-!docs/assets/phone-usage.png
-!docs/assets/phone-approval.png
-!docs/assets/phone-skill-picker.png
-!docs/assets/phone-plugin-picker.png
-docs/assets/promo*.png
-docs/assets/promo*.jpg
-!docs/assets/promo-Codex-Turnloom.png
+docs/assets/turnloom-logo.png
+docs/PUBLIC_ACCESS.zh-CN.md
+docs/PI_BRIDGE_CONTRACT.zh-CN.md
+docs/RELEASE_NOTES_*.zh-CN.md
+docs/WINDOWS_MULTI_COMPUTER.zh-CN.md
+desktop/README.md
+public/downloads/*-offline-demo.html
+android/app/src/main/assets/offline-demo.html
+mobile-app/src/services/offlineDemo.js
+mobile-app/src/services/demoBootstrap.ts

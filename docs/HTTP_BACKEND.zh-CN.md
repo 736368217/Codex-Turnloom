@@ -2,7 +2,7 @@
 
 Turnloom 默认读取 Codex 的 `CODEX_HOME`。使用 `--backend http` 时，Turnloom 不读写
 任何 Codex 文件，而是通过下面这组 HTTP 接口工作；一个约 100 行的服务即可接入任意
-agent（PI-Desktop、其他 CLI agent 等）。
+agent（其他 CLI agent 等）。
 
 ## 启动
 
@@ -99,7 +99,7 @@ GET    /threads/:id/changes?cursor=  -> { cursor, changed }
 ```json
 [
   { "id": "codex", "label": "Codex", "token": "codex-code", "backend": "codex", "home": "Codex 数据目录\\.codex" },
-  { "id": "pidesk", "label": "PI-Desktop", "token": "example-code", "backend": "http", "backendUrl": "http://127.0.0.1:9000", "backendToken": "adapter-secret" }
+  { "id": "agent", "label": "示例后端", "token": "example-code", "backend": "http", "backendUrl": "http://127.0.0.1:9000", "backendToken": "adapter-secret" }
 ]
 ```
 

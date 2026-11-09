@@ -8,11 +8,11 @@
 - **补齐 5 项原版能力**：模型 + 思考强度（`/api/health.models`，逐会话持久化）、插件 / 技能引用（`/api/plugins`、`/api/skills`，按原版 markdown 协议拼装）、新建会话归档到项目（`/api/projects` + `projectId`）、会话搜索、消息复制全文。
 - **修 2 处真机缺陷**：终端编辑面板保存 / 取消不再被底栏裁掉；改地址增加回读校验并修复重启回退（配置优先于内置常量）。
 - **体积**：按 ABI 拆分 + 重签，287.5 MB → 95.9 MB（−65%）；`apksigner` V3 与 `zipalign -c -p 4` 通过。
-- **验收**：`npm test` 171/0、`npm run check` 0、`tsc --noEmit` 0；Android 15 真机 + 回归测试；回归通过。
+- **验收**：`npm test` 171/0、`npm run check` 0、`tsc --noEmit` 0；回归与真机验收通过。
 - **桌面控制台 适配**：健康 / 会话 / 消息 / 项目 / 技能 / Diff / `pidesktop-codex-ipc` 桥实测正常；该 profile 的插件目录为空（宿主数据未注册 Marketplace 插件），App 显示空状态而非报错。
 - **仓库维护**：删除 800+ 张过程截图、一次性脚本、内部文档与设计包原件；重写历史剥离本地产物（tracked 1361 → 375 文件、254 MB → 34 MB，`.git` 125.6 MB → 33.1 MB）；README 重写为专业介绍 + 5 分钟新用户教程；`.gitignore` 补齐排除规则。
 
-完整说明与下载见 [GitHub Release v1.20.0](https://github.com/736368217/Codex-Turnloom/releases/tag/v1.20.0) 与 [发布说明](https://github.com/736368217/Codex-Turnloom/releases)。
+完整说明与下载见 [GitHub Release v1.20.0](https://github.com/736368217/Codex-Turnloom/releases/tag/v1.20.0) 与 本次发布说明。
 ## 1.17.31 - 2026-11-07
 
 - **首页改为聊天工作台，电脑选择页不再日常抢占首页**：首次启动或没有活动电脑时才显示设备选择；`ACTIVE_DEVICE_URL_KEY` 保存后，下次启动直接打开聊天 WebView。系统返回在聊天页只后台化 App，不再跳转电脑列表；主动进入选择页时可取消并返回原电脑。
@@ -20,7 +20,7 @@
 - **小扳手彻底移出顶栏**：旧 `#toolToggle` 从标题栏删除，工具/内部记录显示开关收进「更多」面板，带 44px 触控区、选中态和实时刷新；引导文案同步改为「需要时在更多里打开」。
 - 细节回归：加载态无旧扳手占位、hidden 模型面板仍为 `display:none / 0 by 0`；CDP 真鼠标打开「更多」面板、命中 44px 切换电脑按钮、真鼠标切换工具开关、返回栈关闭面板并恢复消息列表/输入框命中。
 - 契约回归：`test/ui-host-overlays.test.js` 20/20、`test/server.test.js` 100/100、Android Java 编译与单测、`npm run verify:ci`、Android APK 构建。
-- 文档：新增 带图前后对比报告（原始过程文档已从仓库移除，见 [发布说明](https://github.com/736368217/Codex-Turnloom/releases)）；真实历史截图 + CDP 盒模型/真鼠标证据，截图超时如实标注，不伪造图片。
+- 文档：补充前后对比说明与验证记录。
 
 ## 1.17.30 - 2026-11-07
 
@@ -230,7 +230,6 @@
 
 - Fix the PI model catalog emitting the template's slug for every entry: `...template` was spread before the generated `slug`, so all 173 models collapsed onto one id and model selection was meaningless. Catalog now has 173 distinct slugs and the default follows the latest PI session.
 
-- The PI sidecar is started through `scripts/link-watchdog-launcher.vbs` (wscript, window style 0) because a scheduled task that runs `node.exe` directly pops a visible console window. Every Turnloom background process must stay windowless.
 
 - PI-Desktop devices now list the models configured in PI (providers × models, 173 entries) instead of the built-in Codex fallback list, and the default follows the most recently used PI session. A sidecar (`turnloom-pidesktop/pidesk-sidecar.mjs`, task `Turnloom PI Sidecar`) writes `model-catalogs/pidesk.json` + `config.toml` into the facade home.
 - Thread status for PI-Desktop devices is real again: running turns from `pi.sqlite` are mirrored into the facade `threads.status_*` columns, so the app can show 运行中 instead of everything as 已完成. The sidecar re-applies them every 3s because the bridge rebuilds the table; the status cache now refreshes every 5s.
@@ -268,7 +267,6 @@
 - Restyle the queued-message panel to a light-blue card with white queue rows and an accent `⚡ 插入` action, and trim message metadata to one lightweight eyebrow line that hides the redundant “已发送” status.
 - Give tool records a compact single-line step card, and refine the access gate (22dp card, 24px single-line brand title, online host pill) plus a 338dp drawer with 12dp conversation rows.
 - Upgrade the Android computer picker to standalone 16dp device cards with 44dp icon tiles, online/offline/detecting status pills and monospace host addresses.
-- Bump the mobile app to `1.16.0` (`versionCode` 20) and archive the V2 design package under `docs/`.
 - Ship the Windows tray console: silent tray startup, service/tunnel supervision, onboarding, settings, logs, pairing QR, restart/stop controls, and an NSIS installer.
 - Add the dependency-free HTTP backend (`--backend http`) and token-routed profiles (`--profiles`) so Codex and third-party agents can share one port without mirroring `CODEX_HOME`.
 - Harden thread loading with per-thread rollout isolation and `/api/admin/diagnostics`, and add optional adapter `status_*` columns plus `/api/adapters/status` for exact running/waiting/ended states.
@@ -276,7 +274,7 @@
 - Scope remembered access codes by device and dedupe Android scanned devices by origin plus token.
 
 ### Additional fixes in 1.16.0
-- Deduplicate junctioned Codex homes in the setup wizard by canonical real path, so `C:\Users\<user>\.codex` and its `Codex 数据目录` target appear as one choice.
+- Deduplicate junctioned Codex homes in the setup wizard by canonical real path, so `C:\Users\<user>\.codex` and its `<Codex 数据目录>` target appear as one choice.
 
 - Keep the mobile model and reasoning picker visible above the composer instead of clipping it inside the narrow-screen toolbar.
 - Isolate rollout-path failures per thread: one bad or missing rollout now leaves that thread at `unknown` instead of failing the whole `/api/threads` response, and the new authenticated `/api/admin/diagnostics` endpoint lists every missing or out-of-home rollout for repair.

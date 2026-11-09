@@ -123,7 +123,7 @@ export const PairingSheet = forwardRef<PairingSheetHandle, Props>(function Pairi
         <RoundedInput
           value={manualUrl}
           onChangeText={setManualUrl}
-          placeholder="http://192.168.0.10:8787"
+          placeholder="http://<电脑 IP>:8787"
           autoCapitalize="none"
           autoCorrect={false}
           keyboardType="url"

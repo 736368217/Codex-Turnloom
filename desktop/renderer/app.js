@@ -2350,10 +2350,10 @@
 
     const seed = [
       ["service", "info", "正在启动 Codex-Turnloom v1.0.0"],
-      ["config", "info", "配置加载完成：用户目录\\AppData\\Local\\CodexPocket\\config.json"],
+      ["config", "info", "配置加载完成：%LOCALAPPDATA%\\CodexPocket\\config.json"],
       ["service", "info", "监听 0.0.0.0:8787（访问模式：读写）"],
       ["ipc", "ok", "已连接 Codex Desktop（clientId: desktop-7f3a…）"],
-      ["health", "info", "健康检查通过；Codex 数据目录：用户目录\\.codex"],
+      ["health", "info", "健康检查通过；Codex 数据目录已加载"],
       ["tunnel", "ok", "SSH 反向隧道已建立：office.example.com:29002 → 127.0.0.1:8787"],
       ["http", "info", "GET /api/threads 200 · 84 ms"],
       ["http", "warn", "GET /api/threads 200 · 842 ms（慢请求）"],

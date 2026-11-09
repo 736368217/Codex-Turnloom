@@ -71,7 +71,7 @@ function piConfiguredDataRoots() {
  */
 function resolvePiDb() {
   const configured = piConfiguredDataRoots().map((root) => path.join(root, "pi.sqlite"));
-  const known = ["数据目录\\data\\pi.sqlite", path.join(os.homedir(), ".pi-desktop", "pi.sqlite")];
+  const known = [path.join(os.homedir(), ".pi-desktop", "pi.sqlite")];
   const all = [...configured, ...known];
   const usable = all.find((file) => {
     try {
@@ -866,9 +866,9 @@ const SESSION_INDEX = path.join(SHIM_HOME, "session_index.jsonl");
 const AUTH_FILE = path.join(SHIM_HOME, "auth.json");
 
 const PIPE_PATH = "\\\\.\\pipe\\pidesktop-codex-ipc";
-const TURNLOOM_DIR = "项目目录\\11\\Codex-Turnloom";
+const TURNLOOM_DIR = path.resolve(__dirname, "..", "..", "..");
 const TURNLOOM_PORT = 8799;
-const TURNLOOM_PASSWORD = "example-code";
+const TURNLOOM_PASSWORD = process.env.TURNLOOM_ACCESS_CODE || "";
 const TURNLOOM_LOG = path.join(__dirname, "turnloom-8799.log");
 const TURNLOOM_ERR = path.join(__dirname, "turnloom-8799.err.log");
 const NODE_BIN = process.platform === "win32" ? "node.exe" : "node";

@@ -1,6 +1,6 @@
 /**
- * Option A · Cupertino Daylight Glass — single source of truth for light-only tokens.
- * Mirrors mobile-app/src/constants/optionA.ts §2.1. There is deliberately NO dark palette:
+ * Light-only Cupertino Daylight Glass tokens — single source of truth.
+ * There is deliberately NO dark palette:
  * app.json pins `userInterfaceStyle: "light"` and every screen uses these values.
  */
 export const OptionA = {

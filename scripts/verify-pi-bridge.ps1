@@ -1,21 +1,21 @@
 #requires -Version 5.1
 <#
-  é‡å¯ PI-Desktop ä¹‹åçš„è‡ªæ£€è„šæœ¬ï¼ˆåªè¯»ä¸ºä¸»ï¼Œ--Send æ‰ä¼šçœŸçš„å‘ä¸€æ¡æµ‹è¯•æ¶ˆæ¯ï¼‰ã€‚
+  ÖØÆô PI-Desktop Ö®ºóµÄ×Ô¼ì½Å±¾£¨Ö»¶ÁÎªÖ÷£¬--Send ²Å»áÕæµÄ·¢Ò»Ìõ²âÊÔÏûÏ¢£©¡£
 
-  ç”¨æ³•ï¼š
+  ÓÃ·¨£º
     powershell -NoProfile -ExecutionPolicy Bypass -File scripts/verify-pi-bridge.ps1
     powershell -NoProfile -ExecutionPolicy Bypass -File scripts/verify-pi-bridge.ps1 -Send
 
-  æ£€æŸ¥é¡¹ï¼š
-    1. IPC é—¨é¢ç®¡é“æ˜¯å¦å­˜åœ¨ï¼ˆæ’ä»¶å·²åŠ è½½ï¼‰
-    2. PI åç«¯æ¨¡å‹æ•°ï¼ˆåº”ä¸º PI çš„ä¾›åº”å•† Ã— æ¨¡å‹ï¼Œè€Œä¸æ˜¯ 4 ä¸ªå…œåº•æ¨¡å‹ï¼‰
-    3. çº¿ç¨‹çŠ¶æ€é‡Œæœ‰å¤šå°‘ runningï¼ˆåº”ä¸ pi.sqlite çš„ running turns ä¸€è‡´ï¼‰
-    4. -Sendï¼šæ–°å»ºä¸€ä¸ªæµ‹è¯•ä¼šè¯å‘ä¸€å¥è¯ï¼Œç„¶åç«‹åˆ»ä¸­æ–­ï¼Œå¹¶å›è¯» pi.sqlite çš„ model_id
+  ¼ì²éÏî£º
+    1. IPC ÃÅÃæ¹ÜµÀÊÇ·ñ´æÔÚ£¨²å¼şÒÑ¼ÓÔØ£©
+    2. PI ºó¶ËÄ£ĞÍÊı£¨Ó¦Îª PI µÄ¹©Ó¦ÉÌ ¡Á Ä£ĞÍ£¬¶ø²»ÊÇ 4 ¸ö¶µµ×Ä£ĞÍ£©
+    3. Ïß³Ì×´Ì¬ÀïÓĞ¶àÉÙ running£¨Ó¦Óë pi.sqlite µÄ running turns Ò»ÖÂ£©
+    4. -Send£ºĞÂ½¨Ò»¸ö²âÊÔ»á»°·¢Ò»¾ä»°£¬È»ºóÁ¢¿ÌÖĞ¶Ï£¬²¢»Ø¶Á pi.sqlite µÄ model_id
 #>
 param(
   [string]$BaseUrl = "http://127.0.0.1:8799",
-  [string]$Token = "example-code",
-  [string]$PiDb = "pi.sqlite",
+  [string]$Token = "<access-code>",
+  [string]$PiDb = "",
   [switch]$Send
 )
 
@@ -35,8 +35,8 @@ Add-Result "IPC pipe" ([bool]$pipeOk) $(if ($pipeOk) { "\\.\pipe\pidesktop-codex
 $health = $null
 try { $health = Invoke-RestMethod "$BaseUrl/api/health" -Headers $headers -TimeoutSec 20 } catch {}
 
-# 2b) app-server æ¡æ‰‹ï¼ˆç¼ºäº†å®ƒï¼Œæ–°å»ºå¯¹è¯ä¼šé™é»˜é€€åŒ–æˆ codex CLIï¼‰
-$nodeExe = 'ç”¨æˆ·ç›®å½•\AppData\Local\Programs\nodejs-24.19.0\node.exe'
+# 2b) app-server ÎÕÊÖ£¨È±ÁËËü£¬ĞÂ½¨¶Ô»°»á¾²Ä¬ÍË»¯³É codex CLI£©
+$nodeExe = 'node'
 if (-not (Test-Path $nodeExe)) { $nodeExe = 'node' }
 $scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 if (-not $scriptDir) { $scriptDir = (Get-Location).Path }
@@ -55,7 +55,7 @@ try {
   $proc.WaitForExit(8000) | Out-Null
 } catch {}
 $handshakeOk = $handshakeRaw -match '"ok":\s*true'
-$handshakeDetail = if ($handshakeOk) { 'bridge answered initialize' } elseif ($handshakeRaw -match 'unsupported method') { 'initialize rejected - restart PI-Desktop to load the bridge' } else { 'æœªæ¢æµ‹åˆ°åº”ç­”ï¼ˆæ‰‹åŠ¨è¿è¡Œ node scripts\ipc-handshake.mjs å¤æ ¸ï¼‰' }
+$handshakeDetail = if ($handshakeOk) { 'bridge answered initialize' } elseif ($handshakeRaw -match 'unsupported method') { 'initialize rejected - restart PI-Desktop to load the bridge' } else { 'Î´Ì½²âµ½Ó¦´ğ£¨ÊÖ¶¯ÔËĞĞ node scripts\ipc-handshake.mjs ¸´ºË£©' }
 if (-not $handshakeOk -and $handshakeRaw) { $handshakeOk = $true; $handshakeDetail = 'bridge answered initialize' }
 Add-Result 'IPC handshake' $handshakeOk $handshakeDetail
 
@@ -77,7 +77,7 @@ Add-Result "thread status" ($true) "threads=$total running=$running"
 if ($Send) {
   $model = if ($defaultModel) { $defaultModel } else { "" }
   $body = @{
-    message       = "Turnloom è¿é€šæ€§è‡ªæ£€ï¼šè¯·åªå›å¤ OK"
+    message       = "Turnloom Á¬Í¨ĞÔ×Ô¼ì£ºÇëÖ»»Ø¸´ OK"
     newThread     = $true
     model         = $model
     effort        = "low"
@@ -98,8 +98,8 @@ if ($Send) {
     } catch {
       Add-Result "interrupt" $false $_.Exception.Message
     }
-    # å›è¯» pi.sqlite é‡Œè¿™æ¡ä¼šè¯ç”¨çš„æ¨¡å‹
-    $node = 'ç”¨æˆ·ç›®å½•\AppData\Local\Programs\nodejs-24.19.0\node.exe'
+    # »Ø¶Á pi.sqlite ÀïÕâÌõ»á»°ÓÃµÄÄ£ĞÍ
+    $node = 'node'
     if (-not (Test-Path $node)) { $node = "node" }
     $script = @"
 const { DatabaseSync } = require('node:sqlite');

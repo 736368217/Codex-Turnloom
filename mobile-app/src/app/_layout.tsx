@@ -4,7 +4,6 @@
  * 透明大标题（headerShown:false），避免与页内「对话/终端管理/设置」重叠裁切。
  * thread/[id] 详情页保留紧凑返回头，不受影响。
  */
-import '@/services/demoBootstrap';
 import { BottomSheetModalProvider } from '@gorhom/bottom-sheet';
 import { DefaultTheme, Stack, ThemeProvider } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';

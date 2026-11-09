@@ -29,8 +29,6 @@
 | <img src="docs/screenshots/app-terminal.png" width="300" alt="终端管理" /> | <img src="docs/screenshots/app-model.png" width="300" alt="模型选择" /> |
 | 连接状态、服务地址、访问码 | 模型目录、逐会话记忆 |
 
-更多功能与验收截图见 [发布说明](https://github.com/736368217/Codex-Turnloom/releases)。
-
 ---
 
 ## 功能
@@ -39,7 +37,7 @@
 - **发送**：文字与图片附件、排队 / 插队、中断、审批
 - **配置**：模型与思考强度、插件 / 技能引用、新建会话归档到项目
 - **连接**：二维码或手动配对、多电脑切换、访问码与登录会话
-- **客户端**：原生 Android App（主线），另附可选网页入口
+- **客户端**：原生 Android App
 
 ---
 
@@ -87,11 +85,11 @@ npm run device:qr   # 打印配对二维码
 ```
 server.js       本机服务：API、鉴权、会话读写、队列、审批
 mobile-app/     原生 Android App（Expo / React Native）
-public/         网页入口与静态资源
+public/         服务内置网页入口
 desktop/        Windows 托盘控制台
 scripts/        安装、守护、二维码等工具
 test/           回归测试
-docs/           文档与交付报告
+docs/           使用与开发文档
 ```
 
 ## 开发
@@ -101,7 +99,7 @@ npm test
 npm run check
 ```
 
-协议说明见 [HTTP 后端适配器](docs/HTTP_BACKEND.zh-CN.md)、[桥接约定](docs/PI_BRIDGE_CONTRACT.zh-CN.md)。
+接口说明见 [HTTP 后端适配器](docs/HTTP_BACKEND.zh-CN.md)。
 
 ## 安全
 

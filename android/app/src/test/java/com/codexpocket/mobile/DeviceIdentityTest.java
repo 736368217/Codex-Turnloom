@@ -9,15 +9,15 @@ public class DeviceIdentityTest {
     @Test
     public void separatesTwoComputersThatShareOneOrigin() {
         assertNotEquals(
-                DeviceIdentity.key("http://127.0.0.1:8787", "test-code"),
-                DeviceIdentity.key("http://127.0.0.1:8787", "example-code"));
+                DeviceIdentity.key("http://127.0.0.1:8787", "code-a"),
+                DeviceIdentity.key("http://127.0.0.1:8787", "code-b"));
     }
 
     @Test
     public void keepsAKeyStableForTheSameComputer() {
         assertEquals(
-                DeviceIdentity.key("http://127.0.0.1:8787", "test-code"),
-                DeviceIdentity.key("  http://127.0.0.1:8787  ", "test-code"));
+                DeviceIdentity.key("http://127.0.0.1:8787", "code-a"),
+                DeviceIdentity.key("  http://127.0.0.1:8787  ", "code-a"));
     }
 
     @Test

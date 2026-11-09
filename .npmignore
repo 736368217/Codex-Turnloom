@@ -9,12 +9,15 @@ AGENTS.md
 docs/PROJECT_MEMORY.md
 docs/OPERATIONS.md
 docs/OPERATIONS-CHANGELOG.md
+
+# Internal design drafts, acceptance reports and real-data screenshots.
+docs/option-a/
+public/option-a/report/
+docs/design/
 docs/assets/phone-*.png
-!docs/assets/phone-thread-list.png
-!docs/assets/phone-usage.png
-!docs/assets/phone-approval.png
-!docs/assets/phone-skill-picker.png
-!docs/assets/phone-plugin-picker.png
-docs/assets/promo*.png
-!docs/assets/promo-Codex-Turnloom.png
-public/assets/turnloom-logo-candidates/
+docs/PUBLIC_ACCESS.zh-CN.md
+docs/PI_BRIDGE_CONTRACT.zh-CN.md
+docs/RELEASE_NOTES_*.zh-CN.md
+docs/WINDOWS_MULTI_COMPUTER.zh-CN.md
+desktop/README.md
+public/downloads/*-offline-demo.html

@@ -87,7 +87,7 @@ test("pairing payload targets the selected extra device", () => {
 
 test("validateConfig rejects malformed ipc sockets and device addresses", () => {
   // validateConfig requires an existing codexHome with state_5.sqlite, so build a
-  // throwaway one: Codex 数据目录 does not exist on the CI runner.
+  // throwaway one: a real codex home is not available on the CI runner.
   const home = fs.mkdtempSync(path.join(os.tmpdir(), "turnloom-home-"));
   fs.writeFileSync(path.join(home, "state_5.sqlite"), "");
   try {
