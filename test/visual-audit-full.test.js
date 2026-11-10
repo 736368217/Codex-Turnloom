@@ -7,13 +7,21 @@
  * the native touch-target / glass composition fixes from regressing in CI.
  */
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { readFileSync, readdirSync } from "node:fs";
 import path from "node:path";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const read = (relative) => readFileSync(path.join(ROOT, relative), "utf8");
+function allNativeSources() {
+  // Node's recursive readdir returns full relative paths and never follows
+  // junctions, so bracket-path files like app/thread/[id].tsx are covered.
+  return readdirSync(path.join(ROOT, "mobile-app/src"), { recursive: true, withFileTypes: true })
+    .filter((entry) => entry.isFile() && /\.(tsx?|ts)$/.test(entry.name))
+    .map((entry) => read(`mobile-app/src/${entry.parentPath ? path.relative(path.join(ROOT, "mobile-app/src"), entry.parentPath).replace(/\\/g, "/") + "/" : ""}${entry.name}`))
+    .join("\n");
+}
 
 test("VIS-01/04/05/06: no dark host sheet or centered-dialog source rules remain", () => {
   const css = read("public/styles.app.css");
@@ -97,18 +105,15 @@ test("VIS-02: approval sheet no longer nests BlurView layers", () => {
 });
 
 test("VIS-09/10/11/12: every native control declares at least a 44dp target", () => {
-  const sources = [
-    "mobile-app/src/components/AgentStepCard.tsx",
-    "mobile-app/src/components/OptionASheets.tsx",
-    "mobile-app/src/components/ui/input.tsx",
-    "mobile-app/src/components/NewTaskSheet.tsx"
-  ];
-  const all = sources.map((file) => read(file)).join("\n");
+  // Scan the entire native source tree: bracket-path files such as
+  // app/thread/[id].tsx were missed by a hand-picked file list once.
+  const all = allNativeSources();
   assert.doesNotMatch(all, /minHeight:\s*(?:2\d|3\d|4[0-3])\b/);
   assert.doesNotMatch(all, /'h-10 /);
   assert.match(all, /min-h-\[44px\]/);
-  // VIS-09's old 32dp copy control is now a 60dp Row in the action sheet.
+  // VIS-09: both the action-sheet Row and the inline copy button meet 44dp.
   assert.match(read("mobile-app/src/components/OptionASheets.tsx"), /minHeight: 60/);
+  assert.match(read("mobile-app/src/app/thread/[id].tsx"), /copyButton:\s*\{\s*minHeight:\s*44/);
 });
 
 test("VIS-13: NewTaskSheet shows the shared DragHandle like other sheets", () => {
