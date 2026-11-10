@@ -36,3 +36,14 @@ test("watchdog still performs every-10-second health checks and restarts", () =>
   assert.match(watchdog, /startTunnel\(main\)/);
   assert.match(watchdog, /WATCHDOG_LOG/);
 });
+
+test("watchdog and launcher bound log growth and suppress stable health spam", () => {
+  assert.match(watchdog, /appendWithRotation\(WATCHDOG_LOG/);
+  assert.match(watchdog, /trimLargeFile\(/);
+  assert.match(watchdog, /repeatedOkAt/);
+  assert.match(watchdog, /60 \* 60 \* 1000/);
+  assert.match(launcher, /BumpLog outLog/);
+  assert.match(launcher, /BumpLog errLog/);
+  assert.match(launcher, /fso\.DeleteFile filePath/);
+  assert.doesNotMatch(watchdog, /fs\.appendFileSync\(WATCHDOG_LOG/);
+});
