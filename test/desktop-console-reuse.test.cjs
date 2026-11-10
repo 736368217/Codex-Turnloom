@@ -100,7 +100,11 @@ test("unhealthy occupied port keeps the explicit port-owner error", async () => 
     assert.equal(result.ok, false);
     assert.match(result.error, /端口 8787 已被 node\.exe（PID 18008）占用/);
     assert.equal(fixture.controller.state, "error");
-    assert.deepEqual(fixture.calls, ["health", "port", "owner"]);
+    assert.equal(fixture.calls[0], "health");
+    assert.equal(fixture.calls[1], "port");
+    assert.equal(fixture.calls[2], "owner");
+    assert.equal(fixture.calls.at(-1), "health");
+    assert.ok(fixture.calls.length >= 4);
   } finally {
     await fixture.controller.dispose();
     fixture.cleanup();
@@ -232,4 +236,53 @@ test("desktop copy reuses healthy services and protects watchdog-owned processes
   const renderer = fs.readFileSync(path.join(__dirname, "..", "desktop", "renderer", "app.js"), "utf8");
   assert.match(renderer, /snap\?\.service\?\.external/);
   assert.match(renderer, /重新检查服务/);
+});
+
+test("error state automatically re-adopts a watchdog service after it recovers", async () => {
+  let healthy = false;
+  const fixture = makeController({ healthy: false, portAvailable: false, owner: { pid: 16484, name: "node.exe" } });
+  try {
+    const failed = await fixture.controller.start();
+    assert.equal(failed.ok, false);
+    assert.equal(fixture.controller.state, "error");
+    assert.match(fixture.controller.lastError, /PID 16484/);
+
+    healthy = true;
+    fixture.controller.healthApi.check = async () => ({
+      ok: true,
+      status: 200,
+      latencyMs: 8,
+      data: { ok: true, codexHome: fixture.home, allowWrite: true }
+    });
+    fixture.controller.healthApi.findPortOwner = async () => ({ pid: 3136, name: "node.exe" });
+    await fixture.controller.probeRecovery();
+    assert.equal(fixture.controller.state, "running");
+    assert.equal(fixture.controller.pid, 3136);
+    assert.equal(fixture.controller.lastError, null);
+    assert.equal(fixture.controller.recoveryTimer, null);
+  } finally {
+    await fixture.controller.dispose();
+    fixture.cleanup();
+  }
+});
+
+test("a healthy service wins a transient occupied-port race during start", async () => {
+  let checks = 0;
+  const fixture = makeController({ healthy: false, portAvailable: false, owner: { pid: 16484, name: "node.exe" } });
+  try {
+    fixture.controller.healthApi.check = async () => {
+      checks += 1;
+      return checks >= 2
+        ? { ok: true, status: 200, latencyMs: 9, data: { ok: true, codexHome: fixture.home, allowWrite: true } }
+        : { ok: false, status: 503, error: "HTTP 503" };
+    };
+    const result = await fixture.controller.start();
+    assert.equal(result.ok, true);
+    assert.equal(result.adopted, true);
+    assert.equal(fixture.controller.state, "running");
+    assert.equal(fixture.controller.lastError, null);
+  } finally {
+    await fixture.controller.dispose();
+    fixture.cleanup();
+  }
 });

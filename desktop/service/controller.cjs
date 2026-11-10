@@ -59,10 +59,12 @@ class ServiceController extends EventEmitter {
     this.healthTimer = null;
     this.metricsTimer = null;
     this.restartTimer = null;
+    this.recoveryTimer = null;
     this.intendedStop = false;
     this.starting = false;
     this.stopping = false;
     this.probing = false;
+    this.recoveryProbing = false;
     this.restarting = false;
     this.restartPromise = null;
     this.memoryBytes = 0;
@@ -78,7 +80,35 @@ class ServiceController extends EventEmitter {
     this.state = state;
     if (detail) this.detail = detail;
     if (extra.lastError !== undefined) this.lastError = extra.lastError;
+    if (state === "error" || state === "stopped") this.startRecoveryLoop();
+    else this.stopRecoveryLoop();
     this.emit("changed", this.snapshot());
+  }
+
+  startRecoveryLoop() {
+    if (this.recoveryTimer || this.intendedStop) return;
+    // The watchdog can replace 8787 seconds after a transient failure. Keep
+    // polling the authenticated health endpoint while the console is in error,
+    // so a recovered service is adopted without requiring a manual click.
+    this.recoveryTimer = setInterval(() => { this.probeRecovery().catch(() => {}); }, 5000);
+    this.recoveryTimer.unref?.();
+  }
+
+  stopRecoveryLoop() {
+    clearInterval(this.recoveryTimer);
+    this.recoveryTimer = null;
+  }
+
+  async probeRecovery() {
+    if (this.intendedStop || this.starting || this.restarting || this.recoveryProbing) return;
+    if (this.state !== "error" && this.state !== "stopped") return;
+    this.recoveryProbing = true;
+    try {
+      const result = await this.healthApi.check(this.config, { timeoutMs: 2000 });
+      if (result.ok) await this.adoptExternal(result);
+    } finally {
+      this.recoveryProbing = false;
+    }
   }
 
   setIpcStatus(connected) {
@@ -159,6 +189,14 @@ class ServiceController extends EventEmitter {
         const message = owner
           ? `端口 ${this.config.port} 已被 ${owner.name || "其他程序"}（PID ${owner.pid}）占用。`
           : `端口 ${this.config.port} 已被其他程序占用。`;
+        // Watchdog restarts can briefly leave an unhealthy old listener while
+        // the replacement boots. Recheck the authenticated endpoint before
+        // turning that transient condition into a sticky console error.
+        const recovered = await this.healthApi.check(this.config, { timeoutMs: 2000 });
+        if (recovered.ok) {
+          this.starting = false;
+          return await this.adoptExternal(recovered);
+        }
         this.lastError = message;
         this.setState("error", message);
         this.starting = false;
@@ -171,8 +209,15 @@ class ServiceController extends EventEmitter {
       const healthy = await this.waitForHealthy(15000);
       if (!healthy.ok) {
         const message = this.lastError || healthy.error || "服务启动超时，未通过健康检查。";
-        this.lastError = message;
         await this.killChild();
+        const recovered = await this.healthApi.check(this.config, { timeoutMs: 2000 });
+        if (recovered.ok) {
+          this.startedAt = 0;
+          this.managed = false;
+          this.starting = false;
+          return await this.adoptExternal(recovered);
+        }
+        this.lastError = message;
         this.startedAt = 0;
         this.managed = false;
         this.setState("error", message);
@@ -427,6 +472,7 @@ class ServiceController extends EventEmitter {
     clearInterval(this.healthTimer);
     clearInterval(this.metricsTimer);
     clearTimeout(this.restartTimer);
+    this.stopRecoveryLoop();
     this.healthTimer = null;
     this.metricsTimer = null;
     this.restartTimer = null;
