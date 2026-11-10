@@ -557,11 +557,14 @@ body,
 #shell .app-dialog {
   position: fixed;
   z-index: 71;
-  left: 50%;
-  top: 50%;
-  transform: translate(-50%, -50%);
-  width: min(320px, calc(100vw - 40px));
-  padding: 22px 20px 16px;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  top: auto;
+  transform: none;
+  width: auto;
+  max-width: none;
+  padding: 6px 20px max(20px, env(safe-area-inset-bottom, 0px));
   border: 1px solid var(--app-line);
   border-radius: var(--app-radius-lg);
   background: var(--app-surface);
@@ -1354,7 +1357,7 @@ html.keyboard-open #shell .composer-pod {
   padding: 12px;
   border-radius: 14px;
   border: 1px solid color-mix(in srgb, currentColor 18%, transparent);
-  background: var(--surface, rgba(255, 255, 255, 0.06));
+  background: var(--surface, #FFFFFF);
 }
 
 #shell .approval-card-head {
@@ -1445,9 +1448,11 @@ html.keyboard-open #shell .composer-pod {
   display: flex;
   flex-direction: column;
   border-radius: 20px 20px 0 0;
-  background: var(--surface-strong, #16181d);
-  color: inherit;
-  box-shadow: 0 -8px 32px rgba(0, 0, 0, 0.35);
+  background: #FFFFFF;
+  color: #142033;
+  box-shadow: 0 -8px 32px rgba(20, 32, 51, 0.16);
+  border: 1px solid var(--app-line);
+  border-bottom: 0;
   padding-bottom: env(safe-area-inset-bottom, 0);
 }
 
@@ -1655,10 +1660,9 @@ html.keyboard-open #shell .composer-pod {
 #shell .host-sheet:not([hidden]) {
   display: flex;
 }
-/* ── 真实机型实测修复：对比度 + 大文本性能 ─────────────────────────────
-   在浅色主题的 WebView 里 `color:inherit` 继承的是深色文字，而卡片用了深色
-   背景，结果「字几乎看不见」。这里固定卡片自己的前景色，并覆盖 hover/按钮；
-   不再依赖 color-mix（Android WebView 支持不一致）。 */
+/* ── Option A 浅色「更多能力」面板：对比度 + 大文本性能 ─────────────────
+   卡片是纯白表面，文字统一用主墨色；历史上这里写过深黑卡片，导致
+   浅色 App 里出现唯一一块黑面板。保留大文本渲染盒限制。 */
 #shell .host-sheet-card,
 #shell .host-sheet-card button,
 #shell .host-sheet-card select,
@@ -1666,16 +1670,16 @@ html.keyboard-open #shell .composer-pod {
 #shell .host-sheet-card pre,
 #shell .host-sheet-card li,
 #shell .host-sheet-card h3 {
-  color: #f4f6fb;
+  color: #142033;
 }
 
 #shell .host-sheet-card {
-  background: #171a21;
+  background: #FFFFFF;
 }
 
 #shell .host-sheet-card .host-muted,
 #shell .host-sheet-card .approval-kind {
-  color: #b8c0d0;
+  color: #5A6B80;
   opacity: 1;
 }
 
@@ -1687,9 +1691,9 @@ html.keyboard-open #shell .composer-pod {
 #shell .host-sheet-card .host-form-actions button,
 #shell .host-sheet-card .host-tools button,
 #shell .host-sheet-card .host-code {
-  background: #222733;
-  color: #f4f6fb;
-  border-color: #3b4354;
+  background: #F7F9FC;
+  color: #142033;
+  border-color: #E2E8F0;
 }
 
 #shell .host-sheet-card .host-code {
@@ -1700,11 +1704,11 @@ html.keyboard-open #shell .composer-pod {
 }
 
 #shell .host-sheet-card .host-sheet-close {
-  color: #f4f6fb;
+  color: #142033;
 }
 
 #shell .host-sheet-card select option {
-  color: #111820;
+  color: #142033;
   background: #ffffff;
 }
 /* ── 视觉检定修复：键盘态必须由可视高度钉住 composer ──────────────────
@@ -2354,8 +2358,8 @@ html.large-text #shell .queue-status-error {
   padding: 0 12px;
   border: 1px solid var(--app-line);
   border-radius: 12px;
-  background: rgba(255, 255, 255, 0.06);
-  color: #f4f6fb;
+  background: #F7F9FC;
+  color: #142033;
   font-size: 13px;
   cursor: pointer;
 }
@@ -2726,4 +2730,70 @@ html.keyboard-open #shell .model-panel {
 .app-dialog[hidden],
 .message-action-sheet[hidden] {
   display: none !important;
+}
+
+/* VIS-07: 会话操作从桌面右键浮窗改为带遮罩的底部动作抽屉。 */
+#shell .thread-context-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 79;
+  display: block;
+  border: 0;
+  padding: 0;
+  background: rgba(15, 26, 44, 0.38);
+  backdrop-filter: blur(3px);
+  -webkit-backdrop-filter: blur(3px);
+}
+#shell .thread-context-menu {
+  display: grid;
+  gap: 2px;
+  position: fixed;
+  z-index: 80;
+  left: 0;
+  right: 0;
+  top: auto;
+  bottom: 0;
+  width: auto;
+  max-width: none;
+  max-height: min(78dvh, 640px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 6px 12px max(12px, env(safe-area-inset-bottom, 0px));
+  border-radius: 20px 20px 0 0;
+  border: 1px solid #E2E8F0;
+  border-bottom: 0;
+  background: #FFFFFF;
+  box-shadow: 0 -8px 32px rgba(20, 32, 51, 0.16);
+}
+#shell .thread-context-menu .sheet-grabber {
+  margin-bottom: 8px;
+}
+#shell .thread-context-menu [role="menuitem"] {
+  min-height: 44px;
+}
+#shell .thread-context-backdrop[hidden],
+#shell .thread-context-menu[hidden] {
+  display: none !important;
+}
+
+/* VIS-08: 320px 极窄屏下模型胶囊不再用 128px 硬下限挤压操作栏。 */
+@media (max-width: 360px) {
+  #shell .model-summary {
+    min-width: 44px;
+    max-width: min(38vw, 132px);
+    flex: 1 1 auto;
+  }
+  #shell .model-name {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  #shell .composer-left .icon-button.attach-button,
+  #shell .composer-left .plugin-picker-button,
+  #shell .composer-left .mention-button {
+    flex: 0 0 40px;
+    width: 40px;
+    min-width: 40px;
+  }
 }

@@ -19,7 +19,6 @@ import {
   BottomSheetModal,
   BottomSheetScrollView,
 } from '@gorhom/bottom-sheet';
-import { BlurView } from 'expo-blur';
 import * as Haptics from 'expo-haptics';
 import {
   forwardRef,
@@ -33,7 +32,7 @@ import {
 import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { GLASS_INTENSITY, GLASS_TINT, OptionA } from '@/constants/optionA';
+import { OptionA } from '@/constants/optionA';
 import { getTurnloomClient } from '@/services/turnloomClient';
 import type { Message } from '@/services/types';
 
@@ -150,9 +149,7 @@ export const ApprovalBottomSheet = forwardRef<ApprovalSheetHandle, Props>(functi
       backgroundStyle={styles.sheetBackground}
       handleComponent={() => (
         <View style={styles.handleWrapper}>
-          <BlurView tint={GLASS_TINT} intensity={GLASS_INTENSITY} style={styles.handleBlur}>
-            <DragHandle />
-          </BlurView>
+          <DragHandle />
         </View>
       )}
       backdropComponent={(props) => (
@@ -160,7 +157,7 @@ export const ApprovalBottomSheet = forwardRef<ApprovalSheetHandle, Props>(functi
       )}
       footerComponent={(props) => (
         <BottomSheetFooter {...props} bottomInset={insets.bottom} style={styles.footer}>
-          <BlurView tint={GLASS_TINT} intensity={GLASS_INTENSITY} style={styles.footerGlass}>
+          <View style={styles.footerGlass}>
             <PrimaryButton
               label="批准并应用"
               tone="green"
@@ -174,7 +171,7 @@ export const ApprovalBottomSheet = forwardRef<ApprovalSheetHandle, Props>(functi
               disabled={!actionable}
               onPress={() => void decide('decline')}
             />
-          </BlurView>
+          </View>
         </BottomSheetFooter>
       )}>
         <BottomSheetScrollView
@@ -182,7 +179,7 @@ export const ApprovalBottomSheet = forwardRef<ApprovalSheetHandle, Props>(functi
           contentContainerStyle={styles.content}
           keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator={false}>
-          <BlurView tint={GLASS_TINT} intensity={GLASS_INTENSITY} style={styles.glass}>
+          <View style={styles.glass}>
             <View style={styles.headerRow}>
               <Text style={styles.title}>待审批</Text>
               {queue.length > 1 ? (
@@ -226,7 +223,7 @@ export const ApprovalBottomSheet = forwardRef<ApprovalSheetHandle, Props>(functi
             {error ? <Text style={styles.error}>{error}</Text> : null}
             {readOnly ? <Text style={styles.hint}>只读模式：审批已禁用</Text> : null}
             {pending ? <View style={styles.pendingRow}><ActivityIndicator color={OptionA.green} /><Text style={styles.hint}>提交中…</Text></View> : null}
-          </BlurView>
+          </View>
         </BottomSheetScrollView>
     </BottomSheetModal>
   );
@@ -242,9 +239,6 @@ const styles = StyleSheet.create({
     borderTopRightRadius: 24,
     overflow: 'hidden',
   },
-  handleBlur: {
-    backgroundColor: OptionA.glass,
-  },
   content: {
     paddingHorizontal: 16,
     paddingBottom: 16,
@@ -259,10 +253,11 @@ const styles = StyleSheet.create({
     paddingTop: 10,
     paddingBottom: 12,
     gap: 8,
+    backgroundColor: OptionA.card,
   },
   glass: {
     borderRadius: 20,
-    backgroundColor: OptionA.glass,
+    backgroundColor: OptionA.fill,
     padding: 16,
     gap: 8,
   },

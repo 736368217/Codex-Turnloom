@@ -111,7 +111,7 @@ function SheetShell({
               onPress={onClose}
               hitSlop={10}
               style={({ pressed }) => ({
-                minHeight: 32,
+                minHeight: 44,
                 minWidth: 44,
                 alignItems: 'center',
                 justifyContent: 'center',
@@ -375,7 +375,7 @@ export function MentionSheet({
               accessibilityState={{ selected: active }}
               onPress={() => setTab(key)}
               style={({ pressed }) => ({
-                minHeight: 36,
+                minHeight: 44,
                 paddingHorizontal: 14,
                 alignItems: 'center',
                 justifyContent: 'center',
@@ -530,7 +530,7 @@ export function NewThreadSheet({
                   accessibilityState={{ selected }}
                   onPress={() => onSelectProject(project.id || '')}
                   style={({ pressed }) => ({
-                    minHeight: 36,
+                    minHeight: 44,
                     maxWidth: 190,
                     paddingHorizontal: 12,
                     alignItems: 'center',

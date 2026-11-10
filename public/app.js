@@ -225,6 +225,7 @@ const els = {
   draftProjectSelect: document.querySelector("#draftProjectSelect"),
   threadSortSegments: document.querySelector(".thread-sort-segments"),
   threadContextMenu: document.querySelector("#threadContextMenu"),
+  threadContextBackdrop: document.querySelector("#threadContextBackdrop"),
   threadContextTitle: document.querySelector("#threadContextTitle"),
   threadPinAction: document.querySelector("#threadPinAction"),
   threadReminderAction: document.querySelector("#threadReminderAction"),
@@ -1802,28 +1803,28 @@ function closeThreadContextMenu() {
   removeViewLayer("threadContextMenu");
   state.contextThreadId = null;
   els.threadContextMenu.hidden = true;
+  els.threadContextBackdrop.hidden = true;
 }
 
-function openThreadContextMenu(threadId, clientX, clientY) {
+function openThreadContextMenu(threadId) {
   const thread = state.threads.find((entry) => entry.id === threadId);
   if (!thread) return;
   state.contextThreadId = threadId;
   els.threadContextTitle.textContent = thread.title || t("untitled");
   els.threadPinAction.textContent = thread.pinned ? t("unpinThread") : t("pinThread");
   els.threadReminderAction.textContent = reminderEnabled(threadId) ? t("reminderOn") : t("reminderOff");
-  pushViewLayer("threadContextMenu", closeThreadContextMenu);
   els.threadCopyLinkAction.textContent = t("copyThreadLink");
+  pushViewLayer("threadContextMenu", closeThreadContextMenu);
+  // Option A: secondary actions are a bottom action sheet, not a desktop-style
+  // floating menu anchored at a pointer coordinate (which clipped at the edge).
+  els.threadContextMenu.style.removeProperty("left");
+  els.threadContextMenu.style.removeProperty("top");
+  els.threadContextBackdrop.hidden = false;
   els.threadContextMenu.hidden = false;
-
-  const menuWidth = els.threadContextMenu.offsetWidth;
-  const menuHeight = els.threadContextMenu.offsetHeight;
-  const margin = 10;
-  const left = Math.min(Math.max(margin, clientX), window.innerWidth - menuWidth - margin);
-  const top = Math.min(Math.max(margin, clientY), window.innerHeight - menuHeight - margin);
-  els.threadContextMenu.style.left = `${left}px`;
-  els.threadContextMenu.style.top = `${top}px`;
   els.threadPinAction.focus({ preventScroll: true });
 }
+
+els.threadContextBackdrop.addEventListener("click", closeThreadContextMenu);
 
 function threadStatusLabel(status) {
   // 状态文案按「用户要采取的行动」分：疑険停滞只在列表顶部的
