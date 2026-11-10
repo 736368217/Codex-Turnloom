@@ -422,7 +422,7 @@ const styles = StyleSheet.create({
   modelButtonText: { flexShrink: 1, fontSize: 13, fontWeight: '600', color: OptionA.ink },
   modelEffortText: { fontSize: 13, fontWeight: '700', color: OptionA.blue },
   messageHead: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8 },
-  copyButton: { minHeight: 32, minWidth: 44, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 8, borderRadius: 8, backgroundColor: OptionA.fill },
+  copyButton: { minHeight: 44, minWidth: 44, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 8, borderRadius: 8, backgroundColor: OptionA.fill },
   copyButtonText: { fontSize: 13, fontWeight: '600', color: OptionA.blue },
   toast: { position: 'absolute', left: 16, right: 16, bottom: 108, alignItems: 'center' },
   toastText: { maxWidth: '92%', paddingHorizontal: 14, paddingVertical: 9, borderRadius: 999, backgroundColor: OptionA.ink, color: '#FFFFFF', fontSize: 13 },
