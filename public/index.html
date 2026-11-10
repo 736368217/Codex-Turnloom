@@ -94,7 +94,9 @@
         </div>
       </aside>
 
+      <button id="threadContextBackdrop" class="thread-context-backdrop" type="button" aria-label="关闭" hidden></button>
       <div id="threadContextMenu" class="thread-context-menu" role="menu" hidden>
+        <span class="sheet-grabber" aria-hidden="true"></span>
         <div id="threadContextTitle" class="thread-context-title"></div>
         <button id="threadPinAction" type="button" role="menuitem"></button>
         <button id="threadReminderAction" type="button" role="menuitem"></button>
@@ -349,7 +351,6 @@
           <span id="sendStatus" class="send-status" aria-live="polite"></span>
         </form>
       </section>
-    </div>
     <button id="messageActionBackdrop" class="message-action-backdrop" type="button" aria-label="关闭" hidden></button>
     <div id="messageActionSheet" class="message-action-sheet" role="menu" aria-label="消息操作" hidden>
       <span class="sheet-grabber" aria-hidden="true"></span>

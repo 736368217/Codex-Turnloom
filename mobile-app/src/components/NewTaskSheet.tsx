@@ -3,6 +3,7 @@ import { forwardRef, useImperativeHandle, useRef, useState } from 'react';
 import { ActivityIndicator, Pressable, Text, View } from 'react-native';
 
 import { OptionA } from '@/constants/optionA';
+import { DragHandle } from './ui';
 import { useTerminalSelection } from '@/services/appState';
 import { createRetryKey } from '@/services/threadGuards';
 import { getTurnloomClient, uuid } from '@/services/turnloomClient';
@@ -74,6 +75,7 @@ export const NewTaskSheet = forwardRef<NewTaskSheetHandle, Props>(function NewTa
       keyboardBlurBehavior="restore"
       android_keyboardInputMode="adjustResize"
       backgroundStyle={{ backgroundColor: OptionA.card }}
+      handleComponent={() => <DragHandle />}
       backdropComponent={(props) => <BottomSheetBackdrop {...props} appearsOnIndex={0} disappearsOnIndex={-1} opacity={0.35} pressBehavior={pending ? 'none' : 'close'} />}>
       <BottomSheetScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={{ paddingHorizontal: 20, paddingBottom: 32, gap: 12 }}>
         <Text style={{ color: OptionA.ink, fontSize: 20, fontWeight: '700' }}>新建任务</Text>

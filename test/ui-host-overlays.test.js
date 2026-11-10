@@ -38,10 +38,11 @@ test("host sheet markup starts hidden and has a backdrop + close buttons", () =>
   assert.doesNotMatch(html, /class="toggle"/);
 });
 
-test("host sheet has explicit high-contrast colors and bounded code preview", () => {
-  // 真机截图：深色卡片 + inherit 深色文字，整块面板几乎看不见。
-  assert.match(css, /#shell \.host-sheet-card,\s*#shell \.host-sheet-card button[\s\S]*?color:\s*#f4f6fb/);
-  assert.match(css, /#shell \.host-sheet-card\s*\{[^}]*background:\s*#171a21/s);
+test("host sheet uses Option A light colors and bounds large code previews", () => {
+  // VIS-01: the dark #171a21 card was the only black surface in a light-only UI.
+  assert.doesNotMatch(css, /#171a21|#222733|color:\s*#f4f6fb/);
+  assert.match(css, /#shell \.host-sheet-card,\s*#shell \.host-sheet-card button[\s\S]*?color:\s*#142033/);
+  assert.match(css, /#shell \.host-sheet-card\s*\{[^}]*background:\s*#FFFFFF/s);
   assert.match(css, /max-height:\s*46vh/);
   assert.match(css, /contain:\s*content/);
   // 20 万字符 <pre> 会卡住 WebView；客户端必须限制。

@@ -12,7 +12,7 @@ function Input({ className, ...props }: React.ComponentProps<typeof TextInput>) 
   return (
     <TextInput
       className={cn(
-        'h-10 w-full rounded-full border border-[#E5E5EA] bg-[#EFEFF4] px-4 text-[15px] text-[#1C1C1E]',
+        'min-h-[44px] w-full rounded-full border border-[#E5E5EA] bg-[#EFEFF4] px-4 text-[15px] text-[#1C1C1E]',
         props.editable === false && 'opacity-50',
         className
       )}
