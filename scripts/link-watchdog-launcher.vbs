@@ -44,7 +44,8 @@ If Len(comSpec) = 0 Then comSpec = "cmd.exe"
 ' invisible; //B in the scheduled-task action suppresses WScript error dialogs.
 inner = Q(nodePath) & " " & Q(scriptPath) & " --loop >> " & Q(outLog) & " 2>> " & Q(errLog)
 command = Q(comSpec) & " /d /s /c " & Q(inner)
-
+BumpLog outLog, 8 * 1024 * 1024
+BumpLog errLog, 8 * 1024 * 1024
 launchLine = Now & " [watchdog-launcher] starting hidden watchdog: " & scriptPath
 AppendLog outLog, launchLine
 
@@ -77,6 +78,16 @@ Sub AppendLog(filePath, message)
   If Not stream Is Nothing Then
     stream.WriteLine message
     stream.Close
+  End If
+  On Error Goto 0
+End Sub
+
+Sub BumpLog(filePath, maxBytes)
+  On Error Resume Next
+  If fso.FileExists(filePath) Then
+    If fso.GetFile(filePath).Size > maxBytes Then
+      fso.DeleteFile filePath, True
+    End If
   End If
   On Error Goto 0
 End Sub

@@ -18,7 +18,11 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { createRequire } from "node:module";
 import { spawn, execFileSync } from "node:child_process";
+
+const require = createRequire(import.meta.url);
+const { appendWithRotation, trimLargeFile } = require("./bounded-log.cjs");
 
 const argv = process.argv.slice(2);
 const LOOP = argv.includes("--loop");
@@ -34,6 +38,8 @@ const DUAL_CONFIG = path.join(DUAL_DIR, "config.json");
 const MAIN_CONFIG = path.join(process.env.LOCALAPPDATA || "", "CodexPocket", "config.json");
 const LOG_DIR = path.join(process.env.LOCALAPPDATA || "", "CodexPocket", "logs");
 const WATCHDOG_LOG = path.join(LOG_DIR, "watchdog.log");
+const LOG_MAX_BYTES = 8 * 1024 * 1024;
+const LOG_RETAIN = 3;
 const TASK_NAME = "Codex-Turnloom Link Watchdog";
 const NODE = process.execPath;
 // 登录自启绝不能直接 Exec node.exe：node.exe 是控制台程序，即便任务 Hidden，
@@ -44,9 +50,46 @@ const WSCRIPT = path.join(process.env.WINDIR || "C:\\WINDOWS", "System32", "wscr
 
 fs.mkdirSync(LOG_DIR, { recursive: true });
 
-function log(level, message) {
+const DUAL_LOG_DIR = path.join(DUAL_DIR, "logs");
+
+function trimInheritedLogs() {
+  for (const directory of [LOG_DIR, DUAL_LOG_DIR]) {
+    let names;
+    try {
+      names = fs.readdirSync(directory);
+    } catch {
+      continue;
+    }
+    for (const name of names) {
+      // watchdog.log is rotated by appendWithRotation; all other *.log files
+      // are held open by detached processes and are shortened in place.
+      if (name === path.basename(WATCHDOG_LOG) || !/\.log(?:\.\d+)?$/i.test(name)) continue;
+      try {
+        trimLargeFile(path.join(directory, name), { maxBytes: LOG_MAX_BYTES });
+      } catch {}
+    }
+  }
+}
+trimInheritedLogs();
+if (!ONCE) setInterval(trimInheritedLogs, 60 * 1000).unref?.();
+
+let repeatedOkAt = new Map();
+const logOptions = { maxBytes: LOG_MAX_BYTES, retain: LOG_RETAIN };
+
+function log(level, message, { force = false } = {}) {
+  // Healthy probes happen every 10 seconds. Log each stable result at most
+  // once an hour; a changing result, warning, action or startup is immediate.
+  if (!force && level === "ok" && !ONCE) {
+    const signature = `${level}:${message}`;
+    const now = Date.now();
+    if (now - (repeatedOkAt.get(signature) || 0) < 60 * 60 * 1000) return;
+    repeatedOkAt.set(signature, now);
+    if (repeatedOkAt.size > 100) repeatedOkAt = new Map();
+  }
   const line = `${new Date().toISOString()} [watchdog:${level}] ${message}\n`;
-  fs.appendFileSync(WATCHDOG_LOG, line);
+  try {
+    appendWithRotation(WATCHDOG_LOG, line, logOptions);
+  } catch {}
   if (ONCE || process.env.DEBUG_WATCHDOG) process.stdout.write(line);
 }
 
@@ -75,10 +118,16 @@ async function ping(base, token, { viaHeader = true, timeoutMs = 5000 } = {}) {
     return { ok: false, why: error.name === "TimeoutError" ? "timeout" : error.message };
   }
 }
+function boundedFile(filePath, fallbackMaxBytes = LOG_MAX_BYTES) {
+  try {
+    trimLargeFile(filePath, { maxBytes: fallbackMaxBytes });
+  } catch {}
+  return fs.openSync(filePath, "a");
+}
 
 function spawnHidden(command, cmd, stdoutFile, stderrFile) {
-  const out = fs.openSync(stdoutFile, "a");
-  const err = fs.openSync(stderrFile, "a");
+  const out = boundedFile(stdoutFile);
+  const err = boundedFile(stderrFile);
   const child = spawn(command, cmd, {
     cwd: DUAL_DIR,
     windowsHide: true,
