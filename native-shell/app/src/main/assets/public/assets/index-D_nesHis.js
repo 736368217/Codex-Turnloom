@@ -37,23 +37,23 @@ Error generating stack: `+m.message+`
     margin-right: `).concat(d,"px ").concat(i,`;
     `),r==="padding"&&"padding-right: ".concat(d,"px ").concat(i,";")].filter(Boolean).join(""),`
   }
-
+  
   .`).concat(Ts,` {
     right: `).concat(d,"px ").concat(i,`;
   }
-
+  
   .`).concat(Ms,` {
     margin-right: `).concat(d,"px ").concat(i,`;
   }
-
+  
   .`).concat(Ts," .").concat(Ts,` {
     right: 0 `).concat(i,`;
   }
-
+  
   .`).concat(Ms," .").concat(Ms,` {
     margin-right: 0 `).concat(i,`;
   }
-
+  
   body[`).concat(Oa,`] {
     `).concat(B3,": ").concat(d,`px;
   }
