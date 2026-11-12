@@ -1,0 +1,194 @@
+{
+    "apkSha256":  "f020edd46893f1b712c3ef2baa586ce64c9d5c4b8c1e25082e493e1ac64f613e",
+    "generatedAt":  "2026-11-12T00:46:25.3503883+08:00",
+    "files":  [
+                  {
+                      "path":  "D:\\pi11\\11\\Codex-Turnloom\\app\\src\\AppRoot.tsx",
+                      "sha256":  "bea46f6b7e317a7c0ecb0fd5aceceafbf2619bcdc4a37a67e8f6e85d9abd55ca"
+                  },
+                  {
+                      "path":  "D:\\pi11\\11\\Codex-Turnloom\\app\\src\\main.tsx",
+                      "sha256":  "3da3a1ce60b4ec0f8774b973cfd39c90e9ac6d76d4d71db078a9e9c43b1f60d0"
+                  },
+                  {
+                      "path":  "D:\\pi11\\11\\Codex-Turnloom\\app\\src\\components\\ApprovalSheet.tsx",
+                      "sha256":  "41a65cb4c3007d34dcd5e4c5f0a864574be214929fcabe004d87fbf649172fec"
+                  },
+                  {
+                      "path":  "D:\\pi11\\11\\Codex-Turnloom\\app\\src\\components\\AppShell.tsx",
+                      "sha256":  "103ace0ecce5bbc1593b28721d0dea4617ee517cd50540f10b3295caf9daef37"
+                  },
+                  {
+                      "path":  "D:\\pi11\\11\\Codex-Turnloom\\app\\src\\components\\CupertinoSheetHost.tsx",
+                      "sha256":  "2bfe08cae741c9fc898231830dce2a73bdafd851849de6a63e4d4591a303b5c3"
+                  },
+                  {
+                      "path":  "D:\\pi11\\11\\Codex-Turnloom\\app\\src\\components\\DiffCard.tsx",
+                      "sha256":  "f8a116e5aee0c994fc42c1fc9aa7019472e282cc77866a88f957e9616aa24b04"
+                  },
+                  {
+                      "path":  "D:\\pi11\\11\\Codex-Turnloom\\app\\src\\components\\GlassTabBar.tsx",
+                      "sha256":  "87c5d4b8be79dd996e776886fc76cbc8bb99fdbf6dbcd0d61497d654679827c1"
+                  },
+                  {
+                      "path":  "D:\\pi11\\11\\Codex-Turnloom\\app\\src\\components\\MachineHubHeader.tsx",
+                      "sha256":  "9158cf8ae0067542e5e01878e9ca736272c3ca82aa7719d26935897b89eceb70"
+                  },
+                  {
+                      "path":  "D:\\pi11\\11\\Codex-Turnloom\\app\\src\\components\\NewTaskSheet.tsx",
+                      "sha256":  "14261d90507e2111dbffc97ce1fda3d120c978d78a01e2e0a1299317b5ae968c"
+                  },
+                  {
+                      "path":  "D:\\pi11\\11\\Codex-Turnloom\\app\\src\\components\\PairingSheet.tsx",
+                      "sha256":  "36134d7537640b5984ae7f47e672ad739d83677cb74d309566e2ee4ca9fa204d"
+                  },
+                  {
+                      "path":  "D:\\pi11\\11\\Codex-Turnloom\\app\\src\\components\\Segmented.tsx",
+                      "sha256":  "02bfdeae3211401624c22f2fcb09472cd322ef9b4c6bf497d63844f56b009383"
+                  },
+                  {
+                      "path":  "D:\\pi11\\11\\Codex-Turnloom\\app\\src\\components\\StatusCard.tsx",
+                      "sha256":  "e7c5ffd47de89a5eebd3b4874f9eaf46eb9ec68ab054226762102aeb218b955e"
+                  },
+                  {
+                      "path":  "D:\\pi11\\11\\Codex-Turnloom\\app\\src\\components\\TaskStream.tsx",
+                      "sha256":  "0d88694c251c65e4edb87a5f372f6cd417f930b6b570ecfb051fd4ed66640e11"
+                  },
+                  {
+                      "path":  "D:\\pi11\\11\\Codex-Turnloom\\app\\src\\components\\ThumbGlassBar.tsx",
+                      "sha256":  "42c3748c10f2a284d9eab01acdfb127d21c9f0ea291653b0f68e19c549d28e4c"
+                  },
+                  {
+                      "path":  "D:\\pi11\\11\\Codex-Turnloom\\app\\src\\components\\ui.tsx",
+                      "sha256":  "c1950eb8dc868c573f269dc618ef9069d4a1ffa6531d54ca4fc6178532a93f97"
+                  },
+                  {
+                      "path":  "D:\\pi11\\11\\Codex-Turnloom\\app\\src\\components\\VaulSheet.tsx",
+                      "sha256":  "2ef4c9d678a918acad3932d77c2d2f5cbdc22cda4cb80dc88437a3b2e5f4118b"
+                  },
+                  {
+                      "path":  "D:\\pi11\\11\\Codex-Turnloom\\app\\src\\lib\\appUpdate.ts",
+                      "sha256":  "aab231239184d520d58358fedf56db3e484e8c56d80fb54fde8ba1ad8d45e8da"
+                  },
+                  {
+                      "path":  "D:\\pi11\\11\\Codex-Turnloom\\app\\src\\lib\\machinePairing.ts",
+                      "sha256":  "fcea95790e5dd14f1077e772635e38864109125a6e0407eae9a110ac682b2796"
+                  },
+                  {
+                      "path":  "D:\\pi11\\11\\Codex-Turnloom\\app\\src\\lib\\nativeBridge.ts",
+                      "sha256":  "3177317cf432fb2d1126de47887d7ada1a6a3bf0d7615bbcf5f0432368d425a9"
+                  },
+                  {
+                      "path":  "D:\\pi11\\11\\Codex-Turnloom\\app\\src\\lib\\turnloomApi.ts",
+                      "sha256":  "52756667ce2f8afbd77e9ab89602ca3b5c567766151f9226da7d5a342dc9ac5c"
+                  },
+                  {
+                      "path":  "D:\\pi11\\11\\Codex-Turnloom\\app\\src\\screens\\ChatDetailScreen.tsx",
+                      "sha256":  "a495142c3c823f81d2eda9ac7462c3070d89af793d1fadda4cd5c490c60568b7"
+                  },
+                  {
+                      "path":  "D:\\pi11\\11\\Codex-Turnloom\\app\\src\\screens\\ConnectScreen.tsx",
+                      "sha256":  "aaa398f97fddb8c58c95cedc3b690abd32fa1fc54eae59c3b45a32ce3e745931"
+                  },
+                  {
+                      "path":  "D:\\pi11\\11\\Codex-Turnloom\\app\\src\\screens\\HomeScreen.tsx",
+                      "sha256":  "5b21caa14008240c38abd6abdb0fa8cdd4548db0b0105f30ac7c50c0f57b24ae"
+                  },
+                  {
+                      "path":  "D:\\pi11\\11\\Codex-Turnloom\\app\\src\\screens\\MonitorsScreen.tsx",
+                      "sha256":  "278d301502c093a51d79a993c9f0dc5f4a40ae37fd67c59e020e21b26de37e27"
+                  },
+                  {
+                      "path":  "D:\\pi11\\11\\Codex-Turnloom\\app\\src\\screens\\SettingsScreen.tsx",
+                      "sha256":  "418667e08b3df23f92e0ca20b7e84cfc2dccf085e06e46019f46454f8b90de91"
+                  },
+                  {
+                      "path":  "D:\\pi11\\11\\Codex-Turnloom\\app\\src\\screens\\ThreadsScreen.tsx",
+                      "sha256":  "0ddfb1aeb2dde888298d4d468460aa9a3785dd635069254d46dacafe838b93e0"
+                  },
+                  {
+                      "path":  "D:\\pi11\\11\\Codex-Turnloom\\app\\src\\state\\dataStore.ts",
+                      "sha256":  "dc7fd05ca950863a3dbf23e6995178004b04b31daa05216b04d4ef770bfd564e"
+                  },
+                  {
+                      "path":  "D:\\pi11\\11\\Codex-Turnloom\\app\\src\\state\\draftStore.ts",
+                      "sha256":  "e35109b18d47fe6a0f35039d0bd01cd8d61b61dfd1a2b4c15fabcec05a1df48d"
+                  },
+                  {
+                      "path":  "D:\\pi11\\11\\Codex-Turnloom\\app\\src\\state\\offlineStore.ts",
+                      "sha256":  "33a767e4abf8b92b3b0fb76a196531d5d268e6f0101b7c9bd3ea9e5fb992115d"
+                  },
+                  {
+                      "path":  "D:\\pi11\\11\\Codex-Turnloom\\app\\src\\state\\sessionStore.ts",
+                      "sha256":  "e918efd680b0c4273703f1cb47b65bfe6ff62778508379dfba8b3a21c92f7441"
+                  },
+                  {
+                      "path":  "D:\\pi11\\11\\Codex-Turnloom\\app\\src\\state\\sheetStore.ts",
+                      "sha256":  "99f8222c996ed653365114343ca172735f3ec525c8659020d1fdc70a724a13cf"
+                  },
+                  {
+                      "path":  "D:\\pi11\\11\\Codex-Turnloom\\app\\src\\state\\store.ts",
+                      "sha256":  "670542491503e800467485c6f271d67c79da89dea2372f59fcdbe9d4247b914b"
+                  },
+                  {
+                      "path":  "D:\\pi11\\11\\Codex-Turnloom\\app\\src\\state\\tabStore.ts",
+                      "sha256":  "2c4e52cbe35c3cf190f30198a060f606418495630d2c43bea505227da520e1c9"
+                  },
+                  {
+                      "path":  "D:\\pi11\\11\\Codex-Turnloom\\app\\src\\state\\updateStore.ts",
+                      "sha256":  "ed9b80e5df9a44324f22320628f0730cda29930ee60e3799676ad4b284a70f75"
+                  },
+                  {
+                      "path":  "D:\\pi11\\11\\Codex-Turnloom\\app\\src\\theme\\globals.css",
+                      "sha256":  "d6842f0b3e6451172e9193704b537773eb930b29c41dd0314980227e9fd6e3a3"
+                  },
+                  {
+                      "path":  "D:\\pi11\\11\\Codex-Turnloom\\app\\src\\theme\\optionATokens.ts",
+                      "sha256":  "80451263f7c511baa621a1c973ffd08864e3564adde97f7a7fe7760b556c07df"
+                  },
+                  {
+                      "path":  "D:\\pi11\\11\\Codex-Turnloom\\native-shell\\app\\src\\main\\java\\com\\codex\\turnloom\\app\\BridgeContract.java",
+                      "sha256":  "f380df99da2894df226a059cf2c7924fd46a2805ed15a5bd5b1dfbf976bca0b5"
+                  },
+                  {
+                      "path":  "D:\\pi11\\11\\Codex-Turnloom\\native-shell\\app\\src\\main\\java\\com\\codex\\turnloom\\app\\MainActivity.java",
+                      "sha256":  "39f1e682cda26122e393a357bb371cfbf811f2b382cfc93d3004e22403164748"
+                  },
+                  {
+                      "path":  "D:\\pi11\\11\\Codex-Turnloom\\native-shell\\app\\src\\main\\java\\com\\codex\\turnloom\\app\\NativeHttpClient.java",
+                      "sha256":  "80beff3b88d9256b7c56c0ac37b74cbf1ae585f3af008238091ae21582942438"
+                  },
+                  {
+                      "path":  "D:\\pi11\\11\\Codex-Turnloom\\native-shell\\app\\src\\main\\java\\com\\codex\\turnloom\\app\\NativeHttpPolicy.java",
+                      "sha256":  "8d06a7f905d3625824320b7d663d7fa84a0ecdacf2c47bcfa085497795325b79"
+                  },
+                  {
+                      "path":  "D:\\pi11\\11\\Codex-Turnloom\\native-shell\\app\\src\\main\\java\\com\\codex\\turnloom\\app\\ScannerActivity.java",
+                      "sha256":  "00e36824005a776e941886f07fa41436c3a26d7f19cbea8993935b0d273d1d08"
+                  },
+                  {
+                      "path":  "D:\\pi11\\11\\Codex-Turnloom\\native-shell\\app\\src\\main\\java\\com\\codex\\turnloom\\app\\UpdateFileProvider.java",
+                      "sha256":  "89fdf2637458a8e8bcc211344b250b1345ac450a35d988f762a8847e07542db8"
+                  },
+                  {
+                      "path":  "D:\\pi11\\11\\Codex-Turnloom\\native-shell\\app\\src\\main\\java\\com\\codex\\turnloom\\app\\UpdateManager.java",
+                      "sha256":  "4fc95d5dd59acaaa73e93896e219db906556f9486714ea93bdc78a899876472f"
+                  },
+                  {
+                      "path":  "D:\\pi11\\11\\Codex-Turnloom\\app\\package.json",
+                      "sha256":  "c034154ea886ee9dcb53d1838cc6a43b02fae95302c4c3a09edf994922121c2c"
+                  },
+                  {
+                      "path":  "D:\\pi11\\11\\Codex-Turnloom\\native-shell\\app\\build.gradle.kts",
+                      "sha256":  "c6dfccabe0d3d057f0a393c056c3223020669ecc3586b81f5a9cf8ff688874e4"
+                  },
+                  {
+                      "path":  "D:\\pi11\\11\\Codex-Turnloom\\native-shell\\app\\src\\main\\res\\xml\\network_security_config.xml",
+                      "sha256":  "647393379d1507b0633bbc265c37ffb846cbe7762b40cda42de673b78dad3d7c"
+                  },
+                  {
+                      "path":  "D:\\pi11\\11\\Codex-Turnloom\\scripts\\build-single-app.ps1",
+                      "sha256":  "4f3254b77fe30643af8ed74cecec1d14a024628dd208958854eef246fd00227a"
+                  }
+              ]
+}

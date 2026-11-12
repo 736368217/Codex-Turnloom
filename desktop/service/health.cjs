@@ -2,6 +2,7 @@
 
 const net = require("node:net");
 const { execFile } = require("node:child_process");
+const { effectiveAccessToken, loadMachineConfig, checkGatewayDiscovery } = require("./machine-gateway.cjs");
 
 function execFileAsync(file, args, options = {}) {
   return new Promise((resolve) => {
@@ -34,9 +35,14 @@ function apiBase(config) {
   return `http://127.0.0.1:${Number(config.port) || 8787}`;
 }
 
+/** In gateway mode the console talks to the default harness through the gateway. */
+function accessTokenFor(config) {
+  return effectiveAccessToken(config);
+}
+
 async function checkHealth(config, options = {}) {
   const result = await requestJson(`${apiBase(config)}/api/health`, {
-    token: config.accessCode,
+    token: accessTokenFor(config),
     timeoutMs: options.timeoutMs || 2500
   });
   if (!result.ok || !result.data) {
@@ -45,16 +51,35 @@ async function checkHealth(config, options = {}) {
   return { ...result, ok: result.data.ok === true, data: result.data };
 }
 
+/**
+ * Gateway mode requires a verified discovery before any "healthy" reply may be
+ * adopted: the old dual dispatcher also answers /api/health but exposes only
+ * one default harness. This check deliberately uses no injected health stub.
+ */
+async function checkMachineGateway(config, options = {}) {
+  try {
+    const machine = loadMachineConfig(config);
+    return await checkGatewayDiscovery({
+      origin: apiBase(config),
+      machine,
+      fetchImpl: options.fetchImpl || globalThis.fetch,
+      timeoutMs: options.timeoutMs || 2500,
+    });
+  } catch (error) {
+    return { ok: false, code: "invalid-machine-config", error: error.message };
+  }
+}
+
 async function checkDebugEvents(config, options = {}) {
   return requestJson(`${apiBase(config)}/api/debug/events?limit=1`, {
-    token: config.accessCode,
+    token: accessTokenFor(config),
     timeoutMs: options.timeoutMs || 2500
   });
 }
 
 async function checkThreads(config, limit = 4) {
   return requestJson(`${apiBase(config)}/api/threads?limit=${Math.max(1, Math.min(Number(limit) || 4, 20))}`, {
-    token: config.accessCode,
+    token: accessTokenFor(config),
     timeoutMs: 5000
   });
 }
@@ -149,6 +174,7 @@ async function getProcessMetrics(pid) {
 module.exports = {
   requestJson,
   checkHealth,
+  checkMachineGateway,
   checkDebugEvents,
   checkThreads,
   waitForHealth,

@@ -1,0 +1,45 @@
+{
+  "apkSha256": "f020edd46893f1b712c3ef2baa586ce64c9d5c4b8c1e25082e493e1ac64f613e",
+  "checks": [
+    {
+      "name": "unpaired has no application tabs",
+      "pass": true
+    },
+    {
+      "name": "401 clears invalid access code and keeps address",
+      "pass": true
+    },
+    {
+      "name": "manual retry reaches verified workspace",
+      "pass": true
+    },
+    {
+      "name": "Pi isolated list",
+      "pass": true
+    },
+    {
+      "name": "failed service offers recovery",
+      "pass": true
+    },
+    {
+      "name": "recover to working Codex without pairing again",
+      "pass": true
+    },
+    {
+      "name": "draft survives return/reopen",
+      "pass": true
+    },
+    {
+      "name": "empty history completes loading",
+      "pass": true
+    },
+    {
+      "name": "forget pairing requires confirmation",
+      "pass": true
+    },
+    {
+      "name": "cancel forgetting retains workspace",
+      "pass": true
+    }
+  ]
+}

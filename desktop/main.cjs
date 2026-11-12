@@ -28,8 +28,13 @@ const {
 const { LogBuffer } = require("./service/logger.cjs");
 const { RuntimeManager } = require("./service/runtime.cjs");
 const { generatePairing, savePairingPng, listPairingTargets } = require("./service/pairing.cjs");
-const { checkDebugEvents, checkThreads, requestJson } = require("./service/health.cjs");
+const { checkDebugEvents, checkThreads, requestJson, checkMachineGateway } = require("./service/health.cjs");
 const { stopLegacySupervisor } = require("./service/legacy.cjs");
+const {
+  gatewayMode,
+  machineSecrets,
+  effectiveAccessToken,
+} = require("./service/machine-gateway.cjs");
 
 const APP_ID = "com.codex.turnloom.console";
 const APP_NAME = "Codex-Turnloom 控制台";
@@ -172,11 +177,19 @@ async function bootstrap() {
   }
 }
 
+function allSecrets(config) {
+  return [
+    config.accessCode,
+    ...(config.extraDevices || []).map((device) => device.accessCode),
+    ...machineSecrets(config),
+  ].filter(Boolean);
+}
+
 function initLogger() {
   if (logger) logger.close();
   logger = new LogBuffer({
     logDir: logDirFor(configState.config),
-    secrets: [configState.config.accessCode]
+    secrets: allSecrets(configState.config)
   });
   logger.on("line", (entry) => {
     pendingLogs.push(entry);
@@ -538,7 +551,11 @@ function openPreview() {
   if (!config) return false;
   const urls = urlsFor(config);
   const base = String(urls.preview || urls.lan).replace(/\/+$/, "");
-  const preview = `${base}/#login=${encodeURIComponent(config.accessCode)}`;
+  // The machine token is discovery-only. Browser preview needs the default
+  // harness token so the gateway can route /api/* to a real backend.
+  const token = effectiveAccessToken(config);
+  if (!token) return false;
+  const preview = `${base}/#login=${encodeURIComponent(token)}`;
   return openExternalSafe(preview);
 }
 
@@ -666,7 +683,7 @@ function registerIpc() {
     try {
       next = saveConfig(next);
       configState.config = next;
-      logger.setSecrets([next.accessCode, ...(next.extraDevices || []).map((device) => device.accessCode)]);
+      logger.setSecrets(allSecrets(next));
       runtime.setConfig(next);
       applyTheme(next.console?.theme || "system");
       applyLoginItem(next);
@@ -686,7 +703,7 @@ function registerIpc() {
     try {
       const config = currentConfig();
       const pairing = await generatePairing(config, deviceId);
-      return { ok: true, ...pairing, accessCodeMasked: maskAccessCode(config.accessCode) };
+      return { ok: true, ...pairing };
     } catch (error) {
       return { ok: false, error: error.message };
     }
@@ -742,7 +759,7 @@ function registerIpc() {
     try {
       const saved = saveConfig(next);
       configState.config = saved;
-      logger?.setSecrets([saved.accessCode, ...(saved.extraDevices || []).map((device) => device.accessCode)]);
+      logger?.setSecrets(allSecrets(saved));
       sendState();
       return { ok: true, config: publicConfig(saved) };
     } catch (error) {
@@ -771,9 +788,15 @@ function registerIpc() {
     const config = currentConfig();
     if (!config) return { ok: false, devices: [] };
     const targets = listPairingTargets(config);
+    let discovery = null;
+    if (gatewayMode(config)) {
+      // A plain /api/health on the old dispatcher is not proof of the new
+      // gateway. Report the verified discovery state alongside the probe.
+      discovery = await checkMachineGateway(config, { timeoutMs: 2500 });
+    }
     const results = await Promise.all(targets.map(async (target) => {
       const device = target.isLocal ? null : (config.extraDevices || []).find((item) => item.id === target.id);
-      const token = target.isLocal ? config.accessCode : device?.accessCode || "";
+      const token = target.isLocal ? effectiveAccessToken(config) : device?.accessCode || "";
       const base = target.isLocal ? `http://127.0.0.1:${Number(config.port) || 8787}` : target.url;
       const health = await requestJson(`${base}/api/health`, { token, timeoutMs: 2500 });
       let threadCount = null;
@@ -789,12 +812,17 @@ function registerIpc() {
         id: target.id,
         name: target.name,
         isLocal: target.isLocal,
-        online: Boolean(health.ok && health.data?.ok !== false),
+        online: Boolean(health.ok && health.data?.ok !== false && (!discovery || discovery.ok)),
         status: health.status || 0,
         latencyMs: health.latencyMs || 0,
         version: health.data?.appVersionName || "",
         threadCount,
-        error: health.ok ? "" : health.error || `HTTP ${health.status || 0}`
+        gatewayMode: Boolean(discovery),
+        harnessCount: discovery?.ok ? discovery.harnessCount : 0,
+        defaultHarnessId: discovery?.ok ? discovery.defaultHarnessId : "",
+        error: health.ok
+          ? (discovery && !discovery.ok ? discovery.error : "")
+          : health.error || `HTTP ${health.status || 0}`
       };
     }));
     return { ok: true, devices: results, at: Date.now() };

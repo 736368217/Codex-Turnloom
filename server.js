@@ -24,6 +24,11 @@ import { fileURLToPath } from "node:url";
 import { zstdDecompress } from "node:zlib";
 import qrcode from "qrcode-terminal";
 import { createHttpBackend } from "./backends/http-backend.js";
+import { createRequire } from "node:module";
+
+const require = createRequire(import.meta.url);
+const machinePairing = require("./shared/machine-pairing.cjs");
+const appRelease = require("./shared/app-release.cjs");
 
 const modulePath = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(modulePath);
@@ -93,6 +98,9 @@ function parseCliArgs(argv) {
     else if (flag === "--codex-home") options.codexHome = nextValue();
     else if (flag === "--ipc-socket") options.ipcSocket = nextValue();
     else if (flag === "--public-url") options.publicUrl = nextValue();
+    else if (flag === "--machine-id") options.machineId = nextValue();
+    else if (flag === "--machine-name") options.machineName = nextValue();
+    else if (flag === "--machine-token") options.machineToken = nextValue();
     else if (flag === "--active-turn-stale-minutes") options.activeTurnStaleMinutes = nextValue();
     else if (flag === "--status-max-age-minutes") options.statusMaxAgeMinutes = nextValue();
     else if (flag === "--sqlite-driver") options.sqliteDriver = String(nextValue() || "").toLowerCase();
@@ -123,10 +131,12 @@ Options:
   --password <password>  Friendly access code. Default: generated 6-digit code per launch
   --token <token>        Alias for --password
   --readonly             Disable sending messages to Codex Desktop
-  --no-auth              Disable access-code guard
+  --public-url <url>     Public URL used for the device QR
+  --machine-id <id>      Stable machine identity for one-code discovery
+  --machine-name <name>  Human-readable machine name
+  --machine-token <str>  Machine pairing token; defaults to the access code
   --codex-home <path>    Codex data directory. Default: ~/.codex
   --ipc-socket <path>    Codex Desktop IPC socket override
-  --public-url <url>     Public URL used for the device QR
   --active-turn-stale-minutes <n>
                          Treat an active turn with no rollout writes as ended after n
                          minutes (default 10; also CODEX_LAN_ACTIVE_TURN_STALE_MINUTES).
@@ -356,15 +366,17 @@ function defaultCodexCli() {
 
 const CODEX_CLI = process.env.CODEX_CLI || defaultCodexCli();
 const PUBLIC_URL = String(cli.publicUrl || process.env.CODEX_LAN_PUBLIC_URL || "").trim().replace(/\/+$/, "");
+const MACHINE_ID = String(cli.machineId || process.env.CODEX_LAN_MACHINE_ID || os.hostname() || "machine").trim().slice(0, 120) || "machine";
+const MACHINE_NAME = String(cli.machineName || process.env.CODEX_LAN_MACHINE_NAME || MACHINE_ID).trim().slice(0, 120) || MACHINE_ID;
+const MACHINE_TOKEN = String(cli.machineToken || process.env.CODEX_LAN_MACHINE_TOKEN || ACCESS_TOKEN).trim();
 const PUBLIC_DIR = path.join(__dirname, "public");
 const APK_PATH = process.env.CODEX_POCKET_APK_PATH
   ? path.resolve(process.env.CODEX_POCKET_APK_PATH)
-  : path.join(PUBLIC_DIR, "downloads", "Codex-Turnloom.apk");
+  : appRelease.defaultApkPath(__dirname);
+
 /**
- * The packaged app's version, read from the real build files instead of being
- * hardcoded here: a stale constant made /api/health advertise 1.17.3 (24) forever, so
- * the phone's update dialog kept offering an "update" to a version that did not exist.
- * Env overrides win for CI or an externally built APK.
+ * Legacy exported helper: retained only for old tests and diagnostics. HTTP
+ * release metadata never calls it; the staged sidecar is authoritative.
  */
 function readPackagedAppVersion() {
   const fallback = { code: 0, name: "" };
@@ -373,31 +385,23 @@ function readPackagedAppVersion() {
   if (!name) {
     try {
       name = String(JSON.parse(readFileSync(path.join(__dirname, "package.json"), "utf8")).version || "").trim();
-    } catch {
-      /* keep the fallback */
-    }
+    } catch {}
   }
   if (!code) {
     try {
       const gradle = readFileSync(path.join(__dirname, "android", "app", "build.gradle.kts"), "utf8");
       code = Number(/versionCode\s*=\s*(\d+)/.exec(gradle)?.[1]) || 0;
-    } catch {
-      /* keep the fallback */
-    }
+    } catch {}
   }
   return name && code ? { code, name } : fallback;
 }
-const PACKAGED_APP_VERSION = readPackagedAppVersion();
-const APP_VERSION_CODE = PACKAGED_APP_VERSION.code;
-const APP_VERSION_NAME = PACKAGED_APP_VERSION.name || "0.0.0";
 
-/** ISO timestamp of the staged APK, so the phone can show "安装包时间". */
-function apkUpdatedAtIso() {
-  try {
-    return new Date(statSync(APK_PATH).mtimeMs).toISOString();
-  } catch {
-    return "";
-  }
+async function currentAppRelease() {
+  return appRelease.readAppRelease(APK_PATH, { projectRoot: __dirname });
+}
+
+function apkUpdatedAtIso(release = null) {
+  return release?.apkUpdatedAt || "";
 }
 const GENERATED_IMAGES_DIR = path.join(os.homedir(), ".codex", "generated_images");
 const CODEX_POCKET_DATA_DIR =
@@ -7421,23 +7425,71 @@ async function serveLocalFile(req, res, filePath, threadId = "") {
   }
 }
 
-async function serveApk(res) {
+function serverStatSignature(stat) {
+  return {
+    dev: Number(stat.dev) || 0,
+    ino: Number(stat.ino) || 0,
+    size: Number(stat.size) || 0,
+    mtimeMs: Number(stat.mtimeMs) || 0,
+    ctimeMs: Number(stat.ctimeMs) || 0
+  };
+}
+
+async function serveApk(req, res) {
+  const release = await currentAppRelease();
+  if (!release.available) {
+    sendText(res, 404, "APK not found");
+    return;
+  }
+  // Open the exact inode whose bytes were hashed, then verify the open fd.
+  // Range requests cannot silently switch to a newer staged artifact.
+  let descriptor;
   try {
-    const stat = await fs.stat(APK_PATH);
-    if (!stat.isFile() || stat.size <= 0) {
+    descriptor = await fs.open(APK_PATH, "r");
+    const openStat = await descriptor.stat();
+    if (!openStat.isFile() || !appRelease.sameSignature(release.signature, serverStatSignature(openStat))) {
+      await descriptor.close();
       sendText(res, 404, "APK not found");
       return;
     }
-    res.writeHead(200, {
-      "content-type": "application/vnd.android.package-archive",
-      "content-length": stat.size,
-      "content-disposition": contentDispositionForDownload("Codex-Turnloom.apk"),
+  } catch {
+    if (descriptor) await descriptor.close().catch(() => {});
+    sendText(res, 404, "APK not found");
+    return;
+  }
+
+  const size = release.sizeBytes;
+  const rangeHeader = req.headers.range;
+  const range = rangeHeader ? requestedByteRange(rangeHeader, size) : null;
+  if (rangeHeader && !range) {
+    await descriptor.close();
+    res.writeHead(416, {
+      "content-range": `bytes */${size}`,
+      "accept-ranges": "bytes",
       "cache-control": "no-cache, must-revalidate"
     });
-    streamFileToResponse(APK_PATH, res);
-  } catch {
-    sendText(res, 404, "APK not found");
+    res.end();
+    return;
   }
+  const start = range?.start ?? 0;
+  const end = range?.end ?? size - 1;
+  const headers = {
+    "content-type": "application/vnd.android.package-archive",
+    "content-length": end - start + 1,
+    "content-disposition": contentDispositionForDownload(path.basename(APK_PATH)),
+    "accept-ranges": "bytes",
+    "cache-control": "no-cache, must-revalidate"
+  };
+  if (range) headers["content-range"] = `bytes ${start}-${end}/${size}`;
+  res.writeHead(range ? 206 : 200, headers);
+  const stream = descriptor.createReadStream({ start, end, autoClose: true });
+  stream.on("error", (error) => {
+    logError(`[stream] ${APK_PATH}: ${error?.message || error}`);
+    if (!res.headersSent) sendText(res, 500, "Read failed");
+    else res.destroy(error);
+  });
+  res.on("close", () => stream.destroy());
+  stream.pipe(res);
 }
 
 async function handleAuthSessionExchange(req, res) {
@@ -7539,11 +7591,7 @@ async function handleHttpBackendApi(req, res, url, profile = null) {
         defaultModel: DEFAULT_CODEX_MODEL,
         defaultEffort: DEFAULT_CODEX_EFFORT,
         now: new Date().toISOString(),
-        apkAvailable: existsSync(APK_PATH),
-        apkUrl: "/api/apk",
-        appVersionCode: APP_VERSION_CODE,
-        appVersionName: APP_VERSION_NAME,
-        apkUpdatedAt: apkUpdatedAtIso()
+        ...appRelease.legacyHealthFields(await currentAppRelease())
       });
       return true;
     }
@@ -7765,6 +7813,11 @@ async function handleHttpBackendApi(req, res, url, profile = null) {
       return true;
     }
 
+    if (req.method === "GET" && pathname === "/api/app/update") {
+      sendJson(res, 200, appRelease.publicUpdatePayload(await currentAppRelease()));
+      return true;
+    }
+
     if (req.method === "GET" && pathname === "/api/apk") return false;
 
     sendJson(res, 501, {
@@ -7828,6 +7881,37 @@ const server = http.createServer(async (req, res) => {
     // --backend http 必须在本地处理之前转发：否则配置了 backend:"http"
     // 仍然读写本机 Codex，属于静默的错误路由（handleHttpBackendApi 自己会鉴权）。
     if (await handleHttpBackendApi(req, res, url, req.turnloomProfile)) return;
+    if (req.method === "GET" && url.pathname === machinePairing.HARNESS_PATH) {
+      const requestedToken = requestToken(req, url);
+      const isMachineToken = tokensEqual(requestedToken, MACHINE_TOKEN);
+      const isHarnessToken = tokensEqual(requestedToken, ACCESS_TOKEN);
+      if (!isMachineToken && !isHarnessToken) {
+        if (requestedToken) noteAuthFailure(req);
+        sendJson(res, 401, { error: "invalid-machine-token", protocol: machinePairing.PROTOCOL, version: machinePairing.VERSION });
+        return;
+      }
+      clearAuthFailures(req);
+      const profile = req.turnloomProfile;
+      const harness = {
+        id: profile?.id || "default",
+        name: profile?.label || MACHINE_NAME,
+        token: isHarnessToken ? ACCESS_TOKEN : profile?.token || requestedToken,
+        kind: profile?.backend || BACKEND_KIND,
+        defaultHarness: true,
+        online: true,
+      };
+      const harnesses = machinePairing.normalizeHarnesses([harness], harness.id);
+      sendJson(res, 200, {
+        ok: true,
+        protocol: machinePairing.PROTOCOL,
+        version: machinePairing.VERSION,
+        machineId: MACHINE_ID,
+        machineName: MACHINE_NAME,
+        defaultHarnessId: harness.id,
+        harnesses,
+      });
+      return;
+    }
     if (req.method === "GET" && url.pathname === "/api/local-image") {
       if (!requireAuthorized(req, res, url)) return;
       await serveLocalImage(res, url.searchParams.get("path"), url.searchParams.get("threadId"));
@@ -7840,7 +7924,12 @@ const server = http.createServer(async (req, res) => {
     }
     if (req.method === "GET" && url.pathname === "/api/apk") {
       if (!requireAuthorized(req, res, url)) return;
-      await serveApk(res);
+      await serveApk(req, res);
+      return;
+    }
+    if (req.method === "GET" && url.pathname === "/api/app/update") {
+      if (!requireAuthorized(req, res, url)) return;
+      sendJson(res, 200, appRelease.publicUpdatePayload(await currentAppRelease()));
       return;
     }
     if (req.method === "GET" && url.pathname === "/api/health") {
@@ -7849,6 +7938,7 @@ const server = http.createServer(async (req, res) => {
       const homeState = await refreshCodexHomeContext({ force: true, source: "health" });
       const modelConfiguration = await loadCodexModelConfiguration(homeState.home);
       const usedModels = await usedModelIds(homeState.home);
+      const release = await currentAppRelease();
       sendJson(res, 200, {
         ok: true,
         codexHome: homeState.home,
@@ -7873,11 +7963,7 @@ const server = http.createServer(async (req, res) => {
         defaultModel: modelConfiguration.defaultModel,
         defaultEffort: modelConfiguration.defaultEffort,
         now: new Date().toISOString(),
-        apkAvailable: existsSync(APK_PATH),
-        apkUrl: "/api/apk",
-        appVersionCode: APP_VERSION_CODE,
-        appVersionName: APP_VERSION_NAME,
-        apkUpdatedAt: apkUpdatedAtIso()
+        ...appRelease.legacyHealthFields(release)
       });
       return;
     }

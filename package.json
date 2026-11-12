@@ -18,6 +18,8 @@
   "files": [
     "server.js",
     "backends",
+    "shared",
+    "server",
     "scripts",
     "public",
     "docs/assets",
@@ -45,7 +47,12 @@
     "desktop:pack": "electron-builder --dir",
     "desktop:check": "node --check desktop/main.cjs && node --check desktop/preload.cjs && node --check desktop/service/config.cjs && node --check desktop/service/controller.cjs && node --check desktop/service/tunnel.cjs && node --check desktop/service/runtime.cjs && node --check desktop/service/logger.cjs && node --check desktop/service/health.cjs && node --check desktop/service/pairing.cjs && node --check desktop/service/legacy.cjs && node --check desktop/renderer/app.js && node --check desktop/renderer/setup.js",
     "desktop:install": "powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts/install-console.ps1",
-    "desktop:uninstall": "powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts/uninstall-console.ps1"
+    "desktop:uninstall": "powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts/uninstall-console.ps1",
+    "app:dev": "npm run dev --prefix app",
+    "app:build": "npm run build --prefix app",
+    "app:typecheck": "npm run typecheck --prefix app",
+    "app:verify": "node scripts/verify-single-app.mjs",
+    "app:android": "powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts/build-single-app.ps1"
   },
   "keywords": [
     "codex",
@@ -89,8 +96,14 @@
     "files": [
       "desktop/**/*",
       "server.js",
+      "server/**/*",
+      "shared/**/*",
       "public/**/*",
       "scripts/**/*",
+      "deploy/**/*",
+      "installer/**/*",
+      "docs/PROTOCOL.zh-CN.md",
+      "docs/INSTALL.zh-CN.md",
       "package.json"
     ],
     "win": {

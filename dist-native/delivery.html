@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Codex-Turnloom RN 客户端更正交付（非纯原生）</title>
+<style>
+:root{--bg:#f4f7fb;--card:#fff;--ink:#1e2633;--muted:#667085;--line:#dfe4ec;--brand:#2563eb;--ok:#127a4b;--bad:#b42318;--warn:#8a5a00}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.65 system-ui,-apple-system,"Segoe UI","Microsoft YaHei",sans-serif;padding:28px}
+main{max-width:900px;margin:auto}.card{background:var(--card);border:1px solid var(--line);border-radius:18px;padding:24px;margin:16px 0;box-shadow:0 4px 18px #2233}
+h1{margin:0 0 8px;font-size:28px}h2{font-size:19px;margin-top:26px}.muted{color:var(--muted)}code{font-family:ui-monospace,SFMono-Regular,Consolas,monospace;background:#eef2f7;border-radius:5px;padding:2px 5px;word-break:break-all}
+.btn{display:inline-flex;align-items:center;gap:8px;background:var(--brand);color:#fff;text-decoration:none;border-radius:12px;padding:12px 18px;font-weight:700;margin:8px 0}
+.btn.secondary{background:#eef2ff;color:#2546a8;border:1px solid #c7d5ff}.ok{color:var(--ok);font-weight:700}.bad{color:var(--bad);font-weight:700}.warn{color:var(--warn);font-weight:700}
+table{width:100%;border-collapse:collapse;display:block;overflow-x:auto}th,td{text-align:left;border-bottom:1px solid var(--line);padding:9px 10px;vertical-align:top;min-width:160px}th{color:var(--muted);font-size:13px}
+pre{background:#111827;color:#e5e7eb;border-radius:12px;padding:14px;overflow:auto;font-size:13px;white-space:pre-wrap}ul{padding-left:22px}.notice{border-left:4px solid var(--bad);background:#fff1f0;padding:12px 14px;border-radius:8px}.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:14px}figure{margin:0}figure img{width:100%;border:1px solid var(--line);border-radius:14px}figcaption{color:var(--muted);font-size:13px;margin-top:6px}footer{color:var(--muted);font-size:13px;text-align:center;padding:20px}
+</style>
+</head>
+<body><main>
+<div style="max-width:900px;margin:0 auto 12px;padding:14px 18px;border-radius:14px;background:#FFF4E5;border:1px solid #FFD8A8;color:#8A5A00;font-weight:600">
+  ⚠ 已归档（2026-11-11）：本页是旧 Expo / React Native 客户端纠正包，<strong>不再是当前交付线</strong>。
+  用户已确认唯一交付线为 <code>ROUTE=dom-shell</code>（React + Konsta UI + Vaul + App 化 WebView 容器 APK）。
+  请前往 <a href="../dist-app/delivery.html">dist-app/delivery.html</a> 获取 <code>Codex-Turnloom-2.0.0-app.apk</code>。
+  本页仅为历史纠错记录与回归基线保留。
+</div>
+<section class="card">
+<h1>Codex-Turnloom RN 客户端 · 交付更正</h1>
+<p class="muted">当前包：主仓 <code>mobile-app</code> 的 Expo / React Native 客户端 · 非 WebView · 三项底部菜单栏 · <code>Codex-Turnloom</code> 名称 · 原图标。</p>
+<div class="notice"><b>重要说明：</b>这个包仍不是纯 Kotlin / Compose 原生 App。它包含 <code>assets/index.android.bundle</code>，UI 由 React Native 渲染成 Android 原生 <code>View</code>/<code>TextView</code>，没有 WebView，也不加载 HTML/CSS 页面。前一次交付的 <code>4.2.0-one-code-arm64-release.apk</code> 来自 <code>feature/dshgo-rebase</code> 的 Flutter 实验分支，已撤下交付页。若你的验收标准是无 WebView、无 React Native、无 Flutter、无 JS bundle 的纯原生工程，本包不合格，需另建 Android 原生工程。</div>
+<a class="btn" href="./Codex-Turnloom-Native-1.20.1-arm64-x86_64.apk" download>下载正确 APK</a>
+<a class="btn secondary" href="./Codex-Turnloom-Native-1.20.1-arm64-x86_64.apk.sha256" download>下载 SHA-256</a>
+</section>
+<section class="card">
+<h2>交付信息</h2>
+<table>
+<tr><th>项目</th><th>值</th></tr>
+<tr><td>文件名</td><td><code>Codex-Turnloom-Native-1.20.1-arm64-x86_64.apk</code></td></tr>
+<tr><td>绝对路径</td><td><code>D:\pi11\11\Codex-Turnloom\dist-native\Codex-Turnloom-Native-1.20.1-arm64-x86_64.apk</code></td></tr>
+<tr><td>下载副本</td><td><code>D:\pi11\11\Codex-Turnloom\public\downloads\Codex-Turnloom.apk</code>（同哈希）</td></tr>
+<tr><td>大小</td><td>73,823,236 bytes</td></tr>
+<tr><td>SHA-256</td><td><code>37D6332BEACC7209D3D84F479B423A785D2898483671EBEBCC6BD0DFB1BC007A</code></td></tr>
+<tr><td>应用标签</td><td><code>Codex-Turnloom</code></td></tr>
+<tr><td>版本</td><td><code>1.20.1-native</code> / <code>versionCode=73</code></td></tr>
+<tr><td>包名</td><td><code>com.codexpocket.optiona.native</code></td></tr>
+<tr><td>ABI</td><td><code>arm64-v8a</code> + <code>x86_64</code></td></tr>
+<tr><td>签名</td><td class="ok">apksigner verify：v2 + v3 Verifies</td></tr>
+<tr><td>界面/技术栈</td><td>Expo / React Native 客户端（非 WebView、非纯原生）；已配对后显示 <b>对话 / 终端 / 设置</b> 三项底部菜单栏</td></tr>
+</table>
+</section>
+<section class="card">
+<h2>实机视觉证据</h2>
+<div class="grid">
+<figure><img src="D:/pi-data/data/scratch/a267b24d-319e-47b6-86d5-19d57bd827bd/visual-correct-native/01-home-preview.jpg" alt="首次配对页"><figcaption>01 · 首次启动：Codex-Turnloom / 连接电脑。</figcaption></figure>
+<figure><img src="D:/pi-data/data/scratch/a267b24d-319e-47b6-86d5-19d57bd827bd/visual-correct-native/09-home-paired-preview.jpg" alt="已配对后底部菜单栏"><figcaption>02 · 配对后会话列表与底部三项菜单栏：对话 / 终端 / 设置。</figcaption></figure>
+</div>
+<p class="ok">MuMu phone 实机 UI XML 已确认三个可点击 Tab，控件类为 <code>android.view.View</code> / <code>android.widget.TextView</code>，WebView 类 absent；bounds 分别为 <code>[8,2811][543,2875]</code>、<code>[543,2811][1077,2875]</code>、<code>[1077,2811][1612,2875]</code>。</p>
+<p>安装后若已有旧签名版本，需先卸载旧包再安装；本包仍使用 debug keystore 签名，所以和此前某些实验包的签名不一致。</p>
+</section>
+<section class="card">
+<h2>安装命令</h2>
+<pre>adb devices
+adb uninstall com.codexpocket.optiona.native
+adb install "D:\pi11\11\Codex-Turnloom\dist-native\Codex-Turnloom-Native-1.20.1-arm64-x86_64.apk"</pre>
+<p class="muted">卸载仅用于解决 debug 签名不一致；若手机里没有旧版，可直接 <code>adb install -r</code>。</p>
+</section>
+<footer>Codex-Turnloom · RN 客户端 1.20.1 · 更正交付页（非纯原生）</footer>
+</main></body>
+</html>

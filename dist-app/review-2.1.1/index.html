@@ -1,0 +1,111 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Codex-Turnloom 2.1.1 · 带图复审报告</title>
+<style>
+:root{--bg:#f2f2f7;--surface:#fff;--ink:#1c1c1e;--muted:#636366;--blue:#0062cc;--green:#1f7a35;--red:#b4231b;--line:#e5e5ea;--fill:#efeff4}
+*{box-sizing:border-box}html{scroll-behavior:smooth}body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.65 -apple-system,BlinkMacSystemFont,"PingFang SC","Microsoft YaHei",system-ui,sans-serif}a{color:var(--blue);text-decoration:none}a:hover{text-decoration:underline}a:focus-visible{outline:3px solid #80baff;outline-offset:3px}header{max-width:1100px;margin:0 auto;padding:48px 24px 28px}h1{font-size:clamp(32px,5vw,52px);letter-spacing:-.04em;line-height:1.1;margin:0 0 12px}.lede{font-size:18px;color:var(--muted);max-width:760px;margin:0}.version{display:flex;gap:8px;flex-wrap:wrap;margin-top:20px}.pill{border-radius:999px;background:#fff;border:1px solid var(--line);padding:6px 12px;font-size:13px;font-weight:600}.pill.ok{color:var(--green);background:#eaf8ee;border-color:#bde6c8}.pill.blue{color:var(--blue);background:#e8f1ff;border-color:#b9d5f7}.pill.warn{color:#8a5a00;background:#fff5db;border-color:#ecd695}
+nav{position:sticky;top:0;z-index:5;background:#fffffff2;backdrop-filter:blur(16px);border-block:1px solid var(--line)}nav div{max-width:1100px;margin:auto;padding:10px 24px;display:flex;gap:8px;overflow-x:auto}nav a{white-space:nowrap;padding:6px 10px;border-radius:9px;color:var(--muted);font-size:13px}nav a:hover{background:var(--fill);text-decoration:none;color:var(--ink)}main{max-width:1100px;margin:auto;padding:28px 24px 80px}section{background:var(--surface);border:1px solid #e8e8ed;border-radius:22px;padding:26px;margin:0 0 22px;box-shadow:0 2px 9px #1c1c1e08}h2{font-size:26px;letter-spacing:-.02em;margin:0 0 6px}h3{font-size:17px;margin:22px 0 8px}.sub{color:var(--muted);margin:0 0 18px}.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px}.card{background:var(--fill);border-radius:15px;padding:16px}.card strong{display:block;font-size:25px;letter-spacing:-.02em}.card span{color:var(--muted);font-size:13px}.hero{display:grid;grid-template-columns:minmax(0,1.2fr) minmax(280px,.8fr);gap:20px}.hero img{width:100%;border-radius:16px;border:1px solid var(--line);display:block}.hash{font:12px/1.7 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;overflow-wrap:anywhere;background:var(--fill);padding:10px 12px;border-radius:10px}table{width:100%;border-collapse:collapse;font-size:14px}th,td{text-align:left;padding:11px 10px;border-bottom:1px solid var(--line);vertical-align:top}th{color:var(--muted);font-weight:600;width:28%}tr:last-child td,tr:last-child th{border-bottom:0}.gallery{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:18px}figure{margin:0;background:var(--fill);border-radius:16px;padding:10px;border:1px solid var(--line)}figure img{display:block;width:100%;height:360px;object-fit:contain;object-position:top;background:#fff;border-radius:10px}figcaption{padding:10px 4px 2px;font-weight:600}figcaption small{display:block;color:var(--muted);font-weight:400;margin-top:3px}.status{display:inline-block;border-radius:7px;padding:2px 8px;font-size:12px;font-weight:700}.pass{background:#e5f7ec;color:var(--green)}.partial{background:#fff4d6;color:#805300}.blocked{background:#feece9;color:var(--red)}ul{padding-left:20px}li{margin:7px 0}.note{border-left:4px solid var(--blue);background:#f3f8ff;padding:14px 16px;border-radius:0 12px 12px 0}.warnbox{border-left-color:#d18b00;background:#fff8e8}.actions{display:flex;flex-wrap:wrap;gap:10px;margin-top:18px}.button{display:inline-flex;align-items:center;min-height:46px;padding:10px 18px;border-radius:12px;background:var(--blue);color:white;font-weight:600}.button.secondary{background:var(--fill);color:var(--ink)}.button:hover{text-decoration:none;opacity:.92}footer{text-align:center;color:var(--muted);font-size:13px;padding:0 24px 40px}@media(max-width:760px){header{padding-top:30px}.hero{grid-template-columns:1fr}section{padding:18px}figure img{height:300px}th{width:36%}}
+</style>
+</head>
+<body>
+<header>
+  <h1>Codex-Turnloom 2.1.1</h1>
+  <p class="lede">App 化 DOM 容器（含 WebView）复审报告：连接恢复、双服务隔离、消息真实状态、更新下载与安装交接，以及窄屏视觉修复。以下截图来自实际安装的最终 APK。</p>
+  <div class="version"><span class="pill blue">2.1.1 / versionCode 82</span><span class="pill ok">10/10 连接会话流程</span><span class="pill ok">5/5 更新下载检查</span><span class="pill ok">285/285 全量测试</span><span class="pill warn">含未验证边界</span></div>
+  <div class="actions"><a class="button" href="../Codex-Turnloom-2.1.1-app.apk" download>下载最终 APK</a><a class="button secondary" href="REPORT.md">Markdown 全文</a><a class="button secondary" href="source-manifest.json">源码哈希清单</a></div>
+</header>
+<nav><div><a href="#summary">结论</a><a href="#experience">用户流程</a><a href="#gallery">截图</a><a href="#fixes">修复清单</a><a href="#verification">验证</a><a href="#limits">边界</a><a href="#identity">产物身份</a></div></nav>
+<main>
+<section id="summary">
+  <h2>复审结论</h2>
+  <p class="sub">主要问题不是视觉样式不足，而是若干界面承诺没有被状态机和生命周期完整兑现。</p>
+  <div class="hero">
+    <div>
+      <div class="grid"><div class="card"><strong>10</strong><span>最终包真实连接/会话断言</span></div><div class="card"><strong>5</strong><span>暂停、续传、校验与安装交接检查</span></div><div class="card"><strong>285</strong><span>Node 24 与离线 Node 22 全量测试</span></div><div class="card"><strong>44px</strong><span>窄屏输入框、发送键与服务切换下限</span></div></div>
+      <h3>最终产物</h3><p>包名 <code>com.codex.turnloom.app</code>，Android 8.0+，同包名与既有测试证书，支持覆盖安装。</p>
+      <p class="hash">SHA-256<br>f020edd46893f1b712c3ef2baa586ce64c9d5c4b8c1e25082e493e1ac64f613e</p>
+    </div>
+    <figure><img src="01-connect.png" alt="最终包连接电脑首屏"><figcaption>连接电脑<small>最终包首屏，无配对时不显示业务 Tab</small></figcaption></figure>
+  </div>
+  <p class="note">独立新用户复审和视觉复审以旧 2.1.0 包为基线；它们给出的问题清单已被逐项核对。本报告中的最终设备断言和截图均重新安装、绑定 2.1.1 实际 base.apk SHA 后取得，不沿用旧包结论。</p>
+</section>
+<section id="experience">
+  <h2>用户路径是否真的走得通</h2>
+  <p class="sub">使用真实 WebView 指针/输入事件、隔离 HTTP 服务和受控失败状态；未向真实 Codex/Pi 发任务。</p>
+  <table><tr><th>场景</th><th>结果</th><th>状态</th></tr>
+  <tr><td>首启未配对</td><td>只显示连接电脑，四个业务 Tab 不挂载；可直接扫码或输入地址/访问码。</td><td><span class="status pass">PASS</span></td></tr>
+  <tr><td>错误访问码 401</td><td>明确提示访问码不正确；保留服务地址，清空失效访问码并展开表单；输入新码后“重试连接”真正发出发现请求并进入工作台。</td><td><span class="status pass">PASS</span></td></tr>
+  <tr><td>Codex → Pi → Codex</td><td>使用各自独立 token；列表、详情、筛选和草稿按机器+服务隔离；迟到响应不能覆盖当前服务。</td><td><span class="status pass">PASS</span></td></tr>
+  <tr><td>Pi 服务 503</td><td>显示“服务暂时不可用”并给出其他服务入口；可直接切回可用 Codex，无需重新扫码。</td><td><span class="status pass">PASS</span></td></tr>
+  <tr><td>详情与草稿</td><td>空消息显示“暂无消息，可以发送第一条消息”，失败可重试；前台串行刷新真实回复；退出详情再进入，草稿仍保留。</td><td><span class="status pass">PASS</span></td></tr>
+  <tr><td>忘记电脑</td><td>改为确认抽屉，明确移除配对及本机会话缓存；取消后工作台和配对保持不变。</td><td><span class="status pass">PASS</span></td></tr>
+  <tr><td>相机扫码</td><td>候选包已实测权限拒绝、再次允许、ScannerActivity 占用 Camera 0、取消返回；最终包扫码源码一致。</td><td><span class="status partial">部分</span></td></tr>
+  <tr><td>真实 QR 解码</td><td>没有让镜头读取二维码，也未注入伪造成功回调；权限/预览不等于识别成功。</td><td><span class="status blocked">未验证</span></td></tr></table>
+</section>
+<section id="gallery">
+  <h2>带图设备证据</h2>
+  <p class="sub">图片均由本次安装的 App 或 Android 系统界面采集；点击可查看原图。证据 JSON 与报告同目录。</p>
+  <div class="gallery">
+    <figure><a href="01-connect.png"><img src="01-connect.png" alt="连接首屏"></a><figcaption>01 · 连接首屏<small>扫码为主入口，手动输入不再藏在说明文字后</small></figcaption></figure>
+    <figure><a href="02-home.png"><img src="02-home.png" alt="Codex 工作台"></a><figcaption>02 · Codex 工作台<small>实际发现服务后显示隔离的真实会话列表</small></figcaption></figure>
+    <figure><a href="03-pi.png"><img src="03-pi.png" alt="Pi 服务切换"></a><figcaption>03 · 切到 Pi<small>当前服务、列表与 token 随 harness 改变</small></figcaption></figure>
+    <figure><a href="04-empty-detail.png"><img src="04-empty-detail.png" alt="空消息状态"></a><figcaption>04 · 空消息完成加载<small>不再永久停留在“正在加载消息…”</small></figcaption></figure>
+    <figure><a href="05-settings.png"><img src="05-settings.png" alt="设置与更新检查"></a><figcaption>05 · 设置<small>更新状态、缓存控制与忘记电脑入口</small></figcaption></figure>
+    <figure><a href="08-update-paused.png"><img src="08-update-paused.png" alt="下载暂停"></a><figcaption>08 · 下载暂停<small>已下载部分保留；切换 Tab 后状态不丢失</small></figcaption></figure>
+    <figure><a href="09-update-verified.png"><img src="09-update-verified.png" alt="安装包已校验"></a><figcaption>09 · 安装包已校验<small>SHA、包名、版本、签名通过后才允许安装</small></figcaption></figure>
+    <figure><a href="10-installer.png"><img src="10-installer.png" alt="Android 系统安装确认"></a><figcaption>10 · 系统安装确认<small>“要更新此应用吗？”；本轮选择取消，不覆盖正式包</small></figcaption></figure>
+    <figure><a href="11-detail-320x420.png"><img src="11-detail-320x420.png" alt="320x420 详情"></a><figcaption>11 · 320×420 详情<small>输入与发送各 44px，输入区约 107px；不遮住正文</small></figcaption></figure>
+    <figure><a href="12-newtask-320x320.png"><img src="12-newtask-320x320.png" alt="320x320 新建任务"></a><figcaption>12 · 320×320 新建任务<small>创建任务主按钮 280×44px，位于可视区</small></figcaption></figure>
+  </div>
+</section>
+<section id="fixes">
+  <h2>已落地的关键修复</h2>
+  <div class="grid">
+    <div class="card"><strong>连接恢复</strong><span>重试真正发请求；401 保留地址、清空坏码；已配对私网 IP 由原生策略授权，不再只认示例 IP。</span></div>
+    <div class="card"><strong>状态单一来源</strong><span>前后台重验证统一由 sessionStore 排序；旧响应不能更新在线状态；切服务清旧详情/筛选。</span></div>
+    <div class="card"><strong>真实缓存与草稿</strong><span>缓存开关控制读写；清缓存不清空在线列表；草稿按机器、服务、会话保存，失败发送不丢。</span></div>
+    <div class="card"><strong>消息状态</strong><span>loading / loaded / error 明确；空态、失败重试、前台刷新；助手回复不再伪装成推理日志。</span></div>
+    <div class="card"><strong>更新链路</strong><span>应用级更新 store；暂停跨 Tab 保留；SHA 绑定续传；取消断开真实连接；安装器保留 Activity 结果。</span></div>
+    <div class="card"><strong>视觉与可达性</strong><span>主按钮不再被 style 覆盖；服务 chip 44px；短视口输入区两行；次要文字和状态文字对比度提升。</span></div>
+    <div class="card"><strong>原生兼容</strong><span>API 26/27 对版本号和签名 API 使用兼容分支；安装动作回 UI 线程；扫码错误/取消区分。</span></div>
+    <div class="card"><strong>工程真实性</strong><span>构建启动器测试改为真实成功/失败子进程；不再靠注释字符串满足测试；文档、QA 包与交付页同步。</span></div>
+  </div>
+</section>
+<section id="verification">
+  <h2>验证矩阵</h2>
+  <table><tr><th>验证项</th><th>结果</th><th>证据</th></tr>
+  <tr><td>Node 24 / 离线 Node 22 全量</td><td><span class="status pass">285/285</span>，fail=0、cancelled=0</td><td><a href="review-full-node24.log">Node24 日志</a> · <a href="review-full-node22.log">Node22 日志</a></td></tr>
+  <tr><td>TypeScript / 原生 JVM / 静态门禁</td><td><span class="status pass">0 errors / 8 tests / 26 门禁</span></td><td><a href="review-native-final-tests.log">原生测试日志</a></td></tr>
+  <tr><td>APK 编译、对齐、v2/v3 签名、badging</td><td><span class="status pass">PASS</span></td><td><a href="../build-manifest-2.1.1.json">构建清单</a></td></tr>
+  <tr><td>guest 实际 base.apk SHA</td><td><span class="status pass">与最终文件一致</span></td><td><a href="installed-sha256.txt">安装 SHA</a> · <a href="device-result.json">设备结果</a></td></tr>
+  <tr><td>连接/会话/失败恢复/草稿/空态/忘记电脑</td><td><span class="status pass">10/10</span></td><td><a href="device-result.json">device-result.json</a></td></tr>
+  <tr><td>更新元数据、暂停、跨 Tab 保留、非零 Range 续传、原生校验 ready</td><td><span class="status pass">5/5</span></td><td><a href="update-result.json">update-result.json</a></td></tr>
+  <tr><td>系统安装器确认与取消恢复</td><td><span class="status pass">PASS</span></td><td><a href="final-installer.xml">Android UI XML</a> · <a href="10-installer.png">截图</a></td></tr>
+  <tr><td>320×420 / 320×320 几何及命中区</td><td><span class="status pass">PASS</span></td><td><a href="layout-result.json">layout-result.json</a></td></tr>
+  </table>
+  <p class="note warnbox">“系统安装器确认”使用 scratch 中仅用于验收的同签名 83 版隔离包；已经看到系统确认页并选择取消，未点击“更新”实际覆盖正式 82 版。测试 HTTP 由隔离夹具提供，不能据此宣称生产桌面网关或真实模型执行已验收。</p>
+</section>
+<section id="limits">
+  <h2>仍保留的边界</h2><ul>
+    <li>真实镜头 QR 识别未完成；权限、相机占用与取消不等于解码成功。</li>
+    <li>实际点击系统“更新”后的覆盖安装未执行，保留正式 82 版及已有数据。</li>
+    <li>生产桌面 8787 入口没有迁移；公网、真实桌面二维码和生产链路未切换。</li>
+    <li>API 26/27 只有编译及兼容分支证据；本轮设备为 Android 15。</li>
+    <li>凭据存于应用私有 MODE_PRIVATE SharedPreferences，尚未做应用层加密。</li>
+    <li>不宣称全设备视觉、物理键盘或完整 GPU 性能矩阵通过；短视口为 CDP 代理。</li>
+    <li>当前签名仍是既有测试证书；本轮未做生产签名迁移或公网服务发布。</li>
+  </ul>
+</section>
+<section id="identity">
+  <h2>交付与清理</h2>
+  <p>当前交付目录保留 2.1.1 最终包与 2.1.0 / 2.0.0 两个历史包，不删除历史证据。本地更新暂存包已同步为最终字节，并由 release reader 重新哈希验证；旧暂存内容备份仅保留在 scratch。</p>
+  <p>原配对经应用存储桥备份后逐键比较恢复；包含凭据的备份不进入交付目录。临时相机与安装来源授权已撤销，CDP / reverse 转发移除，隔离 HTTP 服务停止，phone 租约已释放。</p>
+  <p class="hash">最终 APK：f020edd46893f1b712c3ef2baa586ce64c9d5c4b8c1e25082e493e1ac64f613e<br>当前包内 JS：见 <a href="../build-manifest-2.1.1.json">build-manifest-2.1.1.json</a> 与 <a href="source-manifest.json">source-manifest.json</a></p>
+</section>
+</main>
+<footer>Codex-Turnloom · ROUTE=dom-shell · 报告与截图均绑定 2.1.1 最终 APK 身份</footer>
+</body>
+</html>

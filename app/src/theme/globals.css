@@ -1,0 +1,525 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ============================================================
+   Option A / Cupertino Daylight Glass
+   SINGLE_APP_CONTRACT.md section 4 = single source of truth.
+   Light mode is HARD LOCKED. No dark variant, no black canvas,
+   no desktop centered preview shell.
+   ============================================================ */
+
+:root {
+  --tl-canvas: #F2F2F7;
+  --tl-surface: #FFFFFF;
+  --tl-fill-secondary: #EFEFF4;
+  --tl-separator: #E5E5EA;
+  --tl-label-primary: #1C1C1E;
+  --tl-label-secondary: #636366;
+  --tl-blue: #007AFF;
+  --tl-green: #34C759;
+  --tl-red: #FF3B30;
+  --tl-diff-add-bg: #E8F8EE;
+  --tl-diff-add-fg: #1E7E34;
+  --tl-diff-del-bg: #FDECEC;
+  --tl-diff-del-fg: #C82333;
+  --tl-sheet-handle: #C7C7CC;
+  --tl-glass-nav: rgba(255, 255, 255, .82);
+  --tl-glass-thumb: rgba(255, 255, 255, .85);
+  --tl-glass-sheet: rgba(255, 255, 255, .95);
+  --tl-blur-nav: blur(20px) saturate(180%);
+  --tl-blur-thumb: blur(24px) saturate(180%);
+  --tl-blur-sheet: blur(40px) saturate(180%);
+  --tl-radius-card: 16px;
+  --tl-radius-sheet: 24px;
+  --tl-card-shadow: 0 1px 3px rgba(0, 0, 0, .04);
+  --tl-tap: 44px;
+  --tl-press-duration: 150ms;
+  color-scheme: light only;
+}
+
+*, *::before, *::after {
+  -webkit-tap-highlight-color: transparent;
+}
+
+html, body, #root {
+  height: 100%;
+  min-height: 100%;
+  margin: 0;
+  padding: 0;
+}
+
+html {
+  background-color: #F2F2F7 !important;
+  color-scheme: light only;
+  overscroll-behavior: none;
+  -webkit-text-size-adjust: 100%;
+}
+
+body {
+  /* !important guards against Vaul's inline background assignment when
+     shouldScaleBackground is on: the app must never show a black canvas. */
+  background-color: #F2F2F7 !important;
+  color: #1C1C1E;
+  color-scheme: light only;
+  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "PingFang SC",
+    "Helvetica Neue", "Segoe UI", system-ui, sans-serif;
+  overscroll-behavior: none;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
+}
+
+/* Text selection allowed only inside actual message/diff/log content. */
+.tl-selectable, .tl-selectable * {
+  user-select: text;
+  -webkit-user-select: text;
+}
+
+button, input, textarea, select {
+  font: inherit;
+  color: inherit;
+}
+
+input, textarea {
+  user-select: text;
+  -webkit-user-select: text;
+}
+
+.tl-app {
+  height: 100%;
+  width: 100%;
+  background: var(--tl-canvas);
+  color: var(--tl-label-primary);
+  overflow: hidden;
+}
+
+/* ---------- surfaces / cards ---------- */
+
+.tl-card {
+  background: var(--tl-surface);
+  border-radius: var(--tl-radius-card);
+  box-shadow: var(--tl-card-shadow);
+}
+
+.tl-screen {
+  height: 100%;
+  width: 100%;
+  overflow-y: auto;
+  overflow-x: hidden;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior-y: contain;
+  background: var(--tl-canvas);
+  /* Fixed glass TabBar is ~56px + safe-area; keep a generous trailing gutter
+     so the last actionable element (e.g. "刷新会话列表" / "外观") can always
+     be scrolled fully above the bar instead of being half-covered. */
+  padding-bottom: calc(128px + env(safe-area-inset-bottom, 0px));
+}
+
+.tl-screen::after {
+  content: '';
+  display: block;
+  height: calc(48px + env(safe-area-inset-bottom, 0px));
+  flex: 0 0 auto;
+}
+
+.tl-screen--detail {
+  padding-bottom: calc(128px + env(safe-area-inset-bottom, 0px));
+}
+
+.tl-separator {
+  background: var(--tl-separator);
+  height: 1px;
+}
+
+.tl-fill-secondary {
+  background: var(--tl-fill-secondary);
+}
+
+/* ---------- tap targets & press feedback ---------- */
+
+.tl-tap {
+  min-width: var(--tl-tap);
+  min-height: var(--tl-tap);
+}
+
+.tl-press {
+  transition: transform var(--tl-press-duration) ease,
+    opacity var(--tl-press-duration) ease,
+    background-color var(--tl-press-duration) ease;
+  cursor: pointer;
+  touch-action: manipulation;
+}
+
+.tl-press:active {
+  transform: scale(.98);
+  opacity: .8;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .tl-press { transition-duration: 0ms; }
+}
+
+/* ---------- glass ---------- */
+
+.tl-glass-nav {
+  background: var(--tl-glass-nav);
+  backdrop-filter: var(--tl-blur-nav);
+  -webkit-backdrop-filter: var(--tl-blur-nav);
+  border-top: .5px solid var(--tl-separator);
+}
+
+.tl-glass-thumb {
+  background: var(--tl-glass-thumb);
+  backdrop-filter: var(--tl-blur-thumb);
+  -webkit-backdrop-filter: var(--tl-blur-thumb);
+}
+
+.tl-glass-sheet {
+  background: var(--tl-glass-sheet);
+  backdrop-filter: var(--tl-blur-sheet);
+  -webkit-backdrop-filter: var(--tl-blur-sheet);
+}
+
+.tl-glass-chip {
+  background: var(--tl-glass-nav);
+  backdrop-filter: var(--tl-blur-nav);
+  -webkit-backdrop-filter: var(--tl-blur-nav);
+}
+
+/* ---------- tab bar ---------- */
+
+.tl-tabbar {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 30;
+  display: flex;
+  align-items: stretch;
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+  /* Static translucent glass instead of a live backdrop blur: the bar sits
+     over a fixed light canvas, so the visual result is the same but no
+     per-frame readback is needed (keeps the drawer animation smooth). */
+  background: rgba(255, 255, 255, .94);
+  border-top: .5px solid var(--tl-separator);
+  transform: translateZ(0);
+}
+
+.tl-tabbar-item {
+  flex: 1 1 0;
+  min-width: var(--tl-tap);
+  min-height: 56px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  border: 0;
+  background: transparent;
+  color: var(--tl-label-secondary);
+  padding: 6px 2px;
+}
+
+.tl-tabbar-item--active { color: var(--tl-blue); }
+
+.tl-tabbar-label {
+  font-size: 10px;
+  line-height: 13px;
+  font-weight: 500;
+  letter-spacing: .1px;
+}
+
+/* ---------- thumb glass bar (detail page, replaces tab bar) ---------- */
+
+.tl-thumbbar {
+  position: fixed;
+  left: 12px;
+  right: 12px;
+  bottom: calc(12px + env(safe-area-inset-bottom, 0px));
+  z-index: 30;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  border-radius: var(--tl-radius-card);
+  background: var(--tl-glass-thumb);
+  backdrop-filter: var(--tl-blur-thumb);
+  -webkit-backdrop-filter: var(--tl-blur-thumb);
+  box-shadow: 0 2px 12px rgba(0, 0, 0, .08);
+  border: .5px solid rgba(255, 255, 255, .9);
+}
+
+.tl-thumbbar-input {
+  flex: 1 1 auto;
+  min-height: var(--tl-tap);
+  border: 0;
+  outline: none;
+  background: var(--tl-fill-secondary);
+  border-radius: 12px;
+  padding: 0 14px;
+  font-size: 16px;
+  color: var(--tl-label-primary);
+}
+
+.tl-thumbbar-input::placeholder { color: var(--tl-label-secondary); }
+
+/* ---------- Vaul drawer (global singleton CupertinoSheetHost) ---------- */
+
+[data-vaul-drawer-wrapper] {
+  height: 100%;
+  background: var(--tl-canvas);
+}
+
+/* Light dim scrim. No full-screen backdrop-filter: a full-viewport blur is
+   recomposited every frame during the drawer animation and was the main
+   source of jank. A translucent scrim is visually equivalent and GPU cheap.
+   shouldScaleBackground is OFF, so nothing behind is transformed. */
+[data-vaul-overlay] {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+  background: rgba(28, 28, 30, .22);
+}
+
+/* Explicitely promote the sheet to its own compositor layer. */
+[data-vaul-drawer] {
+  position: fixed !important;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 41;
+  width: 100%;
+  max-height: 92vh;
+  display: flex;
+  flex-direction: column;
+  margin: 0 auto;
+  outline: none;
+  border-radius: var(--tl-radius-sheet) var(--tl-radius-sheet) 0 0;
+  background: #FFFFFF;
+  box-shadow: 0 -8px 32px rgba(0, 0, 0, .10);
+  border-top: .5px solid rgba(255, 255, 255, .95);
+  overflow: hidden;
+  touch-action: none;
+  will-change: transform;
+  transform: translateZ(0);
+}
+
+/* Contract: sheet handle is exactly 36 x 6 px in #C7C7CC
+   (Vaul ships 32 x 5 in #e2e2e4, so it is overridden here). */
+[data-vaul-handle] {
+  width: 36px !important;
+  height: 6px !important;
+  min-height: 6px;
+  background: var(--tl-sheet-handle) !important;
+  opacity: 1 !important;
+  border-radius: 3px;
+  margin-top: 10px;
+  margin-bottom: 2px;
+  flex: 0 0 auto;
+}
+
+[data-vaul-handle-hitarea] {
+  min-width: var(--tl-tap);
+  min-height: var(--tl-tap);
+}
+
+.tl-sheet-body {
+  overflow-y: auto;
+  overscroll-behavior-y: contain;
+  -webkit-overflow-scrolling: touch;
+  touch-action: pan-y;
+  padding: 4px 20px calc(24px + env(safe-area-inset-bottom, 0px));
+}
+
+.tl-sheet-title {
+  font-size: 22px;
+  line-height: 28px;
+  font-weight: 700;
+  letter-spacing: -.4px;
+  color: var(--tl-label-primary);
+  margin: 8px 0 4px;
+}
+
+.tl-sheet-subtitle {
+  font-size: 13px;
+  line-height: 18px;
+  color: var(--tl-label-secondary);
+  margin: 0 0 16px;
+}
+
+/* ---------- diff ---------- */
+
+.tl-diff-add {
+  background: var(--tl-diff-add-bg);
+  color: var(--tl-diff-add-fg);
+}
+
+.tl-diff-del {
+  background: var(--tl-diff-del-bg);
+  color: var(--tl-diff-del-fg);
+}
+
+.tl-diff-line {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 12px;
+  line-height: 20px;
+  white-space: pre-wrap;
+  word-break: break-all;
+  padding: 2px 10px;
+}
+
+/* ---------- misc ---------- */
+
+.tl-hairline-top { border-top: .5px solid var(--tl-separator); }
+.tl-hairline-bottom { border-bottom: .5px solid var(--tl-separator); }
+
+.tl-large-title {
+  font-size: 34px;
+  line-height: 41px;
+  font-weight: 700;
+  letter-spacing: -.8px;
+  color: var(--tl-label-primary);
+}
+
+.tl-section-title {
+  font-size: 13px;
+  line-height: 18px;
+  font-weight: 600;
+  letter-spacing: .4px;
+  text-transform: uppercase;
+  color: var(--tl-label-secondary);
+}
+
+.tl-safe-top { padding-top: env(safe-area-inset-top, 0px); }
+
+.tl-no-scrollbar::-webkit-scrollbar { display: none; }
+.tl-no-scrollbar { scrollbar-width: none; }
+
+/* subtle running indicator rotation, light-mode neutral */
+@keyframes tl-spin { to { transform: rotate(360deg); } }
+.tl-spin { animation: tl-spin 1.1s linear infinite; }
+@media (prefers-reduced-motion: reduce) { .tl-spin { animation: none; } }
+
+/* Konsta Tabbar adds its own translucent bg div and fixed inner height.
+/* Konsta Tabbar renders an absolute bg div + a fixed-height inner flex div.
+   Our wrapper supplies the Option A glass instead, so neutralise those. */
+.tl-tabbar > div > div:first-child { background: transparent !important; backdrop-filter: none !important; }
+.tl-tabbar > div > div:nth-child(2) { height: 56px; align-items: stretch; }
+.tl-tabbar [role="tab"] { min-height: 56px; }
+
+/* Force the exact contract colors on Konsta's internal label/icon spans,
+   which otherwise use text-primary / text-black text-opacity-40. */
+.tl-tabbar [role="tab"] * { color: #8E8E93 !important; }
+.tl-tabbar [role="tab"].k-tabbar-link-active * { color: #007AFF !important; }
+
+/* Press feedback is an opacity/color change only: transform on a fixed tab
+   button changes pointer geometry (the visual "shrink" defect). */
+.tl-tabbar .tl-press:active {
+  transform: none;
+  opacity: 1;
+  background-color: rgba(0, 122, 255, .07);
+}
+
+/* Connect is a full-height, scrollable dedicated screen; no tab bar. */
+.tl-connect-scroll {
+  height: 100%;
+  width: 100%;
+  overflow-y: auto;
+  overflow-x: hidden;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior-y: contain;
+  padding-bottom: calc(24px + env(safe-area-inset-bottom, 0px));
+}
+
+/* Compact empty states on short/narrow screens. */
+.tl-empty-card {
+  padding: 16px !important;
+  margin: 0 16px !important;
+}
+.tl-empty-card [data-empty-icon] { margin-bottom: 6px !important; }
+
+/* Narrow screen: always keep back + input + send visible. Secondary actions
+   wrap onto a second row instead of pushing send/interrupt beyond viewport. */
+@media (max-width: 420px) {
+  .tl-thumbbar {
+    flex-wrap: wrap;
+    left: 8px;
+    right: 8px;
+    bottom: calc(8px + env(safe-area-inset-bottom, 0px));
+    gap: 6px;
+    padding: 6px 8px;
+  }
+  .tl-thumbbar .tl-thumbbar-input {
+    flex: 1 1 100%;
+    order: 2;
+    min-width: 0;
+  }
+  .tl-thumbbar > button { width: 42px; height: 42px; border-radius: 12px; }
+  .tl-thumbbar > button:first-child { order: 0; }
+  .tl-thumbbar > button[aria-label='发送'] { order: 1; }
+  .tl-thumbbar > button[aria-label='中断'] { order: 3; }
+  .tl-thumbbar > button[aria-label='审批'] { order: 4; }
+}
+
+/* Ultra-narrow widths still keep all five controls inside the bar. */
+@media (max-width: 320px) {
+  .tl-thumbbar > button { width: 38px; height: 38px; }
+  .tl-thumbbar .tl-thumbbar-input { min-height: 38px; font-size: 15px; }
+}
+
+/* Konsta's iOS Link applies active:opacity-30 (and our old .tl-press applied
+   scale(.98)); neither is used on the fixed tab bar so pointer geometry and
+   hit-test bounds are identical before, during and after a press. */
+.tl-tabbar [role="tab"]:active,
+.tl-tabbar .k-tabbar-link:active {
+  opacity: 1 !important;
+  transform: none !important;
+  background-color: rgba(0, 122, 255, .07);
+}
+.tl-tabbar [role="tab"] { transition: background-color 150ms ease; }
+.tl-tabbar [role="tab"]:hover { opacity: 1 !important; }
+
+/* Connection actions stay together, including at phone/keyboard widths. */
+.tl-connect-header { padding: 28px 24px 8px; }
+.tl-brand { width: 60px; height: 60px; display: grid; place-items: center; border-radius: 18px; background: #007AFF; box-shadow: 0 6px 20px #007aff26; margin-bottom: 18px; }
+.tl-brand svg { flex: none; max-width: 42px; }
+.tl-connect-header h1 { margin: 0; font-size: 30px; }
+.tl-connect-header p, .tl-connect-hint { color: #63636a; font-size: 13px; line-height: 1.5; margin: 8px 0; }
+.tl-connect-card { margin: 16px; padding: 16px; }
+.tl-connect-manual { display: flex; gap: 8px; align-items: center; width: 100%; min-height: 48px; padding: 6px 4px; border: 0; background: transparent; color: var(--tl-blue); font-size: 14px; text-align: left; }
+.tl-connect-form { display: grid; gap: 10px; padding-top: 12px; }
+.tl-connect-form label { font-size: 13px; font-weight: 600; color: #63636a; }
+.tl-connect-form input { box-sizing: border-box; width: 100%; min-width: 0; height: 48px; padding: 0 12px; border: 1px solid transparent; border-radius: 12px; background: var(--tl-fill-secondary); color: var(--tl-label-primary); font-size: 16px; }
+.tl-connect-form input:focus { outline: 2px solid var(--tl-blue); outline-offset: 1px; }
+.tl-code-field { display: flex; align-items: center; gap: 4px; }
+.tl-code-field button { flex: none; width: 48px; height: 48px; border: 0; border-radius: 12px; display: grid; place-items: center; background: var(--tl-fill-secondary); color: #63636a; }
+.tl-connect-submit { border: 0; min-height: 48px; border-radius: 12px; background: var(--tl-blue); color: white; font-weight: 600; margin-top: 6px; }
+button:disabled { opacity: .48; cursor: default; }
+.tl-connect-error { margin-top: 12px; padding: 12px; border-radius: 12px; color: #a9231b; background: #fff0ee; font-size: 13px; line-height: 1.5; overflow-wrap: anywhere; }
+.tl-recovery-services { display: flex; flex-wrap: wrap; gap: 8px; }
+.tl-recovery-services button { min-height: 44px; border: 0; border-radius: 12px; padding: 8px 16px; background: #007aff12; color: var(--tl-blue); }
+.tl-connect-footer { padding: 8px 24px 24px; color: #63636a; text-align: center; font-size: 12px; line-height: 1.8; }
+.tl-connect-footer svg { display: inline; vertical-align: middle; }
+button:focus-visible, a:focus-visible { outline: 2px solid var(--tl-blue); outline-offset: 2px; }
+@media (max-height: 540px) { .tl-connect-header { padding-top: 12px; } .tl-brand { display: none; } }
+/* Keep every actual touch target at least 44px, including 320px phones. */
+@media (max-width: 420px) { .tl-thumbbar > button { min-width: 44px; min-height: 44px; } }
+.tl-thumbbar-message { flex-basis: 100%; font-size: 12px; line-height: 18px; color: #a9231b; }
+
+
+/* Accessibility refinement: decoration keeps system accents; text uses ink. */
+.tl-tabbar [role="tab"] * { color: #636366 !important; }
+.tl-tabbar [role="tab"].k-tabbar-link-active * { color: #0062CC !important; }
+.tl-connect-submit { background: #0062CC; }
+.tl-thumbbar { flex-wrap: wrap; }
+@media (max-width: 420px) {
+  .tl-thumbbar { display: grid; grid-template-columns: 44px 44px minmax(0, 1fr) 44px; grid-template-rows: 44px 44px; }
+  .tl-thumbbar .tl-thumbbar-input { grid-row: 1; grid-column: 1 / 4; width: 100%; min-height: 44px; height: 44px; order: 0; }
+  .tl-thumbbar > button[aria-label='发送'] { grid-row: 1; grid-column: 4; }
+  .tl-thumbbar > button[aria-label='返回'] { grid-row: 2; grid-column: 1; }
+  .tl-thumbbar > button[aria-label='审批'] { grid-row: 2; grid-column: 2; }
+  .tl-thumbbar > button[aria-label='中断'] { grid-row: 2; grid-column: 4; }
+  .tl-thumbbar-message { grid-column: 1 / -1; }
+}
+.tl-sheet-actions { position: sticky; bottom: 0; background: #FFFFFF; padding: 10px 0; z-index: 2; }

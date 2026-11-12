@@ -1,0 +1,9 @@
+{
+  "checks": [
+    "newer metadata recognized",
+    "real download cancelled",
+    "paused download survives tab switch",
+    "native hash package version signer verification ready",
+    "Range resumes at nonzero offset"
+  ]
+}

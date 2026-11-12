@@ -1,0 +1,24 @@
+{
+    "generatedAt":  "2026-11-11T21:57:48.0556950+08:00",
+    "result":  "FAILED",
+    "versionName":  "2.1.0-app",
+    "versionCode":  81,
+    "error":  "vite-build launcher failed (exit 1)",
+    "steps":  [
+                  {
+                      "name":  "validate",
+                      "status":  "ok",
+                      "detail":  "D:\\pi11\\11\\Codex-Turnloom / D:\\pi-data\\data\\scratch\\a267b24d-319e-47b6-86d5-19d57bd827bd\\app-build-tree"
+                  },
+                  {
+                      "name":  "sync-source",
+                      "status":  "ok",
+                      "detail":  "D:\\pi-data\\data\\scratch\\a267b24d-319e-47b6-86d5-19d57bd827bd\\app-build-tree"
+                  },
+                  {
+                      "name":  "failed",
+                      "status":  "error",
+                      "detail":  "vite-build launcher failed (exit 1)"
+                  }
+              ]
+}

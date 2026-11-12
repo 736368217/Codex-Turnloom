@@ -67,3 +67,4 @@ public/downloads/*-offline-demo.html
 android/app/src/main/assets/offline-demo.html
 mobile-app/src/services/offlineDemo.js
 mobile-app/src/services/demoBootstrap.ts
+dist-app/*.zip

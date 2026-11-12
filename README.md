@@ -1,3 +1,24 @@
+> ## 当前唯一交付线：`ROUTE=dom-shell`
+>
+> **App 化 DOM 容器（含 WebView）** = `app/`（React + Vite + TypeScript + Tailwind + **Konsta UI** +
+> **Vaul** + Lucide + Framer Motion）→ `native-shell/` 独立 Android Java WebView 容器 →
+> 可安装 APK（`com.codex.turnloom.app`，加载本地 `file:///android_asset/public/index.html`）。
+> 唯一真源：[docs/option-a/SINGLE_APP_CONTRACT.md](docs/option-a/SINGLE_APP_CONTRACT.md)；
+> 视觉规范 [UI_SPEC.md](docs/option-a/UI_SPEC.md)、架构 / 桥 / 交付
+> [ARCHITECTURE.md](docs/option-a/ARCHITECTURE.md) / [BRIDGE.md](docs/option-a/BRIDGE.md) / [DELIVERY.md](docs/option-a/DELIVERY.md)。
+>
+> 诚实术语：App 化 DOM 容器（含 WebView）**≠ 纯原生**（纯 Kotlin/Compose）**≠ 非 WebView RN**
+> **≠ 简单网页 / 远程 PWA**。可安装 APK、启动器图标、无浏览器 chrome、离线本地资源、
+> 原生相机 / 触觉 / 安全存储桥、毛玻璃 TabBar、Vaul 手势抽屉、系统返回栈接管。
+>
+> **冻结 / 归档（不作为交付线）**：`mobile-app/`（旧 Expo/RN）、`public/`（远程 PWA）、`web-ui/`、
+> `android/`（旧 WebView 壳）、`dshgo/`、`dist-dshgo/`、`dist-native/`、`feature/dshgo-rebase`。
+> 旧 [Track A](docs/option-a/Track_A_Web_App_Upgrade_Spec.md) / [Track B](docs/option-a/Track_B_Native_Mobile_App_Spec.md)
+> 双线规划已归档；共用后端 `server.js` / `backends/http-backend.js` 继续保留 `/api/*` 契约。
+>
+> 一机一码配对协议、后端 `/api/*` 契约、Windows 托盘控制台、Windows 无黑框 / 无可见控制台硬规则
+> 均继续有效（见 [docs/PROTOCOL.zh-CN.md](docs/PROTOCOL.zh-CN.md) 与 AGENTS.md）。
+
 # Codex-Turnloom
 
 <p align="center">
@@ -6,7 +27,7 @@
 
 <p align="center">
   <strong>自托管、本地优先的 Codex 手机工作台</strong><br />
-  在电脑上运行服务，手机用原生 Android App 查看会话、继续对话、处理审批。
+  在电脑上运行服务，手机用 **ROUTE=dom-shell App 化 DOM 容器（含 WebView）** 查看会话、继续对话、处理审批（可安装 APK，非简单网页）。
 </p>
 
 <p align="center">
@@ -21,13 +42,13 @@
 
 Codex Desktop 的会话、项目目录和运行记录都在电脑上。Codex-Turnloom 在 **电脑本机** 启动一个受访问码保护的 HTTP 服务，手机通过局域网连接该服务，查看、发送、审批等操作由电脑端代理完成；项目不提供云端账号或托管存储。
 
-当前主线是 `mobile-app/` 下的 **Expo / React Native 原生 Android App**。`public/` 保留服务内置网页兼容入口，`desktop/` 是 Windows 托盘控制台，`android/` 是仓库现有的 Android 工程与 CI 检查入口。
+当前唯一交付线是 `app/ + native-shell/` 的 **ROUTE=dom-shell App 化 DOM 容器（含 WebView）**（React + Konsta UI + Vaul → Android Java WebView 容器 → 可安装 APK）。`public/`（服务内置网页 / 远程 PWA）、`android/`（旧 Android WebView 兼容壳）、`mobile-app/`（旧 Expo/RN）、`web-ui/`、`dshgo/`、`dist-dshgo/`、`dist-native/` 均标注**冻结 / 归档**，保留只读兼容但不作为交付线。`desktop/` 是 Windows 托盘控制台，`server.js` / `backends/http-backend.js` 继续提供 `/api/*` 契约。
 
 > **安全边界**：项目按可信局域网设计。不要把服务直接暴露到公网；需要远程访问时，请自行放在有访问控制与 TLS 的私有网络后。详见 [SECURITY.md](SECURITY.md)。
 
 ## 真实界面
 
-下面全部是当前源码构建后在 **MuMu Android 手机档位** 运行的真实设备截图，不是静态设计稿。截图使用隔离的文档数据，不含真实访问码、二维码、账户或私人会话内容。
+下列截图来自**冻结归档的旧 Expo / React Native 客户端**（`mobile-app/`，非 WebView、非纯原生），仅作历史功能说明；**不代表当前 `ROUTE=dom-shell` 交付线的界面**。当前单线 App 的浅色 Option A 视觉以 [UI_SPEC.md](docs/option-a/UI_SPEC.md) 为准。截图使用隔离的文档数据，不含真实访问码、二维码、账户或私人会话内容。
 
 | 会话工作台 | 对话与审批 |
 |:---:|:---:|
@@ -51,7 +72,7 @@ Codex Desktop 的会话、项目目录和运行记录都在电脑上。Codex-Tur
 - **引用能力**：插件和技能分别读取；一侧接口失败不会清空另一侧列表。
 - **附件与复制**：图片/文件选择、消息复制、引用标签；可选原生模块缺失时安全降级。
 - **连接与安全**：二维码或手动配对、多电脑隔离、访问码鉴权、401 恢复、只读模式、登录失败限流。
-- **客户端**：原生 Android App；服务端另提供兼容网页入口与 Windows 托盘控制台。
+- **客户端**：当前唯一交付线为 `ROUTE=dom-shell` **App 化 DOM 容器（含 WebView）**（React + Konsta UI + Vaul → Android WebView 容器 APK）。旧 Expo / React Native 客户端（`mobile-app/`）、远程 PWA（`public/`）、旧 WebView 壳（`android/`）、Flutter 实验线（`dshgo/` / `dist-dshgo/` / `dist-native/`）均已**冻结 / 归档**；纯 Kotlin/Compose 原生 App 本轮未采用，不得把当前容器假称纯原生。服务端保留兼容网页入口（归档）与 Windows 托盘控制台。
 
 ## 快速开始
 
@@ -87,13 +108,13 @@ npm run device:qr
 
 ### 3. 安装 Android App
 
-从 [Releases](https://github.com/736368217/Codex-Turnloom/releases/latest) 下载对应 APK 安装。仓库 CI 也会构建 `android/` 工程并上传 `codex-Turnloom-debug-apk` 工件。
+从 [Releases](https://github.com/736368217/Codex-Turnloom/releases/latest) 下载对应 APK 安装。当前唯一交付线的构建入口是 `scripts/build-single-app.ps1`（`app/` 的 npm ci/build + `native-shell/` Gradle + zipalign/sign），产物在 `dist-app/`；静态验收 `scripts/verify-single-app.mjs` 与 `node --test test/single-app-contract.test.cjs`。仓库 CI 的 `android/gradlew testDebugUnitTest assembleDebug` 属于**冻结归档的旧 WebView 兼容壳**检查，不是本轮 App 交付线。
 
-> 发布包与从源码完整构建原生工程的说明，以 Release 页面和工程脚本为准；完整 `mobile-app/` release 构建依赖本机 Android SDK、NDK、CMake、Ninja 与 Expo 原生依赖。
+> 发布包与从源码完整构建 APK 的说明，以 `docs/option-a/DELIVERY.md` 和 `scripts/build-single-app.ps1` 为准；完整构建依赖本机 Android SDK。旧 `mobile-app/` Expo 原生依赖说明已归档，不再是当前交付线依据。
 
 ### 4. 连接手机
 
-打开 App →「终端」→ 扫码或手动输入：
+首次打开 App →「连接电脑」→ 扫码，或点「输入地址和访问码」：
 
 | 字段 | 示例 |
 |---|---|
@@ -105,15 +126,19 @@ npm run device:qr
 ## 项目结构
 
 ```text
-server.js              本机服务：API、鉴权、会话读写、队列、审批、只读模式
-mobile-app/            原生 Android App（Expo Router / React Native）
-public/                服务内置网页兼容入口
-desktop/               Windows 托盘控制台
-android/               仓库 Android 工程与 CI 构建入口
-backends/              HTTP 后端适配器
-scripts/               安装、守护、二维码、CI 校验等工具
-test/                  Node 回归测试
-docs/                  使用说明与真实设备配图
+server.js              本机服务：/api/* API、鉴权、会话读写、队列、审批、只读模式（继续有效）
+app/                   唯一 App UI 源码：React + Vite + Konsta UI + Vaul（ROUTE=dom-shell）
+native-shell/          独立 Android Java WebView 容器（加载本地 assets/public/index.html）
+dist-app/              最终产物：APK + SHA-256 + delivery.html + QA 报告
+docs/option-a/         单线合同 / UI_SPEC / ARCHITECTURE / BRIDGE / DELIVERY（唯一真源）
+scripts/               build-single-app.ps1 / verify-single-app.mjs / 安装·守护·二维码·CI 校验
+test/                  Node 回归测试（含 single-app-contract.test.cjs）
+desktop/               Windows 托盘控制台（继续有效）
+backends/              HTTP 后端适配器（/api/* 契约，继续有效）
+public/                服务内置网页 / 远程 PWA（冻结归档，非交付线）
+mobile-app/            旧 Expo / RN 客户端（冻结归档，非交付线）
+android/               旧 Android WebView 兼容壳（冻结归档，非交付线）
+dist-native/ dist-dshgo/  旧 RN / Flutter 交付页与包（冻结归档，非交付线）
 ```
 
 ## 开发与验证
@@ -129,18 +154,22 @@ npm run verify:ci
 
 `npm run verify:ci` 会额外用 CI 对应的 Node 22 运行测试，并检查测试汇总中的 `fail` / `cancelled` 是否为 0。
 
-`mobile-app/` 常用命令：
+`app/` 常用命令（当前唯一交付线）：
 
 ```bash
-cd mobile-app
+cd app
+npm ci
 npm run typecheck
-npm test
+npm run build
+node --test ../test/single-app-contract.test.cjs
 ```
+
+旧 `mobile-app/`（Expo / RN）命令已归档，不再作为交付线验证依据。
 
 GitHub Actions 的 `Verify` 工作流覆盖：
 
 - Windows + Node 22.23.4：完整 Node 测试、语法检查、桌面端语法检查、PowerShell 脚本解析。
-- Ubuntu + Java 17 + Android SDK：`android/gradlew testDebugUnitTest assembleDebug`。
+- Ubuntu + Java 17 + Android SDK：`android/gradlew testDebugUnitTest assembleDebug`（**冻结归档的旧 WebView 壳 CI 检查，非本轮 App 交付线**；当前交付线构建见 `scripts/build-single-app.ps1`）。
 
 接口契约与 HTTP 后端模式见：
 

@@ -4,6 +4,14 @@ const fs = require("node:fs");
 const os = require("node:os");
 const path = require("node:path");
 const { execFileSync } = require("node:child_process");
+const sharedPairing = require(path.join(__dirname, "..", "..", "shared", "machine-pairing.cjs"));
+const {
+  gatewayMode,
+  loadMachineConfig,
+  pairingIdentity,
+  validateGatewayRuntime,
+  gatewaySummary,
+} = require("./machine-gateway.cjs");
 
 const APP_DIR = path.resolve(__dirname, "..", "..");
 const LOCAL_APP_DATA = process.env.LOCALAPPDATA || path.join(os.homedir(), "AppData", "Local");
@@ -105,6 +113,13 @@ function defaultConfig(overrides = {}) {
     },
     console: { ...DEFAULT_CONSOLE },
     extraDevices: [],
+    machineGateway: {
+      enabled: false,
+      machineConfigPath: "",
+      origin: "",
+      entryPath: "",
+      spawnBackends: false,
+    },
   };
   return mergeConfig(base, overrides);
 }
@@ -113,6 +128,7 @@ function mergeConfig(base, patch) {
   const result = { ...base, ...(patch || {}) };
   result.tunnel = { ...(base.tunnel || {}), ...((patch && patch.tunnel) || {}) };
   result.console = { ...DEFAULT_CONSOLE, ...(base.console || {}), ...((patch && patch.console) || {}) };
+  result.machineGateway = { ...(base.machineGateway || {}), ...((patch && patch.machineGateway) || {}) };
   return result;
 }
 
@@ -164,6 +180,13 @@ function normalizeConfig(raw) {
   merged.logDir = merged.logDir || DEFAULT_LOG_DIR;
   merged.ipcSocket = String(merged.ipcSocket || "").trim();
   merged.extraDevices = normalizeExtraDevices(merged.extraDevices);
+  const gateway = merged.machineGateway || {};
+  gateway.enabled = Boolean(gateway.enabled);
+  gateway.machineConfigPath = String(gateway.machineConfigPath || "").trim();
+  gateway.origin = sharedPairing.normalizeBaseUrl(gateway.origin || "");
+  gateway.entryPath = String(gateway.entryPath || "").trim();
+  gateway.spawnBackends = Boolean(gateway.spawnBackends);
+  merged.machineGateway = gateway;
   return merged;
 }
 
@@ -195,6 +218,23 @@ function saveConfig(config) {
   return normalized;
 }
 
+function gatewayValidationErrors(config) {
+  if (!gatewayMode(config)) return [];
+  try {
+    const machine = loadMachineConfig(config);
+    const errors = validateGatewayRuntime(config).map((message) => ({ field: "machineGateway", message }));
+    if (!machine.machineId || !machine.machineToken) {
+      errors.push({ field: "machineGateway", message: "machine.json 缺少机器标识或机器访问码。" });
+    }
+    if (machine.harnesses.length > 1 && machine.harnesses.some((item) => item.token === machine.machineToken)) {
+      errors.push({ field: "machineGateway", message: "多 harness 模式下机器访问码必须与所有 harness 访问码不同。" });
+    }
+    return errors;
+  } catch (error) {
+    return [{ field: "machineGateway", message: error.message }];
+  }
+}
+
 function validateConfig(config) {
   const errors = [];
   if (!config) return [{ field: "config", message: "配置文件不存在或无法解析。" }];
@@ -204,12 +244,12 @@ function validateConfig(config) {
   if (!String(config.accessCode || "").trim()) {
     errors.push({ field: "accessCode", message: "访问码不能为空。" });
   }
-  if (!config.codexHome || !fs.existsSync(config.codexHome)) {
+  if (!gatewayMode(config) && (!config.codexHome || !fs.existsSync(config.codexHome))) {
     errors.push({ field: "codexHome", message: "Codex 数据目录不存在。" });
-  } else if (!fs.existsSync(path.join(config.codexHome, "state_5.sqlite"))) {
+  } else if (!gatewayMode(config) && !fs.existsSync(path.join(config.codexHome, "state_5.sqlite"))) {
     errors.push({ field: "codexHome", message: "该目录下没有 state_5.sqlite，请选择正确的 Codex 数据目录。" });
   }
-  if (!config.repoRoot || !fs.existsSync(path.join(config.repoRoot, "server.js"))) {
+  if (!gatewayMode(config) && (!config.repoRoot || !fs.existsSync(path.join(config.repoRoot, "server.js")))) {
     errors.push({ field: "repoRoot", message: "找不到 server.js，请检查安装目录。" });
   }
   if (!config.nodePath || !fs.existsSync(config.nodePath)) {
@@ -247,11 +287,16 @@ function validateConfig(config) {
       errors.push({ field: "tunnel.knownHostsPath", message: "known_hosts 文件不存在。" });
     }
   }
+  errors.push(...gatewayValidationErrors(config));
   return errors;
 }
 
 function publicConfig(config) {
   if (!config) return null;
+  const gateway = gatewaySummary(config);
+  const pairingToken = gateway.enabled
+    ? gateway.machineTokenMasked
+    : maskAccessCode(config.accessCode);
   return {
     exists: true,
     machineName: config.machineName,
@@ -283,7 +328,8 @@ function publicConfig(config) {
     })),
     extraDeviceCount: (config.extraDevices || []).length,
     hasAccessCode: Boolean(config.accessCode),
-    accessCodeMasked: maskAccessCode(config.accessCode)
+    accessCodeMasked: pairingToken,
+    machineGateway: gateway,
   };
 }
 
@@ -311,10 +357,14 @@ function urlsFor(config) {
   const host = lanAddress();
   const port = Number(config?.port) || 8787;
   const lan = `http://${host}:${port}`;
-  const publicUrl = String(config?.publicUrl || "").replace(/\/+$/, "");
+  const gatewayOrigin = sharedPairing.normalizeBaseUrl(config?.machineGateway?.origin || "");
+  let machinePublicUrl = "";
+  if (!gatewayOrigin && gatewayMode(config)) {
+    try { machinePublicUrl = loadMachineConfig(config).publicUrl; } catch {}
+  }
+  const publicUrl = gatewayOrigin || sharedPairing.normalizeBaseUrl(config?.publicUrl || "") || machinePublicUrl;
   return { lan, publicUrl, browser: publicUrl || lan, preview: lan };
 }
-
 function pairingPayload(config, device = null) {
   const urls = urlsFor(config);
   const target = new URL("codexpocket://add");
@@ -325,10 +375,26 @@ function pairingPayload(config, device = null) {
     return target.toString();
   }
   const url = urls.publicUrl || urls.lan;
-  target.searchParams.set("name", config.machineName || os.hostname());
+  const identity = pairingIdentity(config, urls);
+  target.searchParams.set("name", identity.machineName);
   target.searchParams.set("url", url);
-  target.searchParams.set("token", config.accessCode || "");
+  target.searchParams.set("token", identity.machineToken);
   return target.toString();
+}
+
+/**
+ * v2 一机一码：唯一实现来自 shared/machine-pairing.cjs。启用机器网关时，
+ * machineId / machineName / machineToken / url 全部取自同一个 machine.json，
+ * 与网关的 /api/harnesses 发现响应严格一致。
+ */
+function machinePairingPayload(config = {}) {
+  const identity = pairingIdentity(config, urlsFor(config));
+  return sharedPairing.machinePairingPayload({
+    machineId: identity.machineId,
+    machineName: identity.machineName,
+    url: identity.url,
+    machineToken: identity.machineToken,
+  });
 }
 
 function maskAccessCode(code) {
@@ -357,6 +423,7 @@ module.exports = {
   lanAddress,
   urlsFor,
   pairingPayload,
+  machinePairingPayload,
   maskAccessCode,
   normalizeExtraDevices,
   slugifyDeviceId

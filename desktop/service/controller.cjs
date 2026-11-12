@@ -17,7 +17,13 @@ function healthSummary(data) {
 }
 const { splitLines } = require("./logger.cjs");
 const {
+  gatewayMode,
+  gatewaySpawn,
+  validateGatewayRuntime,
+} = require("./machine-gateway.cjs");
+const {
   checkHealth,
+  checkMachineGateway,
   checkPortAvailable,
   findPortOwner,
   getProcessMetrics,
@@ -38,6 +44,7 @@ class ServiceController extends EventEmitter {
     this.logger = logger;
     this.healthApi = {
       check: health.check || checkHealth,
+      checkMachineGateway: health.checkMachineGateway || checkMachineGateway,
       checkPortAvailable: health.checkPortAvailable || checkPortAvailable,
       findPortOwner: health.findPortOwner || findPortOwner
     };
@@ -99,12 +106,33 @@ class ServiceController extends EventEmitter {
     this.recoveryTimer = null;
   }
 
+  /**
+   * A healthy /api/health is NOT sufficient in gateway mode: the old dual
+   * dispatcher also answers it, but its discovery returns only one default
+   * harness. Never adopt that listener as the new machine gateway.
+   */
+  async verifiedHealth(options = {}) {
+    const result = await this.healthApi.check(this.config, options);
+    if (!result.ok || !gatewayMode(this.config)) return result;
+    const discovery = await this.healthApi.checkMachineGateway(this.config, { timeoutMs: options.timeoutMs || 2000 });
+    if (!discovery.ok) {
+      return {
+        ...result,
+        ok: false,
+        status: result.status || 0,
+        error: discovery.error || "发现接口未通过一机一码校验",
+        code: discovery.code,
+      };
+    }
+    return result;
+  }
+
   async probeRecovery() {
     if (this.intendedStop || this.starting || this.restarting || this.recoveryProbing) return;
     if (this.state !== "error" && this.state !== "stopped") return;
     this.recoveryProbing = true;
     try {
-      const result = await this.healthApi.check(this.config, { timeoutMs: 2000 });
+      const result = await this.verifiedHealth({ timeoutMs: 2000 });
       if (result.ok) await this.adoptExternal(result);
     } finally {
       this.recoveryProbing = false;
@@ -164,12 +192,19 @@ class ServiceController extends EventEmitter {
         return { ok: false, error: this.lastError };
       }
 
-      // The watchdog starts 8787 and its SSH tunnel at logon. An authenticated
-      // health reply means this is *our* service, not a random port squatter:
-      // adopt it instead of raising EADDRINUSE or spawning a second instance.
-      // This must happen before local runtime validation too: a healthy phone
-      // service should stay visible even if its configured source path moved.
+      // A plain /api/health reply is not enough in one-machine mode; the old
+      // dual dispatcher also answers it but exposes only one harness. Require
+      // a verified /api/harnesses discovery before adopting any listener.
       const existing = await this.healthApi.check(this.config, { timeoutMs: 2000 });
+      if (gatewayMode(this.config) && existing.ok) {
+        const discovery = await this.healthApi.checkMachineGateway(this.config, { timeoutMs: 2000 });
+        if (!discovery.ok) {
+          this.starting = false;
+          this.lastError = discovery.error || "端口上运行的是旧版服务，未通过一机一码发现校验。";
+          this.setState("error", this.lastError);
+          return { ok: false, error: this.lastError, code: discovery.code };
+        }
+      }
       if (existing.ok) return await this.adoptExternal(existing);
 
       const validationError = this.validateRuntime();
@@ -192,7 +227,7 @@ class ServiceController extends EventEmitter {
         // Watchdog restarts can briefly leave an unhealthy old listener while
         // the replacement boots. Recheck the authenticated endpoint before
         // turning that transient condition into a sticky console error.
-        const recovered = await this.healthApi.check(this.config, { timeoutMs: 2000 });
+        const recovered = await this.verifiedHealth({ timeoutMs: 2000 });
         if (recovered.ok) {
           this.starting = false;
           return await this.adoptExternal(recovered);
@@ -210,7 +245,7 @@ class ServiceController extends EventEmitter {
       if (!healthy.ok) {
         const message = this.lastError || healthy.error || "服务启动超时，未通过健康检查。";
         await this.killChild();
-        const recovered = await this.healthApi.check(this.config, { timeoutMs: 2000 });
+        const recovered = await this.verifiedHealth({ timeoutMs: 2000 });
         if (recovered.ok) {
           this.startedAt = 0;
           this.managed = false;
@@ -278,6 +313,10 @@ class ServiceController extends EventEmitter {
   validateRuntime() {
     if (!this.config) return "配置文件不存在。";
     if (!this.config.nodePath) return "未配置 node.exe 路径。";
+    if (gatewayMode(this.config)) {
+      const errors = validateGatewayRuntime(this.config);
+      return errors.length ? errors[0] : null;
+    }
     if (!this.config.repoRoot || !require("node:fs").existsSync(path.join(this.config.repoRoot, "server.js"))) {
       return "找不到 server.js，请检查安装目录。";
     }
@@ -286,24 +325,34 @@ class ServiceController extends EventEmitter {
   }
 
   spawnChild() {
-    const serverPath = path.join(this.config.repoRoot, "server.js");
-    const args = [
+    const gateway = gatewayMode(this.config);
+    const launch = gateway ? gatewaySpawn(this.config) : null;
+    const serverPath = launch?.entry || path.join(this.config.repoRoot, "server.js");
+    const args = launch ? [...launch.args] : [
       serverPath,
       "--host", this.config.host,
       "--port", String(this.config.port),
       "--password", this.config.accessCode,
       "--codex-home", this.config.codexHome
     ];
-    if (this.config.ipcSocket) args.push("--ipc-socket", this.config.ipcSocket);
-    if (this.config.publicUrl) args.push("--public-url", this.config.publicUrl);
-    if (this.config.readonly) args.push("--readonly");
+    if (!gateway) {
+      if (this.config.ipcSocket) args.push("--ipc-socket", this.config.ipcSocket);
+      if (this.config.publicUrl) args.push("--public-url", this.config.publicUrl);
+      if (this.config.readonly) args.push("--readonly");
+    }
+    const cwd = launch?.cwd || this.config.repoRoot;
+    const env = gateway
+      ? { ...process.env }
+      : { ...process.env, CODEX_HOME: this.config.codexHome };
 
-    this.logger.info("service", `启动服务：${this.config.nodePath} ${serverPath}（端口 ${this.config.port}）`, "server-out.log");
+    // Log paths/ports only. The gateway reads machine.json itself; tokens are
+    // never passed on the command line, logged, or written to the example file.
+    this.logger.info("service", `启动服务：${this.config.nodePath} ${serverPath}（端口 ${this.config.port}${gateway ? "，机器网关" : ""}）`, "server-out.log");
     this.child = spawn(this.config.nodePath, args, {
-      cwd: this.config.repoRoot,
+      cwd,
       windowsHide: true,
       stdio: ["ignore", "pipe", "pipe"],
-      env: { ...process.env, CODEX_HOME: this.config.codexHome }
+      env
     });
     this.pid = this.child.pid || 0;
     this._stdoutBuffer = "";
@@ -351,7 +400,7 @@ class ServiceController extends EventEmitter {
     let last = null;
     while (Date.now() < deadline) {
       if (!this.child) return { ok: false, error: this.lastError || "服务进程已退出。" };
-      last = await this.healthApi.check(this.config, { timeoutMs: 1500 });
+      last = await this.verifiedHealth({ timeoutMs: 1500 });
       if (last.ok) return last;
       await new Promise((resolve) => setTimeout(resolve, 250));
     }
@@ -370,7 +419,7 @@ class ServiceController extends EventEmitter {
     if (this.probing) return;
     this.probing = true;
     try {
-      const result = await this.healthApi.check(this.config, { timeoutMs: 2500 });
+      const result = await this.verifiedHealth({ timeoutMs: 2500 });
       this.health.lastCheckAt = Date.now();
       this.health.latencyMs = result.latencyMs || 0;
       this.health.info = healthSummary(result.data) || this.health.info;
@@ -444,7 +493,7 @@ class ServiceController extends EventEmitter {
     this.restartPromise = (async () => {
       try {
         if (this.state === "running" || this.state === "degraded") {
-          const refreshed = await this.healthApi.check(this.config, { timeoutMs: 2500 });
+          const refreshed = await this.verifiedHealth({ timeoutMs: 2500 });
           if (refreshed.ok) {
             this.applyHealthy(refreshed);
             this.healthFailures = 0;
