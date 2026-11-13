@@ -68,6 +68,9 @@ test('a changed detail snapshot, missing fields, wrong thread and stale event fa
       const body = payload(original); delete body[key];
       await assert.rejects(respondToApproval(body), error => error.status === 400);
     }
+    await assert.rejects(respondToApproval({ ...payload(original), approvalKind: 'permission' }), error => error.status === 409);
+    await assert.rejects(respondToApproval({ ...payload(original), detailsHash: '0'.repeat(64) }), error => error.status === 409);
+    await assert.rejects(respondToApproval({ ...payload(original), threadId: '' }), error => error.status === 400);
     rows[0].message.command = 'echo changed';
     await assert.rejects(respondToApproval(payload(original)), error => error.status === 409);
     rows[0].message.conversationId = 'another-thread';
@@ -88,6 +91,7 @@ test('simultaneous decisions for the same request reach IPC once', async () => {
     const first = respondToApproval(payload(request)); await started;
     await assert.rejects(respondToApproval(payload(request)), error => error.status === 409);
     release({ ok: true }); await first;
+    await assert.rejects(respondToApproval(payload(request)), error => error.status === 409);
     assert.equal(h.calls.length, 1);
   } finally { h.restore(); }
 });

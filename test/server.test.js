@@ -76,11 +76,7 @@ import {
   stripHiddenMessageLocalAssets,
   threadListMetadata,
   visibleThreadRows,
-  approvalRequestsFromEvents,
-  respondToApproval,
-  setCodexIpcClientForApprovalTests,
-  rememberStartedThreadsForTest,
-  approvalDetailsHash
+  approvalRequestsFromEvents
 } from "../server.js";
 
 function rolloutLine(timestamp, ordinal, type, payload) {
@@ -1866,7 +1862,7 @@ test("Android starts in chat and the picker is not the home page", () => {
   assert.match(main, /Button back = headerButton\("‹", "返回聊天", v -> openDevice\(previousDevice\)\)/);
 });
 
-test('approval requests are exact, reviewable, thread-scoped, and single-use', async () => {
+test('approval event parsing preserves exact IDs, detail hashes, thread scope and expiry', () => {
   const now = Date.now();
   const approvalEvent = (threadId, requestId, command) => ({
     timestamp: new Date(now - 1000).toISOString(),
@@ -1878,21 +1874,4 @@ test('approval requests are exact, reviewable, thread-scoped, and single-use', a
   assert.ok(pending.every(row => /^[a-f0-9]{64}$/.test(row.detailsHash) && row.content.includes('echo')));
   assert.deepEqual(approvalRequestsFromEvents(events, 'thread-b', now).map(row => row.requestId), ['req-other']);
   assert.equal(approvalRequestsFromEvents(events, 'thread-a', now + 11 * 60 * 1000).length, 0);
-
-  const calls = [];
-  const restoreClient = setCodexIpcClientForApprovalTests({
-    events,
-    getDesktopConversationRows: () => [{ id: 'thread-a' }],
-    request: async (method, params) => { calls.push({ method, params }); return { ok: true }; }
-  });
-  try {
-    const first = pending[0];
-    const result = await respondToApproval({ threadId: 'thread-a', requestId: first.requestId, approvalKind: first.approvalKind, detailsHash: first.detailsHash, decision: 'approve' });
-    assert.equal(result.requestId, 'req-a');
-    assert.equal(calls[0].params.requestId, 'req-a');
-    await assert.rejects(() => respondToApproval({ threadId: 'thread-a', requestId: 'req-a', approvalKind: first.approvalKind, detailsHash: first.detailsHash, decision: 'approve' }), error => error.status === 409);
-    await assert.rejects(() => respondToApproval({ threadId: 'thread-a', requestId: 'req-b', approvalKind: 'permission', detailsHash: pending[1].detailsHash, decision: 'approve' }), error => error.status === 409);
-    await assert.rejects(() => respondToApproval({ threadId: 'thread-a', requestId: 'req-b', approvalKind: first.approvalKind, detailsHash: '0'.repeat(64), decision: 'approve' }), error => error.status === 409);
-    await assert.rejects(() => respondToApproval({ requestId: 'req-b', approvalKind: pending[1].approvalKind, detailsHash: pending[1].detailsHash, decision: 'approve' }), error => error.status === 400);
-  } finally { restoreClient(); }
 });
