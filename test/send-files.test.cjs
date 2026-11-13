@@ -47,7 +47,7 @@ function attach(name, bytes, mimeType = "application/octet-stream", extra = {}) 
 function tempDataRoot(t, label = "send files") {
   const root = mkdtempSync(path.join(os.tmpdir(), `turnloom ${label}-`));
   t.after(() => rmSync(root, { recursive: true, force: true }));
-  return realpathSync(root);
+  return realpathSync.native(root);
 }
 
 function expectSendFileError(promise, code = "INVALID_SEND_FILE", status = 400) {
@@ -176,11 +176,12 @@ test("stageSendFiles writes exact binary bytes to a bounded absolute scratch pat
   const staged = await stageSendFiles(normalized, { dataRoot, sessionKey: "thread-123" });
   assert.equal(staged.length, 2);
 
-  const scratchRoot = path.resolve(dataRoot, "scratch");
+  const scratchRoot = await fsPromises.realpath(path.join(dataRoot, "scratch"));
   for (const [index, entry] of staged.entries()) {
     assert.equal(entry.staged, true);
     assert.ok(path.isAbsolute(entry.path), `${entry.path} must be absolute`);
-    assert.equal(path.relative(path.resolve(scratchRoot, "thread-123"), entry.path).startsWith(".."), false);
+    const sessionRoot = await fsPromises.realpath(path.join(scratchRoot, "thread-123"));
+    assert.equal(path.relative(sessionRoot, entry.path).startsWith(".."), false);
     assert.match(path.basename(entry.path), /^turnloom-file-[0-9a-f]{16}/i);
     assert.doesNotMatch(entry.path, /etc[\\/]cron\.d|Windows[\\/]win\.ini/i);
     const bytes = readFileSync(entry.path);
@@ -305,7 +306,8 @@ test("stageSendFiles rejects arbitrary roots, traversal keys and forged staged p
   });
   assert.equal(traversalStaged.length, 1);
   assert.match(path.basename(path.dirname(traversalStaged[0].path)), /^turnloom-request-[0-9a-f]{16}$/);
-  assert.equal(path.relative(path.resolve(dataRoot, "scratch"), traversalStaged[0].path).startsWith(".."), false);
+  const canonicalScratch = await fsPromises.realpath(path.join(dataRoot, "scratch"));
+  assert.equal(path.relative(canonicalScratch, traversalStaged[0].path).startsWith(".."), false);
   assert.equal(readdirSync(dataRoot).some((name) => name === "escape me"), false);
 
   const pretendPath = path.join(dataRoot, "scratch", "thread", "turnloom-file-0000000000000000.txt");
@@ -384,7 +386,7 @@ test("staging resolves an aliased App root before checking scratch containment",
   const files = await stageSendFiles(normalizeSendFiles([attach("readme.txt", "canonical bytes")]), {
     dataRoot: alias, sessionKey: "thread-alias"
   });
-  const scratch = realpathSync(path.join(actual, "scratch"));
+  const scratch = await fsPromises.realpath(path.join(actual, "scratch"));
   const relative = path.relative(scratch, files[0].path);
   assert.equal(relative.startsWith(".."), false);
   assert.equal(path.isAbsolute(relative), false);
