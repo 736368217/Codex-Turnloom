@@ -12,6 +12,7 @@ import {
   shortModelName, pickerTrayForResult, pickerErrorMessage,
 } from '../lib/composerLogic';
 import { pickAttachments, haptic } from '../lib/nativeBridge';
+import { shouldSubmitOnEnter } from '../lib/composerSubmit';
 import {
   useComposerState, selectComposer, setComposerText, setComposerAttachments,
   removeComposerAttachment, composerStateFor, currentComposerState,
@@ -170,9 +171,10 @@ export function useComposerFields(scope: string, threadId: string, threadModel?:
 export type ComposerFieldsApi = ReturnType<typeof useComposerFields>;
 
 /** Composer chrome: one card, one primary action, quiet icon/text controls. */
-export function ComposerFields({ fields, primary }: {
+export function ComposerFields({ fields, primary, enterKeyHint = 'send' }: {
   fields: ComposerFieldsApi;
   primary: ReactNode;
+  enterKeyHint?: 'send' | 'done' | 'next';
 }) {
   const { composer, catalog, preference, imageSupport, sheetOpen, setSheetOpen, error, setError, pick, removeAttachment, select } = fields;
   const entry = catalog?.models.find((row) => row.id === preference.model);
@@ -185,12 +187,17 @@ export function ComposerFields({ fields, primary }: {
         <textarea className="tl-composer-input tl-selectable" aria-label="消息" placeholder="发送消息…" rows={1} value={composer.text}
           onChange={(event) => { setComposerText(event.target.value); fields.setError(''); }}
           onKeyDown={(event) => {
-            if (event.key === 'Enter' && !event.shiftKey && !event.nativeEvent.isComposing) {
+            if (shouldSubmitOnEnter({
+              key: event.key,
+              shiftKey: event.shiftKey,
+              isComposing: event.nativeEvent.isComposing,
+              keyCode: event.nativeEvent.keyCode,
+            })) {
               event.preventDefault();
               const form = event.currentTarget.closest('form');
               if (form && typeof form.requestSubmit === 'function') form.requestSubmit();
             }
-          }} enterKeyHint="send" />
+          }} enterKeyHint={enterKeyHint} />
         <AttachmentTray attachments={composer.attachments} onRemove={removeAttachment} />
         <div className="tl-composer-tools">
           <button type="button" className="tl-press tl-model-trigger" aria-label={`模型与思考强度：${stateLabel}`}
@@ -221,19 +228,27 @@ export function ComposerFields({ fields, primary }: {
   );
 }
 
-/** ONE primary action: SEND when idle, STOP only for an authoritative running turn. */
-export function ChatPrimaryButton({ scope, threadId, fields }: {
+/** One primary action: form submit sends; Stop is a separate explicit button. */
+export function ChatPrimaryButton({ scope, threadId, fields, onStop }: {
   scope: string;
   threadId: string;
   fields: ComposerFieldsApi;
+  onStop?: () => void | Promise<void>;
 }) {
   const running = isRunning(getThreadStatus(scope, threadId));
   const hasInput = Boolean(fields.composer.text.trim() || fields.composer.attachments.length);
+  if (running) {
+    return (
+      <button type="button" aria-label="停止" title="停止" onClick={() => { void onStop?.(); }}
+        className="tl-press tl-composer-send tl-composer-send--stop" disabled={fields.busy || !onStop}>
+        <Square size={14} fill="currentColor" />
+      </button>
+    );
+  }
   return (
-    <button type="submit" aria-label={running ? '停止' : '发送'} title={running ? '停止' : '发送'}
-      className={`tl-press tl-composer-send${running ? ' tl-composer-send--stop' : ''}`}
-      disabled={!running && (!hasInput || fields.busy)}>
-      {running ? <Square size={14} fill="currentColor" /> : <ArrowUp size={20} strokeWidth={2.4} />}
+    <button type="submit" aria-label="发送" title="发送"
+      className="tl-press tl-composer-send" disabled={!hasInput || fields.busy}>
+      <ArrowUp size={20} strokeWidth={2.4} />
     </button>
   );
 }

@@ -3,10 +3,10 @@ import { ChevronDown, ChevronRight, ChevronLeft, Brain, Terminal, FileDiff, Load
 import { ComposerFields, ChatPrimaryButton, useComposerFields, requestIdForIdentity } from '../components/ChatComposer';
 import MarkdownMessage from '../components/MarkdownMessage';
 import { COLORS } from '../theme/optionATokens';
-import {
-  messageText, compactMessageText, isRunning, supportsImages,
+import { messageText, compactMessageText, isRunning, supportsImages,
   buildSendPayload, sendRequestIdentity, type ThreadRuntimeStatus,
 } from '../lib/chatContract';
+import { composerSubmitDecision } from '../lib/composerSubmit';
 import { haptic } from '../lib/nativeBridge';
 import {
   useDataState, dataStore, refreshMessages, refreshChanges, sendMessage, interruptThread, resolveApproval,
@@ -124,18 +124,18 @@ export default function ChatDetailScreen({ threadId, title }: { threadId: string
   const onSubmit = async (event: FormEvent<HTMLFormElement>): Promise<void> => {
     event.preventDefault();
     if (submitting || !context) return;
-    if (running) {
-      setSubmitting(true);
-      fields.setError('');
-      const ok = await interruptThread(context, threadId);
-      setSubmitting(false);
-      if (!ok) fields.setError(`${dataStore.getState().error || '停止请求未成功。'} 输入内容已保留。`);
-      else await refreshMessages(context, threadId);
+    const decision = composerSubmitDecision({
+      running,
+      text: fields.composer.text,
+      attachmentCount: fields.composer.attachments.length,
+    });
+    if (decision.kind === 'blocked-running') {
+      fields.setError('当前任务仍在运行。消息未发送，草稿已保留；请先点“停止”或等待本轮结束。');
       return;
     }
+    if (decision.kind === 'empty') return;
     const text = fields.composer.text.trim();
     const attachments = fields.composer.attachments;
-    if (!text && !attachments.length) return;
     if (supportsImages(fields.catalog, fields.preference.model) === false && attachments.some((item) => item.kind === 'image')) {
       fields.setError('当前模型仅支持文字。请移除图片或改用支持图片的模型。'); return;
     }
@@ -158,6 +158,21 @@ export default function ChatDetailScreen({ threadId, title }: { threadId: string
       fields.setError(`${dataStore.getState().error || '发送未确认成功。'} 草稿和附件已保留，可再次点发送。`);
       haptic('error');
     }
+  };
+
+  const stopRunning = async (): Promise<void> => {
+    if (submitting || !context || !running) return;
+    setSubmitting(true);
+    fields.setBusy(true);
+    fields.setError('');
+    const ok = await interruptThread(context, threadId);
+    setSubmitting(false);
+    fields.setBusy(false);
+    if (!ok) {
+      fields.setError(`${dataStore.getState().error || '停止请求未成功。'} 输入内容已保留。`);
+      return;
+    }
+    await refreshMessages(context, threadId);
   };
 
   return (
@@ -226,7 +241,8 @@ export default function ChatDetailScreen({ threadId, title }: { threadId: string
       </main>
 
       <form className="tl-composer" onSubmit={(event) => { void onSubmit(event); }} aria-label="消息编辑器">
-        <ComposerFields fields={fields} primary={<ChatPrimaryButton scope={scope} threadId={threadId} fields={fields} />} />
+        <ComposerFields fields={fields} enterKeyHint={running ? 'done' : 'send'}
+          primary={<ChatPrimaryButton scope={scope} threadId={threadId} fields={fields} onStop={stopRunning} />} />
       </form>
     </div>
   );

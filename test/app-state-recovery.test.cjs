@@ -168,16 +168,18 @@ test('monitor running count follows authoritative polls and a successful stop im
     : { status: { thinking: true } });
   await h.data.refreshThreads(ctx);
   assert.equal(h.data.dataStore.getState().runningCount, 1);
-  await h.data.refreshThreadStatus(ctx, 'one');
   let releasePoll;
   h.setReply(route => route.includes('/messages') ? new Promise(resolve => { releasePoll = resolve; }) : { ok: true });
+  const inFlightPoll = h.data.refreshMessages(ctx, 'one');
+  assert.equal(typeof releasePoll, 'function');
   assert.equal(await h.data.interruptThread(ctx, 'one'), true);
   const stopped = h.data.dataStore.getState();
   assert.equal(stopped.statusByThread.one.thinking, false);
   assert.equal(stopped.runningCount, 0);
-  releasePoll({ status: { thinking: false } });
-  await new Promise(resolve => setImmediate(resolve));
-  assert.equal(h.data.dataStore.getState().runningCount, 0);
+  releasePoll({ status: { thinking: true } });
+  await inFlightPoll;
+  assert.equal(h.data.dataStore.getState().runningCount, 0, 'a pre-stop poll must not revive running');
+  assert.equal(h.data.dataStore.getState().statusByThread.one.thinking, false);
   h.setReply(() => ({ status: { thinking: true } }));
   await h.data.refreshMessages(ctx, 'one');
   assert.equal(h.data.dataStore.getState().runningCount, 1);
@@ -185,4 +187,24 @@ test('monitor running count follows authoritative polls and a successful stop im
   await h.data.refreshMessages(ctx, 'one');
   assert.equal(h.data.dataStore.getState().runningCount, 1);
   assert.equal(h.data.dataStore.getState().statusByThread.one.thinking, true);
+});
+
+test('R07: an older running list arriving after Stop cannot revive badge or filter', async () => {
+  const h = harness(); await h.session.connectWithPairing(h.pairing);
+  const ctx = h.session.currentRequestContext(); h.data.resetForScope(ctx);
+  h.setReply(route => route === '/api/threads'
+    ? { threads: [{ id: 'one', title: 'Running', status: { state: 'running', thinking: true } }] }
+    : { status: { thinking: true }, messages: [] });
+  await h.data.refreshThreads(ctx);
+  await h.data.refreshMessages(ctx, 'one');
+  assert.equal(await h.data.interruptThread(ctx, 'one'), true);
+  h.setReply(route => route === '/api/threads'
+    ? { threads: [{ id: 'one', title: 'Running', status: { state: 'running', thinking: true } }] }
+    : { status: { thinking: false }, messages: [] });
+  await h.data.refreshThreads(ctx);
+  const state = h.data.dataStore.getState();
+  const { projectThread } = h.load('lib/threadProjection.ts');
+  assert.equal(state.runningCount, 0);
+  assert.equal(state.statusByThread.one.thinking, false);
+  assert.equal(projectThread(state.threads[0], state.statusByThread).tone, 'done');
 });

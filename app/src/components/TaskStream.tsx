@@ -2,18 +2,15 @@ import { ChevronRight, MessageSquare, Loader2, Clock, AlertTriangle } from 'luci
 import type { ThreadSummary } from '../lib/turnloomApi';
 import { COLORS } from '../theme/optionATokens';
 import { haptic } from '../lib/nativeBridge';
-import { threadListStatus } from '../state/runtimeStore';
+import { projectThread, type ThreadStatusProjection } from '../lib/threadProjection';
 import { openDetail } from '../state/tabStore';
 import { StatusPill, EmptyState, cardStyle } from './ui';
 
 export type TaskTone = 'running' | 'waiting' | 'done' | 'error';
-export function toneOfThread(thread: ThreadSummary): TaskTone {
-  const status = threadListStatus(thread.status);
-  if (status.state === 'running') return 'running';
-  if (status.state === 'waiting') return 'waiting';
-  const raw = String(typeof thread.status === 'object' ? thread.status?.state || '' : thread.status || '').toLowerCase();
-  if (/error|fail|denied|reject/.test(raw)) return 'error';
-  return 'done';
+type StatusMap = Record<string, ThreadStatusProjection | undefined>;
+
+export function toneOfThread(thread: ThreadSummary, statusByThread: StatusMap = {}): TaskTone {
+  return projectThread(thread, statusByThread).tone;
 }
 
 export function titleOfThread(thread: ThreadSummary): string {
@@ -23,11 +20,13 @@ export function titleOfThread(thread: ThreadSummary): string {
 /** Active task stream list used by Home and Threads screens. */
 export default function TaskStream({
   threads,
+  statusByThread = {},
   limit,
   emptyTitle = '暂无会话',
   emptyDescription = '连接主机或新建任务后，会话会显示在这里。',
 }: {
   threads: ThreadSummary[];
+  statusByThread?: StatusMap;
   limit?: number;
   emptyTitle?: string;
   emptyDescription?: string;
@@ -40,7 +39,7 @@ export default function TaskStream({
   return (
     <div className="tl-card" style={{ ...cardStyle, margin: '0 16px', overflow: 'hidden' }}>
       {list.map((thread, index) => {
-        const tone = toneOfThread(thread);
+        const tone = toneOfThread(thread, statusByThread);
         const icon = tone === 'running'
           ? <Loader2 size={16} color={COLORS.blue} className="tl-spin" />
           : tone === 'error'

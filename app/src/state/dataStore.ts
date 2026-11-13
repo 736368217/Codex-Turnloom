@@ -17,6 +17,7 @@ import {
 } from '../lib/turnloomApi';
 import { isCurrentContext, getActiveGeneration } from '../lib/turnloomApi';
 import { cacheKeyFor, setOnline, markSynced, sessionStore } from './sessionStore';
+import { projectThread } from '../lib/threadProjection';
 import {
   selectRuntimeScope, applyHealth, applyThreadStatus,
   threadListStatus, markThreadSubmitted, getThreadStatus,
@@ -48,6 +49,14 @@ const EMPTY: DataState = {
   loading: false, loadingMore: false, nextCursor: null, threadTotal: null, threadPages: 0,
   offline: false, error: '', lastSyncAt: null, cachedAt: null, runningCount: 0, errorCount: 0,
 };
+
+/** A local send/stop invalidates status polls that started before it. */
+const statusEpoch = new Map<string, number>();
+function epochKey(scope: string, threadId: string): string { return `${scope}\u0000${threadId}`; }
+function epochFor(scope: string, threadId: string): number { return statusEpoch.get(epochKey(scope, threadId)) || 0; }
+function bumpStatusEpoch(scope: string, threadId: string): void {
+  statusEpoch.set(epochKey(scope, threadId), epochFor(scope, threadId) + 1);
+}
 
 const baseDataStore = createStore<DataState>({ ...EMPTY });
 export const dataStore: typeof baseDataStore = {
@@ -89,8 +98,7 @@ function deriveCounters(
   let runningCount = 0;
   let errorCount = 0;
   for (const thread of threads) {
-    const status = statuses[thread.id] || threadListStatus(thread.status);
-    if (status.thinking) runningCount += 1;
+    if (projectThread(thread, statuses).status.thinking) runningCount += 1;
     const raw = String(typeof thread.status === 'object' ? thread.status?.state || '' : thread.status || '').toLowerCase();
     if (/error|fail|denied|reject/.test(raw)) errorCount += 1;
   }
@@ -217,25 +225,28 @@ export async function loadMoreThreads(context: RequestContext): Promise<void> {
 export async function refreshMessages(context: RequestContext, threadId: string, limit = 80): Promise<void> {
   if (!current(context) || !threadId) return;
   if (dataStore.getState().messageState[threadId]?.loading) return;
+  const epoch = epochFor(context.scope, threadId);
   const previous = dataStore.getState().messageState[threadId];
   dataStore.setState(prev => ({ messageState: { ...prev.messageState, [threadId]: { loading: true, loaded: previous?.loaded || false, error: '' } } }));
   const result = await getThreadMessages(context, threadId, { limit });
   if (!current(context)) return;
+  const statusIsCurrent = result.ok && epochFor(context.scope, threadId) === epoch;
   const list = result.ok ? result.data?.messages || result.data?.items || [] : null;
-  // A failed poll must NOT clear the authoritative runtime status.
-  if (result.ok) applyThreadStatus(context.scope, threadId, result.data?.status);
+  // A failed poll or a result older than a local stop must NOT clear or replace the authoritative runtime status.
+  if (statusIsCurrent) applyThreadStatus(context.scope, threadId, result.data?.status);
   dataStore.setState(prev => prev.scope === context.scope ? {
     ...(Array.isArray(list) ? { messagesByThread: { ...prev.messagesByThread, [threadId]: list } } : {}),
-    ...(result.ok ? { offline: false, statusByThread: { ...prev.statusByThread, [threadId]: threadListStatus(result.data?.status) } } : {}),
+    ...(statusIsCurrent ? { offline: false, statusByThread: { ...prev.statusByThread, [threadId]: threadListStatus(result.data?.status) } } : {}),
     messageState: { ...prev.messageState, [threadId]: { loading: false, loaded: result.ok || previous?.loaded || false, error: result.ok ? '' : actionable(result) } },
   } : {});
 }
 
-/** Refresh the authoritative status after send/stop without waiting for a full UI cycle. */
+/** Refresh the authoritative status after send without allowing a pre-stop poll to win. */
 export async function refreshThreadStatus(context: RequestContext, threadId: string): Promise<void> {
   if (!current(context) || !threadId) return;
-  const result = await getThreadMessages(context, threadId, { limit: 80 });
-  if (!current(context) || !result.ok) return;
+  const epoch = epochFor(context.scope, threadId);
+  const result = await getThreadMessages(context, threadId, { limit: 1 });
+  if (!current(context) || !result.ok || epochFor(context.scope, threadId) !== epoch) return;
   applyThreadStatus(context.scope, threadId, result.data?.status);
   dataStore.setState((prev) => prev.scope === context.scope
     ? { statusByThread: { ...prev.statusByThread, [threadId]: threadListStatus(result.data?.status) } }
@@ -281,6 +292,7 @@ export async function sendMessage(context: RequestContext, threadId: string, opt
   if (!current(context)) return false;
   if (!result.ok) { applyFailure(context, actionable(result), result.offline); return false; }
   dataStore.setState({ offline: false, error: '' });
+  bumpStatusEpoch(context.scope, threadId);
   markThreadSubmitted(context.scope, threadId);
   const optimistic: ThreadMessage = {
     id: `sent-${Date.now()}`, role: 'user', kind: 'message', content: options.message,
@@ -301,11 +313,11 @@ export async function interruptThread(context: RequestContext, threadId: string)
   const result = await postInterrupt(context, { threadId });
   if (!current(context)) return false;
   if (!result.ok) { applyFailure(context, actionable(result), result.offline); return false; }
+  bumpStatusEpoch(context.scope, threadId);
   applyThreadStatus(context.scope, threadId, {});
   dataStore.setState((prev) => prev.scope === context.scope
     ? { statusByThread: { ...prev.statusByThread, [threadId]: threadListStatus({}) } }
     : {});
-  void refreshThreadStatus(context, threadId);
   return true;
 }
 

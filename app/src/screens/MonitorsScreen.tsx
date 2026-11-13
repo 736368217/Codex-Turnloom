@@ -9,7 +9,7 @@ import { openSheet } from '../state/sheetStore';
 import { haptic } from '../lib/nativeBridge';
 import { openDetail } from '../state/tabStore';
 import { titleOfThread } from '../components/TaskStream';
-import { threadListStatus } from '../state/runtimeStore';
+import { projectThread } from '../lib/threadProjection';
 
 function formatElapsed(ms: number): string {
   const total = Math.max(0, Math.floor(ms / 1000));
@@ -23,8 +23,7 @@ export default function MonitorsScreen() {
   const session = useSessionState();
   const context = currentRequestContext();
   const [elapsed, setElapsed] = useState(0);
-  const runningThreads = data.threads.filter(thread =>
-    (data.statusByThread[thread.id] || threadListStatus(thread.status)).thinking);
+  const runningThreads = data.threads.filter(thread => projectThread(thread, data.statusByThread).status.thinking);
 
   useEffect(() => {
     const base = data.lastSyncAt || Date.now();

@@ -23,7 +23,7 @@ export default function ThreadsScreen() {
   const filtered = data.threads.filter((thread) => {
     if (query && !`${titleOfThread(thread)} ${String(thread.preview || '')} ${thread.id}`.toLowerCase().includes(query)) return false;
     if (threadsFilter === 'all') return true;
-    const tone = toneOfThread(thread);
+    const tone = toneOfThread(thread, data.statusByThread);
     if (threadsFilter === 'running') return tone === 'running';
     if (threadsFilter === 'waiting') return tone === 'waiting';
     return tone === 'done';
@@ -52,7 +52,7 @@ export default function ThreadsScreen() {
 
       <SectionTitle>{query || threadsFilter !== 'all' ? `匹配会话 · ${filtered.length}` : `已加载 ${data.threads.length}${data.threadTotal !== null ? ` / ${data.threadTotal}` : ''} 个会话`}</SectionTitle>
       {filtered.length > 0 ? (
-        <TaskStream threads={filtered} emptyTitle="没有匹配的会话" />
+        <TaskStream threads={filtered} statusByThread={data.statusByThread} emptyTitle="没有匹配的会话" />
       ) : (
         <EmptyState
           title={data.threads.length ? '没有匹配的会话' : '暂无会话'}

@@ -23,7 +23,7 @@ export default function HomeScreen() {
           <Plus size={16} /> 新建
         </button>
       </div>
-      <TaskStream threads={data.threads} limit={5} />
+      <TaskStream threads={data.threads} statusByThread={data.statusByThread} limit={5} />
 
       <SectionTitle>快捷操作</SectionTitle>
       <div className="tl-card" style={{ background: COLORS.surface, borderRadius: 16, boxShadow: '0 1px 3px rgba(0,0,0,.04)', margin: '0 16px', overflow: 'hidden' }}>

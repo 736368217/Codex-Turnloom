@@ -414,7 +414,8 @@ test('screen wiring: header back only, two picker buttons, one primary, no fake 
   assert.doesNotMatch(composer, /aria-label="返回"|aria-label="审批"|permanent/i);
   assert.match(composer, /aria-label="图片"/);
   assert.match(composer, /aria-label="附件"/);
-  assert.match(composer, /aria-label=\{running \? '停止' : '发送'\}/);
+  assert.match(composer, /type="button" aria-label="停止"/);
+  assert.match(composer, /type="submit" aria-label="发送"/);
   assert.equal((composer.match(/type="submit"/g) || []).length, 1);
   assert.match(composer, /pickAttachments\(kind\)/);
   assert.match(composer, /VaulSheet/);
