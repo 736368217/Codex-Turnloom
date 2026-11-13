@@ -31,6 +31,10 @@ export interface DataState {
   statusByThread: Record<string, ReturnType<typeof threadListStatus>>;
   messageState: Record<string, { loading: boolean; error: string; loaded: boolean }>;
   loading: boolean;
+  loadingMore: boolean;
+  nextCursor: string | null;
+  threadTotal: number | null;
+  threadPages: number;
   offline: boolean;
   error: string;
   lastSyncAt: number | null;
@@ -41,8 +45,8 @@ export interface DataState {
 
 const EMPTY: DataState = {
   scope: '', threads: [], messagesByThread: {}, changesByThread: {}, statusByThread: {}, messageState: {},
-  loading: false, offline: false, error: '', lastSyncAt: null, cachedAt: null,
-  runningCount: 0, errorCount: 0,
+  loading: false, loadingMore: false, nextCursor: null, threadTotal: null, threadPages: 0,
+  offline: false, error: '', lastSyncAt: null, cachedAt: null, runningCount: 0, errorCount: 0,
 };
 
 export const dataStore = createStore<DataState>({ ...EMPTY });
@@ -116,32 +120,43 @@ function ensureScope(context: RequestContext): void {
   if (dataStore.getState().scope !== context.scope) resetForScope(context);
 }
 
-function applyThreads(context: RequestContext, threads: ThreadSummary[]): void {
+let threadRequestVersion = 0;
+
+function applyThreads(context: RequestContext, threads: ThreadSummary[], page?: { nextCursor?: string | null; total?: number }, append = false): void {
   if (!current(context)) return;
-  const list = threads.filter((row) => row && typeof row.id === 'string');
+  const prev = dataStore.getState();
+  const incoming = Array.isArray(threads) ? threads.filter((row) => row && typeof row.id === 'string') : [];
+  const ids = new Set<string>();
+  // Poll the head without removing already loaded history or losing its cursor.
+  const keepHistory = !append && prev.threadPages > 1 && page !== undefined;
+  const rows = append ? [...prev.threads, ...incoming] : keepHistory ? [...incoming, ...prev.threads] : incoming;
+  const list = rows.filter(row => !ids.has(row.id) && Boolean(ids.add(row.id)));
   persistThreads(context.scope, list);
   dataStore.setState({
-    scope: context.scope, threads: list, statusByThread: statusMap(list), loading: false, offline: false, error: '',
+    scope: context.scope, threads: list, statusByThread: statusMap(list), loading: false, loadingMore: false, offline: false, error: '',
+    ...(page ? {
+      nextCursor: keepHistory ? prev.nextCursor : page.nextCursor || null,
+      threadTotal: typeof page.total === 'number' ? page.total : null,
+      threadPages: append ? prev.threadPages + 1 : keepHistory ? prev.threadPages : 1,
+    } : {}),
     lastSyncAt: Date.now(), cachedAt: Date.now(), ...deriveCounters(list),
   });
+  setOnline(true);
   markSynced();
 }
 
-function applyFailure(context: RequestContext, message: string): void {
+function applyFailure(context: RequestContext, message: string, offline = false): void {
   if (!current(context)) return;
-  setOnline(false);
-  dataStore.setState((prev) => ({
-    loading: false, offline: true,
-    error: prev.threads.length ? '' : message,
-  }));
+  setOnline(!offline);
+  dataStore.setState({ loading: false, loadingMore: false, offline, error: message });
 }
 
 function actionable(result: { ok: false; status: number; error: string; offline: boolean }): string {
   if (result.status === 401) return '连接已失效，请重新配对这台机器。';
   if (result.offline || result.status === 0) return '暂时连不上电脑，请检查网络与桌面端服务后重试。';
   if (result.status === 403) return '电脑端当前不允许写入，请在桌面端开启写入后重试。';
-  if (result.status === 404) return '服务未找到，请确认桌面端已升级到最新版本。';
-  if (result.status === 409) return '电脑端正忙或请求冲突，请稍后重试。';
+  if (result.status === 404) return '服务或请求已不存在，请刷新后重试。';
+  if (result.status === 409) return '请求已变化或已处理，请刷新后重新核对。';
   if (result.status >= 500) return '电脑端服务出错，请检查桌面端状态后重试。';
   return result.error || '请求未成功，请重试。';
 }
@@ -152,28 +167,35 @@ export async function refreshAll(context: RequestContext): Promise<void> {
   dataStore.setState({ loading: true });
   const health = await getHealth(context);
   if (!current(context)) return;
-  if (!health.ok) {
-    setOnline(false);
-    applyFailure(context, actionable(health));
-    return;
-  }
+  if (!health.ok) { applyFailure(context, actionable(health), health.offline); return; }
   applyHealth(context.scope, health.data);
   setOnline(true);
-  const result = await getThreads(context, { limit: 60 });
-  if (!current(context)) return;
-  if (result.ok) applyThreads(context, Array.isArray(result.data.threads) ? result.data.threads : []);
-  else { setOnline(!result.offline); applyFailure(context, actionable(result)); }
+  await refreshThreads(context);
 }
 
 export async function refreshThreads(context: RequestContext): Promise<void> {
   if (!current(context)) return;
   ensureScope(context);
+  const version = ++threadRequestVersion;
+  dataStore.setState({ loading: true, loadingMore: false });
   const result = await getThreads(context, { limit: 60 });
-  if (!current(context) || !result.ok) {
-    if (result && !result.ok) applyFailure(context, actionable(result));
-    return;
-  }
-  applyThreads(context, Array.isArray(result.data.threads) ? result.data.threads : []);
+  if (!current(context) || version !== threadRequestVersion) return;
+  if (!result.ok) { applyFailure(context, actionable(result), result.offline); return; }
+  applyThreads(context, result.data.threads || [], result.data);
+}
+
+export async function loadMoreThreads(context: RequestContext): Promise<void> {
+  const prev = dataStore.getState();
+  if (!current(context) || prev.scope !== context.scope || !prev.nextCursor || prev.loading || prev.loadingMore) return;
+  const cursor = prev.nextCursor;
+  const version = ++threadRequestVersion;
+  dataStore.setState({ loadingMore: true, error: '' });
+  const result = await getThreads(context, { limit: 60, cursor });
+  if (!current(context) || version !== threadRequestVersion) return;
+  if (!result.ok) { applyFailure(context, actionable(result), result.offline); return; }
+  applyThreads(context, result.data.threads || [], {
+    ...result.data, nextCursor: result.data.nextCursor === cursor ? null : result.data.nextCursor,
+  }, true);
 }
 
 /** Refresh messages and persist the authoritative top-level status separately. */
@@ -189,7 +211,7 @@ export async function refreshMessages(context: RequestContext, threadId: string,
   if (result.ok) applyThreadStatus(context.scope, threadId, result.data?.status);
   dataStore.setState(prev => prev.scope === context.scope ? {
     ...(Array.isArray(list) ? { messagesByThread: { ...prev.messagesByThread, [threadId]: list } } : {}),
-    ...(result.ok ? { statusByThread: { ...prev.statusByThread, [threadId]: threadListStatus(result.data?.status) } } : {}),
+    ...(result.ok ? { offline: false, statusByThread: { ...prev.statusByThread, [threadId]: threadListStatus(result.data?.status) } } : {}),
     messageState: { ...prev.messageState, [threadId]: { loading: false, loaded: result.ok || previous?.loaded || false, error: result.ok ? '' : actionable(result) } },
   } : {});
 }
@@ -221,7 +243,7 @@ export async function createThread(context: RequestContext, options: SendOptions
   ensureScope(context);
   const result = await postNewThread(context, options);
   if (!current(context)) return null;
-  if (!result.ok) { applyFailure(context, actionable(result)); return null; }
+  if (!result.ok) { applyFailure(context, actionable(result), result.offline); return null; }
   const id = extractThreadId(result.data);
   if (!id) {
     applyFailure(context, '电脑端没有返回会话编号，请刷新会话列表确认是否已创建。');
@@ -242,7 +264,8 @@ export async function sendMessage(context: RequestContext, threadId: string, opt
   if (!current(context) || !threadId) return false;
   const result = await postSend(context, { ...options, threadId });
   if (!current(context)) return false;
-  if (!result.ok) { applyFailure(context, actionable(result)); return false; }
+  if (!result.ok) { applyFailure(context, actionable(result), result.offline); return false; }
+  dataStore.setState({ offline: false, error: '' });
   markThreadSubmitted(context.scope, threadId);
   const optimistic: ThreadMessage = {
     id: `sent-${Date.now()}`, role: 'user', kind: 'message', content: options.message,
@@ -262,7 +285,7 @@ export async function interruptThread(context: RequestContext, threadId: string)
   if (!current(context) || !threadId) return false;
   const result = await postInterrupt(context, { threadId });
   if (!current(context)) return false;
-  if (!result.ok) { applyFailure(context, actionable(result)); return false; }
+  if (!result.ok) { applyFailure(context, actionable(result), result.offline); return false; }
   applyThreadStatus(context.scope, threadId, {});
   dataStore.setState((prev) => prev.scope === context.scope
     ? { statusByThread: { ...prev.statusByThread, [threadId]: threadListStatus({}) } }
@@ -274,13 +297,16 @@ export async function interruptThread(context: RequestContext, threadId: string)
 export async function resolveApproval(
   context: RequestContext,
   threadId: string,
-  id: string,
-  decision: 'approve' | 'reject',
+  requestId: string,
+  approvalKind: 'command' | 'file' | 'permission',
+  detailsHash: string,
+  decision: 'approve' | 'approveForSession' | 'decline',
 ): Promise<boolean> {
-  if (!current(context) || !threadId) return false;
-  const result = await postApproval(context, { threadId, id, decision, approved: decision === 'approve' });
+  if (!current(context) || !threadId || !requestId || !detailsHash) return false;
+  const result = await postApproval(context, { threadId, requestId, approvalKind, detailsHash, decision, approved: decision !== 'decline' });
   if (!current(context)) return false;
-  if (!result.ok) { applyFailure(context, actionable(result)); return false; }
+  if (!result.ok) { applyFailure(context, actionable(result), result.offline); return false; }
+  dataStore.setState({ offline: false, error: '' });
   return true;
 }
 

@@ -461,7 +461,7 @@ export const postSend = (context: RequestContext, body: SendOptions): Promise<Ap
   post(context, API_ENDPOINTS.send, sendBody(body, false), 30_000);
 
 export const postInterrupt = (context: RequestContext, body: { threadId: string }): Promise<ApiResult<{ ok?: boolean }>> => post(context, API_ENDPOINTS.interrupt, body);
-export const postApproval = (context: RequestContext, body: { threadId: string; id: string; decision: 'approve' | 'reject'; approved: boolean }): Promise<ApiResult<{ ok?: boolean }>> => post(context, API_ENDPOINTS.approval, body);
+export const postApproval = (context: RequestContext, body: { threadId: string; requestId: string; approvalKind: 'command' | 'file' | 'permission'; detailsHash: string; decision: 'approve' | 'approveForSession' | 'decline'; approved: boolean }): Promise<ApiResult<{ ok?: boolean; requestId?: string }>> => post(context, API_ENDPOINTS.approval, body);
 export const getHostDiff = (context: RequestContext, params?: { threadId?: string; path?: string }): Promise<ApiResult<{ diff?: string; lines?: string[] }>> => get(context, API_ENDPOINTS.hostDiff, params);
 export const getProjects = (context: RequestContext): Promise<ApiResult<{ projects?: ProjectInfo[] }>> => get(context, API_ENDPOINTS.projects);
 export const getAccount = (context: RequestContext): Promise<ApiResult<AccountInfo>> => get(context, API_ENDPOINTS.account);

@@ -14,6 +14,8 @@
  */
 
 const VALID_STATES = new Set(["running", "waiting", "ended"]);
+const APPROVAL_KINDS = new Set(["command", "file", "permission"]);
+const APPROVAL_DECISIONS = new Set(["approve", "approveForSession", "decline"]);
 
 export function normalizeBackendState(value) {
   const state = String(value || "").trim().toLowerCase();
@@ -204,14 +206,22 @@ export class HttpBackendClient {
     return this.request(`/threads/${encodeURIComponent(threadId)}/branch`, { method: "POST", body: options });
   }
 
-  async respondToApproval(payload) {
-    return this.request("/approval", { method: "POST", body: payload || {} });
+  async respondToApproval(payload = {}) {
+    const threadId = String(payload.threadId || "").trim();
+    const requestId = String(payload.requestId || "").trim();
+    const approvalKind = String(payload.approvalKind || "");
+    const detailsHash = String(payload.detailsHash || "");
+    const decision = String(payload.decision || "");
+    if (!threadId || !requestId || !APPROVAL_KINDS.has(approvalKind) || !/^[a-f0-9]{64}$/.test(detailsHash) || !APPROVAL_DECISIONS.has(decision)) {
+      const error = new Error("Exact thread, request id, approval kind, displayed details, and decision are required");
+      error.status = 400;
+      throw error;
+    }
+    return this.request("/approval", { method: "POST", body: { threadId, requestId, approvalKind, detailsHash, decision, approved: decision !== "decline" } });
   }
-
   async cancelQueuedSend(payload) {
     return this.request("/queue/cancel", { method: "POST", body: payload || {} });
   }
-
   async steerQueuedSend(payload) {
     return this.request("/queue/steer", { method: "POST", body: payload || {} });
   }

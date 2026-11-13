@@ -9,6 +9,7 @@
  */
 
 import { APP_IDENTITY } from '../theme/optionATokens';
+import { safeExternalUrl } from './externalUrl';
 
 export type HapticKind = 'selection' | 'success' | 'warning' | 'error';
 
@@ -70,6 +71,7 @@ export interface TurnloomNative {
   getAppInfo(): string;
   setLightBars(): void;
   pickAttachments?(requestId: string, kind: 'image' | 'file'): void;
+  openExternalUrl?(url: string): boolean;
   request?(requestId: string, requestJson: string): void;
   cancelRequest?(requestId: string): void;
   downloadUpdate?(requestId: string, optionsJson: string): void;
@@ -156,6 +158,16 @@ export function haptic(kind: HapticKind): void {
   const n = bridge();
   if (!n || typeof n.haptic !== 'function') return;
   try { n.haptic(kind); } catch { /* cosmetic only */ }
+}
+
+export function openExternalUrl(value: string): boolean {
+  const url = safeExternalUrl(value);
+  if (!url) return false;
+  const native = bridge();
+  if (native) {
+    try { return native.openExternalUrl?.(url) === true; } catch { return false; }
+  }
+  return typeof window !== 'undefined' && window.open(url, '_blank', 'noopener,noreferrer') !== null;
 }
 
 export function setLightBars(): void {

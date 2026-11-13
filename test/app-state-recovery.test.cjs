@@ -19,7 +19,7 @@ function harness() {
     secureRemove: key => storage.delete(key),
     getAppInfo: () => JSON.stringify({ version: '2.1.1', versionCode: 82, packageName: 'com.codex.turnloom.app' }),
     cancelRequest() {},
-    request(id, raw) { const req = JSON.parse(raw); calls.push(req); const body = reply(new URL(req.url).pathname, req); Promise.resolve(body).then(data => window.__turnloomNativeHttpResult(id, JSON.stringify({ status: 200, body: JSON.stringify(data) }))); },
+    request(id, raw) { const req = JSON.parse(raw); calls.push(req); const body = reply(new URL(req.url).pathname, req); Promise.resolve(body).then(data => window.__turnloomNativeHttpResult(id, JSON.stringify(data?.__nativeResult || { status: 200, body: JSON.stringify(data) }))); },
   }};
   function load(file) {
     file = path.resolve(root, file);
@@ -92,4 +92,53 @@ test('update progress and installer cancellation survive screen unmount', () => 
   bridge.deliverUpdateEvent('update-test', JSON.stringify({ state: 'ready' }));
   bridge.deliverUpdateEvent('update-test', JSON.stringify({ state: 'error', message: 'install-cancelled' }));
   assert.equal(u.updateStore.getState().state, 'ready');
+});
+
+test('HTTP business failures keep connection online; only transport failure marks offline', async () => {
+  const h = harness(); await h.session.connectWithPairing(h.pairing);
+  const ctx = h.session.currentRequestContext(); h.data.resetForScope(ctx);
+  for (const status of [500, 403, 0]) {
+    h.setReply(() => ({ __nativeResult: { status, body: '{"error":"fixture-error"}', error: status ? undefined : 'timeout' } }));
+    assert.equal(await h.data.sendMessage(ctx, 'one', { message: 'keep draft', clientRequestId: `failure-${status}` }), false);
+    assert.equal(h.data.dataStore.getState().offline, status === 0);
+    assert.equal(h.session.sessionStore.getState().online, status !== 0);
+    assert.match(h.data.dataStore.getState().error, status === 500 ? /服务出错/ : status === 403 ? /不允许写入/ : /连不上/);
+  }
+});
+
+test('pagination deduplicates history, keeps it on polling, and retries the same cursor after HTTP error', async () => {
+  const h = harness(); await h.session.connectWithPairing(h.pairing);
+  const ctx = h.session.currentRequestContext(); h.data.resetForScope(ctx);
+  h.setReply(() => ({ threads: [{ id: 'head' }], total: 3, nextCursor: '60' }));
+  await h.data.refreshThreads(ctx);
+  h.setReply(() => ({ __nativeResult: { status: 500, body: '{}' } }));
+  await h.data.loadMoreThreads(ctx);
+  assert.equal(h.data.dataStore.getState().nextCursor, '60');
+  assert.equal(h.data.dataStore.getState().offline, false);
+  h.setReply((route, req) => { assert.equal(new URL(req.url).searchParams.get('cursor'), '60'); return { threads: [{ id: 'head' }, { id: 'older' }], total: 3, nextCursor: '120' }; });
+  await h.data.loadMoreThreads(ctx);
+  assert.deepEqual(h.data.dataStore.getState().threads.map(row => row.id), ['head', 'older']);
+  h.setReply(() => ({ threads: [{ id: 'new-head' }, { id: 'head' }], total: 4, nextCursor: '60' }));
+  await h.data.refreshThreads(ctx);
+  assert.deepEqual(h.data.dataStore.getState().threads.map(row => row.id), ['new-head', 'head', 'older']);
+  assert.equal(h.data.dataStore.getState().nextCursor, '120');
+});
+
+test('a late page cannot cross a harness switch or overwrite a newer head refresh', async () => {
+  const h = harness(); await h.session.connectWithPairing(h.pairing);
+  const ctx = h.session.currentRequestContext(); h.data.resetForScope(ctx);
+  h.setReply(() => ({ threads: [{ id: 'head' }], nextCursor: '60' })); await h.data.refreshThreads(ctx);
+  let release;
+  h.setReply(() => new Promise(resolve => { release = resolve; }));
+  const page = h.data.loadMoreThreads(ctx);
+  h.setReply(() => ({ threads: [{ id: 'fresh' }], nextCursor: null }));
+  await h.data.refreshThreads(ctx);
+  release({ threads: [{ id: 'late' }], nextCursor: null }); await page;
+  assert.deepEqual(h.data.dataStore.getState().threads.map(row => row.id), ['fresh']);
+  h.setReply(() => ({ threads: [{ id: 'fresh' }], nextCursor: '60' })); await h.data.refreshThreads(ctx);
+  h.setReply(() => new Promise(resolve => { release = resolve; })); const oldPage = h.data.loadMoreThreads(ctx);
+  h.api.setActiveRequestScope('another-service', { origin: 'http://example.test', token: 'other' });
+  const next = { scope: 'another-service', target: { origin: 'http://example.test', token: 'other' }, generation: h.api.getActiveGeneration() };
+  h.data.resetForScope(next); release({ threads: [{ id: 'wrong-service' }] }); await oldPage;
+  assert.equal(h.data.dataStore.getState().threads.length, 0);
 });

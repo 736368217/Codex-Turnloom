@@ -444,3 +444,12 @@ test('text-only model explains images before opening the native picker', () => {
   assert.ok(block.indexOf('imageSupport === false') < block.indexOf("pick('image')"),
     'the capability gate must run before the native picker opens');
 });
+
+test('approval card requires exact request identity and never renders a generic approval action', () => {
+  const screen = read('app/src/screens/ChatDetailScreen.tsx');
+  assert.match(screen, /requestId/);
+  assert.match(screen, /approvalKind/);
+  assert.match(screen, /detailsHash/);
+  assert.match(screen, /缺少可核对的请求详情/);
+  assert.doesNotMatch(screen, /sessionStore\.getState\(\).*approval/);
+});

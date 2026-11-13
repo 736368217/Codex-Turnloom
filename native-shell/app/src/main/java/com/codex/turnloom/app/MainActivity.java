@@ -329,6 +329,21 @@ public class MainActivity extends Activity {
         }
 
         @JavascriptInterface
+        public boolean openExternalUrl(String value) {
+            if (!bridgeAllowed() || value == null || value.length() > 8192) return false;
+            try {
+                java.net.URI parsed = new java.net.URI(value);
+                String scheme = parsed.getScheme();
+                if (!("https".equalsIgnoreCase(scheme) || "http".equalsIgnoreCase(scheme))
+                        || parsed.getHost() == null || parsed.getRawUserInfo() != null) return false;
+                Intent intent = new Intent(Intent.ACTION_VIEW, android.net.Uri.parse(value));
+                intent.addCategory(Intent.CATEGORY_BROWSABLE);
+                startActivity(intent);
+                return true;
+            } catch (Exception ignored) { return false; }
+        }
+
+        @JavascriptInterface
         public void haptic(String kind) {
             if (!bridgeAllowed()) return;
             try {

@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState, type FormEvent, type ReactNode } from 'react';
-import { ChevronDown, ChevronRight, ChevronLeft, Brain, Terminal, FileDiff, Loader2 } from 'lucide-react';
+import { ChevronDown, ChevronRight, ChevronLeft, Brain, Terminal, FileDiff, Loader2, Check, X } from 'lucide-react';
 import { ComposerFields, ChatPrimaryButton, useComposerFields, requestIdForIdentity } from '../components/ChatComposer';
+import MarkdownMessage from '../components/MarkdownMessage';
 import { COLORS } from '../theme/optionATokens';
 import {
   messageText, compactMessageText, isRunning, supportsImages,
@@ -8,7 +9,7 @@ import {
 } from '../lib/chatContract';
 import { haptic } from '../lib/nativeBridge';
 import {
-  useDataState, refreshMessages, refreshChanges, sendMessage, interruptThread,
+  useDataState, dataStore, refreshMessages, refreshChanges, sendMessage, interruptThread, resolveApproval,
 } from '../state/dataStore';
 import { closeDetail } from '../state/tabStore';
 import { currentRequestContext } from '../state/sessionStore';
@@ -28,12 +29,61 @@ function CollapsibleLog({ title, icon, lines }: { title: string; icon: ReactNode
         {open ? <ChevronDown size={15} color={COLORS.labelSecondary} /> : <ChevronRight size={15} color={COLORS.labelSecondary} />}
       </button>
       {open && (
-        <pre className="tl-selectable" style={{ margin: 0, padding: 12, borderTop: `.5px solid ${COLORS.separator}`, background: COLORS.fillSecondary, color: COLORS.labelPrimary, fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Consolas, monospace', fontSize: 12, lineHeight: 19, whiteSpace: 'pre-wrap', wordBreak: 'break-all' }}>
+        <pre className="tl-selectable" style={{ margin: 0, padding: 12, borderTop: `.5px solid ${COLORS.separator}`, background: COLORS.fillSecondary, color: COLORS.labelPrimary, fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Consolas, monospace', fontSize: 12, lineHeight: '19px', whiteSpace: 'pre-wrap', wordBreak: 'break-all' }}>
           {lines.join('\n')}
         </pre>
       )}
     </div>
   );
+}
+
+type ApprovalDecision = 'approve' | 'approveForSession' | 'decline';
+
+function approvalDecisionFromOption(option: unknown): ApprovalDecision | null {
+  const row = option && typeof option === 'object' ? option as Record<string, unknown> : null;
+  const value = String(row?.id || row?.value || row?.action || option || '').trim().toLowerCase().replace(/[-_\s]/g, '');
+  if (['accept', 'approve', 'yes', 'true', '批准', '允许'].includes(value)) return 'approve';
+  if (['acceptforsession', 'approveforsession', 'always', 'session', '本次会话'].includes(value)) return 'approveForSession';
+  if (['decline', 'deny', 'no', 'false', '拒绝'].includes(value)) return 'decline';
+  return null;
+}
+
+function approvalDecisionLabel(decision: ApprovalDecision): string {
+  return decision === 'approveForSession' ? '允许本次会话' : decision === 'approve' ? '批准' : '拒绝';
+}
+
+function ApprovalCard({ message, context, threadId }: { message: ThreadMessage; context: ReturnType<typeof currentRequestContext>; threadId: string }) {
+  const [busy, setBusy] = useState(false);
+  const [resolved, setResolved] = useState(false);
+  const [error, setError] = useState('');
+  const requestId = String(message.requestId || '');
+  const approvalKind = String(message.approvalKind || '') as 'command' | 'file' | 'permission';
+  const detailsHash = String(message.detailsHash || '');
+  const advertised = Array.isArray(message.availableDecisions) ? message.availableDecisions : [];
+  const decisions = Array.from(new Set((advertised.length ? advertised : ['decline', 'approve']).map(approvalDecisionFromOption).filter((item): item is ApprovalDecision => Boolean(item))));
+  const canApprove = Boolean(message.canApprove && message.threadId === threadId && context && requestId && detailsHash && ['command', 'file', 'permission'].includes(approvalKind) && decisions.length);
+  const decide = async (decision: ApprovalDecision) => {
+    if (!canApprove || !context || busy) return;
+    setBusy(true); setError('');
+    const ok = await resolveApproval(context, threadId, requestId, approvalKind, detailsHash, decision);
+    setBusy(false);
+    if (ok) { setResolved(true); await refreshMessages(context, threadId); }
+    else setError(dataStore.getState().error || '审批未成功，请刷新后重新核对。');
+  };
+  return <div className="tl-approval-card" aria-label="待确认操作">
+    <div className="tl-approval-title"><span>{String(message.title || '需要确认的操作')}</span><span className="tl-approval-kind">{approvalKind || '操作'}</span></div>
+    <code className="tl-approval-id">请求 ID · {requestId || '不可用'}</code>
+    <pre className="tl-approval-content tl-selectable">{String(message.content || message.text || '')}</pre>
+    {resolved ? <div className="tl-approval-resolved"><Check size={15} /> 已提交决定</div> : <>
+      {error && <div role="alert" className="tl-approval-error">{error}</div>}
+      {!canApprove && <div className="tl-approval-error">{message.unavailable ? '请求已过期、变化或已处理，已禁用决定。' : decisions.length ? '缺少可核对的请求详情，已禁用决定。' : '电脑端未提供可用决定，操作已禁用。'}</div>}
+      <div className="tl-approval-actions">
+        {decisions.map(decision => <button key={decision} type="button" className={decision === 'decline' ? 'tl-approval-reject' : 'tl-approval-approve'} disabled={!canApprove || busy} onClick={() => { void decide(decision); }}>
+          {decision === 'decline' ? <X size={15} /> : <Check size={15} />} {approvalDecisionLabel(decision)}
+        </button>)}
+      </div>
+    </>}
+  </div>;
 }
 
 /** Chat screen: header-only back, compact bubbles, one authoritative primary action. */
@@ -79,7 +129,7 @@ export default function ChatDetailScreen({ threadId, title }: { threadId: string
       fields.setError('');
       const ok = await interruptThread(context, threadId);
       setSubmitting(false);
-      if (!ok) fields.setError('停止请求未成功，请检查连接后重试；输入内容已保留。');
+      if (!ok) fields.setError(`${dataStore.getState().error || '停止请求未成功。'} 输入内容已保留。`);
       else await refreshMessages(context, threadId);
       return;
     }
@@ -105,7 +155,7 @@ export default function ChatDetailScreen({ threadId, title }: { threadId: string
       haptic('success');
     } else {
       // Keep text, tray, model/effort, and the same clientRequestId for retry.
-      fields.setError('发送未确认成功，草稿和附件已保留。请检查电脑端连接后再次点发送。');
+      fields.setError(`${dataStore.getState().error || '发送未确认成功。'} 草稿和附件已保留，可再次点发送。`);
       haptic('error');
     }
   };
@@ -120,7 +170,7 @@ export default function ChatDetailScreen({ threadId, title }: { threadId: string
           </button>
           <div style={{ flex: 1, minWidth: 0 }}>
             <div style={{ fontSize: 17, fontWeight: 600, color: COLORS.labelPrimary, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{title || '会话详情'}</div>
-            <div style={{ fontSize: 11, lineHeight: 15, color: COLORS.labelSecondary }}>
+            <div style={{ fontSize: 11, lineHeight: '15px', color: COLORS.labelSecondary }}>
               {status?.interactionRequired ? '等待电脑端处理' : running ? '运行中' : '空闲'}
               {status?.staleTurn ? ' · 长时间无输出' : ''}
             </div>
@@ -132,7 +182,7 @@ export default function ChatDetailScreen({ threadId, title }: { threadId: string
       <main className="tl-detail-body tl-no-scrollbar">
         <div className="tl-chat-list" role="log" aria-label="消息流">
           {messages.length === 0 ? (
-            <div role="status" style={{ fontSize: 13, lineHeight: 19, color: COLORS.labelSecondary, padding: '8px 4px' }}>
+            <div role="status" style={{ fontSize: 13, lineHeight: '19px', color: COLORS.labelSecondary, padding: '8px 4px' }}>
               {data.messageState[threadId]?.error || (data.messageState[threadId]?.loaded ? '暂无消息，可以发送第一条消息。' : '正在加载消息…')}
               {data.messageState[threadId]?.error && <button type="button" className="tl-connect-manual" onClick={() => { if (context) void refreshMessages(context, threadId); }}>重试加载消息</button>}
             </div>
@@ -140,11 +190,14 @@ export default function ChatDetailScreen({ threadId, title }: { threadId: string
             const isUser = message.role === 'user';
             const text = messageText(message);
             const images = Array.isArray(message.images) ? message.images : [];
+            if (message.role === 'interaction' && message.approvalKind) {
+              return <div key={`approval:${threadId}:${String(message.requestId || message.id || index)}:${String(message.detailsHash || '')}`} className="tl-chat-row tl-approval-row"><ApprovalCard message={message} context={context} threadId={threadId} /></div>;
+            }
             if (!text && !images.length) return null;
             return (
               <div key={String(message.id || index)} className={`tl-chat-row${isUser ? ' tl-chat-row--user' : ''}`}>
                 <div className={`tl-chat-bubble tl-selectable ${isUser ? 'tl-chat-bubble--user' : 'tl-chat-bubble--assistant'}`}>
-                  {text || '(空消息)'}
+                  {isUser ? text || '(空消息)' : <MarkdownMessage text={text || '(空消息)'} />}
                   {images.length > 0 && (
                     <div className="tl-chat-attachment" aria-label={`${images.length} 张图片`}>
                       {images.slice(0, 4).map((image: unknown, imageIndex: number) => {
@@ -164,7 +217,7 @@ export default function ChatDetailScreen({ threadId, title }: { threadId: string
         <CollapsibleLog title="命令记录" icon={<Terminal size={16} color={COLORS.labelSecondary} />} lines={terminal.map(compactMessageText)} />
         {diffLines.length > 0 && (
           <>
-            <div style={{ fontSize: 12, lineHeight: 17, color: COLORS.labelSecondary, padding: '4px 16px 6px', display: 'flex', alignItems: 'center', gap: 6 }}>
+            <div style={{ fontSize: 12, lineHeight: '17px', color: COLORS.labelSecondary, padding: '4px 16px 6px', display: 'flex', alignItems: 'center', gap: 6 }}>
               <FileDiff size={14} /> {changes.length} 个文件变更
             </div>
             <CollapsibleLog title="变更明细" icon={<FileDiff size={16} color={COLORS.labelSecondary} />} lines={diffLines} />

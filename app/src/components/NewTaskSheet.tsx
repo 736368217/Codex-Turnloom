@@ -7,7 +7,7 @@ import { ArrowUp, ChevronRight, FolderOpen } from 'lucide-react';
 import { ComposerFields, useComposerFields, requestIdForIdentity } from './ChatComposer';
 import { COLORS } from '../theme/optionATokens';
 import { buildSendPayload, sendRequestIdentity, supportsImages } from '../lib/chatContract';
-import { createThread } from '../state/dataStore';
+import { createThread, dataStore } from '../state/dataStore';
 import { closeSheet } from '../state/sheetStore';
 import { openDetail } from '../state/tabStore';
 import { currentRequestContext } from '../state/sessionStore';
@@ -55,7 +55,7 @@ export default function NewTaskSheet() {
     fields.setBusy(false);
     if (!id) {
       // The draft, attachments, model/effort and request ID are all preserved.
-      setNotice('任务未创建成功，草稿与附件已保留。请检查电脑端连接后重试。');
+      setNotice(`${dataStore.getState().error || '任务未创建成功。'} 草稿与附件已保留。`);
       haptic('error');
       return;
     }

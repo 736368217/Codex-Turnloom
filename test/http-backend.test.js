@@ -91,7 +91,8 @@ test("HTTP backend extended operations use the documented routes", async () => {
   await backend.clearGoal("a");
   await backend.compactThread("a");
   await backend.branchThread("a", { lastTurnId: "t" });
-  await backend.respondToApproval({ threadId: "a" });
+  await assert.rejects(() => backend.respondToApproval({ threadId: "a" }), (error) => error.status === 400);
+  await backend.respondToApproval({ threadId: "a", requestId: "req-a", approvalKind: "command", detailsHash: "a".repeat(64), decision: "approve" });
   await backend.cancelQueuedSend({ threadId: "a" });
   await backend.steerQueuedSend({ threadId: "a" });
   assert.deepEqual(calls.map((call) => `${call.method} ${call.url.replace("http://backend.test", "")}`), [

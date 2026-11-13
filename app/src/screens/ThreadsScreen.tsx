@@ -4,7 +4,7 @@ import TaskStream, { toneOfThread, titleOfThread } from '../components/TaskStrea
 import { FilterSegmented } from '../components/Segmented';
 import { EmptyState, SectionTitle } from '../components/ui';
 import { COLORS } from '../theme/optionATokens';
-import { useDataState, refreshThreads } from '../state/dataStore';
+import { useDataState, refreshThreads, loadMoreThreads } from '../state/dataStore';
 import { useTabState, setThreadsQuery, setThreadsFilter, type TabState } from '../state/tabStore';
 import { currentRequestContext } from '../state/sessionStore';
 import { openSheet } from '../state/sheetStore';
@@ -50,7 +50,7 @@ export default function ThreadsScreen() {
         <div style={{ marginTop: 12 }}><FilterSegmented value={threadsFilter} options={FILTERS} onChange={setThreadsFilter} /></div>
       </div>
 
-      <SectionTitle>全部会话 · {filtered.length}</SectionTitle>
+      <SectionTitle>{query || threadsFilter !== 'all' ? `匹配会话 · ${filtered.length}` : `已加载 ${data.threads.length}${data.threadTotal !== null ? ` / ${data.threadTotal}` : ''} 个会话`}</SectionTitle>
       {filtered.length > 0 ? (
         <TaskStream threads={filtered} emptyTitle="没有匹配的会话" />
       ) : (
@@ -60,9 +60,14 @@ export default function ThreadsScreen() {
           icon={<MessageSquare size={26} />}
         />
       )}
-      <div style={{ display: 'flex', justifyContent: 'center', padding: '16px 0 8px' }}>
-        <button type="button" className="tl-press" onClick={() => { if (context) { haptic('selection'); void refreshThreads(context); } }} style={{ minHeight: 44, padding: '0 12px', border: 0, background: 'transparent', color: COLORS.blue, fontSize: 13, fontWeight: 600 }}>
-          刷新会话列表
+      {data.error && <p role="alert" className="tl-page-note tl-page-note--error">{data.error}</p>}
+      {data.nextCursor && <p className="tl-page-note">搜索与筛选当前已加载的 {data.threads.length} 个会话</p>}
+      <div className="tl-list-actions">
+        {data.nextCursor && <button type="button" className="tl-press" disabled={data.loading || data.loadingMore} onClick={() => { if (context) void loadMoreThreads(context); }}>
+          {data.loadingMore ? '正在加载…' : '加载更早会话'}
+        </button>}
+        <button type="button" className="tl-press" disabled={data.loading || data.loadingMore} onClick={() => { if (context) { haptic('selection'); void refreshThreads(context); } }}>
+          {data.loading ? '正在刷新…' : '刷新会话列表'}
         </button>
       </div>
     </div>

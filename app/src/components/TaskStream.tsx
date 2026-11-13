@@ -1,4 +1,4 @@
-import { ChevronRight, MessageSquare, Loader2, CircleCheck, AlertTriangle } from 'lucide-react';
+import { ChevronRight, MessageSquare, Loader2, Clock, AlertTriangle } from 'lucide-react';
 import type { ThreadSummary } from '../lib/turnloomApi';
 import { COLORS } from '../theme/optionATokens';
 import { haptic } from '../lib/nativeBridge';
@@ -46,14 +46,14 @@ export default function TaskStream({
           : tone === 'error'
             ? <AlertTriangle size={16} color={COLORS.red} />
             : tone === 'waiting'
-              ? <CircleCheck size={16} color={COLORS.green} />
+              ? <Clock size={16} color={COLORS.blue} />
               : <MessageSquare size={16} color={COLORS.labelSecondary} />;
         const pill = tone === 'running'
           ? <StatusPill tone="blue" active>运行中</StatusPill>
           : tone === 'error'
             ? <StatusPill tone="red" active>错误</StatusPill>
             : tone === 'waiting'
-              ? <StatusPill tone="green">待处理</StatusPill>
+              ? <StatusPill tone="blue">待处理</StatusPill>
               : <StatusPill>已结束</StatusPill>;
 
         return (

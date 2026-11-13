@@ -7,6 +7,9 @@ import { useDataState, refreshAll } from '../state/dataStore';
 import { useSessionState, currentRequestContext } from '../state/sessionStore';
 import { openSheet } from '../state/sheetStore';
 import { haptic } from '../lib/nativeBridge';
+import { openDetail } from '../state/tabStore';
+import { titleOfThread } from '../components/TaskStream';
+import { threadListStatus } from '../state/runtimeStore';
 
 function formatElapsed(ms: number): string {
   const total = Math.max(0, Math.floor(ms / 1000));
@@ -44,8 +47,8 @@ export default function MonitorsScreen() {
         <div className="tl-separator" style={{ marginLeft: 16 }} />
         <div style={{ display: 'flex', alignItems: 'center', padding: '12px 16px', minHeight: 52 }}>
           <Clock size={17} color={COLORS.blue} />
-          <span style={{ flex: 1, fontSize: 14, marginLeft: 10 }}>本次运行计时</span>
-          <span style={{ fontSize: 16, fontWeight: 700, fontVariantNumeric: 'tabular-nums' }}>{formatElapsed(elapsed)}</span>
+          <span style={{ flex: 1, fontSize: 14, marginLeft: 10 }}>距上次同步</span>
+          <span style={{ fontSize: 16, fontWeight: 700, fontVariantNumeric: 'tabular-nums' }}>{data.lastSyncAt ? formatElapsed(elapsed) : '尚未同步'}</span>
         </div>
         <div className="tl-separator" style={{ marginLeft: 16 }} />
         <div style={{ display: 'flex', alignItems: 'center', padding: '12px 16px', minHeight: 52 }}>
@@ -53,6 +56,15 @@ export default function MonitorsScreen() {
           <span style={{ flex: 1, fontSize: 14, marginLeft: 10 }}>连接状态</span>
           <StatusPill tone={session.online && !data.offline ? 'green' : 'red'} active>{session.online && !data.offline ? '已连接' : '离线'}</StatusPill>
         </div>
+      </InsetGroup>
+      <InsetGroup title="运行中的会话">
+        {data.threads.filter(thread => (data.statusByThread[thread.id] || threadListStatus(thread.status)).thinking).map(thread => (
+          <TapRow key={thread.id} leading={<Radio size={17} color={COLORS.blue} />} trailing={<span style={{ fontSize: 12, color: COLORS.blue }}>查看 / 停止</span>}
+            onClick={() => { haptic('selection'); openDetail(thread.id, titleOfThread(thread)); }}>
+            <span className="tl-monitor-title">{titleOfThread(thread)}</span>
+          </TapRow>
+        ))}
+        {!data.threads.some(thread => (data.statusByThread[thread.id] || threadListStatus(thread.status)).thinking) && <p className="tl-page-note">当前已加载的会话中没有运行任务</p>}
       </InsetGroup>
       <InsetGroup title="错误与告警">
         {data.errorCount > 0 ? (

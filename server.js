@@ -508,6 +508,17 @@ const sqliteQueues = new Map();
 const pendingSendQueues = new Map();
 const drainingSendQueues = new Set();
 const queuedSendDrainTimers = new Map();
+
+// Exact Codex Desktop approvals surfaced to the phone. Entries are removed only
+// after the host accepts a decision; the host remains authoritative afterwards.
+const pendingApprovalsByThread = new Map();
+const resolvedApprovalsByThread = new Map();
+const APPROVAL_TTL_MS = 10 * 60 * 1000;
+const APPROVAL_KINDS = new Set(["command", "file", "permission"]);
+const APPROVAL_DECISIONS = new Set([
+  "accept", "acceptForSession", "decline", "approve", "deny", "yes", "no",
+  "true", "false", "approve-for-session", "always", "session"
+]);
 const queueIdleObservations = new Map();
 const recentSendRequests = new Map();
 const threadStartOperations = new Map();
@@ -1212,8 +1223,30 @@ function clearHomeScopedCaches() {
   threadStatusColumnsCache = null;
   adapterStatusOverrides.clear();
   referencedFilesByThread.clear();
+  pendingApprovalsByThread.clear();
+  resolvedApprovalsByThread.clear();
   recentNotices.splice(0, recentNotices.length);
   codexIpcClient?.clearHomeScopedState?.();
+}
+
+function setCodexIpcClientForApprovalTests(client) {
+  const previous = codexIpcClient;
+  codexIpcClient = client;
+  pendingApprovalsByThread.clear();
+  resolvedApprovalsByThread.clear();
+  return () => {
+    codexIpcClient = previous;
+    pendingApprovalsByThread.clear();
+    resolvedApprovalsByThread.clear();
+  };
+}
+
+function rememberStartedThreadsForTest(rows) {
+  startedThreads.clear();
+  for (const row of rows || []) {
+    if (row?.id) startedThreads.set(String(row.id), { ...row, id: String(row.id), rememberedAtMs: Date.now() });
+  }
+  return () => startedThreads.clear();
 }
 
 function normalizeCandidateHome(value) {
@@ -2026,6 +2059,8 @@ class DesktopCodexIpcClient {
   getRecentInteractionMessages(threadId) {
     const selectedThreadId = String(threadId || "");
     const cutoff = Date.now() - 10 * 60 * 1000;
+    const pendingById = new Map(approvalRequestsFromEvents(this.events, selectedThreadId).map(request => [request.requestId, request]));
+    const locallyResolved = resolvedApprovalsByThread.get(selectedThreadId);
     return this.events.flatMap((event, index) => {
         if (Date.parse(event.timestamp) < cutoff) return [];
         const payload = event.message?.payload || event.message?.params || event.message;
@@ -2042,6 +2077,7 @@ class DesktopCodexIpcClient {
         if (selectedThreadId && (!messageThreadId || String(messageThreadId) !== selectedThreadId)) return [];
         const meta = {
           source: "desktop-ipc",
+          threadId: selectedThreadId,
           turnId: event.message?.turnId || event.message?.params?.turnId || null
         };
         const payloads = interactionPayloadsFromIpcMessage(event.message);
@@ -2049,9 +2085,15 @@ class DesktopCodexIpcClient {
         return payloads
           .map((interactionPayload, payloadIndex) => {
             const interaction = messageFromInteractionEvent(event.timestamp, interactionPayload, meta);
+            const pendingApproval = interaction?.requestId ? pendingById.get(String(interaction.requestId)) : null;
+            const locallyResolvedAt = interaction?.requestId ? locallyResolved?.get(String(interaction.requestId)) : null;
+            const canApprove = Boolean(pendingApproval && pendingApproval.detailsHash === interaction.detailsHash && !locallyResolvedAt);
+            if (locallyResolvedAt && Date.now() - locallyResolvedAt >= APPROVAL_TTL_MS) locallyResolved.delete(String(interaction.requestId));
             if (!hasDisplayableMessageContent(interaction)) return null;
             return {
               ...interaction,
+              canApprove,
+              ...(interaction.approvalKind && interaction.requestId && !canApprove ? { unavailable: true } : {}),
               lineNumber: 1000000 + index * 20 + payloadIndex,
               requiresDesktopAction: true
             };
@@ -3645,6 +3687,14 @@ function approvalKindFromPayload(payload) {
   return "";
 }
 
+function approvalDetailText(...values) {
+  for (const value of values) {
+    if (typeof value === "string" && value.trim()) return value;
+    if (value && typeof value === "object" && Object.keys(value).length) return JSON.stringify(value, null, 2);
+  }
+  return "";
+}
+
 function interactionContent(payload) {
   const toolArguments = parseMaybeJsonObject(payload?.arguments);
   const params = payload?.params || payload?.payload || toolArguments || {};
@@ -3701,10 +3751,14 @@ function interactionContent(payload) {
       : Array.isArray(request?.options)
         ? request.options
         : [];
+  const changes = approvalDetailText(payload?.changes, params?.changes, request?.changes, payload?.diff, params?.diff, payload?.patch, params?.patch);
+  const permissions = approvalDetailText(payload?.permissions, params?.permissions, request?.permissions, payload?.requestedPermissions, params?.requestedPermissions);
   const lines = [
     prompt ? `Prompt: ${prompt}` : "",
     command ? `Command: ${command}` : "",
     pathValue ? `Path: ${pathValue}` : "",
+    changes ? `Changes: ${changes}` : "",
+    permissions ? `Permissions: ${permissions}` : "",
     firstString(toolArguments?.workdir, params?.workdir, params?.cwd) ? `Workdir: ${firstString(toolArguments?.workdir, params?.workdir, params?.cwd)}` : "",
     choices.length ? `Options: ${choices.map((option) => firstString(option?.label, option?.title, option?.id, option)).filter(Boolean).join(", ")}` : ""
   ].filter(Boolean);
@@ -3771,19 +3825,35 @@ function interactionPayloadPriority(payload) {
   return 2;
 }
 
+function approvalDetailsHash(content) {
+  return createHash("sha256").update(String(content || ""), "utf8").digest("hex");
+}
+
+function interactionHasReviewableDetails(content, kind) {
+  const text = String(content || "");
+  if (text.length > 64 * 1024) return false;
+  const label = kind === "command" ? "Command" : kind === "file" ? "Changes" : kind === "permission" ? "Permissions" : "";
+  return Boolean(label && new RegExp(`(?:^|\\n)${label}:\\s*\\S`, "i").test(text));
+}
+
 function messageFromInteractionEvent(timestamp, payload, meta = {}) {
   if (!isInteractionPayload(payload)) return null;
   const approvalKind = approvalKindFromPayload(payload);
+  const requestId = interactionRequestId(payload);
+  const content = interactionContent(payload);
+  const reviewable = Boolean(approvalKind && requestId && interactionHasReviewableDetails(content, approvalKind));
   return {
     role: "interaction",
     kind: payload?.type || payload?.method || payload?.name || "interaction",
     timestamp,
     ...meta,
     title: interactionTitle(payload),
-    requestId: interactionRequestId(payload),
+    requestId,
     approvalKind,
-    canApprove: Boolean(approvalKind),
-    content: interactionContent(payload),
+    availableDecisions: approvalAvailableDecisions(payload),
+    detailsHash: meta.source === "desktop-ipc" && reviewable ? approvalDetailsHash(content) : null,
+    canApprove: Boolean(meta.source === "desktop-ipc" && reviewable),
+    content,
     requiresDesktopAction: true
   };
 }
@@ -3802,6 +3872,7 @@ function interactionContentField(content, label) {
 
 function interactionDedupeKey(message) {
   if (message?.role !== "interaction") return "";
+  if (message?.requestId) return `approval:${message.approvalKind || ""}:${message.requestId}`;
   const prompt = interactionContentField(message.content, "Prompt");
   const command = normalizeApprovalCommandForKey(interactionContentField(message.content, "Command"));
   const workdir = interactionContentField(message.content, "Workdir");
@@ -3818,10 +3889,14 @@ function preferredInteractionMessage(existing, candidate) {
   if (!live) return display;
   return {
     ...display,
+    content: live.detailsHash ? live.content : display.content,
     source: live.source,
+    threadId: live.threadId || display.threadId,
     requestId: live.requestId || display.requestId,
     approvalKind: live.approvalKind || display.approvalKind,
-    canApprove: live.canApprove || display.canApprove,
+    availableDecisions: live.availableDecisions || display.availableDecisions || [],
+    detailsHash: live.detailsHash || null,
+    canApprove: Boolean(live.detailsHash && live.canApprove),
     requiresDesktopAction: Boolean(live.requiresDesktopAction || display.requiresDesktopAction),
     lineNumber: Math.min(existing.lineNumber || candidate.lineNumber || 0, candidate.lineNumber || existing.lineNumber || 0),
     timestamp: display.timestamp || live.timestamp
@@ -7015,7 +7090,7 @@ async function interruptCodex(threadId) {
 function normalizeApprovalDecision(value) {
   const text = String(value || "").trim();
   if (["accept", "approve", "yes", "true"].includes(text)) return "accept";
-  if (["acceptForSession", "approve-for-session", "always", "session"].includes(text)) return "acceptForSession";
+  if (["acceptForSession", "approveForSession", "approve-for-session", "always", "session"].includes(text)) return "acceptForSession";
   if (["decline", "deny", "no", "false"].includes(text)) return "decline";
   const err = new Error("Unknown approval decision");
   err.status = 400;
@@ -7033,17 +7108,19 @@ function approvalDecisionCandidates(value) {
 function approvalDecisionCandidatesForRequest(value, liveRequest) {
   const normalized = normalizeApprovalDecision(value);
   const options = Array.isArray(liveRequest?.availableDecisions) ? liveRequest.availableDecisions : [];
+  if (!options.length) return approvalDecisionCandidates(value);
   const matches = options
     .map((option) => (typeof option === "string" ? option : firstString(option?.id, option?.value, option?.action, option?.label, option?.title)))
     .filter(Boolean)
     .filter((option) => {
-      try {
-        return normalizeApprovalDecision(option) === normalized;
-      } catch {
-        return false;
-      }
+      try { return normalizeApprovalDecision(option) === normalized; } catch { return false; }
     });
-  return [...new Set([...matches, ...approvalDecisionCandidates(value)])];
+  if (!matches.length) {
+    const err = new Error("The requested approval decision is not offered by the host");
+    err.status = 409;
+    throw err;
+  }
+  return [...new Set(matches)];
 }
 
 function approvalKindFromMethod(method) {
@@ -7115,54 +7192,68 @@ function visitObjects(value, visitor, depth = 0, seen = new Set()) {
   return null;
 }
 
-function findLiveApprovalRequest(threadId, fallbackRequestId) {
+function approvalThreadId(message) {
+  return String(message?.conversationId || message?.conversation_id || message?.threadId || message?.thread_id || message?.params?.conversationId || message?.params?.conversation_id || message?.params?.threadId || message?.params?.thread_id || "");
+}
+function approvalRequestsFromEvents(events, threadId, nowMs = Date.now()) {
   const selectedThreadId = String(threadId || "");
-  const fallback = String(fallbackRequestId || "");
-  const events = codexIpcClient?.events || [];
-  const candidates = [];
-  for (let index = events.length - 1; index >= 0; index -= 1) {
-    const event = events[index];
-    const messageThreadId =
-      event.message?.conversationId ||
-      event.message?.conversation_id ||
-      event.message?.threadId ||
-      event.message?.thread_id ||
-      event.message?.params?.conversationId ||
-      event.message?.params?.conversation_id ||
-      event.message?.params?.threadId ||
-      event.message?.params?.thread_id ||
-      "";
-    if (selectedThreadId && (!messageThreadId || String(messageThreadId) !== selectedThreadId)) continue;
-    const found = interactionPayloadsFromIpcMessage(event.message)
-      .map((object) => {
-        const methodText = String(object.method || object.type || object.name || "");
-        const id = interactionRequestId(object);
-        const kind = approvalKindFromPayload(object) || approvalKindFromMethod(methodText);
-        if (!id || !kind) return null;
-        return {
-          requestId: id,
-          kind,
-          method: methodText,
-          availableDecisions: approvalAvailableDecisions(object),
-          priority: interactionPayloadPriority(object)
-        };
-      })
-      .filter(Boolean)
-      .sort((a, b) => a.priority - b.priority);
-    candidates.push(...found);
+  if (!selectedThreadId || !Array.isArray(events)) return [];
+  const cutoff = nowMs - APPROVAL_TTL_MS;
+  const requests = [];
+  const decisions = [];
+  for (let eventIndex = 0; eventIndex < events.length; eventIndex += 1) {
+    const event = events[eventIndex];
+    const timestampMs = Date.parse(event?.timestamp || "");
+    if (!Number.isFinite(timestampMs) || timestampMs < cutoff || timestampMs > nowMs + 60_000 || approvalThreadId(event.message) !== selectedThreadId) continue;
+    if (isApprovalDecisionPayload(event.message)) {
+      const params = event.message?.params || event.message?.payload || {};
+      const requestId = String(params.requestId || params.request_id || params.approvalRequestId || "");
+      if (requestId) decisions.push({ eventIndex, requestId });
+      continue;
+    }
+    for (const payload of interactionPayloadsFromIpcMessage(event.message)) {
+      const requestId = String(interactionRequestId(payload) || "");
+      const approvalKind = approvalKindFromPayload(payload) || approvalKindFromMethod(payload.method || payload.type || payload.name);
+      if (!requestId || !APPROVAL_KINDS.has(approvalKind)) continue;
+      const message = messageFromInteractionEvent(event.timestamp, payload, { source: "desktop-ipc", threadId: selectedThreadId });
+      if (!message?.canApprove || !message.detailsHash) continue;
+      requests.push({ requestId, approvalKind, detailsHash: message.detailsHash, title: message.title, content: message.content, availableDecisions: message.availableDecisions || [], eventIndex });
+    }
   }
-  return candidates.find((candidate) => fallback && candidate.requestId === fallback) || candidates[0] || null;
+  const latestById = new Map();
+  for (const request of requests) {
+    const previous = latestById.get(request.requestId);
+    if (!previous || request.eventIndex > previous.eventIndex) latestById.set(request.requestId, request);
+  }
+  return [...latestById.values()]
+    .filter(request => !decisions.some(decision => decision.requestId === request.requestId && decision.eventIndex > request.eventIndex))
+    .sort((a, b) => a.eventIndex - b.eventIndex)
+    .map(({ eventIndex, ...request }) => request);
 }
 
-async function respondToApproval({ threadId, requestId, decision, approvalKind } = {}) {
+function findLiveApprovalRequest(threadId, requestId, approvalKind, detailsHash) {
+  const selectedThreadId = String(threadId || "");
+  const selectedRequestId = String(requestId || "");
+  const selectedKind = String(approvalKind || "");
+  const selectedHash = String(detailsHash || "");
+  if (!selectedThreadId || !selectedRequestId || !APPROVAL_KINDS.has(selectedKind) || !/^[a-f0-9]{64}$/.test(selectedHash)) return null;
+  const resolved = resolvedApprovalsByThread.get(selectedThreadId);
+  const resolvedAt = resolved?.get(selectedRequestId);
+  if (resolvedAt && Date.now() - resolvedAt < APPROVAL_TTL_MS) return null;
+  if (resolvedAt) resolved.delete(selectedRequestId);
+  return approvalRequestsFromEvents(codexIpcClient?.events || [], selectedThreadId)
+    .find(request => request.requestId === selectedRequestId && request.approvalKind === selectedKind && request.detailsHash === selectedHash) || null;
+}
+
+async function respondToApproval({ threadId, requestId, decision, approvalKind, detailsHash } = {}) {
   if (!ALLOW_WRITE) {
     const err = new Error("Read-only mode is enabled. Restart without --readonly to control Codex Desktop.");
     err.status = 403;
     throw err;
   }
-  const targetThreadId = threadId || (await getThreads())[0]?.id;
+  const targetThreadId = String(threadId || "");
   if (!targetThreadId) {
-    const err = new Error("No target thread selected");
+    const err = new Error("Exact target thread is required");
     err.status = 400;
     throw err;
   }
@@ -7171,16 +7262,32 @@ async function respondToApproval({ threadId, requestId, decision, approvalKind }
     err.status = 404;
     throw err;
   }
-  const normalizedDecision = normalizeApprovalDecision(decision);
-  const liveRequest = findLiveApprovalRequest(targetThreadId, requestId);
-  const decisionCandidates = approvalDecisionCandidatesForRequest(decision, liveRequest);
-  const resolvedRequestId = liveRequest?.requestId || String(requestId || "");
-  const resolvedKind = liveRequest?.kind || String(approvalKind || "command");
-  if (!resolvedRequestId) {
-    const err = new Error("No approval request id found");
+  const selectedRequestId = String(requestId || "");
+  const selectedKind = String(approvalKind || "");
+  const selectedHash = String(detailsHash || "");
+  if (!selectedRequestId || !APPROVAL_KINDS.has(selectedKind) || !/^[a-f0-9]{64}$/.test(selectedHash)) {
+    const err = new Error("Exact request id, approval kind, and displayed detail hash are required");
     err.status = 400;
     throw err;
   }
+  const liveRequest = findLiveApprovalRequest(targetThreadId, selectedRequestId, selectedKind, selectedHash);
+  if (!liveRequest) {
+    const err = new Error("Approval is missing, changed, expired, already resolved, or does not match the displayed request");
+    err.status = 409;
+    throw err;
+  }
+  const normalizedDecision = normalizeApprovalDecision(decision);
+  const decisionCandidates = approvalDecisionCandidatesForRequest(decision, liveRequest);
+  const resolvedRequestId = selectedRequestId;
+  const resolvedKind = selectedKind;
+  const inFlight = pendingApprovalsByThread.get(targetThreadId) || new Set();
+  if (inFlight.has(resolvedRequestId)) {
+    const err = new Error("Approval decision is already being submitted");
+    err.status = 409;
+    throw err;
+  }
+  inFlight.add(resolvedRequestId);
+  pendingApprovalsByThread.set(targetThreadId, inFlight);
 
   const methodCandidates = approvalMethodCandidatesForKind(resolvedKind);
   const paramsForDecision = (candidate, mode) => {
@@ -7199,6 +7306,7 @@ async function respondToApproval({ threadId, requestId, decision, approvalKind }
           lastError = null;
           break;
         } catch (error) {
+          if (!/unknown method|unsupported method|method not found|not implemented|(?:invalid|unknown|unsupported).*decision/i.test(String(error?.message || error))) throw error;
           lastError = error;
         }
       }
@@ -7213,7 +7321,11 @@ async function respondToApproval({ threadId, requestId, decision, approvalKind }
       source: "approval"
     });
     throw error;
+  } finally {
+    pendingApprovalsByThread.get(targetThreadId)?.delete(resolvedRequestId);
   }
+  if (!resolvedApprovalsByThread.has(targetThreadId)) resolvedApprovalsByThread.set(targetThreadId, new Map());
+  resolvedApprovalsByThread.get(targetThreadId).set(resolvedRequestId, Date.now());
   return {
     ok: true,
     mode: "desktop-ipc",
@@ -8713,6 +8825,12 @@ function restoreLocalImages(messages, receipts, threadId) {
 
 
 export {
+  approvalRequestsFromEvents,
+  findLiveApprovalRequest,
+  respondToApproval,
+  setCodexIpcClientForApprovalTests,
+  rememberStartedThreadsForTest,
+  approvalDetailsHash,
   sendWithFiles,
   sendRequestFingerprint,
   nativeQueueFallbackStatus,

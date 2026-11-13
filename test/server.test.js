@@ -75,7 +75,12 @@ import {
   startTurnWithOwnerRecovery,
   stripHiddenMessageLocalAssets,
   threadListMetadata,
-  visibleThreadRows
+  visibleThreadRows,
+  approvalRequestsFromEvents,
+  respondToApproval,
+  setCodexIpcClientForApprovalTests,
+  rememberStartedThreadsForTest,
+  approvalDetailsHash
 } from "../server.js";
 
 function rolloutLine(timestamp, ordinal, type, payload) {
@@ -1859,4 +1864,35 @@ test("Android starts in chat and the picker is not the home page", () => {
   assert.match(main, /if \(!clearMachinePickerMode\) \{[\s\S]{0,180}activeDevice != null \? activeDevice : findActiveDevice\(\)/);
   assert.match(main, /moveTaskToBack\(true\)/, "chat root never jumps to picker on Back");
   assert.match(main, /Button back = headerButton\("‹", "返回聊天", v -> openDevice\(previousDevice\)\)/);
+});
+
+test('approval requests are exact, reviewable, thread-scoped, and single-use', async () => {
+  const now = Date.now();
+  const approvalEvent = (threadId, requestId, command) => ({
+    timestamp: new Date(now - 1000).toISOString(),
+    message: { conversationId: threadId, method: 'command_approval', requestId, command, reason: '需要确认后执行' }
+  });
+  const events = [approvalEvent('thread-a', 'req-a', 'echo A'), approvalEvent('thread-a', 'req-b', 'echo B'), approvalEvent('thread-b', 'req-other', 'echo other')];
+  const pending = approvalRequestsFromEvents(events, 'thread-a', now);
+  assert.deepEqual(pending.map(row => row.requestId), ['req-a', 'req-b']);
+  assert.ok(pending.every(row => /^[a-f0-9]{64}$/.test(row.detailsHash) && row.content.includes('echo')));
+  assert.deepEqual(approvalRequestsFromEvents(events, 'thread-b', now).map(row => row.requestId), ['req-other']);
+  assert.equal(approvalRequestsFromEvents(events, 'thread-a', now + 11 * 60 * 1000).length, 0);
+
+  const calls = [];
+  const restoreClient = setCodexIpcClientForApprovalTests({
+    events,
+    getDesktopConversationRows: () => [{ id: 'thread-a' }],
+    request: async (method, params) => { calls.push({ method, params }); return { ok: true }; }
+  });
+  try {
+    const first = pending[0];
+    const result = await respondToApproval({ threadId: 'thread-a', requestId: first.requestId, approvalKind: first.approvalKind, detailsHash: first.detailsHash, decision: 'approve' });
+    assert.equal(result.requestId, 'req-a');
+    assert.equal(calls[0].params.requestId, 'req-a');
+    await assert.rejects(() => respondToApproval({ threadId: 'thread-a', requestId: 'req-a', approvalKind: first.approvalKind, detailsHash: first.detailsHash, decision: 'approve' }), error => error.status === 409);
+    await assert.rejects(() => respondToApproval({ threadId: 'thread-a', requestId: 'req-b', approvalKind: 'permission', detailsHash: pending[1].detailsHash, decision: 'approve' }), error => error.status === 409);
+    await assert.rejects(() => respondToApproval({ threadId: 'thread-a', requestId: 'req-b', approvalKind: first.approvalKind, detailsHash: '0'.repeat(64), decision: 'approve' }), error => error.status === 409);
+    await assert.rejects(() => respondToApproval({ requestId: 'req-b', approvalKind: pending[1].approvalKind, detailsHash: pending[1].detailsHash, decision: 'approve' }), error => error.status === 400);
+  } finally { restoreClient(); }
 });
