@@ -282,6 +282,7 @@
       readonly: config.readonly,
       accessCodeMasked: config.accessCodeMasked,
       tunnel: config.tunnel,
+      network: config.network,
       console: config.console,
       extraDevices: config.extraDevices
     });
@@ -325,7 +326,7 @@
 
   function bindNavigation() {
     document.addEventListener("click", (event) => {
-      const nav = event.target.closest("[data-view]");
+      const nav = event.target.closest("a[data-view], button[data-view]");
       if (nav) {
         event.preventDefault();
         if (VIEWS.has(nav.dataset.view)) showView(nav.dataset.view);
@@ -1312,6 +1313,7 @@
 
   function bindSettings() {
     $("#settings-form")?.addEventListener("submit", saveSettings);
+    $("#set-network-mode")?.addEventListener("change", () => { updateTunnelTag(); updateSettingsDirty(); });
     $("#btn-discard")?.addEventListener("click", discardSettings);
     $("#btn-open-config")?.addEventListener("click", () => openPathSafe("config", "配置目录"));
     $("#btn-settings-open-logs")?.addEventListener("click", () => openPathSafe("logs", "日志目录"));
@@ -1377,9 +1379,17 @@
   function updateTunnelTag() {
     const tag = $("#tunnel-state-tag");
     if (!tag) return;
-    const enabled = isToggleOn($("#set-tunnel-enabled"));
-    tag.className = `tag ${enabled ? "ok" : "muted"}`;
-    tag.textContent = enabled ? "已启用" : "未启用";
+    const mode = $("#set-network-mode")?.value || "direct";
+    setToggle($("#set-tunnel-enabled"), mode === "ssh");
+    tag.className = "tag muted";
+    tag.textContent = { direct: "不依赖公网", external: "外部管理", ssh: "SSH 转发" }[mode];
+    $$("[data-ssh-field]").forEach(row => { row.hidden = mode !== "ssh"; });
+    $$("[data-public-field]").forEach(row => { row.hidden = mode === "direct"; });
+    setText($("#network-hint"), {
+      direct: "手机与电脑在同一局域网或 VPN 内直连。二维码使用本机地址，旧公网地址会保留但不启用。",
+      external: "由你已有的 HTTPS 代理、网关或隧道提供入口。本程序不启动 SSH，也不要求密钥。",
+      ssh: "电脑主动连接转发服务器。转发失败时本机服务继续工作；SSH 连通不等于公网 HTTP 可达。"
+    }[mode]);
   }
 
   function requestAutoStart(enabled, sourceButton) {
@@ -1423,10 +1433,17 @@
     if (state.settings.saving && !force) return;
     if (state.settings.dirty && !force) return;
     const values = configToSettingsValues(config);
+    const gateway = Boolean(config.machineGateway?.enabled);
+    const gatewayNote = $("#gateway-config-note");
+    if (gatewayNote) { gatewayNote.hidden = !gateway; gatewayNote.textContent = `机器网关已启用，${config.machineGateway?.harnessCount || 0} 个服务。数据来源与机器访问码由 ${config.machineGateway?.machineConfigPath || "machine.json"} 管理。`; }
+    ["#set-access-code", "#btn-toggle-code", "#btn-generate-code", "#set-codex-home", "#btn-browse-codex", "#set-ipc-socket", "#set-readonly"].forEach(selector => {
+      const control = $(selector); if (control) { control.disabled = gateway; control.title = gateway ? "由机器网关配置管理" : ""; }
+    });
     setToggle($("#set-auto-start"), values.autoStart);
     setToggle($("#side-auto-start"), values.autoStart);
     setToggle($("#set-start-minimized"), values.startMinimized);
     setToggle($("#set-readonly"), values.readonly);
+    setInputValue("#set-network-mode", values.networkMode);
     setToggle($("#set-tunnel-enabled"), values.tunnel.enabled);
     updateTunnelTag();
     setInputValue("#set-close-behavior", values.closeBehavior);
@@ -1656,6 +1673,7 @@
       ipcSocket: config.ipcSocket || "",
       readonly: Boolean(config.readonly),
       publicUrl: config.publicUrl || "",
+      networkMode: config.network?.mode || (config.tunnel?.enabled ? "ssh" : config.publicUrl ? "external" : "direct"),
       tunnel: {
         enabled: Boolean(config.tunnel?.enabled),
         host: config.tunnel?.host || "",
@@ -1686,8 +1704,9 @@
       ipcSocket: value("set-ipc-socket"),
       readonly: isToggleOn($("#set-readonly")),
       publicUrl: value("set-public-url"),
+      networkMode: $("#set-network-mode")?.value || "direct",
       tunnel: {
-        enabled: isToggleOn($("#set-tunnel-enabled")),
+        enabled: $("#set-network-mode")?.value === "ssh",
         host: value("set-tunnel-host"),
         user: value("set-tunnel-user"),
         remotePort: value("set-tunnel-port"),
@@ -1712,6 +1731,7 @@
       ipcSocket: values.ipcSocket,
       readonly: String(values.readonly),
       publicUrl: values.publicUrl,
+      "network.mode": values.networkMode,
       "tunnel.enabled": String(values.tunnel.enabled),
       "tunnel.host": values.tunnel.host,
       "tunnel.user": values.tunnel.user,
@@ -1770,12 +1790,15 @@
       errors.push({ field: "port", message: "端口需为 1–65535 之间的整数。" });
     }
     if (!values.host) errors.push({ field: "host", message: "监听地址不能为空。" });
-    if (!values.codexHome) errors.push({ field: "codexHome", message: "请选择 Codex 数据目录。" });
+    if (!state.config?.machineGateway?.enabled && !values.codexHome) errors.push({ field: "codexHome", message: "请选择 Codex 数据目录。" });
     if (values.ipcSocket && !/^\\\\\.\\pipe\\[^\\]+$/i.test(values.ipcSocket)) {
       errors.push({ field: "ipcSocket", message: "IPC 管道需写成 \\\\.\\pipe\\名称 的形式。" });
     }
-    if (values.publicUrl && !/^https?:\/\/\S+$/i.test(values.publicUrl)) {
-      errors.push({ field: "publicUrl", message: "公网地址需以 http:// 或 https:// 开头。" });
+    if (values.networkMode !== "direct") {
+      try {
+        const target = new URL(values.publicUrl);
+        if (!["http:", "https:"].includes(target.protocol) || target.username || target.password || target.search || target.hash) throw new Error();
+      } catch { errors.push({ field: "publicUrl", message: "请填写不含凭据、查询参数的 HTTP(S) 地址。" }); }
     }
     if (values.tunnel.enabled) {
       if (!values.tunnel.host) errors.push({ field: "tunnel.host", message: "启用隧道时必须填写服务器地址。" });
@@ -1807,6 +1830,7 @@
       ipcSocket: values.ipcSocket,
       readonly: values.readonly,
       publicUrl: values.publicUrl,
+      network: { mode: values.networkMode },
       logDir: values.logDir,
       tunnel: {
         enabled: values.tunnel.enabled,
@@ -1848,7 +1872,6 @@
       return;
     }
     const patch = buildSavePatch(values);
-    const wasActive = ["running", "starting", "restarting", "degraded"].includes(state.runtime?.state);
 
     state.settings.saving = true;
     updateSettingsDirty();
@@ -1879,13 +1902,13 @@
       if (result.runtime) updateRuntime(result.runtime);
       invalidatePairing({ reload: false });
       await refreshState({ quiet: true });
-      showToast(wasActive ? "设置已保存，服务正在重启。" : "设置已保存。", "success", 4000);
+      showToast(result.impact?.service ? "设置已保存，电脑服务已应用更改。" : result.impact?.relay ? "访问方式已更新，本机服务保持运行。" : "设置已保存，本机服务未重启。", "success", 4000);
     } catch (error) {
       showToast(`保存配置失败：${error?.message || error}`, "error");
     } finally {
       state.settings.saving = false;
       saveButton?.classList.remove("loading");
-      setText(saveLabel || saveButton?.querySelector("span"), "保存并重启服务");
+      setText(saveLabel || saveButton?.querySelector("span"), "保存设置");
       updateSettingsDirty();
     }
   }
@@ -2494,6 +2517,7 @@
     const saveConfigDemo = (patch = {}) => {
       const next = dent(demo.config);
       if (patch.tunnel) next.tunnel = { ...next.tunnel, ...patch.tunnel };
+      if (patch.network) next.network = { ...next.network, ...patch.network };
       if (patch.console) next.console = { ...next.console, ...patch.console };
       for (const key of ["machineName", "repoRoot", "nodePath", "codexHome", "host", "port", "readonly", "publicUrl", "logDir"]) {
         if (patch[key] !== undefined) next[key] = patch[key];

@@ -53,7 +53,8 @@ public/downloads/*.apk
 
 # Internal acceptance reports, design drafts, real-data screenshots and
 # offline demos are never published.
-docs/option-a/
+docs/option-a/*
+!docs/option-a/SINGLE_APP_CONTRACT.md
 public/option-a/report/
 docs/design/
 docs/assets/phone-*.png

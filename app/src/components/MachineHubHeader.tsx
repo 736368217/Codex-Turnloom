@@ -1,6 +1,6 @@
 import { Cpu, Wifi, WifiOff, ChevronDown } from 'lucide-react';
 import { COLORS, APP_IDENTITY } from '../theme/optionATokens';
-import { useSessionState, switchHarness } from '../state/sessionStore';
+import { useSessionState } from '../state/sessionStore';
 import { useOfflineState } from '../state/offlineStore';
 import { openSheet } from '../state/sheetStore';
 import { haptic } from '../lib/nativeBridge';
@@ -48,31 +48,6 @@ export default function MachineHubHeader() {
         </span>
         {discovered.length > 1 && <ChevronDown size={16} color={COLORS.labelSecondary} />}
       </button>
-
-      {discovered.length > 1 && (
-        <div className="tl-no-scrollbar" style={{ display: 'flex', gap: 8, overflowX: 'auto', marginTop: 8, paddingBottom: 2 }}>
-          {discovered.map((harness) => {
-            const active = harness.id === session.harnessId;
-            return (
-              <button
-                key={harness.id}
-                type="button"
-                className="tl-press"
-                disabled={session.status === 'reconnecting'}
-                onClick={() => { haptic('selection'); void switchHarness(harness.id); }}
-                style={{
-                  minHeight: 44, padding: '0 13px', border: 0, borderRadius: 999, whiteSpace: 'nowrap',
-                  background: active ? COLORS.blue : COLORS.fillSecondary,
-                  color: active ? '#FFFFFF' : COLORS.labelPrimary,
-                  fontSize: 12, fontWeight: 600,
-                }}
-              >
-                {harness.name}
-              </button>
-            );
-          })}
-        </div>
-      )}
     </div>
   );
 }

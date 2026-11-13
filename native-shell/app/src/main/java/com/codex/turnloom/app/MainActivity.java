@@ -40,6 +40,7 @@ public class MainActivity extends Activity {
     private WebView webView;
     private NativeHttpClient httpClient;
     private UpdateManager updateManager;
+    private AttachmentPicker attachmentPicker;
     private volatile boolean packagedPageLoaded = false;
     private volatile boolean loadingPackagedPage = false;
 
@@ -87,6 +88,9 @@ public class MainActivity extends Activity {
         s.setCacheMode(WebSettings.LOAD_DEFAULT);
         s.setMediaPlaybackRequiresUserGesture(true);
 
+        attachmentPicker = new AttachmentPicker(this,
+                (intent, requestCode) -> startActivityForResult(intent, requestCode),
+                this::deliverAttachmentsResult);
         httpClient = new NativeHttpClient(this, this::deliverHttpResult);
         updateManager = new UpdateManager(this, new UpdateManager.Deliverer() {
             @Override public void deliverUpdate(String id, String json) {
@@ -197,6 +201,13 @@ public class MainActivity extends Activity {
         evaluateBridgeJs(js);
     }
 
+    private void deliverAttachmentsResult(String requestId, String resultJson) {
+        String js = "window.__turnloomNativeAttachmentsResult "
+                + "&& window.__turnloomNativeAttachmentsResult("
+                + JSONObject.quote(requestId) + "," + JSONObject.quote(resultJson) + ")";
+        evaluateBridgeJs(js);
+    }
+
     private void applyLightSystemBars() {
         try {
             Window w = getWindow();
@@ -258,6 +269,8 @@ public class MainActivity extends Activity {
             } else {
                 deliverQrResult(id, value == null ? "" : value);
             }
+        } else if (requestCode == AttachmentPicker.REQ_ATTACHMENTS) {
+            if (attachmentPicker != null) attachmentPicker.onActivityResult(resultCode, data);
         } else if (requestCode == REQ_INSTALL) {
             updateManager.onInstallerResult(resultCode);
         }
@@ -267,6 +280,7 @@ public class MainActivity extends Activity {
     protected void onDestroy() {
         if (httpClient != null) httpClient.destroy();
         if (updateManager != null) updateManager.destroy();
+        if (attachmentPicker != null) attachmentPicker.destroy();
         if (webView != null) {
             webView.destroy();
             webView = null;
@@ -390,6 +404,14 @@ public class MainActivity extends Activity {
             runOnUiThread(MainActivity.this::applyLightSystemBars);
         }
 
+
+        @JavascriptInterface
+        public void pickAttachments(String requestId, String kind) {
+            if (!bridgeAllowed() || attachmentPicker == null) return;
+            // beginPick validates requestId/kind and posts all Activity work
+            // to the UI thread; no WebView getter is used on this bridge thread.
+            attachmentPicker.beginPick(requestId, kind);
+        }
         @JavascriptInterface
         public void request(String requestId, String requestJson) {
             if (!bridgeAllowed()) return;

@@ -39,6 +39,12 @@ const flag = (name, fallback = "") => {
 const APPLY = args.includes("--apply");
 const DB_PATH = flag("--db", "");
 const OUT_DIR = flag("--out", path.join(os.tmpdir(), "turnloom-session-prune"));
+// Optional exact allowlist: never widens the default cleanup scope.
+const ONLY_IDS = new Set(flag("--ids", "").split(",").filter(Boolean));
+if ((args.includes("--ids") && !ONLY_IDS.size) || ONLY_IDS.size > 32 || [...ONLY_IDS].some((id) => !/^[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}$/i.test(id))) {
+  console.error("--ids must be a comma-separated list of at most 32 complete session UUIDs");
+  process.exit(2);
+}
 
 // 只清理某个时间点之后创建的会话：更早的巡检线可能对应已不在盘上的交付物，
 // 交给用户单独确认，别让一次「顺手清理」把历史记录带走。
@@ -81,6 +87,7 @@ const rows = db
   )
   .all()
   .filter((row) => {
+    if (ONLY_IDS.size && !ONLY_IDS.has(String(row.id))) return false;
     if (SINCE && Number(row.created_at) < SINCE) return false;
     const running = db
       .prepare("SELECT 1 FROM turns WHERE session_id = ? AND status = 'running' LIMIT 1")
@@ -97,6 +104,8 @@ const classify = (row) => {
   // 只有创建超过一天仍然空着，才可能是发送失败留下的空壳。
   if (row.msgs === 0) return now - Number(row.created_at) >= EMPTY_MIN_AGE_MS ? "EMPTY" : "KEEP";
   if (first.includes(MARKER)) return "MARKED";
+  // Explicitly scoped orchestration tasks are safe to retire after their reports are saved.
+  if (ONLY_IDS.size && /^你是[「“]?多会话编排[」”]?派出的/.test(first)) return "SCOPED-SPAWN";
   if (isReviewLine(row)) {
     if (!artifactExists()) return "KEEP";
     return row.msgs <= SMALL_TALK_MAX_MSGS ? "ABORTED-SPAWN" : "REVIEW-LINE";

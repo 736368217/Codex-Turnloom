@@ -59,16 +59,16 @@ test("Windows launchers do not expose a visible console window", () => {
 });
 
 test("project rules pin the single ROUTE=dom-shell App line and keep the windowless rule", () => {
-  const agents = read("AGENTS.md");
+  const agents = read("docs/option-a/SINGLE_APP_CONTRACT.md");
   // 用户 2026-11-11 决策覆盖旧「纯原生才叫 App」口径：唯一交付线是 App 化 DOM 容器。
   assert.match(agents, /ROUTE=dom-shell/);
   assert.match(agents, /App 化 DOM 容器（含 WebView）/);
   assert.match(agents, /Konsta UI/);
   assert.match(agents, /Vaul/);
-  assert.match(agents, /冻结 \/ 归档目录/);
+  assert.match(agents, /冻结\s*\/\s*归档/);
   assert.match(agents, /mobile-app\//);
   assert.match(agents, /native-shell\//);
-  // Windows 无黑框硬规则必须原样保留（AGENTS 旧章节仍有效）。
+  // Public project contracts must be available in a clean checkout, unlike local agent memory.
   assert.match(agents, /Windows 无黑框/);
   assert.match(agents, /wscript\.exe/);
   assert.match(agents, /WScript\.Shell\.Run/);

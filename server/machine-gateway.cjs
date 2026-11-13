@@ -129,11 +129,18 @@ function loadMachineConfig(configPath = DEFAULT_CONFIG) {
   const selected = harnesses.find((item) => item.id === requestedDefault) || harnesses[0];
   selected.defaultHarness = true;
 
+  // Explicit aliases preserve previously issued machine pairing codes only.
+  // Harness tokens never gain discovery access unless listed by the operator.
+  const legacyMachineTokens = Array.isArray(raw.legacyMachineTokens) ? [...new Set(raw.legacyMachineTokens.map(cleanString))] : [];
+  if (legacyMachineTokens.length > 4 || legacyMachineTokens.some((token) => !token || token.length > 256 || /[\u0000-\u001f\u007f]/.test(token))) {
+    throw new Error("machine.json: legacyMachineTokens 无效");
+  }
   return {
     configPath: resolved,
     machineId,
     machineName,
     machineToken,
+    legacyMachineTokens,
     defaultHarnessId: selected.id,
     harnesses,
     byToken: new Map(harnesses.map((item) => [item.token, item])),
@@ -249,7 +256,7 @@ function clearFailures(req) {
 
 function redactTokens(text, config) {
   let value = String(text ?? "");
-  const secrets = [config.machineToken, ...config.harnesses.map((item) => item.token)]
+  const secrets = [config.machineToken, ...(config.legacyMachineTokens || []), ...config.harnesses.map((item) => item.token)]
     .filter(Boolean)
     .sort((a, b) => b.length - a.length);
   for (const secret of secrets) value = value.split(secret).join("***");
@@ -383,7 +390,8 @@ function createGateway(config, options = {}) {
     const auth = authorizationFromRequest(req);
 
     if (req.method === "GET" && auth.pathname === HARNESS_PATH) {
-      if (!tokensEqual(auth.token, config.machineToken)) {
+      const discoveryTokens = [config.machineToken, ...(config.legacyMachineTokens || [])];
+      if (!discoveryTokens.some((token) => tokensEqual(auth.token, token))) {
         if (auth.token) noteFailure(req);
         sendJson(res, 401, { error: "invalid-machine-token", protocol: PROTOCOL, version: VERSION });
         return;

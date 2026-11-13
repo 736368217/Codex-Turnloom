@@ -1446,7 +1446,7 @@ test("the status window stays bounded when nothing is running", () => {
   assert.equal(threadStatusCandidates([], 120).length, 0);
 });
 
-test("a new conversation does not offer image attachments", () => {
+test("archived PWA keeps its draft attachment hint and server length errors stay localized", () => {
   const root = fileURLToPath(new URL("..", import.meta.url));
   const app = readFileSync(path.join(root, "public", "app.js"), "utf8");
   const server = readFileSync(path.join(root, "server.js"), "utf8");
@@ -1456,9 +1456,8 @@ test("a new conversation does not offer image attachments", () => {
   assert.match(app, /els\.attachButton\.disabled = !allowWrite \|\| state\.composerBusy \|\| !hasTarget \|\| draftThread;/);
   assert.match(app, /t\(draftThread \? "attachNeedsText" : "addImage"\)/);
   assert.equal((app.match(/attachNeedsText:/g) || []).length, 2, "both locales need the hint");
-  // And the server-side rejections a user can actually hit must not be English.
+  // The archived PWA keeps its old picker hint; the active App supports first-turn images.
   assert.match(server, /消息过长，请拆分成多条发送/);
-  assert.match(server, /新对话还不能直接带图片/);
   assert.ok(!/new Error\("Message is too long"\)/.test(server));
 });
 

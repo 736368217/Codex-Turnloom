@@ -29,6 +29,7 @@ import { createRequire } from "node:module";
 const require = createRequire(import.meta.url);
 const machinePairing = require("./shared/machine-pairing.cjs");
 const appRelease = require("./shared/app-release.cjs");
+const sendFiles = require("./shared/send-files.cjs");
 
 const modulePath = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(modulePath);
@@ -5721,7 +5722,8 @@ function sendRequestFingerprint(body = {}) {
     message: body.message || "",
     images: Array.isArray(body.images)
       ? body.images.map((image) => ({ name: image?.name || "", mimeType: image?.mimeType || "", data: image?.data || "" }))
-      : []
+      : [],
+    files: sendFiles.sendFilesFingerprint(body.files)
   });
 }
 
@@ -5753,6 +5755,26 @@ function runIdempotentSend(requestId, fingerprint, execute, store = recentSendRe
   const timer = setTimeout(() => store.delete(key), 5 * 60 * 1000);
   timer.unref?.();
   return promise;
+}
+
+/** Stage ordinary files once, inside the same idempotency operation as sending. */
+async function sendWithFiles(body = {}, execute = sendToCodex, {
+  dataRoot = PI_DATA_ROOT, store = recentSendRequests
+} = {}) {
+  const files = sendFiles.normalizeSendFiles(body.files);
+  // Validate images before staging; they retain their own model-image pipeline.
+  const images = normalizeSendImages(body.images);
+  return runIdempotentSend(body.clientRequestId, sendRequestFingerprint(body), async () => {
+    if (!ALLOW_WRITE) { const error = new Error("Read-only mode is enabled."); error.status = 403; throw error; }
+    const staged = await sendFiles.stageSendFiles(files, { dataRoot, sessionKey: body.threadId || body.clientRequestId });
+    const message = sendFiles.messageWithSendFiles(body.message, staged);
+    const result = await execute(message, body.threadId, images, {
+      newThread: Boolean(body.newThread), mode: body.mode, model: body.model,
+      effort: body.effort, project: body.project || null,
+      clientRequestId: String(body.clientRequestId || "")
+    });
+    return staged.length ? { ...result, files: sendFiles.sendFilesPublicMetadata(staged) } : result;
+  }, store);
 }
 
 function runSerializedThreadStart(threadId, execute, store = threadStartOperations) {
@@ -6273,13 +6295,7 @@ async function sendToCodex(text, threadId, images = [], { newThread = false, mod
     throw err;
   }
   if (newThread) {
-    if (normalizedImages.length) {
-      const err = new Error("新对话还不能直接带图片：请先用文字创建对话，再在新会话里发送图片。");
-      err.status = 409;
-      err.status = 409;
-      throw err;
-    }
-    const result = await startNewCodexThread(trimmed, turnSettings, project);
+    const result = await startNewCodexThread(trimmed, turnSettings, project, normalizedImages);
     if (result.threadId) {
       await notifyCodexDesktopThreadCreated(result.threadId);
       rememberStartedThread({
@@ -6302,7 +6318,7 @@ async function sendToCodex(text, threadId, images = [], { newThread = false, mod
       ok: true,
       mode: result.source || "desktop-ipc",
       threadId: result.threadId,
-      images: [],
+      images: normalizedImages.map(({ name, mimeType, size }) => ({ name, mimeType, size })),
       turnId: result.turnId,
       fallbackReason: result.fallbackReason || null,
       sent: true,
@@ -6626,9 +6642,9 @@ function turnIdFromStartConversation(response) {
   return firstString(result?.turn?.id, result?.turnId, result?.turn_id, response?.turnId, response?.turn_id);
 }
 
-async function startNewCodexThread(text, turnSettings, project = null) {
+async function startNewCodexThread(text, turnSettings, project = null, images = []) {
   try {
-    const response = await getCodexIpcClient().startConversation(text, [], turnSettings, project);
+    const response = await getCodexIpcClient().startConversation(text, images, turnSettings, project);
     const threadId = conversationIdFromStartConversation(response);
     if (!threadId) throw new Error(`Codex Desktop did not return a conversation id. ${compact(response, 1200)}`);
     return {
@@ -6637,6 +6653,7 @@ async function startNewCodexThread(text, turnSettings, project = null) {
       source: "desktop-ipc"
     };
   } catch (error) {
+    if (images.length || PI_NATIVE_QUEUE) throw error;
     const fallback = await startNewCodexThreadViaAppServer(text);
     return {
       ...fallback,
@@ -7704,8 +7721,11 @@ async function handleHttpBackendApi(req, res, url, profile = null) {
     }
 
     if (req.method === "POST" && pathname === "/api/new-thread") {
-      const body = await readJsonBody(req);
-      const result = await backend.createThread(body.message || body.text || "", body.images);
+      const body = await readJsonBody(req, MAX_SEND_BODY_BYTES);
+      const files = sendFiles.normalizeSendFiles(body.files);
+      const result = await backend.createThread(body.message || body.text || "", body.images, {
+        ...body, files: files.map(({ name, mimeType, data }) => ({ name, mimeType, data }))
+      });
       const threadId = result?.threadId || result?.thread?.id || null;
       sendJson(res, 200, { ok: true, threadId, ...result });
       return true;
@@ -7743,19 +7763,22 @@ async function handleHttpBackendApi(req, res, url, profile = null) {
 
     if (req.method === "POST" && pathname === "/api/send") {
       const body = await readJsonBody(req, MAX_SEND_BODY_BYTES);
-      if (body.newThread) {
-        const result = await backend.createThread(body.message, body.images);
-        const threadId = result?.threadId || result?.thread?.id || null;
-        sendJson(res, 200, { ok: true, newThread: true, threadId, ...result });
-        return true;
-      }
-      const threadId = String(body.threadId || "").trim();
-      if (!threadId) {
-        sendJson(res, 400, { error: "threadId is required" });
-        return true;
-      }
-      const result = await backend.sendMessage(threadId, body.message, body.images);
-      sendJson(res, 200, { ok: true, threadId, ...result });
+      // Remote adapters receive bytes, never local paths they cannot access.
+      const files = sendFiles.normalizeSendFiles(body.files);
+      const images = normalizeSendImages(body.images);
+      const options = { files: files.map(({ name, mimeType, data }) => ({ name, mimeType, data })),
+        model: body.model, effort: body.effort, mode: body.mode,
+        projectId: body.projectId, clientRequestId: body.clientRequestId };
+      const result = await runIdempotentSend(body.clientRequestId, sendRequestFingerprint(body), async () => {
+        if (body.newThread) {
+          const created = await backend.createThread(body.message, images, options);
+          return { ok: true, newThread: true, threadId: created?.threadId || created?.thread?.id || null, ...created };
+        }
+        const threadId = String(body.threadId || "").trim();
+        if (!threadId) { const error = new Error("threadId is required"); error.status = 400; throw error; }
+        return { ok: true, threadId, ...(await backend.sendMessage(threadId, body.message, images, options)) };
+      });
+      sendJson(res, 200, result);
       return true;
     }
 
@@ -8188,16 +8211,7 @@ const server = http.createServer(async (req, res) => {
           return;
         }
       }
-      const result = await runIdempotentSend(body.clientRequestId, sendRequestFingerprint(body), () =>
-        sendToCodex(body.message, body.threadId, body.images, {
-          newThread: Boolean(body.newThread),
-          mode: body.mode,
-          model: body.model,
-          effort: body.effort,
-          project,
-          clientRequestId: String(body.clientRequestId || "")
-        })
-      );
+      const result = await sendWithFiles({ ...body, project });
       sendJson(res, 200, result);
       return;
     }
@@ -8699,6 +8713,8 @@ function restoreLocalImages(messages, receipts, threadId) {
 
 
 export {
+  sendWithFiles,
+  sendRequestFingerprint,
   nativeQueueFallbackStatus,
   safeQueuedNativeAttachment,
   restoreLocalImages,

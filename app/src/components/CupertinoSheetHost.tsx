@@ -1,29 +1,27 @@
-import { Square, Activity, RefreshCw, Cpu, CircleCheck } from 'lucide-react';
+import { RefreshCw, Cpu, CircleCheck } from 'lucide-react';
 import VaulSheet from './VaulSheet';
 import NewTaskSheet from './NewTaskSheet';
-import ApprovalSheet from './ApprovalSheet';
 import { ActionButton, TapRow } from './ui';
 import { COLORS } from '../theme/optionATokens';
 import { useSheetState, closeSheet, type SheetKey } from '../state/sheetStore';
 import { useSessionState, switchHarness, currentRequestContext, unpair } from '../state/sessionStore';
-import { useDataState, clearOfflineCache, refreshAll, interruptThread } from '../state/dataStore';
+import { useDataState, clearOfflineCache, refreshAll } from '../state/dataStore';
 import { haptic } from '../lib/nativeBridge';
 
 const TITLES: Record<Exclude<SheetKey, null>, string> = {
-  newTask: '新建任务', harness: '切换电脑上的服务', approval: '审批变更',
-  diagnostics: '运行信息', interruptAll: '中断任务', disconnect: '忘记这台电脑',
+  newTask: '新建任务', harness: '切换电脑上的服务',
+  diagnostics: '运行信息', disconnect: '忘记这台电脑',
 };
 const SUBTITLES: Record<Exclude<SheetKey, null>, string> = {
   newTask: '在当前电脑的服务中创建任务',
   harness: '选择桌面端发现的服务，切换后会重新读取各自会话',
-  approval: '确认后电脑端才会应用此变更',
   diagnostics: '当前连接与会话信息',
-  interruptAll: '停止当前正在执行的任务', disconnect: '移除配对及这台电脑的本机会话缓存。电脑上的会话不会被删除。',
+  disconnect: '移除配对及这台电脑的本机会话缓存。电脑上的会话不会被删除。',
 };
 
-/** Global singleton bottom drawer. No arbitrary engine settings / pairing sheet. */
+/** Global singleton bottom drawer. No fake approval or permanent interrupt action. */
 export default function CupertinoSheetHost() {
-  const { sheet, contextThreadId } = useSheetState();
+  const { sheet } = useSheetState();
   const session = useSessionState();
   const data = useDataState();
   const context = currentRequestContext();
@@ -33,7 +31,6 @@ export default function CupertinoSheetHost() {
     switch (sheet) {
       case 'disconnect': return <div style={{ display: 'grid', gap: 10 }}><ActionButton variant="red" onClick={() => { clearOfflineCache(context); unpair(); closeSheet(); }}>确认忘记这台电脑</ActionButton><ActionButton variant="neutral" onClick={closeSheet}>保留连接</ActionButton></div>;
       case 'newTask': return <NewTaskSheet />;
-      case 'approval': return <ApprovalSheet />;
       case 'harness':
         return (
           <div>
@@ -82,20 +79,6 @@ export default function CupertinoSheetHost() {
           </div>
         );
       }
-      case 'interruptAll':
-        return (
-          <div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '10px 12px', borderRadius: 14, background: '#FFE4E2', marginBottom: 16 }}>
-              <Activity size={17} color={COLORS.red} />
-              <span style={{ fontSize: 13, color: COLORS.labelPrimary, flex: 1 }}>将向当前会话发送中断请求，此操作不可撤销。</span>
-            </div>
-            <ActionButton variant="red" icon={<Square size={16} />} disabled={!context || !contextThreadId} onClick={() => {
-              haptic('warning');
-              if (context && contextThreadId) void interruptThread(context, contextThreadId);
-              closeSheet();
-            }}>中断当前任务</ActionButton>
-          </div>
-        );
       default: return null;
     }
   };

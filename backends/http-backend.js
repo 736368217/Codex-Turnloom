@@ -154,17 +154,25 @@ export class HttpBackendClient {
     };
   }
 
-  async sendMessage(threadId, text, images = []) {
+  sendBody(text, images, options = {}) {
+    return {
+      text: String(text || ""), images: Array.isArray(images) ? images : [],
+      ...(options.files?.length ? { files: options.files } : {}),
+      ...Object.fromEntries(["model", "effort", "mode", "projectId", "clientRequestId"]
+        .filter((key) => options[key] !== undefined && options[key] !== "")
+        .map((key) => [key, options[key]]))
+    };
+  }
+
+  async sendMessage(threadId, text, images = [], options = {}) {
     return this.request(`/threads/${encodeURIComponent(threadId)}/messages`, {
-      method: "POST",
-      body: { text: String(text || ""), images: Array.isArray(images) ? images : [] }
+      method: "POST", body: this.sendBody(text, images, options)
     });
   }
 
-  async createThread(text, images = []) {
+  async createThread(text, images = [], options = {}) {
     return this.request("/threads", {
-      method: "POST",
-      body: { text: String(text || ""), images: Array.isArray(images) ? images : [] }
+      method: "POST", body: this.sendBody(text, images, options)
     });
   }
 

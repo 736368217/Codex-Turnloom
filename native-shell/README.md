@@ -19,6 +19,20 @@
   host entry in `res/xml/network_security_config.xml`. Android domain config
   does not support CIDR; the bogus CIDR entries were removed. Cleartext LAN
   traffic can be observed by other devices on that LAN; prefer HTTPS.
+- `pickAttachments(requestId, kind)` uses `ACTION_OPEN_DOCUMENT` on the UI
+  thread with `CATEGORY_OPENABLE`, `EXTRA_ALLOW_MULTIPLE`, `image/*` or `*/*`.
+  It needs no storage permission or persistent URI grant. The single pending
+  request is tracked; cancellation, no selection and a launch failure all return
+  an explicit status rather than a fabricated success. ContentResolver bytes are
+  read on one background worker, with at most 4 items, 4 MiB per item and 6 MiB
+  total. Streams and metadata cursors are closed, errors are stable codes, and
+  no content URI, path, exception text or file content is logged. Each item is
+  `{name,mimeType,sizeBytes,dataUrl}`; base64 preserves bytes for images and
+  arbitrary files, while MIME tokens and names are validated before the result
+  is JSON-quoted into `window.__turnloomNativeAttachmentsResult(requestId, resultJson)`.
+- The HTTP bridge request envelope is bounded at 9 MiB + 64 KiB and its body at
+  9 MiB, enough for a 6 MiB picker selection encoded as base64. Responses are
+  bounded at 10 MiB; all three checks remain hard rejections, not unbounded.
 - `scanQr(requestId)` opens an in-process `ScannerActivity` with a real
   ZXing (journeyapps `zxing-android-embedded` + `zxing:core`) camera preview
   and QR decoder. Permission denial, cancellation and camera errors are
@@ -40,12 +54,12 @@
 ## Bridge methods
 
 `secureGet`, `secureSet`, `secureRemove`, `haptic`, `scanQr`, `getAppInfo`,
-`setLightBars`, `request`, `cancelRequest`, `downloadUpdate`, `cancelUpdate`,
-`installUpdate`.
+`setLightBars`, `pickAttachments`, `request`, `cancelRequest`, `downloadUpdate`,
+`cancelUpdate`, `installUpdate`.
 
 Callbacks: `window.__turnloomNativeQrResult`, `window.__turnloomNativeQrError`,
 `window.__turnloomNativeHttpResult`, `window.__turnloomNativeUpdateEvent`,
-`window.__turnloomBack`.
+`window.__turnloomNativeAttachmentsResult`, `window.__turnloomBack`.
 
 ## Build and tests
 
@@ -62,13 +76,16 @@ artifacts and plugin are present in the shared cache.
 
 Local JVM tests (no emulator): `gradlew :app:testReleaseUnitTest --offline`.
 They cover URL/origin/path validation, request header/method/timeout bounds,
-update descriptor parsing, origin equality and log-safe error JSON.
+the 9 MiB body envelope and 10 MiB response bounds, update descriptor parsing,
+origin equality, log-safe error JSON and the picker's size/status/metadata
+contract.
 
 ## Known limits
 
-- Real camera QR recognition, installer permission flows and update
-  installation require a device/emulator; a successful Gradle build and JVM
-  unit tests do not prove those hardware/system flows.
+- Real document picking, camera QR recognition, installer permission flows
+  and update installation require a device/emulator; a successful Gradle build
+  and JVM unit tests do not prove those system flows. The picker's URI grant,
+  multi-select result and byte reading are device-side acceptance items.
 - HTTP LAN hosts must be listed literally in `network_security_config.xml`.
   HTTPS does not need entries. The included `192.168.1.10` is an example only.
 - Release signing uses the parent build's debug keystore; this is not a

@@ -1,7 +1,7 @@
 import { useEffect, useState, type ReactNode } from 'react';
-import { Activity, Clock, AlertTriangle, Square, RefreshCw, Radio, Cpu } from 'lucide-react';
+import { Activity, Clock, AlertTriangle, RefreshCw, Radio, Cpu } from 'lucide-react';
 import { InsetGroup } from '../components/Segmented';
-import { ActionButton, StatusPill, TapRow } from '../components/ui';
+import { StatusPill, TapRow } from '../components/ui';
 import { COLORS } from '../theme/optionATokens';
 import { useDataState, refreshAll } from '../state/dataStore';
 import { useSessionState, currentRequestContext } from '../state/sessionStore';
@@ -66,9 +66,6 @@ export default function MonitorsScreen() {
         )}
         {data.error && <div style={{ padding: '0 16px 12px', fontSize: 12, color: COLORS.red, wordBreak: 'break-all' }}>{data.error}</div>}
       </InsetGroup>
-      <div style={{ margin: '0 16px 12px' }}>
-        <ActionButton variant="red" icon={<Square size={16} />} onClick={() => { haptic('warning'); openSheet('interruptAll'); }}>中断当前任务</ActionButton>
-      </div>
       <div style={{ display: 'flex', justifyContent: 'center' }}>
         <button type="button" className="tl-press" onClick={() => { if (context) { haptic('selection'); void refreshAll(context); } }} style={{ minHeight: 44, padding: '0 18px', border: 0, borderRadius: 999, background: COLORS.surface, color: COLORS.blue, fontSize: 13, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 6 }}>
           <RefreshCw size={15} /> 刷新运行态

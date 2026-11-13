@@ -7,13 +7,15 @@ import java.util.HashMap;
 import java.util.Locale;
 import java.util.Map;
 
+import org.json.JSONArray;
 import org.json.JSONException;
 import org.json.JSONObject;
 
-/** Pure parsing / validation for native HTTP and update bridges (no Android API). */
+/** Pure parsing / validation for native HTTP, picker and update bridges. */
 final class BridgeContract {
-    static final long MAX_HTTP_BODY_BYTES = 2L * 1024 * 1024;
-    static final long MAX_HTTP_RESPONSE_BYTES = 4L * 1024 * 1024;
+    /** Bound the whole bridge request JSON envelope, including its encoded body. */
+    static final long MAX_HTTP_BODY_BYTES = 9L * 1024 * 1024 + 64L * 1024;
+    static final long MAX_HTTP_RESPONSE_BYTES = 10L * 1024 * 1024;
     static final int MAX_TIMEOUT_MS = 60_000;
     static final int DEFAULT_TIMEOUT_MS = 8_000;
     static final long MAX_APK_BYTES = 512L * 1024 * 1024;
@@ -21,7 +23,23 @@ final class BridgeContract {
     static final int MAX_HEADER_COUNT = 32;
     static final int MAX_HEADER_NAME_BYTES = 128;
     static final int MAX_HEADER_VALUE_BYTES = 4096;
-    static final long MAX_REQUEST_BODY_BYTES = 1024L * 1024;
+    // 6 MiB of raw attachments is at most 8 MiB of base64, plus request JSON.
+    static final long MAX_REQUEST_BODY_BYTES = 9L * 1024 * 1024;
+
+    static final int MAX_ATTACHMENT_FILES = 4;
+    static final long MAX_ATTACHMENT_FILE_BYTES = 4L * 1024 * 1024;
+    static final long MAX_ATTACHMENT_TOTAL_BYTES = 6L * 1024 * 1024;
+    private static final int MAX_ATTACHMENT_NAME_LENGTH = 120;
+
+    static final String ATTACH_INVALID_REQUEST = "invalid-request";
+    static final String ATTACH_INVALID_KIND = "invalid-kind";
+    static final String ATTACH_PICKER_BUSY = "picker-busy";
+    static final String ATTACH_PICKER_UNAVAILABLE = "picker-unavailable";
+    static final String ATTACH_TOO_MANY_FILES = "too-many-files";
+    static final String ATTACH_FILE_TOO_LARGE = "file-too-large";
+    static final String ATTACH_TOTAL_TOO_LARGE = "attachments-too-large";
+    static final String ATTACH_READ_FAILED = "read-failed";
+    static final String ATTACH_INVALID_MIME = "invalid-mime-type";
     static final String APP_PACKAGE = "com.codex.turnloom.app";
 
     static final class Origin {
@@ -322,5 +340,66 @@ final class BridgeContract {
         } catch (JSONException e) {
             return "{\"status\":0,\"body\":\"\",\"error\":\"ERROR\"}";
         }
+    }
+
+    static boolean validAttachmentKind(String kind) {
+        return "image".equals(kind) || "file".equals(kind);
+    }
+
+    /** Only RFC-safe MIME tokens are allowed to enter a data URL. */
+    static String safeAttachmentMimeType(String value) throws ValidationException {
+        if (value == null) return "application/octet-stream";
+        String mime = value.toLowerCase(Locale.ROOT).split(";", 2)[0].trim();
+        if (!mime.matches("[a-z0-9!#$&^_.+-]{1,32}/[a-z0-9!#$&^_.+-]{1,64}")) {
+            throw new ValidationException(ATTACH_INVALID_MIME);
+        }
+        return mime;
+    }
+
+    /**
+     * Display names are data: they are JSON-quoted before the JS callback.
+     * U+2028/U+2029 are JS line terminators and are removed so a remote
+     * document name cannot break out of the quoted callback string.
+     */
+    static String safeAttachmentName(String value) {
+        String name = value == null ? "" : value;
+        StringBuilder clean = new StringBuilder();
+        int count = 0;
+        for (int i = 0; i < name.length() && count < MAX_ATTACHMENT_NAME_LENGTH; i++) {
+            char c = name.charAt(i);
+            if (c >= 0x20 && c != 0x7f && c != 0x2028 && c != 0x2029) {
+                clean.append(c);
+                count++;
+            }
+        }
+        String result = clean.toString().trim();
+        return result.isEmpty() ? "attachment" : result;
+    }
+
+    static String attachmentsResultJson(String status, JSONArray items, String error) {
+        try {
+            JSONObject o = new JSONObject();
+            o.put("status", status);
+            o.put("items", items == null ? new JSONArray() : items);
+            if (error != null) o.put("error", error);
+            return o.toString();
+        } catch (JSONException e) {
+            return "{\"status\":\"error\",\"items\":[],\"error\":\""
+                    + ATTACH_READ_FAILED + "\"}";
+        }
+    }
+
+    static String attachmentErrorJson(String code) {
+        return attachmentsResultJson("error", null, code);
+    }
+
+    static String attachmentItemJson(String name, String mimeType, int sizeBytes,
+            String dataUrl) throws JSONException, ValidationException {
+        JSONObject item = new JSONObject();
+        item.put("name", safeAttachmentName(name));
+        item.put("mimeType", safeAttachmentMimeType(mimeType));
+        item.put("sizeBytes", sizeBytes);
+        item.put("dataUrl", dataUrl);
+        return item.toString();
     }
 }

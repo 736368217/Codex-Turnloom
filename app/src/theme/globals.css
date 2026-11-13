@@ -230,39 +230,7 @@ input, textarea {
   letter-spacing: .1px;
 }
 
-/* ---------- thumb glass bar (detail page, replaces tab bar) ---------- */
-
-.tl-thumbbar {
-  position: fixed;
-  left: 12px;
-  right: 12px;
-  bottom: calc(12px + env(safe-area-inset-bottom, 0px));
-  z-index: 30;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 8px 10px;
-  border-radius: var(--tl-radius-card);
-  background: var(--tl-glass-thumb);
-  backdrop-filter: var(--tl-blur-thumb);
-  -webkit-backdrop-filter: var(--tl-blur-thumb);
-  box-shadow: 0 2px 12px rgba(0, 0, 0, .08);
-  border: .5px solid rgba(255, 255, 255, .9);
-}
-
-.tl-thumbbar-input {
-  flex: 1 1 auto;
-  min-height: var(--tl-tap);
-  border: 0;
-  outline: none;
-  background: var(--tl-fill-secondary);
-  border-radius: 12px;
-  padding: 0 14px;
-  font-size: 16px;
-  color: var(--tl-label-primary);
-}
-
-.tl-thumbbar-input::placeholder { color: var(--tl-label-secondary); }
+/* Legacy .tl-thumbbar rules were removed: the chat composer owns its layout. */
 
 /* ---------- Vaul drawer (global singleton CupertinoSheetHost) ---------- */
 
@@ -439,34 +407,9 @@ input, textarea {
 }
 .tl-empty-card [data-empty-icon] { margin-bottom: 6px !important; }
 
-/* Narrow screen: always keep back + input + send visible. Secondary actions
-   wrap onto a second row instead of pushing send/interrupt beyond viewport. */
-@media (max-width: 420px) {
-  .tl-thumbbar {
-    flex-wrap: wrap;
-    left: 8px;
-    right: 8px;
-    bottom: calc(8px + env(safe-area-inset-bottom, 0px));
-    gap: 6px;
-    padding: 6px 8px;
-  }
-  .tl-thumbbar .tl-thumbbar-input {
-    flex: 1 1 100%;
-    order: 2;
-    min-width: 0;
-  }
-  .tl-thumbbar > button { width: 42px; height: 42px; border-radius: 12px; }
-  .tl-thumbbar > button:first-child { order: 0; }
-  .tl-thumbbar > button[aria-label='发送'] { order: 1; }
-  .tl-thumbbar > button[aria-label='中断'] { order: 3; }
-  .tl-thumbbar > button[aria-label='审批'] { order: 4; }
-}
+/* Touch targets in the new composer are pinned to >=44px at every width. */
 
-/* Ultra-narrow widths still keep all five controls inside the bar. */
-@media (max-width: 320px) {
-  .tl-thumbbar > button { width: 38px; height: 38px; }
-  .tl-thumbbar .tl-thumbbar-input { min-height: 38px; font-size: 15px; }
-}
+/* Accessibility refinement: decoration keeps system accents; text uses ink. */
 
 /* Konsta's iOS Link applies active:opacity-30 (and our old .tl-press applied
    scale(.98)); neither is used on the fixed tab bar so pointer geometry and
@@ -493,8 +436,8 @@ input, textarea {
 .tl-connect-form input { box-sizing: border-box; width: 100%; min-width: 0; height: 48px; padding: 0 12px; border: 1px solid transparent; border-radius: 12px; background: var(--tl-fill-secondary); color: var(--tl-label-primary); font-size: 16px; }
 .tl-connect-form input:focus { outline: 2px solid var(--tl-blue); outline-offset: 1px; }
 .tl-code-field { display: flex; align-items: center; gap: 4px; }
-.tl-code-field button { flex: none; width: 48px; height: 48px; border: 0; border-radius: 12px; display: grid; place-items: center; background: var(--tl-fill-secondary); color: #63636a; }
-.tl-connect-submit { border: 0; min-height: 48px; border-radius: 12px; background: var(--tl-blue); color: white; font-weight: 600; margin-top: 6px; }
+.tl-code-field button { flex: none; width: 44px; height: 48px; border: 0; border-radius: 12px; display: grid; place-items: center; background: transparent; color: var(--tl-label-secondary); }
+.tl-connect-submit { border: 0; min-height: 50px; border-radius: 16px; background: var(--tl-blue); color: #FFFFFF; font-size: 16px; font-weight: 600; margin-top: 6px; }
 button:disabled { opacity: .48; cursor: default; }
 .tl-connect-error { margin-top: 12px; padding: 12px; border-radius: 12px; color: #a9231b; background: #fff0ee; font-size: 13px; line-height: 1.5; overflow-wrap: anywhere; }
 .tl-recovery-services { display: flex; flex-wrap: wrap; gap: 8px; }
@@ -503,23 +446,641 @@ button:disabled { opacity: .48; cursor: default; }
 .tl-connect-footer svg { display: inline; vertical-align: middle; }
 button:focus-visible, a:focus-visible { outline: 2px solid var(--tl-blue); outline-offset: 2px; }
 @media (max-height: 540px) { .tl-connect-header { padding-top: 12px; } .tl-brand { display: none; } }
-/* Keep every actual touch target at least 44px, including 320px phones. */
-@media (max-width: 420px) { .tl-thumbbar > button { min-width: 44px; min-height: 44px; } }
-.tl-thumbbar-message { flex-basis: 100%; font-size: 12px; line-height: 18px; color: #a9231b; }
+/* The composer enforces >=44px touch targets at every phone width. */
+
+
 
 
 /* Accessibility refinement: decoration keeps system accents; text uses ink. */
 .tl-tabbar [role="tab"] * { color: #636366 !important; }
 .tl-tabbar [role="tab"].k-tabbar-link-active * { color: #0062CC !important; }
-.tl-connect-submit { background: #0062CC; }
-.tl-thumbbar { flex-wrap: wrap; }
-@media (max-width: 420px) {
-  .tl-thumbbar { display: grid; grid-template-columns: 44px 44px minmax(0, 1fr) 44px; grid-template-rows: 44px 44px; }
-  .tl-thumbbar .tl-thumbbar-input { grid-row: 1; grid-column: 1 / 4; width: 100%; min-height: 44px; height: 44px; order: 0; }
-  .tl-thumbbar > button[aria-label='发送'] { grid-row: 1; grid-column: 4; }
-  .tl-thumbbar > button[aria-label='返回'] { grid-row: 2; grid-column: 1; }
-  .tl-thumbbar > button[aria-label='审批'] { grid-row: 2; grid-column: 2; }
-  .tl-thumbbar > button[aria-label='中断'] { grid-row: 2; grid-column: 4; }
-  .tl-thumbbar-message { grid-column: 1 / -1; }
-}
+.tl-connect-submit { background: var(--tl-blue); }
+/* Obsolete thumbbar grid/order rules removed; .tl-composer owns narrow layout. */
 .tl-sheet-actions { position: sticky; bottom: 0; background: #FFFFFF; padding: 10px 0; z-index: 2; }
+
+/* ============================================================
+   Chat: compact message typography + fixed, mature composer.
+   Replaces all obsolete .tl-thumbbar layout overrides.
+   ============================================================ */
+
+.tl-detail-scroll {
+  height: 100%;
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  background: var(--tl-canvas);
+}
+
+.tl-detail-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior-y: contain;
+  padding: 0 0 12px;
+}
+
+.tl-chat-list {
+  display: block;
+  margin: 0 12px 10px;
+  padding: 10px 10px 2px;
+  border-radius: 16px;
+  background: var(--tl-surface);
+  box-shadow: var(--tl-card-shadow);
+  min-height: 0;
+}
+
+.tl-chat-list,
+.tl-chat-list *,
+.tl-chat-list *::before,
+.tl-chat-list *::after {
+  box-sizing: border-box;
+  font-family: inherit;
+  font-size: 14px;
+  font-weight: 400;
+  line-height: 21px;
+  letter-spacing: normal;
+  text-align: left;
+  text-indent: 0;
+  text-transform: none;
+  min-height: 0;
+  margin-top: 0;
+  margin-bottom: 0;
+  padding-top: 0;
+  padding-bottom: 0;
+  justify-content: flex-start;
+  align-content: flex-start;
+  align-items: flex-start;
+  gap: 0;
+  flex-grow: 0;
+  white-space: pre-wrap;
+}
+
+.tl-chat-row {
+  display: flex;
+  flex-wrap: nowrap;
+  align-items: flex-start;
+  justify-content: flex-start;
+  gap: 6px;
+  min-height: 0;
+  margin: 0 0 6px;
+  padding: 0;
+}
+
+.tl-chat-row--user { justify-content: flex-end; }
+
+.tl-chat-bubble {
+  display: block;
+  width: fit-content;
+  max-width: 88%;
+  min-width: 0;
+  min-height: 0;
+  margin: 0;
+  padding: 8px 11px;
+  border-radius: 16px;
+  font-size: 14px;
+  line-height: 21px;
+  letter-spacing: normal;
+  text-align: left;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+  /* No equal-space distribution of paragraph or line boxes. */
+  justify-content: flex-start;
+  align-content: flex-start;
+  align-items: flex-start;
+  flex: 0 1 auto;
+}
+
+.tl-chat-bubble *,
+.tl-chat-bubble *::before,
+.tl-chat-bubble *::after {
+  display: inline;
+  float: none;
+  clear: none;
+  position: static;
+  width: auto;
+  height: auto;
+  min-width: 0;
+  min-height: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  font: inherit;
+  line-height: inherit;
+  letter-spacing: inherit;
+  text-align: inherit;
+  white-space: inherit;
+  overflow-wrap: inherit;
+  word-break: inherit;
+  background: transparent;
+  color: inherit;
+  justify-content: flex-start;
+  align-content: flex-start;
+  align-items: flex-start;
+  flex: 0 0 auto;
+}
+
+.tl-chat-bubble--user { background: var(--tl-blue); color: #FFFFFF; }
+.tl-chat-bubble--assistant { background: var(--tl-fill-secondary); color: var(--tl-label-primary); }
+
+.tl-chat-attachment {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  max-width: 100%;
+  min-height: 0;
+  margin: 4px 0 0;
+  padding: 0;
+  font-size: 12px;
+  line-height: 17px;
+  color: inherit;
+  opacity: .9;
+  white-space: normal;
+}
+
+.tl-chat-attachment img {
+  display: block;
+  width: 44px;
+  height: 44px;
+  min-width: 0;
+  min-height: 0;
+  margin: 0;
+  padding: 0;
+  object-fit: cover;
+  border-radius: 8px;
+}
+
+.tl-composer {
+  flex: 0 0 auto;
+  position: relative;
+  z-index: 30;
+  box-sizing: border-box;
+  width: 100%;
+  max-height: 44vh;
+  overflow-y: auto;
+  background: #FFFFFF;
+  border-top: .5px solid var(--tl-separator);
+  padding: 8px 12px calc(8px + env(safe-area-inset-bottom, 0px));
+}
+
+/* One quiet surface: textarea + tools share a single rounded card. */
+.tl-composer-card {
+  box-sizing: border-box;
+  width: 100%;
+  min-width: 0;
+  padding: 4px 6px 4px;
+  border: 1px solid var(--tl-separator);
+  border-radius: 22px;
+  background: #FFFFFF;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, .03);
+}
+
+.tl-composer-row {
+  display: flex;
+  align-items: flex-end;
+  gap: 5px;
+  width: 100%;
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+}
+
+.tl-composer-input {
+  display: block;
+  flex: 1 1 auto;
+  width: 100%;
+  min-width: 0;
+  min-height: 40px;
+  max-height: 96px;
+  box-sizing: border-box;
+  border: 0;
+  outline: none;
+  border-radius: 18px;
+  background: transparent;
+  color: var(--tl-label-primary);
+  padding: 7px 8px;
+  font-size: 16px;
+  line-height: 22px;
+  resize: none;
+  overflow-y: auto;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.tl-composer-input::placeholder { color: var(--tl-label-secondary); }
+
+.tl-composer-tools {
+  display: flex;
+  align-items: center;
+  gap: 0;
+  width: 100%;
+  min-width: 0;
+  padding: 0 0 0 2px;
+}
+
+.tl-composer-spacer { flex: 1 1 auto; min-width: 0; }
+
+/* Quiet text control that shows the real current model and effort. */
+.tl-model-trigger {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  flex: 0 1 auto;
+  min-width: 0;
+  max-width: 58%;
+  min-height: 40px;
+  padding: 0 6px;
+  border: 0;
+  border-radius: 12px;
+  background: transparent;
+  color: var(--tl-label-primary);
+  font-size: 13px;
+  line-height: 16px;
+  text-align: left;
+}
+
+.tl-model-trigger-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 600;
+}
+
+.tl-model-trigger-effort {
+  flex: 0 0 auto;
+  color: var(--tl-blue);
+  font-weight: 600;
+}
+
+.tl-composer-icon {
+  flex: 0 0 auto;
+  width: 38px;
+  min-width: 38px;
+  height: 40px;
+  min-height: 40px;
+  border: 0;
+  border-radius: 12px;
+  background: transparent;
+  color: var(--tl-label-secondary);
+  display: grid;
+  place-items: center;
+}
+
+/* Exactly one accent per composer: the primary action. */
+.tl-composer-send {
+  flex: 0 0 auto;
+  width: 40px;
+  min-width: 40px;
+  height: 40px;
+  min-height: 40px;
+  border: 0;
+  border-radius: 20px;
+  display: grid;
+  place-items: center;
+  background: var(--tl-blue);
+  color: #FFFFFF;
+}
+
+.tl-composer-send:disabled { background: #C7C7CC; color: #FFFFFF; }
+.tl-composer-send--stop { background: var(--tl-red); }
+
+/* Kept as the documented 44px touch target for any text button variant. */
+.tl-composer-button {
+  flex: 0 0 auto;
+  box-sizing: border-box;
+  min-width: 44px;
+  min-height: 44px;
+  border: 0;
+  border-radius: 13px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  padding: 0 8px;
+  font-size: 12px;
+  line-height: 16px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.tl-composer-button--icon { width: 44px; padding: 0; }
+.tl-composer-button--primary { min-width: 48px; }
+
+.tl-composer-tray {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 2px 2px 4px;
+  padding: 0;
+}
+
+.tl-composer-attachment {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 100%;
+  min-height: 34px;
+  padding: 3px 4px 3px 3px;
+  border-radius: 10px;
+  background: var(--tl-fill-secondary);
+  font-size: 11.5px;
+  line-height: 15px;
+  color: var(--tl-label-primary);
+}
+
+.tl-composer-attachment-name {
+  max-width: 132px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tl-composer-attachment img {
+  width: 28px;
+  height: 28px;
+  border-radius: 7px;
+  object-fit: cover;
+}
+
+.tl-composer-attachment button {
+  width: 28px;
+  min-width: 28px;
+  min-height: 28px;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--tl-label-secondary);
+  display: grid;
+  place-items: center;
+}
+.tl-composer-error {
+  margin: 5px 0 0;
+  font-size: 12px;
+  line-height: 17px;
+  color: #a9231b;
+  overflow-wrap: anywhere;
+}
+.tl-composer-sheet { display: grid; gap: 10px; }
+.tl-composer-sheet-option {
+  display: flex;
+  align-items: center;
+  min-height: 44px;
+  width: 100%;
+  gap: 10px;
+  padding: 8px 12px;
+  border: 0;
+  border-radius: 12px;
+  background: var(--tl-fill-secondary);
+  color: var(--tl-label-primary);
+  font-size: 14px;
+  text-align: left;
+}
+.tl-composer-sheet-option[aria-pressed="true"] { background: #DCEBFF; color: #0062CC; }
+.tl-composer-sheet-subtitle { font-size: 12px; line-height: 17px; color: var(--tl-label-secondary); margin: 0; }
+
+@media (max-width: 393px) {
+  .tl-chat-bubble { max-width: 90%; padding: 7px 10px; }
+  .tl-chat-row { gap: 4px; margin-bottom: 5px; }
+  .tl-composer { padding-left: 7px; padding-right: 7px; }
+  .tl-composer-row { gap: 4px; }
+  .tl-composer-button--icon { width: 44px; }
+}
+
+@media (max-width: 320px) {
+  .tl-chat-list { margin-left: 6px; margin-right: 6px; padding-left: 6px; padding-right: 6px; }
+  .tl-chat-bubble { max-width: 92%; padding: 6px 9px; }
+  .tl-composer { padding-left: 5px; padding-right: 5px; }
+  .tl-composer-row { gap: 3px; }
+  .tl-composer-input { padding-left: 8px; padding-right: 8px; }
+  .tl-composer-button { min-width: 44px; padding: 0 4px; }
+  .tl-composer-button--primary { min-width: 44px; }
+}
+
+@media (max-height: 420px) {
+  .tl-composer { max-height: 52vh; }
+  .tl-composer-input { min-height: 44px; max-height: 60px; }
+}
+
+/* Model picker: provider chips, search, list, then a sticky effort segment. */
+.tl-mp-providers {
+  display: flex;
+  gap: 6px;
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+  padding: 2px 0 10px;
+  margin: 0;
+}
+.tl-mp-provider {
+  flex: 0 0 auto;
+  min-height: 44px;
+  padding: 0 14px;
+  border: 1px solid var(--tl-separator);
+  border-radius: 999px;
+  background: #FFFFFF;
+  color: var(--tl-label-primary);
+  font-size: 13px;
+  white-space: nowrap;
+}
+.tl-mp-provider[aria-pressed="true"] {
+  background: var(--tl-label-primary);
+  border-color: var(--tl-label-primary);
+  color: #FFFFFF;
+}
+.tl-mp-search {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 44px;
+  margin-bottom: 10px;
+  padding: 0 8px 0 12px;
+  border-radius: 12px;
+  background: var(--tl-fill-secondary);
+}
+.tl-mp-search input {
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 44px;
+  border: 0;
+  outline: none;
+  background: transparent;
+  color: var(--tl-label-primary);
+  font-size: 15px;
+}
+.tl-mp-search button {
+  flex: 0 0 auto;
+  width: 32px;
+  height: 32px;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--tl-label-secondary);
+  display: grid;
+  place-items: center;
+}
+.tl-mp-list {
+  display: grid;
+  gap: 1px;
+  max-height: 42vh;
+  overflow-y: auto;
+  overscroll-behavior-y: contain;
+  -webkit-overflow-scrolling: touch;
+  padding-bottom: 4px;
+}
+.tl-mp-model {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  min-height: 52px;
+  padding: 8px 10px;
+  border: 0;
+  border-radius: 12px;
+  background: transparent;
+  color: var(--tl-label-primary);
+  text-align: left;
+}
+.tl-mp-model[aria-selected="true"] { background: var(--tl-fill-secondary); }
+.tl-mp-model-text { flex: 1 1 auto; min-width: 0; }
+.tl-mp-model-name {
+  display: block;
+  font-size: 15px;
+  line-height: 20px;
+  font-weight: 500;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.tl-mp-model-meta {
+  display: block;
+  margin-top: 2px;
+  font-size: 12px;
+  line-height: 16px;
+  color: var(--tl-label-secondary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.tl-mp-note {
+  margin: 8px 2px;
+  font-size: 13px;
+  line-height: 19px;
+  color: var(--tl-label-secondary);
+}
+.tl-mp-effort {
+  position: sticky;
+  bottom: 0;
+  z-index: 2;
+  margin-top: 8px;
+  padding: 8px 0 2px;
+  background: linear-gradient(to top, #FFFFFF 72%, rgba(255, 255, 255, 0));
+}
+.tl-mp-effort-label {
+  margin: 0 2px 6px;
+  font-size: 12px;
+  line-height: 16px;
+  font-weight: 600;
+  color: var(--tl-label-secondary);
+}
+.tl-mp-segment {
+  display: flex;
+  gap: 3px;
+  padding: 3px;
+  border-radius: 12px;
+  background: var(--tl-fill-secondary);
+}
+.tl-mp-segment button {
+  flex: 1 1 0;
+  min-width: 0;
+  min-height: 44px;
+  border: 0;
+  border-radius: 9px;
+  background: transparent;
+  color: var(--tl-label-secondary);
+  font-size: 13px;
+  font-weight: 500;
+}
+.tl-mp-segment button[aria-pressed="true"] {
+  background: #FFFFFF;
+  color: var(--tl-label-primary);
+  font-weight: 600;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, .08);
+}
+
+/* New task sheet: same composer, one optional project row. */
+.tl-newtask {
+  display: grid;
+  gap: 12px;
+}
+
+.tl-newtask-projects {
+  overflow: hidden;
+  border-radius: 14px;
+  background: var(--tl-fill-secondary);
+}
+
+.tl-newtask-project-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  min-height: 48px;
+  padding: 0 14px;
+  border: 0;
+  background: transparent;
+  color: var(--tl-label-primary);
+  font-size: 14px;
+  text-align: left;
+}
+
+.tl-newtask-project-head span { flex: 1 1 auto; min-width: 0; }
+
+.tl-newtask-project-list {
+  display: grid;
+  gap: 1px;
+  max-height: 30vh;
+  overflow-y: auto;
+  padding: 0 6px 6px;
+}
+
+.tl-newtask-project {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  min-height: 44px;
+  padding: 0 10px;
+  border: 0;
+  border-radius: 10px;
+  background: #FFFFFF;
+  color: var(--tl-label-primary);
+  font-size: 13.5px;
+  text-align: left;
+}
+
+.tl-newtask-project-name {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tl-newtask-project-check {
+  flex: 0 0 auto;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--tl-blue);
+}
+
+/* 40px visuals keep a 44px pointer target without growing the card. */
+.tl-composer-icon,
+.tl-composer-send { position: relative; }
+.tl-composer-icon::after,
+.tl-composer-send::after {
+  content: '';
+  position: absolute;
+  inset: -2px;
+}

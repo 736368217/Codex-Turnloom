@@ -13,16 +13,22 @@ import {
   getThreads, getThreadMessages, getThreadChanges, getHealth,
   postNewThread, postSend, postInterrupt, postApproval, extractThreadId,
   type ThreadSummary, type ThreadMessage, type ChangeEntry,
-  type RequestContext,
+  type RequestContext, type SendOptions,
 } from '../lib/turnloomApi';
 import { isCurrentContext, getActiveGeneration } from '../lib/turnloomApi';
 import { cacheKeyFor, setOnline, markSynced, sessionStore } from './sessionStore';
+import {
+  selectRuntimeScope, applyHealth, applyThreadStatus,
+  threadListStatus, markThreadSubmitted,
+} from './runtimeStore';
 
 export interface DataState {
   scope: string;
   threads: ThreadSummary[];
   messagesByThread: Record<string, ThreadMessage[]>;
   changesByThread: Record<string, ChangeEntry[]>;
+  /** Authoritative per-thread runtime status, separate from message arrays. */
+  statusByThread: Record<string, ReturnType<typeof threadListStatus>>;
   messageState: Record<string, { loading: boolean; error: string; loaded: boolean }>;
   loading: boolean;
   offline: boolean;
@@ -34,7 +40,7 @@ export interface DataState {
 }
 
 const EMPTY: DataState = {
-  scope: '', threads: [], messagesByThread: {}, changesByThread: {}, messageState: {},
+  scope: '', threads: [], messagesByThread: {}, changesByThread: {}, statusByThread: {}, messageState: {},
   loading: false, offline: false, error: '', lastSyncAt: null, cachedAt: null,
   runningCount: 0, errorCount: 0,
 };
@@ -63,22 +69,22 @@ function persistThreads(scope: string, threads: ThreadSummary[]): void {
   catch { /* cache is best effort */ }
 }
 
-function statusOf(thread: ThreadSummary): string {
-  const raw = thread.status;
-  if (typeof raw === 'string') return raw.toLowerCase();
-  if (raw && typeof raw === 'object') return String(raw.state || raw.label || '').toLowerCase();
-  return '';
-}
-
 function deriveCounters(threads: ThreadSummary[]): { runningCount: number; errorCount: number } {
   let runningCount = 0;
   let errorCount = 0;
   for (const thread of threads) {
-    const status = statusOf(thread);
-    if (/run|active|working|exec|stream|thinking|progress/.test(status)) runningCount += 1;
-    if (/error|fail|denied|reject/.test(status)) errorCount += 1;
+    const status = threadListStatus(thread.status);
+    if (status.thinking) runningCount += 1;
+    const raw = String(typeof thread.status === 'object' ? thread.status?.state || '' : thread.status || '').toLowerCase();
+    if (/error|fail|denied|reject/.test(raw)) errorCount += 1;
   }
   return { runningCount, errorCount };
+}
+
+function statusMap(threads: ThreadSummary[]): Record<string, ReturnType<typeof threadListStatus>> {
+  const map: Record<string, ReturnType<typeof threadListStatus>> = {};
+  for (const thread of threads) map[thread.id] = threadListStatus(thread.status);
+  return map;
 }
 
 function current(context: RequestContext): boolean {
@@ -88,18 +94,26 @@ function current(context: RequestContext): boolean {
 /** Immediately isolate all visible state when the harness/scope changes. */
 export function resetForScope(context: RequestContext): void {
   const cached = readThreads(context.scope);
+  selectRuntimeScope(context.scope);
   dataStore.setState({
     ...EMPTY,
     scope: context.scope,
     threads: cached.threads,
+    statusByThread: statusMap(cached.threads),
     cachedAt: cached.cachedAt,
     ...deriveCounters(cached.threads),
   });
 }
 
+/** A same-scope foreground revalidation keeps live state and the attachment tray. */
+export function revalidateForForeground(context: RequestContext): void {
+  if (dataStore.getState().scope !== context.scope) resetForScope(context);
+  else selectRuntimeScope(context.scope);
+  void refreshAll(context);
+}
+
 function ensureScope(context: RequestContext): void {
-  const state = dataStore.getState();
-  if (state.scope !== context.scope) resetForScope(context);
+  if (dataStore.getState().scope !== context.scope) resetForScope(context);
 }
 
 function applyThreads(context: RequestContext, threads: ThreadSummary[]): void {
@@ -107,7 +121,7 @@ function applyThreads(context: RequestContext, threads: ThreadSummary[]): void {
   const list = threads.filter((row) => row && typeof row.id === 'string');
   persistThreads(context.scope, list);
   dataStore.setState({
-    scope: context.scope, threads: list, loading: false, offline: false, error: '',
+    scope: context.scope, threads: list, statusByThread: statusMap(list), loading: false, offline: false, error: '',
     lastSyncAt: Date.now(), cachedAt: Date.now(), ...deriveCounters(list),
   });
   markSynced();
@@ -143,6 +157,7 @@ export async function refreshAll(context: RequestContext): Promise<void> {
     applyFailure(context, actionable(health));
     return;
   }
+  applyHealth(context.scope, health.data);
   setOnline(true);
   const result = await getThreads(context, { limit: 60 });
   if (!current(context)) return;
@@ -161,6 +176,7 @@ export async function refreshThreads(context: RequestContext): Promise<void> {
   applyThreads(context, Array.isArray(result.data.threads) ? result.data.threads : []);
 }
 
+/** Refresh messages and persist the authoritative top-level status separately. */
 export async function refreshMessages(context: RequestContext, threadId: string, limit = 80): Promise<void> {
   if (!current(context) || !threadId) return;
   if (dataStore.getState().messageState[threadId]?.loading) return;
@@ -169,10 +185,24 @@ export async function refreshMessages(context: RequestContext, threadId: string,
   const result = await getThreadMessages(context, threadId, { limit });
   if (!current(context)) return;
   const list = result.ok ? result.data?.messages || result.data?.items || [] : null;
+  // A failed poll must NOT clear the authoritative runtime status.
+  if (result.ok) applyThreadStatus(context.scope, threadId, result.data?.status);
   dataStore.setState(prev => prev.scope === context.scope ? {
     ...(Array.isArray(list) ? { messagesByThread: { ...prev.messagesByThread, [threadId]: list } } : {}),
+    ...(result.ok ? { statusByThread: { ...prev.statusByThread, [threadId]: threadListStatus(result.data?.status) } } : {}),
     messageState: { ...prev.messageState, [threadId]: { loading: false, loaded: result.ok || previous?.loaded || false, error: result.ok ? '' : actionable(result) } },
   } : {});
+}
+
+/** Refresh the authoritative status after send/stop without waiting for a full UI cycle. */
+export async function refreshThreadStatus(context: RequestContext, threadId: string): Promise<void> {
+  if (!current(context) || !threadId) return;
+  const result = await getThreadMessages(context, threadId, { limit: 80 });
+  if (!current(context) || !result.ok) return;
+  applyThreadStatus(context.scope, threadId, result.data?.status);
+  dataStore.setState((prev) => prev.scope === context.scope
+    ? { statusByThread: { ...prev.statusByThread, [threadId]: threadListStatus(result.data?.status) } }
+    : {});
 }
 
 export async function refreshChanges(context: RequestContext, threadId: string): Promise<void> {
@@ -186,14 +216,10 @@ export async function refreshChanges(context: RequestContext, threadId: string):
 }
 
 /** No local/offline thread is fabricated: only a real host thread id succeeds. */
-export async function createThread(context: RequestContext, message: string, projectId = ''): Promise<string | null> {
+export async function createThread(context: RequestContext, options: SendOptions & { projectId?: string }): Promise<string | null> {
   if (!current(context)) return null;
   ensureScope(context);
-  const result = await postNewThread(context, {
-    message,
-    ...(projectId ? { projectId } : {}),
-    clientRequestId: `app-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`,
-  });
+  const result = await postNewThread(context, options);
   if (!current(context)) return null;
   if (!result.ok) { applyFailure(context, actionable(result)); return null; }
   const id = extractThreadId(result.data);
@@ -201,9 +227,10 @@ export async function createThread(context: RequestContext, message: string, pro
     applyFailure(context, '电脑端没有返回会话编号，请刷新会话列表确认是否已创建。');
     return null;
   }
+  // A list row's "running" is not authoritative; leave status ended until a poll.
   const optimistic: ThreadSummary = {
-    id, title: message.slice(0, 48) || '新任务', preview: message.slice(0, 80),
-    status: 'running', updatedAt: Date.now(),
+    id, title: options.message.slice(0, 48) || '新任务', preview: options.message.slice(0, 80),
+    status: { state: 'ended', thinking: false }, updatedAt: Date.now(),
   };
   const prev = dataStore.getState();
   applyThreads(context, [optimistic, ...prev.threads.filter((row) => row.id !== id)]);
@@ -211,20 +238,23 @@ export async function createThread(context: RequestContext, message: string, pro
   return id;
 }
 
-export async function sendMessage(context: RequestContext, threadId: string, message: string): Promise<boolean> {
+export async function sendMessage(context: RequestContext, threadId: string, options: SendOptions): Promise<boolean> {
   if (!current(context) || !threadId) return false;
-  const result = await postSend(context, {
-    threadId, message,
-    clientRequestId: `app-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`,
-  });
+  const result = await postSend(context, { ...options, threadId });
   if (!current(context)) return false;
   if (!result.ok) { applyFailure(context, actionable(result)); return false; }
+  markThreadSubmitted(context.scope, threadId);
   const optimistic: ThreadMessage = {
-    id: `sent-${Date.now()}`, role: 'user', text: message, createdAt: Date.now(),
+    id: `sent-${Date.now()}`, role: 'user', kind: 'message', content: options.message,
+    images: options.images || [], createdAt: Date.now(),
   };
   dataStore.setState((prev) => prev.scope === context.scope
-    ? { messagesByThread: { ...prev.messagesByThread, [threadId]: [...(prev.messagesByThread[threadId] || []), optimistic] } }
+    ? {
+      messagesByThread: { ...prev.messagesByThread, [threadId]: [...(prev.messagesByThread[threadId] || []), optimistic] },
+      statusByThread: { ...prev.statusByThread, [threadId]: threadListStatus({}) },
+    }
     : {});
+  void refreshThreadStatus(context, threadId);
   return true;
 }
 
@@ -233,6 +263,11 @@ export async function interruptThread(context: RequestContext, threadId: string)
   const result = await postInterrupt(context, { threadId });
   if (!current(context)) return false;
   if (!result.ok) { applyFailure(context, actionable(result)); return false; }
+  applyThreadStatus(context.scope, threadId, {});
+  dataStore.setState((prev) => prev.scope === context.scope
+    ? { statusByThread: { ...prev.statusByThread, [threadId]: threadListStatus({}) } }
+    : {});
+  void refreshThreadStatus(context, threadId);
   return true;
 }
 

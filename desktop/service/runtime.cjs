@@ -4,6 +4,7 @@ const { EventEmitter } = require("node:events");
 const { ServiceController } = require("./controller.cjs");
 const { TunnelController } = require("./tunnel.cjs");
 const { urlsFor } = require("./config.cjs");
+const { topology, changeImpact, sshEnabled } = require("./transport.cjs");
 
 function overallState(service, tunnel) {
   if (!service) return "stopped";
@@ -33,12 +34,12 @@ function stateLabel(state) {
 }
 
 class RuntimeManager extends EventEmitter {
-  constructor({ config, logger }) {
+  constructor({ config, logger, service, tunnel }) {
     super();
     this.config = config;
     this.logger = logger;
-    this.service = new ServiceController({ config, logger });
-    this.tunnel = new TunnelController({ config, logger });
+    this.service = service || new ServiceController({ config, logger });
+    this.tunnel = tunnel || new TunnelController({ config, logger });
     this._bind();
   }
 
@@ -53,6 +54,16 @@ class RuntimeManager extends EventEmitter {
     this.service.setConfig(config);
     this.tunnel.setConfig(config);
     this.emit("changed", this.snapshot());
+  }
+
+  async applyConfig(config) {
+    const impact = changeImpact(this.config, config);
+    const active = ["running", "degraded", "starting", "restarting"].includes(this.service.snapshot().state);
+    if (impact.relay) await this.tunnel.stop({ silent: true });
+    this.setConfig(config);
+    const result = impact.service && active ? await this.service.restart() : { ok: true };
+    if (impact.relay && active && result.ok && sshEnabled(config)) await this.tunnel.start();
+    return impact;
   }
 
   get state() {
@@ -86,6 +97,7 @@ class RuntimeManager extends EventEmitter {
         lastError: service.lastError
       },
       tunnel,
+      topology: topology(this.config, service, tunnel),
       health: service.health,
       urls: urlsFor(this.config),
       lastError: service.lastError || tunnel.error || null

@@ -2,18 +2,17 @@ import { ChevronRight, MessageSquare, Loader2, CircleCheck, AlertTriangle } from
 import type { ThreadSummary } from '../lib/turnloomApi';
 import { COLORS } from '../theme/optionATokens';
 import { haptic } from '../lib/nativeBridge';
+import { threadListStatus } from '../state/runtimeStore';
 import { openDetail } from '../state/tabStore';
 import { StatusPill, EmptyState, cardStyle } from './ui';
 
 export type TaskTone = 'running' | 'waiting' | 'done' | 'error';
-
 export function toneOfThread(thread: ThreadSummary): TaskTone {
-  const raw = thread.status;
-  const text = typeof raw === 'string' ? raw : (raw && typeof raw === 'object' ? String(raw.state || raw.label || '') : '');
-  const s = text.toLowerCase();
-  if (/error|fail|denied|reject/.test(s)) return 'error';
-  if (/wait|approval|pending|pause|queue/.test(s)) return 'waiting';
-  if (/run|active|working|exec|stream|thinking|progress/.test(s)) return 'running';
+  const status = threadListStatus(thread.status);
+  if (status.state === 'running') return 'running';
+  if (status.state === 'waiting') return 'waiting';
+  const raw = String(typeof thread.status === 'object' ? thread.status?.state || '' : thread.status || '').toLowerCase();
+  if (/error|fail|denied|reject/.test(raw)) return 'error';
   return 'done';
 }
 
@@ -54,8 +53,8 @@ export default function TaskStream({
           : tone === 'error'
             ? <StatusPill tone="red" active>错误</StatusPill>
             : tone === 'waiting'
-              ? <StatusPill tone="green">待审批</StatusPill>
-              : <StatusPill>已完成</StatusPill>;
+              ? <StatusPill tone="green">待处理</StatusPill>
+              : <StatusPill>已结束</StatusPill>;
 
         return (
           <div key={thread.id || index}>

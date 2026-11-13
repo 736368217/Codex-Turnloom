@@ -13,6 +13,10 @@ function tunnelBackoff(attempt) {
   return Math.min(MAX_BACKOFF_MS, Math.pow(2, safeAttempt) * 1000);
 }
 
+function confirmsRemoteForward(line) {
+  return /remote forward success for: listen /i.test(String(line));
+}
+
 function forwardMarker(config) {
   const tunnel = config?.tunnel || {};
   return `127.0.0.1:${Number(tunnel.remotePort) || 0}:127.0.0.1:${Number(config?.port) || 8787}`;
@@ -110,6 +114,8 @@ class TunnelController extends EventEmitter {
       const target = `${tunnel.user}@${tunnel.host}`;
       const forward = `127.0.0.1:${tunnel.remotePort}:127.0.0.1:${this.config.port}`;
       const args = [
+        "-v",
+        "-o", "ConnectTimeout=10",
         "-i", tunnel.keyPath,
         "-o", "IdentitiesOnly=yes",
         "-o", "BatchMode=yes",
@@ -136,7 +142,16 @@ class TunnelController extends EventEmitter {
         this._stdoutBuffer = splitLines(this._stdoutBuffer, chunk, (line) => this.logger.info("tunnel", line, "tunnel-out.log"));
       });
       this.child.stderr?.on("data", (chunk) => {
-        this._stderrBuffer = splitLines(this._stderrBuffer, chunk, (line) => this.logger.warn("tunnel", line, "tunnel-error.log"));
+        this._stderrBuffer = splitLines(this._stderrBuffer, chunk, (line) => {
+          if (confirmsRemoteForward(line) && !this.stopping) {
+            this.attempts = 0;
+            this.nextRetryAt = 0;
+            this.setState("connected", null);
+            this.logger.info("tunnel", "SSH 已确认远端转发监听；公网 HTTP 可达性需独立检查。");
+          } else if (!/^debug\d:/i.test(line)) {
+            this.logger.warn("tunnel", line, "tunnel-error.log");
+          }
+        });
       });
       this.child.on("error", (error) => {
         this.lastError = `SSH 启动失败：${error.message}`;
@@ -152,14 +167,6 @@ class TunnelController extends EventEmitter {
         this.logger.warn("tunnel", this.lastError);
         this.scheduleRetry();
       });
-      this.connectedTimer = setTimeout(() => {
-        if (this.child && !this.stopping) {
-          this.attempts = 0;
-          this.nextRetryAt = 0;
-          this.setState("connected", null);
-          this.logger.info("tunnel", `SSH 隧道已建立：${target}`);
-        }
-      }, 2000);
       return { ok: true };
     } catch (error) {
       this.lastError = error.message;
@@ -227,4 +234,4 @@ class TunnelController extends EventEmitter {
   }
 }
 
-module.exports = { TunnelController, tunnelBackoff, MAX_BACKOFF_MS, forwardMarker };
+module.exports = { TunnelController, tunnelBackoff, MAX_BACKOFF_MS, forwardMarker, confirmsRemoteForward };

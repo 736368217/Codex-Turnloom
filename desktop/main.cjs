@@ -684,13 +684,11 @@ function registerIpc() {
       next = saveConfig(next);
       configState.config = next;
       logger.setSecrets(allSecrets(next));
-      runtime.setConfig(next);
+      const impact = await runtime.applyConfig(next);
       applyTheme(next.console?.theme || "system");
       applyLoginItem(next);
-      const wasActive = ["running", "starting", "degraded", "restarting"].includes(runtimeSnapshot().state);
-      if (wasActive) await runtime.restart();
       sendState();
-      return { ok: true, config: publicConfig(next), runtime: runtimeSnapshot() };
+      return { ok: true, impact, config: publicConfig(next), runtime: runtimeSnapshot() };
     } catch (error) {
       return { ok: false, errors: [{ field: "config", message: error.message }] };
     }

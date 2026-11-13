@@ -73,7 +73,11 @@ test("README visual assets are refreshed from the fixed build", () => {
   }
 });
 
-test("desktop console has a stable minimum layout width", () => {
+test("desktop settings adapt without squeezing cards or overflowing narrow windows", () => {
   const css = readFileSync(path.join(ROOT, "desktop", "renderer", "styles.css"), "utf8");
-  assert.match(css, /\.app\s*\{[^}]*min-width:\s*1120px/);
+  assert.match(css, /\.app\s*\{[^}]*min-width:\s*0/);
+  assert.match(css, /\.settings-view\s*\{[^}]*overflow-y:\s*auto/);
+  assert.match(css, /\.settings-grid\s*\{[^}]*grid-auto-rows:\s*max-content/);
+  assert.match(css, /\.settings-card\s*>\s*\*\s*\{[^}]*flex-shrink:\s*0/);
+  assert.match(css, /@media\s*\(max-width:\s*1240px\)/);
 });

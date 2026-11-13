@@ -123,7 +123,7 @@ export function ActionButton({
   icon?: ReactElement;
 }) {
   const backgrounds: Record<ActionVariant, string> = {
-    primary: COLORS.actionBlue,
+    primary: COLORS.blue,
     green: COLORS.actionGreen,
     red: COLORS.actionRed,
     neutral: COLORS.fillSecondary,
@@ -144,7 +144,6 @@ export function ActionButton({
         justifyContent: 'center',
         gap: 8,
         width: '100%',
-        minHeight: 50,
         padding: '0 18px',
         border: 0,
         borderRadius: RADIUS.card,
@@ -153,6 +152,7 @@ export function ActionButton({
         fontSize: 16,
         fontWeight: 600,
         ...pressStyle,
+        minHeight: 50,
         ...style,
       }}
       {...rest}

@@ -5,6 +5,7 @@ const os = require("node:os");
 const path = require("node:path");
 const { execFileSync } = require("node:child_process");
 const sharedPairing = require(path.join(__dirname, "..", "..", "shared", "machine-pairing.cjs"));
+const { transportMode, explicitTransport, configuredPublicUrl } = require("./transport.cjs");
 const {
   gatewayMode,
   loadMachineConfig,
@@ -129,6 +130,7 @@ function mergeConfig(base, patch) {
   result.tunnel = { ...(base.tunnel || {}), ...((patch && patch.tunnel) || {}) };
   result.console = { ...DEFAULT_CONSOLE, ...(base.console || {}), ...((patch && patch.console) || {}) };
   result.machineGateway = { ...(base.machineGateway || {}), ...((patch && patch.machineGateway) || {}) };
+  result.network = { ...(base.network || {}), ...((patch && patch.network) || {}) };
   return result;
 }
 
@@ -171,6 +173,7 @@ function normalizeExtraDevices(list) {
 function normalizeConfig(raw) {
   const base = defaultConfig();
   const merged = mergeConfig(base, raw || {});
+  if (explicitTransport(merged)) merged.tunnel.enabled = transportMode(merged) === "ssh";
   merged.schemaVersion = Number(merged.schemaVersion) || 1;
   merged.port = Number(merged.port) || 8787;
   merged.tunnel.remotePort = Number(merged.tunnel.remotePort) || 0;
@@ -238,6 +241,13 @@ function gatewayValidationErrors(config) {
 function validateConfig(config) {
   const errors = [];
   if (!config) return [{ field: "config", message: "配置文件不存在或无法解析。" }];
+  if (config.network?.mode && !explicitTransport(config)) errors.push({ field: "network.mode", message: "请选择直连、外部代理或 SSH 隧道。" });
+  if (explicitTransport(config) && transportMode(config) !== "direct") {
+    try {
+      const target = new URL(config.publicUrl);
+      if (!["http:", "https:"].includes(target.protocol) || target.username || target.password || target.search || target.hash) throw new Error();
+    } catch { errors.push({ field: "publicUrl", message: "请填写不含凭据、查询参数的 HTTP(S) 访问地址。" }); }
+  }
   if (!Number.isInteger(Number(config.port)) || Number(config.port) < 1 || Number(config.port) > 65535) {
     errors.push({ field: "port", message: "端口需在 1–65535 之间。" });
   }
@@ -277,7 +287,7 @@ function validateConfig(config) {
   if (config.tunnel && config.tunnel.enabled) {
     if (!config.tunnel.host) errors.push({ field: "tunnel.host", message: "启用隧道时必须填写服务器地址。" });
     if (!config.tunnel.user) errors.push({ field: "tunnel.user", message: "启用隧道时必须填写 SSH 用户名。" });
-    if (!Number.isInteger(Number(config.tunnel.remotePort)) || Number(config.tunnel.remotePort) < 1) {
+    if (!Number.isInteger(Number(config.tunnel.remotePort)) || Number(config.tunnel.remotePort) < 1 || Number(config.tunnel.remotePort) > 65535) {
       errors.push({ field: "tunnel.remotePort", message: "启用隧道时必须填写有效的远端端口。" });
     }
     if (!config.tunnel.keyPath || !fs.existsSync(config.tunnel.keyPath)) {
@@ -308,6 +318,7 @@ function publicConfig(config) {
     port: config.port,
     readonly: Boolean(config.readonly),
     publicUrl: config.publicUrl,
+    network: { mode: transportMode(config) },
     logDir: config.logDir,
     tunnel: {
       enabled: Boolean(config.tunnel?.enabled),
@@ -357,12 +368,12 @@ function urlsFor(config) {
   const host = lanAddress();
   const port = Number(config?.port) || 8787;
   const lan = `http://${host}:${port}`;
-  const gatewayOrigin = sharedPairing.normalizeBaseUrl(config?.machineGateway?.origin || "");
+  const gatewayOrigin = configuredPublicUrl(config);
   let machinePublicUrl = "";
-  if (!gatewayOrigin && gatewayMode(config)) {
+  if (!explicitTransport(config) && !gatewayOrigin && gatewayMode(config)) {
     try { machinePublicUrl = loadMachineConfig(config).publicUrl; } catch {}
   }
-  const publicUrl = gatewayOrigin || sharedPairing.normalizeBaseUrl(config?.publicUrl || "") || machinePublicUrl;
+  const publicUrl = gatewayOrigin || machinePublicUrl;
   return { lan, publicUrl, browser: publicUrl || lan, preview: lan };
 }
 function pairingPayload(config, device = null) {

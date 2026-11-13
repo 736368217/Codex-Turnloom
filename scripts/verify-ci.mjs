@@ -66,6 +66,13 @@ function runNodeTests(label, command, args, options = {}) {
   }
 }
 
+// Local ignored files cannot satisfy a clean GitHub checkout.
+if (fs.existsSync(path.join(ROOT, ".git"))) {
+  const required = ["docs/option-a/SINGLE_APP_CONTRACT.md"];
+  const tracked = spawnSync("git", ["ls-files", "--error-unmatch", ...required], { cwd: ROOT, encoding: "utf8", windowsHide: true });
+  if (tracked.status !== 0) fail("Required contract is not tracked by Git. Stage docs/option-a/SINGLE_APP_CONTRACT.md before verification.");
+}
+
 console.log("[verify-ci] Checking test-file syntax");
 for (const name of fs.readdirSync(path.join(ROOT, "test"))) {
   if (!/\.(?:test\.(?:js|cjs|mjs)|\.cjs|\.js)$/.test(name)) continue;

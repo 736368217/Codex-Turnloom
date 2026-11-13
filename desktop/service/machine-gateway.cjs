@@ -20,6 +20,7 @@ const os = require("node:os");
 const path = require("node:path");
 const crypto = require("node:crypto");
 const shared = require(path.join(__dirname, "..", "..", "shared", "machine-pairing.cjs"));
+const { explicitTransport } = require("./transport.cjs");
 
 const APP_DIR = path.resolve(__dirname, "..", "..");
 const LOCAL_APP_DATA = process.env.LOCALAPPDATA || path.join(os.homedir(), "AppData", "Local");
@@ -105,6 +106,10 @@ function normalizeMachineConfig(raw, { configPath = "" } = {}) {
     throw new Error("machine.json: machineToken 无效");
   }
 
+  const legacyMachineTokens = Array.isArray(raw.legacyMachineTokens) ? [...new Set(raw.legacyMachineTokens.map(clean))] : [];
+  if (legacyMachineTokens.length > 4 || legacyMachineTokens.some((token) => !token || token.length > shared.MAX_TOKEN_LENGTH || /[\u0000-\u001f\u007f]/.test(token))) {
+    throw new Error("machine.json: legacyMachineTokens 无效");
+  }
   const requestedDefault = clean(raw.defaultHarness || raw.defaultHarnessId || raw.defaultDevice);
   const publicRows = shared.normalizeHarnesses(rows.map((row, index) => ({
     id: row?.id || row?.key || row?.name || `harness-${index + 1}`,
@@ -148,6 +153,7 @@ function normalizeMachineConfig(raw, { configPath = "" } = {}) {
     machineId,
     machineName,
     machineToken,
+    legacyMachineTokens,
     defaultHarnessId: selected.id,
     harnesses,
     publicUrl: shared.normalizeBaseUrl(raw.publicUrl || ""),
@@ -212,7 +218,7 @@ function deriveMachineConfig({
     id: device?.key || device?.id || device?.name || `harness-${index + 1}`,
     name: device?.label || device?.name || device?.key,
     token: device?.token || device?.accessCode,
-    kind: device?.backend || device?.kind || "codex",
+    kind: device?.backend || device?.kind || (device?.key === "pidesk" ? "pi" : "codex"),
     defaultHarness: safeId(device?.key || device?.id || device?.name, "") === defaultId,
     online: null,
   })), defaultId);
@@ -257,6 +263,7 @@ function deriveMachineConfig({
     machineId: stableId,
     machineName: stableName,
     machineToken: stableToken,
+    ...(existingMachine?.legacyMachineTokens?.length ? { legacyMachineTokens: existingMachine.legacyMachineTokens.slice() } : {}),
     defaultHarness: selected.id,
     harnesses,
   };
@@ -267,7 +274,7 @@ function deriveMachineConfig({
 /** Identity used by BOTH the QR and discovery verification. */
 function pairingIdentity(config = {}, urls = {}) {
   const url = shared.firstValidUrl({
-    url: config?.machineGateway?.origin,
+    url: explicitTransport(config) ? urls.publicUrl || urls.lan : config?.machineGateway?.origin,
     publicUrl: urls.publicUrl,
     lanUrl: urls.lan,
   });
@@ -290,7 +297,7 @@ function pairingIdentity(config = {}, urls = {}) {
     machineToken: machine.machineToken,
     accessCode: machine.machineToken,
     url: shared.firstValidUrl({
-      url: config.machineGateway?.origin || machine.publicUrl,
+      url: explicitTransport(config) ? urls.publicUrl || urls.lan : config.machineGateway?.origin || machine.publicUrl,
       publicUrl: urls.publicUrl,
       lanUrl: urls.lan,
     }),

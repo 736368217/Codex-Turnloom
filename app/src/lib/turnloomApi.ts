@@ -42,13 +42,64 @@ export type ApiResult<T> =
   | { ok: true; status: number; data: T; offline: false }
   | { ok: false; status: number; error: string; offline: boolean };
 
+export interface ThreadRuntimeStatusPayload {
+  thinking?: boolean;
+  interactionRequired?: boolean;
+  staleTurn?: boolean;
+  turnId?: string | null;
+  startedAtMs?: number | null;
+  [key: string]: unknown;
+}
+
 export interface ThreadStatus {
   state?: string;
   label?: string;
   running?: boolean;
+  thinking?: boolean;
+  interactionRequired?: boolean;
+  staleTurn?: boolean;
   [key: string]: unknown;
 }
 
+export interface ModelCatalogEntry {
+  id: string;
+  label?: string;
+  efforts?: string[];
+  defaultEffort?: string;
+  supportsImages?: boolean;
+
+}
+
+export interface ApiAttachment {
+  name: string;
+  mimeType: string;
+  /** Plain base64. Native picker data URLs are stripped before sending. */
+  data: string;
+}
+export interface SendOptions {
+  message: string;
+  clientRequestId: string;
+  model?: string;
+  effort?: string;
+  images?: ApiAttachment[];
+  files?: ApiAttachment[];
+  threadId?: string;
+  projectId?: string;
+}
+
+export interface MessagesEnvelope {
+  thread?: ThreadSummary;
+  messages?: ThreadMessage[];
+  items?: ThreadMessage[];
+  status?: ThreadRuntimeStatusPayload;
+  [key: string]: unknown;
+}
+
+export interface HealthEnvelope extends HealthInfo {
+  models?: ModelCatalogEntry[];
+  defaultModel?: string;
+  defaultEffort?: string;
+}
 export interface ThreadSummary {
   id: string;
   title?: string;
@@ -353,19 +404,19 @@ export function discoverHarnesses(pairing: { serverUrl: string; machineToken: st
 }
 
 /** Verify the selected harness token before any session is persisted. */
-export function verifyHarness(target: ConnectionTarget, scope: string): Promise<ApiResult<HealthInfo>> {
+export function verifyHarness(target: ConnectionTarget, scope: string): Promise<ApiResult<HealthEnvelope>> {
   setActiveRequestScope(scope, target);
-  return requestWithContext<HealthInfo>(
+  return requestWithContext<HealthEnvelope>(
     { target, scope, generation: activeGeneration, timeoutMs: 10_000 },
     API_ENDPOINTS.health,
     { quiet: true },
   );
 }
 
-export const getHealth = (context: RequestContext): Promise<ApiResult<HealthInfo>> => get(context, API_ENDPOINTS.health);
+export const getHealth = (context: RequestContext): Promise<ApiResult<HealthEnvelope>> => get(context, API_ENDPOINTS.health);
 export const postAuthSession = (context: RequestContext, body: { code?: string; token?: string; [key: string]: unknown }): Promise<ApiResult<{ ok?: boolean; token?: string }>> => post(context, API_ENDPOINTS.authSession, body);
 export const getThreads = (context: RequestContext, params?: { limit?: number; cursor?: string; selectedId?: string }): Promise<ApiResult<{ threads?: ThreadSummary[]; total?: number; nextCursor?: string | null }>> => get(context, API_ENDPOINTS.threads, params);
-export const getThreadMessages = (context: RequestContext, threadId: string, params?: { limit?: number; before?: string }): Promise<ApiResult<{ messages?: ThreadMessage[]; items?: ThreadMessage[]; [key: string]: unknown }>> => get(context, endpointWithId(API_ENDPOINTS.threadMessages, threadId), params);
+export const getThreadMessages = (context: RequestContext, threadId: string, params?: { limit?: number; before?: string }): Promise<ApiResult<MessagesEnvelope>> => get(context, endpointWithId(API_ENDPOINTS.threadMessages, threadId), params);
 export const getThreadChanges = (context: RequestContext, threadId: string): Promise<ApiResult<{ changes?: ChangeEntry[]; files?: ChangeEntry[]; cursor?: string; changed?: boolean; [key: string]: unknown }>> => get(context, endpointWithId(API_ENDPOINTS.threadChanges, threadId), { timeout: 250 }, 12_000);
 
 /** Real new-thread / send responses: strictly require an id returned by the host. */
@@ -388,21 +439,26 @@ export function extractThreadId(data: unknown): string | null {
   return id || null;
 }
 
-/** The createThread flow uses /api/send with newThread:true on the native backend. */
-export const postNewThread = (context: RequestContext, body: { message: string; projectId?: string; clientRequestId?: string }): Promise<ApiResult<{ ok?: boolean; threadId?: string | null; [key: string]: unknown }>> =>
-  post(context, API_ENDPOINTS.send, {
-    newThread: true,
+/** Both send routes carry the exact model/effort IDs and plain-base64 payloads. */
+function sendBody(body: SendOptions, newThread: boolean): Record<string, unknown> {
+  return {
+    ...(newThread ? { newThread: true } : { threadId: String(body.threadId || '') }),
     message: body.message,
+    clientRequestId: body.clientRequestId,
+    ...(body.model ? { model: body.model } : {}),
+    ...(body.effort ? { effort: body.effort } : {}),
     ...(body.projectId ? { projectId: body.projectId } : {}),
-    ...(body.clientRequestId ? { clientRequestId: body.clientRequestId } : {}),
-  }, 30_000);
+    images: body.images || [],
+    files: body.files || [],
+  };
+}
 
-export const postSend = (context: RequestContext, body: { threadId: string; message: string; clientRequestId?: string }): Promise<ApiResult<{ ok?: boolean; threadId?: string | null; [key: string]: unknown }>> =>
-  post(context, API_ENDPOINTS.send, {
-    threadId: body.threadId,
-    message: body.message,
-    ...(body.clientRequestId ? { clientRequestId: body.clientRequestId } : {}),
-  }, 30_000);
+/** The createThread flow uses /api/send with newThread:true on the native backend. */
+export const postNewThread = (context: RequestContext, body: SendOptions): Promise<ApiResult<{ ok?: boolean; threadId?: string | null; [key: string]: unknown }>> =>
+  post(context, API_ENDPOINTS.send, sendBody(body, true), 30_000);
+
+export const postSend = (context: RequestContext, body: SendOptions): Promise<ApiResult<{ ok?: boolean; threadId?: string | null; [key: string]: unknown }>> =>
+  post(context, API_ENDPOINTS.send, sendBody(body, false), 30_000);
 
 export const postInterrupt = (context: RequestContext, body: { threadId: string }): Promise<ApiResult<{ ok?: boolean }>> => post(context, API_ENDPOINTS.interrupt, body);
 export const postApproval = (context: RequestContext, body: { threadId: string; id: string; decision: 'approve' | 'reject'; approved: boolean }): Promise<ApiResult<{ ok?: boolean }>> => post(context, API_ENDPOINTS.approval, body);

@@ -2,7 +2,7 @@ import { useEffect, useRef } from 'react';
 import { Toggle } from 'konsta/react';
 import { Wifi, Database, Activity, Trash2, Sun, RefreshCw, Download, X, ShieldCheck, CircleCheck, AlertTriangle } from 'lucide-react';
 import { InsetGroup } from '../components/Segmented';
-import { ActionButton, TapRow, StatusPill } from '../components/ui';
+import { TapRow, StatusPill } from '../components/ui';
 import { COLORS, APP_IDENTITY } from '../theme/optionATokens';
 import { useSessionState, setOfflineCacheEnabled, currentRequestContext } from '../state/sessionStore';
 import { useDataState, clearOfflineCache, refreshAll } from '../state/dataStore';
@@ -184,11 +184,11 @@ export default function SettingsScreen() {
         </div>
       </InsetGroup>
 
-      <div style={{ margin: '0 16px 12px' }}>
-        <ActionButton variant="neutral" icon={<X size={16} />} onClick={() => { haptic('warning'); openSheet('disconnect'); }} style={{ color: COLORS.red }}>
-          忘记这台电脑
-        </ActionButton>
-      </div>
+      <InsetGroup title="危险操作">
+        <TapRow leading={<X size={17} color={COLORS.red} />} onClick={() => { haptic('warning'); openSheet('disconnect'); }}>
+          <span style={{ fontSize: 15, color: COLORS.red }}>忘记这台电脑</span>
+        </TapRow>
+      </InsetGroup>
       <div style={{ textAlign: 'center', fontSize: 11, color: COLORS.labelSecondary, padding: '4px 24px 8px' }}>
         {APP_IDENTITY.label} · {session.appVersion} ({session.appVersionCode})
       </div>

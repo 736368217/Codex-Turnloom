@@ -479,7 +479,7 @@
           <div class="pagehead">
             <div class="pagehead-copy">
               <h1>设置</h1>
-              <p>修改服务、隧道与启动行为。保存后本机服务会自动重启。</p>
+              <p>分别配置电脑服务与访问方式。公网故障不影响局域网直连。</p>
             </div>
             <div class="head-actions">
               <button class="btn" type="button" id="btn-open-config">
@@ -487,6 +487,11 @@
                 <span>打开配置目录</span>
               </button>
             </div>
+          </div>
+          <div class="topology-strip" aria-label="三端职责">
+            <div><span class="topology-number">01</span><strong>手机客户端</strong><p>扫码连接 · 查看与发送</p></div>
+            <div><span class="topology-number">02</span><strong>电脑服务</strong><p>会话 API · 本地数据</p></div>
+            <div><span class="topology-number">03</span><strong>公网转发 <small>可选</small></strong><p>SSH / 反向代理 / VPN</p></div>
           </div>
 
           <form class="settings-form" id="settings-form" novalidate>
@@ -539,7 +544,8 @@
               </section>
 
               <section class="card settings-card">
-                <div class="card-h"><h3>本机服务</h3><span class="hint">修改后需要重启</span></div>
+                <div class="card-h"><h3>电脑服务</h3><span class="hint">会话 API 与数据来源</span></div>
+                <p class="network-hint" id="gateway-config-note" hidden></p>
                 <div class="field">
                   <div class="field-info">
                     <label class="field-label" for="set-port">监听端口</label>
@@ -615,8 +621,17 @@
               </section>
 
               <section class="card settings-card">
-                <div class="card-h"><h3>公网隧道</h3><span class="tag muted" id="tunnel-state-tag">未启用</span></div>
+                <div class="card-h"><h3>访问方式与公网转发</h3><span class="tag muted" id="tunnel-state-tag">直连</span></div>
                 <div class="field">
+                  <div class="field-info"><label class="field-label" for="set-network-mode">连接方式</label><div class="desc">独立于本机服务；可随环境切换</div></div>
+                  <div class="field-control"><select class="input select" id="set-network-mode" data-setting="network.mode">
+                    <option value="direct">局域网 / VPN 直连</option>
+                    <option value="external">外部 HTTPS 代理</option>
+                    <option value="ssh">SSH 反向隧道</option>
+                  </select></div>
+                </div>
+                <p class="network-hint" id="network-hint" role="status"></p>
+                <div class="field" hidden>
                   <div class="field-info">
                     <span class="field-label" id="label-tunnel-enabled">启用 SSH 反向隧道</span>
                     <div class="desc">让手机在外网也能访问这台电脑</div>
@@ -625,17 +640,17 @@
                     <button class="toggle" type="button" id="set-tunnel-enabled" data-setting="tunnel.enabled" role="switch" aria-checked="false" aria-labelledby="label-tunnel-enabled"><span class="sr-only">启用 SSH 反向隧道</span></button>
                   </div>
                 </div>
-                <div class="field">
+                <div class="field" data-public-field>
                   <div class="field-info">
                     <label class="field-label" for="set-public-url">公网访问地址</label>
-                    <div class="desc">显示在二维码中，例如 https://office.example.com</div>
+                    <div class="desc">客户端访问入口；与 SSH 服务器地址分开</div>
                   </div>
                   <div class="field-control">
                     <input class="input" type="text" id="set-public-url" data-setting="publicUrl" spellcheck="false" autocomplete="off" placeholder="https://">
                     <div class="field-error" id="err-publicUrl" data-error-for="publicUrl" hidden></div>
                   </div>
                 </div>
-                <div class="field">
+                <div class="field" data-ssh-field>
                   <div class="field-info">
                     <label class="field-label" for="set-tunnel-host">服务器地址</label>
                     <div class="desc">中转服务器的域名或 IP</div>
@@ -645,7 +660,7 @@
                     <div class="field-error" id="err-tunnel-host" data-error-for="tunnel.host" hidden></div>
                   </div>
                 </div>
-                <div class="field">
+                <div class="field" data-ssh-field>
                   <div class="field-info">
                     <label class="field-label" for="set-tunnel-user">用户名</label>
                     <div class="desc">用于建立 SSH 连接</div>
@@ -655,7 +670,7 @@
                     <div class="field-error" id="err-tunnel-user" data-error-for="tunnel.user" hidden></div>
                   </div>
                 </div>
-                <div class="field">
+                <div class="field" data-ssh-field>
                   <div class="field-info">
                     <label class="field-label" for="set-tunnel-port">远端端口</label>
                     <div class="desc">服务器上映射到本机的端口</div>
@@ -665,7 +680,7 @@
                     <div class="field-error" id="err-tunnel-remotePort" data-error-for="tunnel.remotePort" hidden></div>
                   </div>
                 </div>
-                <div class="field">
+                <div class="field" data-ssh-field>
                   <div class="field-info">
                     <label class="field-label" for="set-key-path">SSH 密钥</label>
                     <div class="desc">仅保存在本机，不会上传</div>
@@ -680,7 +695,7 @@
                     <div class="field-error" id="err-tunnel-keyPath" data-error-for="tunnel.keyPath" hidden></div>
                   </div>
                 </div>
-                <div class="field">
+                <div class="field" data-ssh-field>
                   <div class="field-info">
                     <label class="field-label" for="set-known-hosts">known_hosts</label>
                     <div class="desc">用于校验中转服务器指纹</div>
@@ -768,12 +783,12 @@
                 <span id="save-status-text">所有更改已保存</span>
                 <span class="save-error" id="save-error" hidden></span>
               </span>
-              <span class="savebar-note">保存后本机服务会自动重启，手机端会短暂断开约 2 秒。</span>
+              <span class="savebar-note">仅重启受影响模块。外观或访问地址修改不打断本机服务。</span>
               <div class="actions">
                 <button class="btn" type="button" id="btn-discard" disabled>放弃</button>
                 <button class="btn primary" type="submit" id="btn-save" disabled>
                   <svg class="i" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><use href="#i-check"></use></svg>
-                  <span>保存并重启服务</span>
+                  <span>保存设置</span>
                 </button>
               </div>
             </div>

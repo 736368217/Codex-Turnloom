@@ -13,7 +13,7 @@ import { COLORS } from '../theme/optionATokens';
 import { haptic, registerBackHandler } from '../lib/nativeBridge';
 import { backFromSheet } from '../state/sheetStore';
 import { useSessionState, currentRequestContext } from '../state/sessionStore';
-import { refreshAll, resetForScope } from '../state/dataStore';
+import { revalidateForForeground } from '../state/dataStore';
 
 /** App chrome. This subtree is mounted only after verified machine pairing. */
 export default function AppShell() {
@@ -23,7 +23,8 @@ export default function AppShell() {
 
   useEffect(() => {
     const context = currentRequestContext();
-    if (context) { resetForScope(context); void refreshAll(context); }
+    // Same-scope foreground revalidation keeps live messages and the attachment tray.
+    if (context) revalidateForForeground(context);
   }, [session.scope, session.generation]);
 
   useEffect(() => { haptic('selection'); }, [activeTab]);

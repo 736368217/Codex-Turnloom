@@ -34,7 +34,7 @@ export default function ThreadsScreen() {
       <div className="tl-safe-top" style={{ padding: '12px 20px 0' }}>
         <div style={{ display: 'flex', alignItems: 'center' }}>
           <div className="tl-large-title">会话</div><div style={{ flex: 1 }} />
-          <button type="button" className="tl-press" aria-label="新建任务" onClick={() => { haptic('selection'); openSheet('newTask'); }} style={{ width: 44, height: 44, borderRadius: 14, border: 0, background: COLORS.blue, color: '#FFFFFF', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <button type="button" className="tl-press" aria-label="新建任务" onClick={() => { haptic('selection'); openSheet('newTask'); }} style={{ width: 40, height: 40, borderRadius: 20, border: 0, background: COLORS.blue, color: '#FFFFFF', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
             <Plus size={20} />
           </button>
         </div>
@@ -61,7 +61,7 @@ export default function ThreadsScreen() {
         />
       )}
       <div style={{ display: 'flex', justifyContent: 'center', padding: '16px 0 8px' }}>
-        <button type="button" className="tl-press" onClick={() => { if (context) { haptic('selection'); void refreshThreads(context); } }} style={{ minHeight: 44, padding: '0 18px', border: 0, borderRadius: 999, background: COLORS.surface, color: COLORS.blue, fontSize: 13, fontWeight: 600 }}>
+        <button type="button" className="tl-press" onClick={() => { if (context) { haptic('selection'); void refreshThreads(context); } }} style={{ minHeight: 44, padding: '0 12px', border: 0, background: 'transparent', color: COLORS.blue, fontSize: 13, fontWeight: 600 }}>
           刷新会话列表
         </button>
       </div>

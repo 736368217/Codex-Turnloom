@@ -19,7 +19,7 @@ export default function HomeScreen() {
 
       <div style={{ display: 'flex', alignItems: 'center', padding: '18px 20px 8px' }}>
         <span className="tl-section-title" style={{ flex: 1, padding: 0 }}>活跃任务</span>
-        <button type="button" className="tl-press" onClick={() => { haptic('selection'); openSheet('newTask'); }} aria-label="新建任务" style={{ display: 'flex', alignItems: 'center', gap: 5, minHeight: 44, padding: '0 12px', border: 0, borderRadius: 999, background: COLORS.surface, color: COLORS.blue, fontSize: 13, fontWeight: 600 }}>
+        <button type="button" className="tl-press" onClick={() => { haptic('selection'); openSheet('newTask'); }} aria-label="新建任务" style={{ display: 'flex', alignItems: 'center', gap: 4, minHeight: 44, padding: '0 10px', border: 0, background: 'transparent', color: COLORS.blue, fontSize: 13, fontWeight: 600 }}>
           <Plus size={16} /> 新建
         </button>
       </div>

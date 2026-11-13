@@ -6,6 +6,7 @@ import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
 
+import org.json.JSONArray;
 import org.json.JSONObject;
 import org.junit.Test;
 
@@ -206,5 +207,94 @@ public class BridgeContractTest {
         assertFalse(json.contains("secret"));
         assertTrue(BridgeContract.validRequestId("req-1:A.b_c"));
         assertFalse(BridgeContract.validRequestId("req\"alert(1)"));
+    }
+
+    /** Request JSON and its body both stay bounded, but an encoded 6 MiB pick fits. */
+    @Test
+    public void acceptsBase64SizedBodyAndStillRejectsOversizedRequests() throws Exception {
+        String body = repeat('a', (int) BridgeContract.MAX_REQUEST_BODY_BYTES);
+        BridgeContract.HttpRequest req = BridgeContract.parseHttpRequest(requestJson(
+                "https://pair.example.com/api/send", "POST", null, body));
+        assertEquals(BridgeContract.MAX_REQUEST_BODY_BYTES, req.body.length);
+        assertEquals(BridgeContract.MAX_REQUEST_BODY_BYTES + 64L * 1024,
+                BridgeContract.MAX_HTTP_BODY_BYTES);
+        assertTrue(BridgeContract.MAX_HTTP_RESPONSE_BYTES
+                >= BridgeContract.MAX_REQUEST_BODY_BYTES);
+        expectCode("INVALID_REQUEST_JSON", () -> {
+            try {
+                BridgeContract.parseHttpRequest(requestJson(
+                        "https://pair.example.com/api/send", "POST", null,
+                        body + repeat('b', 64 * 1024 + 1)));
+            } catch (BridgeContract.ValidationException e) {
+                throw new RuntimeException(e);
+            }
+        });
+        expectCode("BODY_TOO_LARGE", () -> {
+            try {
+                BridgeContract.parseHttpRequest(requestJson(
+                        "https://pair.example.com/api/send", "POST", null, body + "z"));
+            } catch (BridgeContract.ValidationException e) {
+                throw new RuntimeException(e);
+            }
+        });
+    }
+
+    @Test
+    public void attachmentContractUsesBoundedStatusAndSafeMetadata() throws Exception {
+        assertEquals(4, BridgeContract.MAX_ATTACHMENT_FILES);
+        assertEquals(4L * 1024 * 1024, BridgeContract.MAX_ATTACHMENT_FILE_BYTES);
+        assertEquals(6L * 1024 * 1024, BridgeContract.MAX_ATTACHMENT_TOTAL_BYTES);
+        assertTrue(BridgeContract.validAttachmentKind("image"));
+        assertTrue(BridgeContract.validAttachmentKind("file"));
+        assertFalse(BridgeContract.validAttachmentKind("video"));
+        assertTrue(BridgeContract.validRequestId("attach-1:A.b_c"));
+        assertFalse(BridgeContract.validRequestId("attach\");alert(1)"));
+
+        String cancelled = BridgeContract.attachmentsResultJson("cancelled", null, null);
+        JSONObject cancelledJson = new JSONObject(cancelled);
+        assertEquals("cancelled", cancelledJson.getString("status"));
+        assertEquals(0, cancelledJson.getJSONArray("items").length());
+        assertFalse(cancelledJson.has("error"));
+
+        JSONObject error = new JSONObject(BridgeContract.attachmentErrorJson(
+                BridgeContract.ATTACH_FILE_TOO_LARGE));
+        assertEquals("error", error.getString("status"));
+        assertEquals(0, error.getJSONArray("items").length());
+        assertEquals("file-too-large", error.getString("error"));
+
+        assertEquals("image/png", BridgeContract.safeAttachmentMimeType(
+                "IMAGE/PNG; charset=binary"));
+        assertEquals("application/octet-stream",
+                BridgeContract.safeAttachmentMimeType(null));
+        try {
+            BridgeContract.safeAttachmentMimeType("image/svg+html\"><script>");
+            fail("expected invalid MIME");
+        } catch (BridgeContract.ValidationException e) {
+            assertEquals(BridgeContract.ATTACH_INVALID_MIME, e.getMessage());
+        }
+        assertEquals("report.txt", BridgeContract.safeAttachmentName(
+                "  report\n.txt  "));
+        assertEquals("ab", BridgeContract.safeAttachmentName("a\u2028b\u2029"));
+        assertEquals("attachment", BridgeContract.safeAttachmentName(" \u0000\t "));
+
+        JSONArray items = new JSONArray().put(new JSONObject(
+                BridgeContract.attachmentItemJson("evil\";alert(1)", "application/pdf", 3,
+                        "data:application/pdf;base64,AAEC")));
+        JSONObject success = new JSONObject(
+                BridgeContract.attachmentsResultJson("success", items, null));
+        assertEquals("success", success.getString("status"));
+        assertEquals(1, success.getJSONArray("items").length());
+        JSONObject item = success.getJSONArray("items").getJSONObject(0);
+        assertEquals("evil\";alert(1)", item.getString("name"));
+        assertEquals("application/pdf", item.getString("mimeType"));
+        assertEquals(3, item.getInt("sizeBytes"));
+        assertEquals("data:application/pdf;base64,AAEC", item.getString("dataUrl"));
+        assertFalse(success.has("error"));
+    }
+
+    private static String repeat(char value, int count) {
+        StringBuilder out = new StringBuilder(count);
+        for (int i = 0; i < count; i++) out.append(value);
+        return out.toString();
     }
 }

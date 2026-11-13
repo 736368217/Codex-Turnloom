@@ -47,6 +47,19 @@ export type QrScanResult =
   | { status: 'success'; value: string }
   | { status: 'cancelled' | 'error'; value?: string; code?: string; message?: string };
 
+export interface NativeAttachmentItem {
+  name: string;
+  mimeType: string;
+  sizeBytes: number;
+  dataUrl: string;
+}
+
+export interface NativeAttachmentResult {
+  status: 'success' | 'cancelled' | 'error';
+  items?: NativeAttachmentItem[];
+  error?: string;
+}
+
 /** Shape injected by native-shell MainActivity via addJavascriptInterface. */
 export interface TurnloomNative {
   secureGet(key: string): string | null;
@@ -56,12 +69,14 @@ export interface TurnloomNative {
   scanQr(requestId: string): void;
   getAppInfo(): string;
   setLightBars(): void;
+  pickAttachments?(requestId: string, kind: 'image' | 'file'): void;
   request?(requestId: string, requestJson: string): void;
   cancelRequest?(requestId: string): void;
   downloadUpdate?(requestId: string, optionsJson: string): void;
   cancelUpdate?(): void;
   installUpdate?(): void;
 }
+
 
 export interface NativeAppInfo {
   label: string;
@@ -79,6 +94,7 @@ declare global {
     __turnloomNativeQrResult?: (requestId: string, value: string) => void;
     __turnloomNativeQrError?: (requestId: string, code: string, message: string) => void;
     __turnloomNativeHttpResult?: (requestId: string, responseJson: string) => void;
+    __turnloomNativeAttachmentsResult?: (requestId: string, resultJson: string) => void;
     __turnloomNativeUpdateEvent?: (requestId: string, eventJson: string) => void;
     __turnloomBack?: () => boolean;
   }
@@ -441,6 +457,122 @@ export function installUpdate(): boolean {
 }
 
 // ---------------------------------------------------------------------------
+// Attachment picker: a native Promise callback or a real browser file input
+// ---------------------------------------------------------------------------
+
+export type AttachmentKind = 'image' | 'file';
+interface PendingAttachmentPick {
+  resolve: (result: NativeAttachmentResult) => void;
+  timer: ReturnType<typeof setTimeout> | null;
+}
+const pendingAttachmentPicks = new Map<string, PendingAttachmentPick>();
+let attachmentSeq = 0;
+
+export function hasNativeAttachmentPicker(): boolean {
+  const n = bridge();
+  return Boolean(n && typeof n.pickAttachments === 'function');
+}
+
+function settleAttachmentPick(requestId: string, result: NativeAttachmentResult): void {
+  const pending = pendingAttachmentPicks.get(requestId);
+  if (!pending) return;
+  if (pending.timer !== null) clearTimeout(pending.timer);
+  pendingAttachmentPicks.delete(requestId);
+  pending.resolve(result);
+}
+
+/** Native entry point. resultJson is a JSON string with dataUrl items. */
+export function deliverAttachmentsResult(requestId: string, resultJson: string): void {
+  let parsed: Partial<NativeAttachmentResult> = {};
+  try {
+    const value: unknown = JSON.parse(resultJson);
+    if (value && typeof value === 'object' && !Array.isArray(value)) parsed = value as Partial<NativeAttachmentResult>;
+  } catch { /* malformed bridge payload */ }
+  const status = parsed.status === 'cancelled' || parsed.status === 'error' ? parsed.status : 'success';
+  const items = Array.isArray(parsed.items)
+    ? parsed.items.filter((item): item is NativeAttachmentItem => Boolean(
+      item && typeof item === 'object' && typeof item.name === 'string' &&
+      typeof item.mimeType === 'string' && typeof item.dataUrl === 'string',
+    )).map((item) => ({
+      name: item.name,
+      mimeType: item.mimeType,
+      sizeBytes: Number(item.sizeBytes) || 0,
+      dataUrl: item.dataUrl,
+    }))
+    : [];
+  settleAttachmentPick(requestId, {
+    status,
+    items,
+    ...(typeof parsed.error === 'string' ? { error: parsed.error } : {}),
+  });
+}
+
+function readFileAsDataUrl(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(typeof reader.result === 'string' ? reader.result : '');
+    reader.onerror = () => reject(reader.error || new Error('read-failed'));
+    reader.readAsDataURL(file);
+  });
+}
+
+/** Browser fallback: a genuine OS file input, not a fabricated picker result. */
+function browserPick(kind: AttachmentKind): Promise<NativeAttachmentResult> {
+  if (typeof document === 'undefined') {
+    return Promise.resolve({ status: 'error', items: [], error: 'picker-unavailable' });
+  }
+  return new Promise((resolve) => {
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.multiple = true;
+    input.accept = kind === 'image' ? 'image/jpeg,image/png,image/webp' : '';
+    input.style.position = 'fixed';
+    input.style.left = '-9999px';
+    let settled = false;
+    const finish = (result: NativeAttachmentResult): void => {
+      if (settled) return;
+      settled = true;
+      input.remove();
+      resolve(result);
+    };
+    input.addEventListener('change', () => {
+      const files = Array.from(input.files || []);
+      if (!files.length) { finish({ status: 'cancelled', items: [] }); return; }
+      Promise.all(files.map(async (file) => ({
+        name: file.name,
+        mimeType: file.type || 'application/octet-stream',
+        sizeBytes: file.size,
+        dataUrl: await readFileAsDataUrl(file),
+      }))).then(
+        (items) => finish({ status: 'success', items }),
+        () => finish({ status: 'error', items: [], error: 'read-failed' }),
+      );
+    });
+    document.body.appendChild(input);
+    input.click();
+  });
+}
+
+export function pickAttachments(kind: AttachmentKind, timeoutMs = 180_000): Promise<NativeAttachmentResult> {
+  const n = bridge();
+  if (!n || typeof n.pickAttachments !== 'function') return browserPick(kind);
+  attachmentSeq += 1;
+  const requestId = `attach-${Date.now()}-${attachmentSeq}`;
+  return new Promise((resolve) => {
+    const timer = setTimeout(() => {
+      pendingAttachmentPicks.delete(requestId);
+      resolve({ status: 'error', items: [], error: 'picker-timeout' });
+    }, timeoutMs);
+    pendingAttachmentPicks.set(requestId, { resolve, timer });
+    try {
+      n.pickAttachments?.(requestId, kind);
+    } catch {
+      settleAttachmentPick(requestId, { status: 'error', items: [], error: 'picker-error' });
+    }
+  });
+}
+
+// ---------------------------------------------------------------------------
 // Hardware back key
 // ---------------------------------------------------------------------------
 
@@ -461,6 +593,7 @@ export function installNativeBridgeCallbacks(): void {
   if (typeof target === 'undefined') return;
   (target as Window).__turnloomNativeQrResult = (requestId, value) => deliverQrResult(requestId, value);
   (target as Window).__turnloomNativeQrError = (requestId, code, message) => deliverQrError(requestId, code, message);
+  (target as Window).__turnloomNativeAttachmentsResult = (requestId, resultJson) => deliverAttachmentsResult(requestId, resultJson);
   (target as Window).__turnloomNativeHttpResult = (requestId, responseJson) => deliverHttpResult(requestId, responseJson);
   (target as Window).__turnloomNativeUpdateEvent = (requestId, eventJson) => deliverUpdateEvent(requestId, eventJson);
   (target as Window).__turnloomBack = () => handleNativeBack();
@@ -477,6 +610,7 @@ export const nativeBridge = {
   isAllowedApiUrl, nativeHttpRequest, cancelNativeRequest, cancelAllNativeRequests, deliverHttpResult,
   onUpdateEvent, deliverUpdateEvent, startUpdateDownload, cancelUpdate, installUpdate,
   registerBackHandler, handleNativeBack, installNativeBridgeCallbacks,
+  hasNativeAttachmentPicker, deliverAttachmentsResult, pickAttachments,
 };
 
 export default nativeBridge;

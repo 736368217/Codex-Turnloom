@@ -23,6 +23,8 @@ import { spawn, execFileSync } from "node:child_process";
 
 const require = createRequire(import.meta.url);
 const { appendWithRotation, trimLargeFile } = require("./bounded-log.cjs");
+const { loadWatchdogConfig, dispatcherPlan, checkGatewayDiscovery } = require("./watchdog-runtime.cjs");
+const { configuredPublicUrl } = require("../desktop/service/transport.cjs");
 
 const argv = process.argv.slice(2);
 const LOOP = argv.includes("--loop");
@@ -93,7 +95,6 @@ function log(level, message, { force = false } = {}) {
   if (ONCE || process.env.DEBUG_WATCHDOG) process.stdout.write(line);
 }
 
-const readJson = (p) => JSON.parse(fs.readFileSync(p, "utf8").replace(/^\uFEFF/, ""));
 
 async function ping(base, token, { viaHeader = true, timeoutMs = 5000 } = {}) {
   try {
@@ -125,11 +126,11 @@ function boundedFile(filePath, fallbackMaxBytes = LOG_MAX_BYTES) {
   return fs.openSync(filePath, "a");
 }
 
-function spawnHidden(command, cmd, stdoutFile, stderrFile) {
+function spawnHidden(command, cmd, stdoutFile, stderrFile, cwd = DUAL_DIR) {
   const out = boundedFile(stdoutFile);
   const err = boundedFile(stderrFile);
   const child = spawn(command, cmd, {
-    cwd: DUAL_DIR,
+    cwd,
     windowsHide: true,
     detached: true,
     stdio: ["ignore", out, err],
@@ -182,12 +183,8 @@ function startBackend(device, main) {
 }
 
 function startDispatcher(main) {
-  const cmd = [
-    "server.js", "--host", "0.0.0.0", "--port", String(main.port),
-    "--password", String(main.accessCode), "--codex-home", String(main.codexHome),
-    "--public-url", String(main.publicUrl || ""),
-  ];
-  const pid = spawnHidden(NODE, cmd, path.join(LOG_DIR, "dispatcher-out.log"), path.join(LOG_DIR, "dispatcher-err.log"));
+  const plan = dispatcherPlan(main, DUAL_DIR);
+  const pid = spawnHidden(plan.command, plan.args, path.join(LOG_DIR, "dispatcher-out.log"), path.join(LOG_DIR, "dispatcher-err.log"), plan.cwd);
   log("action", `restarted dispatcher @${main.port} (pid ${pid})`);
 }
 
@@ -252,22 +249,23 @@ if (UNINSTALL) {
 
 async function sweep() {
   let main;
-  let dual;
+  let machine;
+  let devices;
   try {
-    main = readJson(MAIN_CONFIG);
-    dual = readJson(DUAL_CONFIG);
+    ({ main, machine, devices } = loadWatchdogConfig(MAIN_CONFIG, DUAL_CONFIG));
   } catch (error) {
     log("error", `config unavailable: ${error.message}`);
     return;
   }
-  const devices = Array.isArray(dual.devices) ? dual.devices : [];
   const localBase = `http://127.0.0.1:${main.port}`;
-  const publicBase = String(main.publicUrl || "").replace(/\/$/, "");
+  const publicBase = configuredPublicUrl(main);
 
-  const dispatcher = await ping(localBase, String(main.accessCode));
+  const dispatcher = machine
+    ? await checkGatewayDiscovery({ origin: localBase, machine, timeoutMs: 5000 })
+    : await ping(localBase, String(main.accessCode));
   if (dispatcher.ok) log("ok", `dispatcher ${localBase} healthy`);
   else {
-    log("warn", `dispatcher ${localBase} unhealthy (${dispatcher.why})`);
+    log("warn", `dispatcher ${localBase} unhealthy (${dispatcher.code || dispatcher.why})`);
     if (!ONCE) startDispatcher(main);
   }
 
@@ -285,10 +283,12 @@ async function sweep() {
   }
 
   if (publicBase) {
-    const pub = await ping(publicBase, String(main.accessCode), { viaHeader: true, timeoutMs: 8000 });
+    const pub = machine
+      ? await checkGatewayDiscovery({ origin: publicBase, machine, timeoutMs: 8000 })
+      : await ping(publicBase, String(main.accessCode), { viaHeader: true, timeoutMs: 8000 });
     if (pub.ok) log("ok", `public ${publicBase} healthy`);
     else {
-      log("warn", `public ${publicBase} unhealthy (${pub.why})`);
+      log("warn", `public ${publicBase} unhealthy (${pub.code || pub.why})`);
       if (!ONCE) startTunnel(main);
     }
   }
