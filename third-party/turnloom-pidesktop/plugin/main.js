@@ -955,6 +955,9 @@ function readPiDetails(sessionIds) {
   const db = new DatabaseSync(PI_DB, { readOnly: true });
   try {
     const marks = sessionIds.map(() => "?").join(",");
+    // 旧宿主的 turns 可能没有 error_code；只投影错误码，不读取供应商原始错误。
+    const errorCodeColumn = db.prepare("PRAGMA table_info(turns)").all().some((column) => column.name === "error_code")
+      ? "error_code" : "NULL AS error_code";
     return {
       messages: db
         .prepare(
@@ -963,7 +966,7 @@ function readPiDetails(sessionIds) {
         )
         .all(...sessionIds),
       turns: db
-        .prepare(`SELECT id, session_id, status, started_at, ended_at FROM turns WHERE session_id IN (${marks})`)
+        .prepare(`SELECT id, session_id, status, started_at, ended_at, ${errorCodeColumn} FROM turns WHERE session_id IN (${marks})`)
         .all(...sessionIds),
     };
   } finally {
@@ -998,7 +1001,14 @@ function buildRollout(session, messages, turns, queuedTurns = []) {
   const closeTurn = (turnId, atMs) => {
     if (!turnOpen) return;
     const turn = turnId ? turnById.get(String(turnId)) : null;
+    if (turn && String(turn.status) === "running" && !turn.ended_at) return;
+    atMs = Number(turn?.ended_at) || atMs;
     const startedMs = Number(turn?.started_at) || atMs;
+    // 仅权威失败状态生成通知；空 assistant / is_error 本身不代表整轮失败。
+    const code = /^[A-Z][A-Z0-9_]{0,63}$/.test(String(turn?.error_code || "")) ? String(turn.error_code) : "";
+    const error = String(turn?.status) === "error"
+      ? { ...(code ? { code } : {}), message: `本轮执行失败${code ? `（${code}）` : ""}，请切换模型或稍后重试` }
+      : null;
     push({
       timestamp: iso(atMs),
       type: "event_msg",
@@ -1007,6 +1017,7 @@ function buildRollout(session, messages, turns, queuedTurns = []) {
         turn_id: turnId || null,
         duration_ms: Math.max(0, atMs - startedMs),
         completed_at: Math.round(atMs / 1000),
+        ...(error ? { error } : {}),
       },
     });
     turnOpen = false;
@@ -1025,8 +1036,21 @@ function buildRollout(session, messages, turns, queuedTurns = []) {
     });
   };
 
-  let toolSeq = 0;
+  // 同一轮的交错消息一起输出，避免重复收尾或把失败通知归到下一轮。
+  const messagesByTurn = new Map();
   for (const msg of messages) {
+    const turnId = msg.turn_id ? String(msg.turn_id) : "turn-local";
+    if (!messagesByTurn.has(turnId)) messagesByTurn.set(turnId, []);
+    messagesByTurn.get(turnId).push(msg);
+  }
+  // 启动即失败的轮次可能连消息行都没有，仍须提供一次明确的失败收尾。
+  for (const turn of turnById.values()) {
+    if (String(turn.status) !== "error" || messagesByTurn.has(String(turn.id))) continue;
+    openTurn(String(turn.id), Number(turn.started_at) || startedAt);
+    closeTurn(String(turn.id), Number(turn.ended_at) || Number(session.updated_at) || startedAt);
+  }
+  let toolSeq = 0;
+  for (const msg of [...messagesByTurn.values()].flat()) {
     const at = Number(msg.created_at) || startedAt;
     const turnId = msg.turn_id ? String(msg.turn_id) : "turn-local";
     openTurn(turnId, at);
