@@ -26,7 +26,7 @@ test('ordinary file sending stages real bytes once inside request idempotency an
       assert.equal(message.includes(file.data), false);
       const names = await fs.readdir(path.join(root, 'scratch', body.threadId));
       assert.equal(names.length, 1);
-      const stagedPath = path.join(root, 'scratch', body.threadId, names[0]);
+      const stagedPath = await fs.realpath(path.join(root, 'scratch', body.threadId, names[0]));
       assert.equal(message.includes(stagedPath), true);
       assert.deepEqual(await fs.readFile(stagedPath), Buffer.from(file.data, 'base64'));
       return { ok: true, threadId };

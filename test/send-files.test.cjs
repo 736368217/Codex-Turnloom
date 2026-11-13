@@ -7,6 +7,7 @@ const {
   mkdirSync,
   readFileSync,
   readdirSync,
+  realpathSync,
   rmSync,
   symlinkSync,
   writeFileSync
@@ -46,7 +47,7 @@ function attach(name, bytes, mimeType = "application/octet-stream", extra = {}) 
 function tempDataRoot(t, label = "send files") {
   const root = mkdtempSync(path.join(os.tmpdir(), `turnloom ${label}-`));
   t.after(() => rmSync(root, { recursive: true, force: true }));
-  return root;
+  return realpathSync(root);
 }
 
 function expectSendFileError(promise, code = "INVALID_SEND_FILE", status = 400) {
@@ -372,4 +373,21 @@ test("stageSendFiles rolls back every byte written when a later write fails", as
   );
   assert.equal(calls, 2);
   assert.deepEqual(readdirSync(sessionRoot), []);
+});
+
+test("staging resolves an aliased App root before checking scratch containment", async (t) => {
+  const root = tempDataRoot(t, "aliased root");
+  const actual = path.join(root, "actual");
+  const alias = path.join(root, "alias");
+  mkdirSync(actual);
+  symlinkSync(actual, alias, process.platform === "win32" ? "junction" : "dir");
+  const files = await stageSendFiles(normalizeSendFiles([attach("readme.txt", "canonical bytes")]), {
+    dataRoot: alias, sessionKey: "thread-alias"
+  });
+  const scratch = realpathSync(path.join(actual, "scratch"));
+  const relative = path.relative(scratch, files[0].path);
+  assert.equal(relative.startsWith(".."), false);
+  assert.equal(path.isAbsolute(relative), false);
+  assert.equal(readFileSync(files[0].path, "utf8"), "canonical bytes");
+  assert.equal(messageWithSendFiles("read", files).includes(files[0].path), true);
 });
