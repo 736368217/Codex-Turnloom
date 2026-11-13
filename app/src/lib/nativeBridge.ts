@@ -589,12 +589,28 @@ export function pickAttachments(kind: AttachmentKind, timeoutMs = 180_000): Prom
 // ---------------------------------------------------------------------------
 
 let backHandler: (() => boolean) | null = null;
+const backLayers: { close: () => void }[] = [];
+
+/** Open drawers consume BACK before the underlying screen navigation. */
+export function pushNativeBackLayer(close: () => void): () => void {
+  const layer = { close };
+  backLayers.push(layer);
+  return () => {
+    const index = backLayers.indexOf(layer);
+    if (index >= 0) backLayers.splice(index, 1);
+  };
+}
 
 export function registerBackHandler(handler: (() => boolean) | null): void {
   backHandler = handler;
 }
 
 export function handleNativeBack(): boolean {
+  const layer = backLayers[backLayers.length - 1];
+  if (layer) {
+    try { layer.close(); } catch { /* an open drawer must not exit its screen */ }
+    return true;
+  }
   if (!backHandler) return false;
   try { return Boolean(backHandler()); } catch { return false; }
 }

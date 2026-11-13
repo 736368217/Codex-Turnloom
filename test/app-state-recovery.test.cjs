@@ -142,3 +142,47 @@ test('a late page cannot cross a harness switch or overwrite a newer head refres
   h.data.resetForScope(next); release({ threads: [{ id: 'wrong-service' }] }); await oldPage;
   assert.equal(h.data.dataStore.getState().threads.length, 0);
 });
+
+test('native BACK closes nested drawers before leaving chat and unregisters closed layers', () => {
+  const h = harness(); const bridge = h.load('lib/nativeBridge.ts'); const events = [];
+  bridge.registerBackHandler(() => { events.push('chat'); return true; });
+  const removeTask = bridge.pushNativeBackLayer(() => { events.push('task'); removeTask(); });
+  const removeModel = bridge.pushNativeBackLayer(() => { events.push('model'); removeModel(); });
+  assert.equal(window.__turnloomBack(), true);
+  assert.deepEqual(events, ['model']);
+  assert.equal(window.__turnloomBack(), true);
+  assert.deepEqual(events, ['model', 'task']);
+  assert.equal(window.__turnloomBack(), true);
+  assert.deepEqual(events, ['model', 'task', 'chat']);
+  const removeOld = bridge.pushNativeBackLayer(() => events.push('stale'));
+  removeOld(); removeOld();
+  bridge.registerBackHandler(null);
+  assert.equal(window.__turnloomBack(), false);
+});
+
+test('monitor running count follows authoritative polls and a successful stop immediately', async () => {
+  const h = harness(); await h.session.connectWithPairing(h.pairing);
+  const ctx = h.session.currentRequestContext(); h.data.resetForScope(ctx);
+  h.setReply(route => route === '/api/threads'
+    ? { threads: [{ id: 'one', status: { thinking: true } }, { id: 'stale', status: { thinking: true, staleTurn: true } }] }
+    : { status: { thinking: true } });
+  await h.data.refreshThreads(ctx);
+  assert.equal(h.data.dataStore.getState().runningCount, 1);
+  await h.data.refreshThreadStatus(ctx, 'one');
+  let releasePoll;
+  h.setReply(route => route.includes('/messages') ? new Promise(resolve => { releasePoll = resolve; }) : { ok: true });
+  assert.equal(await h.data.interruptThread(ctx, 'one'), true);
+  const stopped = h.data.dataStore.getState();
+  assert.equal(stopped.statusByThread.one.thinking, false);
+  assert.equal(stopped.runningCount, 0);
+  releasePoll({ status: { thinking: false } });
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(h.data.dataStore.getState().runningCount, 0);
+  h.setReply(() => ({ status: { thinking: true } }));
+  await h.data.refreshMessages(ctx, 'one');
+  assert.equal(h.data.dataStore.getState().runningCount, 1);
+  h.setReply(() => ({ __nativeResult: { status: 500, body: '{}' } }));
+  await h.data.refreshMessages(ctx, 'one');
+  assert.equal(h.data.dataStore.getState().runningCount, 1);
+  assert.equal(h.data.dataStore.getState().statusByThread.one.thinking, true);
+});

@@ -19,7 +19,7 @@ import { isCurrentContext, getActiveGeneration } from '../lib/turnloomApi';
 import { cacheKeyFor, setOnline, markSynced, sessionStore } from './sessionStore';
 import {
   selectRuntimeScope, applyHealth, applyThreadStatus,
-  threadListStatus, markThreadSubmitted,
+  threadListStatus, markThreadSubmitted, getThreadStatus,
 } from './runtimeStore';
 
 export interface DataState {
@@ -49,7 +49,16 @@ const EMPTY: DataState = {
   offline: false, error: '', lastSyncAt: null, cachedAt: null, runningCount: 0, errorCount: 0,
 };
 
-export const dataStore = createStore<DataState>({ ...EMPTY });
+const baseDataStore = createStore<DataState>({ ...EMPTY });
+export const dataStore: typeof baseDataStore = {
+  ...baseDataStore,
+  setState(patch) {
+    baseDataStore.setState(prev => {
+      const next = { ...prev, ...(typeof patch === 'function' ? patch(prev) : patch) };
+      return { ...next, ...deriveCounters(next.threads, next.statusByThread) };
+    });
+  },
+};
 
 function readThreads(scope: string): { threads: ThreadSummary[]; cachedAt: number | null } {
   if (!scope || !sessionStore.getState().offlineCacheEnabled) return { threads: [], cachedAt: null };
@@ -73,11 +82,14 @@ function persistThreads(scope: string, threads: ThreadSummary[]): void {
   catch { /* cache is best effort */ }
 }
 
-function deriveCounters(threads: ThreadSummary[]): { runningCount: number; errorCount: number } {
+function deriveCounters(
+  threads: ThreadSummary[],
+  statuses: DataState['statusByThread'] = {},
+): { runningCount: number; errorCount: number } {
   let runningCount = 0;
   let errorCount = 0;
   for (const thread of threads) {
-    const status = threadListStatus(thread.status);
+    const status = statuses[thread.id] || threadListStatus(thread.status);
     if (status.thinking) runningCount += 1;
     const raw = String(typeof thread.status === 'object' ? thread.status?.state || '' : thread.status || '').toLowerCase();
     if (/error|fail|denied|reject/.test(raw)) errorCount += 1;
@@ -85,9 +97,12 @@ function deriveCounters(threads: ThreadSummary[]): { runningCount: number; error
   return { runningCount, errorCount };
 }
 
-function statusMap(threads: ThreadSummary[]): Record<string, ReturnType<typeof threadListStatus>> {
-  const map: Record<string, ReturnType<typeof threadListStatus>> = {};
-  for (const thread of threads) map[thread.id] = threadListStatus(thread.status);
+function statusMap(threads: ThreadSummary[], scope?: string): DataState['statusByThread'] {
+  const map: DataState['statusByThread'] = {};
+  for (const thread of threads) {
+    const authoritative = scope ? getThreadStatus(scope, thread.id) : null;
+    map[thread.id] = threadListStatus(authoritative || thread.status);
+  }
   return map;
 }
 
@@ -133,7 +148,7 @@ function applyThreads(context: RequestContext, threads: ThreadSummary[], page?: 
   const list = rows.filter(row => !ids.has(row.id) && Boolean(ids.add(row.id)));
   persistThreads(context.scope, list);
   dataStore.setState({
-    scope: context.scope, threads: list, statusByThread: statusMap(list), loading: false, loadingMore: false, offline: false, error: '',
+    scope: context.scope, threads: list, statusByThread: statusMap(list, context.scope), loading: false, loadingMore: false, offline: false, error: '',
     ...(page ? {
       nextCursor: keepHistory ? prev.nextCursor : page.nextCursor || null,
       threadTotal: typeof page.total === 'number' ? page.total : null,

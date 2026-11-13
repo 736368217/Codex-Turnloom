@@ -1,6 +1,7 @@
-import type { ReactNode } from 'react';
+import { useLayoutEffect, useRef, type ReactNode } from 'react';
 import { Drawer } from 'vaul';
 import { COLORS, SHEET_HANDLE } from '../theme/optionATokens';
+import { pushNativeBackLayer } from '../lib/nativeBridge';
 
 /**
  * VaulSheet — the ONE bottom drawer primitive used by CupertinoSheetHost.
@@ -26,6 +27,12 @@ export default function VaulSheet({
   subtitle?: string;
   children: ReactNode;
 }) {
+  const onOpenChangeRef = useRef(onOpenChange);
+  useLayoutEffect(() => { onOpenChangeRef.current = onOpenChange; });
+  useLayoutEffect(() => {
+    if (open) return pushNativeBackLayer(() => onOpenChangeRef.current(false));
+  }, [open]);
+
   return (
     <Drawer.Root
       open={open}

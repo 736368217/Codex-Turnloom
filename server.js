@@ -2064,16 +2064,7 @@ class DesktopCodexIpcClient {
     return this.events.flatMap((event, index) => {
         if (Date.parse(event.timestamp) < cutoff) return [];
         const payload = event.message?.payload || event.message?.params || event.message;
-        const messageThreadId =
-          event.message?.conversationId ||
-          event.message?.conversation_id ||
-          event.message?.threadId ||
-          event.message?.thread_id ||
-          event.message?.params?.conversationId ||
-          event.message?.params?.conversation_id ||
-          event.message?.params?.threadId ||
-          event.message?.params?.thread_id ||
-          "";
+        const messageThreadId = approvalThreadId(event.message);
         if (selectedThreadId && (!messageThreadId || String(messageThreadId) !== selectedThreadId)) return [];
         const meta = {
           source: "desktop-ipc",
@@ -2087,7 +2078,7 @@ class DesktopCodexIpcClient {
             const interaction = messageFromInteractionEvent(event.timestamp, interactionPayload, meta);
             const pendingApproval = interaction?.requestId ? pendingById.get(String(interaction.requestId)) : null;
             const locallyResolvedAt = interaction?.requestId ? locallyResolved?.get(String(interaction.requestId)) : null;
-            const canApprove = Boolean(pendingApproval && pendingApproval.detailsHash === interaction.detailsHash && !locallyResolvedAt);
+            const canApprove = Boolean(pendingApproval && pendingApproval.approvalKind === interaction.approvalKind && pendingApproval.detailsHash === interaction.detailsHash && !locallyResolvedAt);
             if (locallyResolvedAt && Date.now() - locallyResolvedAt >= APPROVAL_TTL_MS) locallyResolved.delete(String(interaction.requestId));
             if (!hasDisplayableMessageContent(interaction)) return null;
             return {
@@ -3695,26 +3686,30 @@ function approvalDetailText(...values) {
   return "";
 }
 
+function interactionReviewableDetails(payload) {
+  const toolArguments = parseMaybeJsonObject(payload?.arguments);
+  const params = payload?.params || payload?.payload || toolArguments || {};
+  const request = payload?.request || params?.request || {};
+  const toolCall = payload?.tool_call || params?.tool_call || params?.toolCall || {};
+  const commands = [
+    payload?.command, params?.command, toolArguments?.cmd, toolArguments?.command,
+    request?.command, payload?.cmd, params?.cmd, payload?.program, params?.program,
+    payload?.execve, params?.execve, toolCall?.command
+  ];
+  return {
+    command: firstString(...commands.filter(value => typeof value === "string" || (Array.isArray(value) && value.every(part => typeof part === "string")))),
+    changes: approvalDetailText(payload?.changes, params?.changes, request?.changes, payload?.diff, params?.diff, payload?.patch, params?.patch),
+    permissions: approvalDetailText(payload?.permissions, params?.permissions, request?.permissions, payload?.requestedPermissions, params?.requestedPermissions)
+  };
+}
+
 function interactionContent(payload) {
   const toolArguments = parseMaybeJsonObject(payload?.arguments);
   const params = payload?.params || payload?.payload || toolArguments || {};
   const request = payload?.request || params?.request || {};
   const toolCall = payload?.tool_call || params?.tool_call || params?.toolCall || {};
-  const command = firstString(
-    payload?.command,
-    params?.command,
-    toolArguments?.cmd,
-    toolArguments?.command,
-    request?.command,
-    payload?.cmd,
-    params?.cmd,
-    payload?.program,
-    params?.program,
-    payload?.execve,
-    params?.execve,
-    toolCall?.command,
-    toolCall?.name
-  );
+  const details = interactionReviewableDetails(payload);
+  const command = details.command || firstString(toolCall?.name);
   const pathValue = firstString(
     payload?.path,
     params?.path,
@@ -3751,8 +3746,7 @@ function interactionContent(payload) {
       : Array.isArray(request?.options)
         ? request.options
         : [];
-  const changes = approvalDetailText(payload?.changes, params?.changes, request?.changes, payload?.diff, params?.diff, payload?.patch, params?.patch);
-  const permissions = approvalDetailText(payload?.permissions, params?.permissions, request?.permissions, payload?.requestedPermissions, params?.requestedPermissions);
+  const { changes, permissions } = details;
   const lines = [
     prompt ? `Prompt: ${prompt}` : "",
     command ? `Command: ${command}` : "",
@@ -3772,20 +3766,23 @@ function interactionRequestId(payload) {
   return (
     payload?.request_id ||
     payload?.requestId ||
+    payload?.approvalRequestId ||
     payload?.approval_id ||
     payload?.approvalId ||
+    params?.request_id ||
+    params?.requestId ||
+    params?.approvalRequestId ||
+    params?.approval_id ||
+    params?.approvalId ||
+    request?.request_id ||
+    request?.requestId ||
+    request?.approvalRequestId ||
+    request?.approval_id ||
+    request?.approvalId ||
     payload?.id ||
     payload?.call_id ||
     payload?.callId ||
-    params?.request_id ||
-    params?.requestId ||
-    params?.approval_id ||
-    params?.approvalId ||
     params?.id ||
-    request?.request_id ||
-    request?.requestId ||
-    request?.approval_id ||
-    request?.approvalId ||
     request?.id ||
     null
   );
@@ -3829,11 +3826,10 @@ function approvalDetailsHash(content) {
   return createHash("sha256").update(String(content || ""), "utf8").digest("hex");
 }
 
-function interactionHasReviewableDetails(content, kind) {
-  const text = String(content || "");
-  if (text.length > 64 * 1024) return false;
-  const label = kind === "command" ? "Command" : kind === "file" ? "Changes" : kind === "permission" ? "Permissions" : "";
-  return Boolean(label && new RegExp(`(?:^|\\n)${label}:\\s*\\S`, "i").test(text));
+function interactionHasReviewableDetails(payload, kind, content) {
+  if (String(content || "").length > 64 * 1024) return false;
+  const details = interactionReviewableDetails(payload);
+  return Boolean(kind === "command" ? details.command : kind === "file" ? details.changes : kind === "permission" ? details.permissions : "");
 }
 
 function messageFromInteractionEvent(timestamp, payload, meta = {}) {
@@ -3841,7 +3837,7 @@ function messageFromInteractionEvent(timestamp, payload, meta = {}) {
   const approvalKind = approvalKindFromPayload(payload);
   const requestId = interactionRequestId(payload);
   const content = interactionContent(payload);
-  const reviewable = Boolean(approvalKind && requestId && interactionHasReviewableDetails(content, approvalKind));
+  const reviewable = Boolean(approvalKind && requestId && interactionHasReviewableDetails(payload, approvalKind, content));
   return {
     role: "interaction",
     kind: payload?.type || payload?.method || payload?.name || "interaction",
@@ -7193,7 +7189,9 @@ function visitObjects(value, visitor, depth = 0, seen = new Set()) {
 }
 
 function approvalThreadId(message) {
-  return String(message?.conversationId || message?.conversation_id || message?.threadId || message?.thread_id || message?.params?.conversationId || message?.params?.conversation_id || message?.params?.threadId || message?.params?.thread_id || "");
+  const params = message?.params || message?.payload || {};
+  const request = message?.request || params?.request || {};
+  return String(message?.conversationId || message?.conversation_id || message?.threadId || message?.thread_id || params?.conversationId || params?.conversation_id || params?.threadId || params?.thread_id || request?.conversationId || request?.conversation_id || request?.threadId || request?.thread_id || "");
 }
 function approvalRequestsFromEvents(events, threadId, nowMs = Date.now()) {
   const selectedThreadId = String(threadId || "");
@@ -7206,18 +7204,16 @@ function approvalRequestsFromEvents(events, threadId, nowMs = Date.now()) {
     const timestampMs = Date.parse(event?.timestamp || "");
     if (!Number.isFinite(timestampMs) || timestampMs < cutoff || timestampMs > nowMs + 60_000 || approvalThreadId(event.message) !== selectedThreadId) continue;
     if (isApprovalDecisionPayload(event.message)) {
-      const params = event.message?.params || event.message?.payload || {};
-      const requestId = String(params.requestId || params.request_id || params.approvalRequestId || "");
+      const requestId = String(interactionRequestId(event.message) || "");
       if (requestId) decisions.push({ eventIndex, requestId });
       continue;
     }
     for (const payload of interactionPayloadsFromIpcMessage(event.message)) {
       const requestId = String(interactionRequestId(payload) || "");
       const approvalKind = approvalKindFromPayload(payload) || approvalKindFromMethod(payload.method || payload.type || payload.name);
-      if (!requestId || !APPROVAL_KINDS.has(approvalKind)) continue;
+      if (!requestId) continue;
       const message = messageFromInteractionEvent(event.timestamp, payload, { source: "desktop-ipc", threadId: selectedThreadId });
-      if (!message?.canApprove || !message.detailsHash) continue;
-      requests.push({ requestId, approvalKind, detailsHash: message.detailsHash, title: message.title, content: message.content, availableDecisions: message.availableDecisions || [], eventIndex });
+      requests.push({ requestId, approvalKind, canApprove: Boolean(message?.canApprove), detailsHash: message?.detailsHash, title: message?.title, content: message?.content, availableDecisions: message?.availableDecisions || [], eventIndex });
     }
   }
   const latestById = new Map();
@@ -7226,9 +7222,9 @@ function approvalRequestsFromEvents(events, threadId, nowMs = Date.now()) {
     if (!previous || request.eventIndex > previous.eventIndex) latestById.set(request.requestId, request);
   }
   return [...latestById.values()]
-    .filter(request => !decisions.some(decision => decision.requestId === request.requestId && decision.eventIndex > request.eventIndex))
+    .filter(request => APPROVAL_KINDS.has(request.approvalKind) && request.canApprove && request.detailsHash && !decisions.some(decision => decision.requestId === request.requestId && decision.eventIndex > request.eventIndex))
     .sort((a, b) => a.eventIndex - b.eventIndex)
-    .map(({ eventIndex, ...request }) => request);
+    .map(({ eventIndex, canApprove, ...request }) => request);
 }
 
 function findLiveApprovalRequest(threadId, requestId, approvalKind, detailsHash) {

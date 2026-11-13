@@ -23,6 +23,8 @@ export default function MonitorsScreen() {
   const session = useSessionState();
   const context = currentRequestContext();
   const [elapsed, setElapsed] = useState(0);
+  const runningThreads = data.threads.filter(thread =>
+    (data.statusByThread[thread.id] || threadListStatus(thread.status)).thinking);
 
   useEffect(() => {
     const base = data.lastSyncAt || Date.now();
@@ -40,7 +42,7 @@ export default function MonitorsScreen() {
       </div>
       <InsetGroup title="运行态摘要">
         <div style={{ display: 'flex', padding: '14px 8px' }}>
-          <Metric icon={<Radio size={16} />} label="运行中" value={data.runningCount} tone="blue" />
+          <Metric icon={<Radio size={16} />} label="运行中" value={runningThreads.length} tone="blue" />
           <Metric icon={<AlertTriangle size={16} />} label="错误" value={data.errorCount} tone="red" />
           <Metric icon={<Cpu size={16} />} label="会话" value={data.threads.length} tone="green" />
         </div>
@@ -58,13 +60,13 @@ export default function MonitorsScreen() {
         </div>
       </InsetGroup>
       <InsetGroup title="运行中的会话">
-        {data.threads.filter(thread => (data.statusByThread[thread.id] || threadListStatus(thread.status)).thinking).map(thread => (
+        {runningThreads.map(thread => (
           <TapRow key={thread.id} leading={<Radio size={17} color={COLORS.blue} />} trailing={<span style={{ fontSize: 12, color: COLORS.blue }}>查看 / 停止</span>}
             onClick={() => { haptic('selection'); openDetail(thread.id, titleOfThread(thread)); }}>
             <span className="tl-monitor-title">{titleOfThread(thread)}</span>
           </TapRow>
         ))}
-        {!data.threads.some(thread => (data.statusByThread[thread.id] || threadListStatus(thread.status)).thinking) && <p className="tl-page-note">当前已加载的会话中没有运行任务</p>}
+        {runningThreads.length === 0 && <p className="tl-page-note">当前已加载的会话中没有运行任务</p>}
       </InsetGroup>
       <InsetGroup title="错误与告警">
         {data.errorCount > 0 ? (
