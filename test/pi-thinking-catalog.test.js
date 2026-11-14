@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';import fs from 'node:fs';import vm from 'node:vm';import test from 'node:test';
 import {modelConfigurationFromCatalog,normalizeTurnSettings} from '../server.js';
-const source=fs.readFileSync(new URL('../third-party/turnloom-pidesktop/plugin/main.js',import.meta.url),'utf8');
+const source=fs.readFileSync(new URL('../third-party/turnloom-pidesktop/plugin/main.js',import.meta.url),'utf8').replace(/\r\n/g,'\n');
 function part(start,end){const at=source.indexOf(start),to=source.indexOf(end,at);assert.ok(at>=0&&to>at);return source.slice(at,to);}
 const thinking=part('function modelThinkingFromRow(','/** 把 PI 的 供应商 × 模型');
 const fn=vm.runInNewContext(thinking+';modelThinkingFromRow');
