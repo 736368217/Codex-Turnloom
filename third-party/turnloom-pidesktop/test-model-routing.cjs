@@ -141,7 +141,7 @@ plugin.buildModelIndex([
   { provider_id: "P2", provider_name: "U2", model_id: "deepseek-v4.1-flash", provider_enabled: 1 },
   { provider_id: "P3", provider_name: "hub-4.1auto", model_id: "deepseek-v4.1-flash", provider_enabled: 1 },
   { provider_id: "P3", provider_name: "hub-4.1auto", model_id: "community/vendouple/deepseek-v4.1-flash", provider_enabled: 1 },
-]);
+].map((row) => ({ ...row, provider_config_json: JSON.stringify({ models: [{ id: row.model_id, thinkingLevels: ["low", "medium", "high"], defaultThinkingLevel: "medium" }] }) })));
 
 // ── 1. slug 解析 ─────────────────────────────────────────────────────────
 const bySlug = plugin.turnSettingsFromRequest({ model: "77625 free/x-deepseek-v4.1-flash" });

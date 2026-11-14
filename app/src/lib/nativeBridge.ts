@@ -70,7 +70,8 @@ export interface TurnloomNative {
   scanQr(requestId: string): void;
   getAppInfo(): string;
   setLightBars(): void;
-  pickAttachments?(requestId: string, kind: 'image' | 'file'): void;
+  pickAttachments?(requestId: string, kind: 'image' | 'file'): void | string;
+  cancelAttachmentPick?(requestId: string): void;
   openExternalUrl?(url: string): boolean;
   request?(requestId: string, requestJson: string): void;
   cancelRequest?(requestId: string): void;
@@ -479,6 +480,7 @@ interface PendingAttachmentPick {
 }
 const pendingAttachmentPicks = new Map<string, PendingAttachmentPick>();
 let attachmentSeq = 0;
+let attachmentPickBusy = false;
 
 export function hasNativeAttachmentPicker(): boolean {
   const n = bridge();
@@ -529,7 +531,7 @@ function readFileAsDataUrl(file: File): Promise<string> {
 }
 
 /** Browser fallback: a genuine OS file input, not a fabricated picker result. */
-function browserPick(kind: AttachmentKind): Promise<NativeAttachmentResult> {
+function browserPick(kind: AttachmentKind, timeoutMs: number): Promise<NativeAttachmentResult> {
   if (typeof document === 'undefined') {
     return Promise.resolve({ status: 'error', items: [], error: 'picker-unavailable' });
   }
@@ -544,9 +546,12 @@ function browserPick(kind: AttachmentKind): Promise<NativeAttachmentResult> {
     const finish = (result: NativeAttachmentResult): void => {
       if (settled) return;
       settled = true;
+      clearTimeout(timer);
       input.remove();
       resolve(result);
     };
+    const timer = setTimeout(() => finish({ status: 'error', items: [], error: 'picker-timeout' }), timeoutMs);
+    input.addEventListener('cancel', () => finish({ status: 'cancelled', items: [] }));
     input.addEventListener('change', () => {
       const files = Array.from(input.files || []);
       if (!files.length) { finish({ status: 'cancelled', items: [] }); return; }
@@ -560,28 +565,51 @@ function browserPick(kind: AttachmentKind): Promise<NativeAttachmentResult> {
         () => finish({ status: 'error', items: [], error: 'read-failed' }),
       );
     });
-    document.body.appendChild(input);
-    input.click();
+    try {
+      document.body.appendChild(input);
+      input.click();
+    } catch {
+      finish({ status: 'error', items: [], error: 'picker-unavailable' });
+    }
   });
 }
 
-export function pickAttachments(kind: AttachmentKind, timeoutMs = 180_000): Promise<NativeAttachmentResult> {
+export function pickAttachments(kind: AttachmentKind, timeoutMs = 600_000): Promise<NativeAttachmentResult> {
+  // Reserve synchronously: double taps and separate/remounted composers share one picker.
+  if (attachmentPickBusy) return Promise.resolve({ status: 'error', items: [], error: 'picker-busy' });
+  attachmentPickBusy = true;
   const n = bridge();
-  if (!n || typeof n.pickAttachments !== 'function') return browserPick(kind);
-  attachmentSeq += 1;
-  const requestId = `attach-${Date.now()}-${attachmentSeq}`;
-  return new Promise((resolve) => {
-    const timer = setTimeout(() => {
-      pendingAttachmentPicks.delete(requestId);
-      resolve({ status: 'error', items: [], error: 'picker-timeout' });
-    }, timeoutMs);
-    pendingAttachmentPicks.set(requestId, { resolve, timer });
-    try {
-      n.pickAttachments?.(requestId, kind);
-    } catch {
-      settleAttachmentPick(requestId, { status: 'error', items: [], error: 'picker-error' });
-    }
-  });
+  if (n && typeof n.pickAttachments !== 'function') {
+    attachmentPickBusy = false;
+    return Promise.resolve({ status: 'error', items: [], error: 'picker-unavailable' });
+  }
+  let operation: Promise<NativeAttachmentResult>;
+  if (!n || typeof n.pickAttachments !== 'function') {
+    operation = browserPick(kind, timeoutMs);
+  } else {
+    attachmentSeq += 1;
+    const requestId = `attach-${Date.now()}-${attachmentSeq}`;
+    operation = new Promise((resolve) => {
+      const timer = setTimeout(() => {
+        if (!pendingAttachmentPicks.has(requestId)) return;
+        // Retire JS ownership first, including against synchronous late native callbacks.
+        settleAttachmentPick(requestId, { status: 'error', items: [], error: 'picker-timeout' });
+        try { n.cancelAttachmentPick?.(requestId); } catch { /* already settled */ }
+      }, timeoutMs);
+      pendingAttachmentPicks.set(requestId, { resolve, timer });
+      try {
+        const error = n.pickAttachments?.(requestId, kind);
+        if (typeof error === 'string' && error) {
+          settleAttachmentPick(requestId, { status: 'error', items: [], error });
+        }
+      } catch {
+        settleAttachmentPick(requestId, { status: 'error', items: [], error: 'picker-unavailable' });
+      }
+    });
+  }
+  return operation.catch((): NativeAttachmentResult => ({
+    status: 'error', items: [], error: 'picker-unavailable',
+  })).finally(() => { attachmentPickBusy = false; });
 }
 
 // ---------------------------------------------------------------------------

@@ -22,6 +22,7 @@ import {
   selectRuntimeScope, applyHealth, applyThreadStatus,
   threadListStatus, markThreadSubmitted, getThreadStatus,
 } from './runtimeStore';
+import { mergeMessagePages } from '../lib/messagePaging';
 
 export interface DataState {
   scope: string;
@@ -31,6 +32,7 @@ export interface DataState {
   /** Authoritative per-thread runtime status, separate from message arrays. */
   statusByThread: Record<string, ReturnType<typeof threadListStatus>>;
   messageState: Record<string, { loading: boolean; error: string; loaded: boolean }>;
+  messagePages: Record<string, { olderCursor: string | null; hasOlder: boolean; expanded: boolean; loading: boolean; error: string }>;
   loading: boolean;
   loadingMore: boolean;
   nextCursor: string | null;
@@ -45,7 +47,7 @@ export interface DataState {
 }
 
 const EMPTY: DataState = {
-  scope: '', threads: [], messagesByThread: {}, changesByThread: {}, statusByThread: {}, messageState: {},
+  scope: '', threads: [], messagesByThread: {}, changesByThread: {}, statusByThread: {}, messageState: {}, messagePages: {},
   loading: false, loadingMore: false, nextCursor: null, threadTotal: null, threadPages: 0,
   offline: false, error: '', lastSyncAt: null, cachedAt: null, runningCount: 0, errorCount: 0,
 };
@@ -235,10 +237,31 @@ export async function refreshMessages(context: RequestContext, threadId: string,
   // A failed poll or a result older than a local stop must NOT clear or replace the authoritative runtime status.
   if (statusIsCurrent) applyThreadStatus(context.scope, threadId, result.data?.status);
   dataStore.setState(prev => prev.scope === context.scope ? {
-    ...(Array.isArray(list) ? { messagesByThread: { ...prev.messagesByThread, [threadId]: list } } : {}),
+    ...(Array.isArray(list) ? { messagesByThread: { ...prev.messagesByThread, [threadId]: prev.messagePages[threadId]?.expanded ? mergeMessagePages(prev.messagesByThread[threadId] || [], list) : list } } : {}),
+    ...(result.ok && !prev.messagePages[threadId]?.expanded && !prev.messagePages[threadId]?.loading ? { messagePages: { ...prev.messagePages, [threadId]: { olderCursor: typeof result.data.olderCursor === 'string' ? result.data.olderCursor : null, hasOlder: result.data.hasOlderMessages === true, expanded: false, loading: false, error: '' } } } : {}),
     ...(statusIsCurrent ? { offline: false, statusByThread: { ...prev.statusByThread, [threadId]: threadListStatus(result.data?.status) } } : {}),
     messageState: { ...prev.messageState, [threadId]: { loading: false, loaded: result.ok || previous?.loaded || false, error: result.ok ? '' : actionable(result) } },
   } : {});
+}
+
+/** History pages never change live runtime status. A service switch discards them. */
+export async function loadOlderMessages(context: RequestContext, threadId: string): Promise<void> {
+  const page = dataStore.getState().messagePages[threadId];
+  if (!current(context) || !page?.olderCursor || page.loading) return;
+  const cursor = page.olderCursor;
+  dataStore.setState(prev => ({ messagePages: { ...prev.messagePages, [threadId]: { ...page, loading: true, error: '' } } }));
+  const result = await getThreadMessages(context, threadId, { limit: 80, before: cursor });
+  if (!current(context)) return;
+  dataStore.setState(prev => {
+    if (prev.scope !== context.scope) return {};
+    if (!result.ok) return { messagePages: { ...prev.messagePages, [threadId]: { ...page, loading: false, error: actionable(result) } } };
+    const rows = result.data.messages || result.data.items || [];
+    const next = typeof result.data.olderCursor === 'string' && result.data.olderCursor !== cursor ? result.data.olderCursor : null;
+    return {
+      messagesByThread: { ...prev.messagesByThread, [threadId]: mergeMessagePages(Array.isArray(rows) ? rows : [], prev.messagesByThread[threadId] || []) },
+      messagePages: { ...prev.messagePages, [threadId]: { olderCursor: next, hasOlder: result.data.hasOlderMessages === true, expanded: true, loading: false, error: '' } },
+    };
+  });
 }
 
 /** Refresh the authoritative status after send without allowing a pre-stop poll to win. */

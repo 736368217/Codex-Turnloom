@@ -19,7 +19,7 @@ export function sheetPreference(
   if (!entry) return selected;
   const candidate = effort || (entry.id === selected.model ? selected.effort : '');
   const nextEffort = candidate && entry.efforts.includes(candidate)
-    ? candidate : entry.efforts.includes(entry.defaultEffort) ? entry.defaultEffort : entry.efforts[0];
+    ? candidate : entry.efforts.includes(entry.defaultEffort) ? entry.defaultEffort : entry.efforts[0] || '';
   return { model: entry.id, effort: nextEffort };
 }
 
@@ -104,7 +104,7 @@ export function pickerTrayForResult(input: {
     return { ...base, ignored: true };
   }
   if (input.result.status === 'error') {
-    return { ...base, error: input.result.error === 'picker-timeout' ? '选择超时，请重新打开选择器。' : '无法读取所选文件，请重试或更换文件。' };
+    return { ...base, error: pickerErrorMessage(input.result) };
   }
   const now = Date.now();
   const incoming: SendAttachment[] = (input.result.items || []).map((item, index) => {
@@ -129,7 +129,17 @@ export function pickerTrayForResult(input: {
 }
 
 export function pickerErrorMessage(result: NativeAttachmentResult): string {
-  return result.status === 'error'
-    ? result.error === 'picker-timeout' ? '选择超时，请重新打开选择器。' : '无法读取所选文件，请重试或更换文件。'
-    : '';
+  if (result.status !== 'error') return '';
+  switch (result.error) {
+    case 'picker-busy': return '文件选择器已打开，请先完成或取消当前选择。';
+    case 'picker-unavailable': return '此设备暂时无法打开文件选择器，请稍后重试。';
+    case 'bridge-not-ready': return '附件功能尚未就绪，请稍后重试。';
+    case 'permission-denied': return '没有读取所选文件的权限，请重新选择。';
+    case 'picker-timeout': return '选择超时，请重新打开选择器。';
+    case 'too-many-files': return '一次最多选择 4 个附件，请减少数量后重试。';
+    case 'file-too-large': return '单个附件不能超过 4 MB，请选择较小的文件。';
+    case 'attachments-too-large': return '附件总大小不能超过 6 MB，请移除部分附件。';
+    case 'invalid-mime-type': return '所选文件类型不受支持，请重新选择。';
+    default: return '无法读取所选文件，请重试或更换文件。';
+  }
 }

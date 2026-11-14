@@ -9,6 +9,8 @@ import android.content.pm.PackageManager;
 import android.graphics.Color;
 import android.os.Build;
 import android.os.Bundle;
+import android.util.Log;
+import android.view.Gravity;
 import android.view.View;
 import android.view.ViewGroup;
 import android.view.Window;
@@ -19,6 +21,9 @@ import android.webkit.WebChromeClient;
 import android.webkit.WebSettings;
 import android.webkit.WebView;
 import android.webkit.WebViewClient;
+import android.widget.Button;
+import android.widget.LinearLayout;
+import android.widget.TextView;
 
 import org.json.JSONException;
 import org.json.JSONObject;
@@ -41,6 +46,7 @@ public class MainActivity extends Activity {
     private NativeHttpClient httpClient;
     private UpdateManager updateManager;
     private AttachmentPicker attachmentPicker;
+    private final WebViewStartup webViewStartup = new WebViewStartup();
     private volatile boolean packagedPageLoaded = false;
     private volatile boolean loadingPackagedPage = false;
 
@@ -57,6 +63,52 @@ public class MainActivity extends Activity {
         if (!pairedUrl.isEmpty()) {
             NativeHttpPolicy.pairLanOrigin(this, pairedUrl + "/api/health");
         }
+        startWebView();
+    }
+
+    private void startWebView() {
+        webViewStartup.attempt(() -> getDir("webview", Context.MODE_PRIVATE),
+                this::initializeWebView, error -> {
+                    Log.e("Turnloom", WebViewStartup.ERROR_CODE, error);
+                    releaseWebViewResources();
+                    showWebViewFailure();
+                });
+    }
+
+    private void showWebViewFailure() {
+        LinearLayout page = new LinearLayout(this);
+        page.setOrientation(LinearLayout.VERTICAL);
+        page.setGravity(Gravity.CENTER);
+        int padding = (int) (24 * getResources().getDisplayMetrics().density);
+        page.setPadding(padding, padding, padding, padding);
+        page.setBackgroundColor(Color.parseColor("#F2F2F7"));
+        TextView title = new TextView(this);
+        title.setText("暂时无法启动应用界面");
+        title.setTextSize(22);
+        title.setTextColor(Color.parseColor("#1C1C1E"));
+        page.addView(title);
+        TextView detail = new TextView(this);
+        detail.setText("系统 WebView 初始化失败，请重试。配对信息已保留。\n"
+                + WebViewStartup.ERROR_CODE);
+        detail.setTextSize(16);
+        detail.setTextColor(Color.parseColor("#636366"));
+        detail.setPadding(0, padding, 0, padding);
+        page.addView(detail);
+        Button retry = new Button(this);
+        retry.setText("重试");
+        retry.setTextColor(Color.WHITE);
+        retry.setBackgroundTintList(android.content.res.ColorStateList.valueOf(Color.parseColor("#0062CC")));
+        retry.setMinHeight((int) (48 * getResources().getDisplayMetrics().density));
+        retry.setOnClickListener(view -> {
+            retry.setEnabled(false);
+            startWebView();
+        });
+        page.addView(retry);
+        setContentView(page);
+        applyLightSystemBars();
+    }
+
+    private void initializeWebView() {
 
         webView = new WebView(this);
         if (getIntent() != null && getIntent().getBooleanExtra("turnloom.softwareLayer", false)) {
@@ -115,12 +167,14 @@ public class MainActivity extends Activity {
 
             @Override
             public void onPageFinished(WebView view, String url) {
+                if (view != webView) return;
                 packagedPageLoaded = isPackagedPage(url);
                 loadingPackagedPage = false;
             }
 
             @Override
             public void onPageStarted(WebView view, String url, android.graphics.Bitmap favicon) {
+                if (view != webView) return;
                 if (!isPackagedPage(url)) {
                     packagedPageLoaded = false;
                     loadingPackagedPage = false;
@@ -165,9 +219,10 @@ public class MainActivity extends Activity {
     }
 
     private void evaluateBridgeJs(String js) {
-        if (webView == null) return;
-        webView.post(() -> {
-            if (webView != null && bridgeAllowed()) webView.evaluateJavascript(js, null);
+        WebView target = webView;
+        if (target == null) return;
+        target.post(() -> {
+            if (webView == target && bridgeAllowed()) target.evaluateJavascript(js, null);
         });
     }
 
@@ -202,6 +257,7 @@ public class MainActivity extends Activity {
     }
 
     private void deliverAttachmentsResult(String requestId, String resultJson) {
+        if (!BridgeContract.validRequestId(requestId) || !bridgeAllowed()) return;
         String js = "window.__turnloomNativeAttachmentsResult "
                 + "&& window.__turnloomNativeAttachmentsResult("
                 + JSONObject.quote(requestId) + "," + JSONObject.quote(resultJson) + ")";
@@ -269,23 +325,40 @@ public class MainActivity extends Activity {
             } else {
                 deliverQrResult(id, value == null ? "" : value);
             }
-        } else if (requestCode == AttachmentPicker.REQ_ATTACHMENTS) {
-            if (attachmentPicker != null) attachmentPicker.onActivityResult(resultCode, data);
+        } else if (AttachmentPickSession.ownsCode(requestCode)) {
+            if (attachmentPicker != null) attachmentPicker.onActivityResult(requestCode, resultCode, data);
         } else if (requestCode == REQ_INSTALL) {
-            updateManager.onInstallerResult(resultCode);
+            if (updateManager != null) updateManager.onInstallerResult(resultCode);
         }
     }
 
     @Override
     protected void onDestroy() {
-        if (httpClient != null) httpClient.destroy();
-        if (updateManager != null) updateManager.destroy();
-        if (attachmentPicker != null) attachmentPicker.destroy();
-        if (webView != null) {
-            webView.destroy();
-            webView = null;
-        }
+        webViewStartup.close();
+        releaseWebViewResources();
         super.onDestroy();
+    }
+
+    private void releaseWebViewResources() {
+        packagedPageLoaded = false;
+        loadingPackagedPage = false;
+        if (attachmentPicker != null) attachmentPicker.destroy();
+        attachmentPicker = null;
+        if (httpClient != null) httpClient.destroy();
+        httpClient = null;
+        if (updateManager != null) updateManager.destroy();
+        updateManager = null;
+        WebView target = webView;
+        webView = null;
+        if (target != null) {
+            try {
+                if (target.getParent() instanceof ViewGroup) ((ViewGroup) target.getParent()).removeView(target);
+                target.removeJavascriptInterface("TurnloomNative");
+                target.destroy();
+            } catch (RuntimeException | LinkageError error) {
+                Log.w("Turnloom", "WEBVIEW_RELEASE_FAILED", error);
+            }
+        }
     }
 
     /** Methods injected as window.TurnloomNative (frozen 2.1 bridge contract). */
@@ -421,11 +494,18 @@ public class MainActivity extends Activity {
 
 
         @JavascriptInterface
-        public void pickAttachments(String requestId, String kind) {
-            if (!bridgeAllowed() || attachmentPicker == null) return;
-            // beginPick validates requestId/kind and posts all Activity work
-            // to the UI thread; no WebView getter is used on this bridge thread.
+        public String pickAttachments(String requestId, String kind) {
+            if (!BridgeContract.validRequestId(requestId)) return "invalid-request";
+            if (!bridgeAllowed()) return "bridge-not-ready";
+            if (attachmentPicker == null) return "picker-unavailable";
             attachmentPicker.beginPick(requestId, kind);
+            return "";
+        }
+
+        @JavascriptInterface
+        public void cancelAttachmentPick(String requestId) {
+            if (!bridgeAllowed() || !BridgeContract.validRequestId(requestId)) return;
+            if (attachmentPicker != null) attachmentPicker.cancel(requestId);
         }
         @JavascriptInterface
         public void request(String requestId, String requestJson) {

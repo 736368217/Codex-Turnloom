@@ -1288,6 +1288,21 @@ function modelVisionFromRow(row) {
   return declared === null ? caps : declared;
 }
 
+function modelThinkingFromRow(row) {
+  try {
+    const config = JSON.parse(String(row?.provider_config_json || "{}"));
+    const model = (Array.isArray(config.models) ? config.models : [])
+      .find((item) => String(item?.id || item?.modelId || "") === String(row?.model_id || ""));
+    const allowed = new Set(["off", "minimal", "low", "medium", "high", "xhigh", "max", "ultra"]);
+    const known = Boolean(model && Array.isArray(model.thinkingLevels));
+    const efforts = known ? [...new Set(model.thinkingLevels.filter((level) => allowed.has(level)))] : [];
+    const defaultEffort = efforts.includes(model?.defaultThinkingLevel) ? model.defaultThinkingLevel : efforts[0] || "";
+    return { efforts, defaultEffort, known };
+  } catch {
+    return { efforts: [], defaultEffort: "", known: false };
+  }
+}
+
 /** 把 PI 的 供应商 × 模型 写成 Codex 兼容的模型目录，手机端才能按 PI 的配置选模型。 */
 function writeModelCatalog(piModels = []) {
   try {
@@ -1323,11 +1338,11 @@ function writeModelCatalog(piModels = []) {
         input_modalities: inputModalities,
         supports_images: vision,
         pi_capabilities: capabilities.items,
-        supported_reasoning_levels: ["low", "medium", "high", "xhigh", "max"].map((effort) => ({
+        supported_reasoning_levels: modelThinkingFromRow(row).efforts.map((effort) => ({
           effort,
           description: `PI-Desktop ${effort} reasoning`,
         })),
-        default_reasoning_level: "medium",
+        default_reasoning_level: modelThinkingFromRow(row).defaultEffort,
         priority: entries.length,
       });
     }
@@ -1336,18 +1351,18 @@ function writeModelCatalog(piModels = []) {
     // Keep whatever model is already configured if it is still valid; the sidecar
     // owns the "latest session" default and must not be stomped every 3 seconds.
     let defaultSlug = entries[0].slug;
+    let requestedEffort = "";
     try {
       const current = fs.readFileSync(path.join(SHIM_HOME, "config.toml"), "utf8");
       const match = current.match(/^\s*model\s*=\s*"([^"]+)"/m);
       if (match && entries.some((entry) => entry.slug === match[1])) defaultSlug = match[1];
-    } catch {
-      /* no config yet */
-    }
-    fs.writeFileSync(
-      path.join(SHIM_HOME, "config.toml"),
-      `model = "${defaultSlug}"\nmodel_reasoning_effort = "medium"\nmodel_catalog_json = "model-catalogs/pidesk.json"\n`,
-      "utf8",
-    );
+      requestedEffort = current.match(/^\s*model_reasoning_effort\s*=\s*"([^"]*)"/m)?.[1] || "";
+    } catch { /* no config yet */ }
+    const selected = entries.find((entry) => entry.slug === defaultSlug);
+    const levels = selected.supported_reasoning_levels.map((level) => level.effort);
+    const defaultEffort = levels.includes(requestedEffort) ? requestedEffort : selected.default_reasoning_level;
+    fs.writeFileSync(path.join(SHIM_HOME, "config.toml"),
+      `model = ${JSON.stringify(defaultSlug)}\n${defaultEffort ? `model_reasoning_effort = ${JSON.stringify(defaultEffort)}\n` : ""}model_catalog_json = "model-catalogs/pidesk.json"\n`, "utf8");
   } catch (error) {
     if (Date.now() - lastErrorLogAt > 60000) {
       lastErrorLogAt = Date.now();
@@ -1579,19 +1594,21 @@ function buildModelIndex(rows) {
   const bySlug = new Map();
   const byPair = new Map();
   const byModelId = new Map();
+  const reasoning = new Map();
   for (const row of rows || []) {
     const providerId = String(row.provider_id || "");
     const modelId = String(row.model_id || "").trim();
     if (!providerId || !modelId) continue;
     const pair = { providerId, modelId };
     byPair.set(`${providerId}/${modelId}`, pair);
+    reasoning.set(`${providerId}/${modelId}`, modelThinkingFromRow(row));
     const name = String(row.provider_name || "").trim();
     if (name) bySlug.set(`${name}/${modelId}`, pair);
     const bucket = byModelId.get(modelId);
     if (bucket) bucket.push(pair);
     else byModelId.set(modelId, [pair]);
   }
-  modelIndex = { bySlug, byPair, byModelId };
+  modelIndex = { bySlug, byPair, byModelId, reasoning };
 }
 
 /** 会话当前生效的模型对（来自 pi.sqlite 快照）。 */
@@ -1797,7 +1814,13 @@ function turnSettingsFromRequest(params, preferredProviderId = "") {
     }
   }
   const effort = String(request.effort || request.reasoningEffort || "").trim();
-  if (effort) settings.thinkingLevel = effort;
+  const reasoning = modelIndex.reasoning?.get(`${settings.providerId}/${settings.modelId}`);
+  if (reasoning?.known) {
+    if (effort && !reasoning.efforts.includes(effort)) {
+      throw new Error("该模型不支持所选思考强度，请重新打开模型面板选择有效档位。");
+    }
+    if (effort || reasoning.defaultEffort) settings.thinkingLevel = effort || reasoning.defaultEffort;
+  }
   return settings;
 }
 

@@ -19,7 +19,6 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
@@ -42,7 +41,6 @@ final class AttachmentPicker {
         void launch(Intent intent, int requestCode);
     }
 
-    static final int REQ_ATTACHMENTS = 0x72;
     private static final int BUFFER_BYTES = 8192;
 
     private final Context context;
@@ -50,10 +48,9 @@ final class AttachmentPicker {
     private final Deliverer deliverer;
     private final Handler mainHandler = new Handler(Looper.getMainLooper());
     private final ExecutorService pool = Executors.newSingleThreadExecutor();
-    private final ConcurrentHashMap<String, Future<?>> active = new ConcurrentHashMap<>();
-    /** All mutable state below is touched only on the UI thread. */
-    private String pendingRequestId = "";
-    private String pendingKind = "";
+    /** Ownership and worker handles are touched only on the UI thread. */
+    private final AttachmentPickSession session = new AttachmentPickSession();
+    private Future<?> activeRead;
     private volatile boolean destroyed = false;
 
     AttachmentPicker(Context context, Launcher launcher, Deliverer deliverer) {
@@ -64,7 +61,11 @@ final class AttachmentPicker {
 
     /** JavascriptInterface methods run on a WebView bridge thread, never the UI thread. */
     void beginPick(String requestId, String kind) {
-        if (destroyed) return;
+        if (destroyed) {
+            if (BridgeContract.validRequestId(requestId)) deliverer.deliverAttachments(requestId,
+                    BridgeContract.attachmentErrorJson(BridgeContract.ATTACH_PICKER_UNAVAILABLE));
+            return;
+        }
         if (!BridgeContract.validRequestId(requestId)) {
             deliverer.deliverAttachments("", BridgeContract.attachmentErrorJson(
                     BridgeContract.ATTACH_INVALID_REQUEST));
@@ -80,8 +81,12 @@ final class AttachmentPicker {
 
     /** Launch the system document picker on the UI thread. */
     private void startPicker(String requestId, String kind) {
-        if (destroyed) return;
-        if (!pendingRequestId.isEmpty()) {
+        if (destroyed) {
+            deliverer.deliverAttachments(requestId, BridgeContract.attachmentErrorJson(
+                    BridgeContract.ATTACH_PICKER_UNAVAILABLE));
+            return;
+        }
+        if (session.busy()) {
             deliverer.deliverAttachments(requestId, BridgeContract.attachmentErrorJson(
                     BridgeContract.ATTACH_PICKER_BUSY));
             return;
@@ -90,51 +95,49 @@ final class AttachmentPicker {
         intent.addCategory(Intent.CATEGORY_OPENABLE);
         intent.setType("image".equals(kind) ? "image/*" : "*/*");
         intent.putExtra(Intent.EXTRA_ALLOW_MULTIPLE, true);
-        pendingRequestId = requestId;
-        pendingKind = kind;
-        try {
-            launcher.launch(intent, REQ_ATTACHMENTS);
-        } catch (Exception e) {
-            // Never propagate activity/URI details to JS or logs.
-            pendingRequestId = "";
-            pendingKind = "";
+        AttachmentPickSession.Request request = session.begin(requestId, kind);
+        if (request == null) {
             deliverer.deliverAttachments(requestId, BridgeContract.attachmentErrorJson(
                     BridgeContract.ATTACH_PICKER_UNAVAILABLE));
+            return;
+        }
+        try {
+            launcher.launch(intent, request.code);
+        } catch (Exception e) {
+            // Never propagate activity/URI details to JS or logs.
+            session.finish(request);
+            deliverer.deliverAttachments(requestId, BridgeContract.attachmentErrorJson(
+                    e instanceof SecurityException ? "permission-denied"
+                            : BridgeContract.ATTACH_PICKER_UNAVAILABLE));
         }
     }
 
     /** Consume the picker result on the UI thread; read bytes on a worker. */
-    void onActivityResult(int resultCode, Intent data) {
-        if (pendingRequestId.isEmpty()) return;
-        String requestId = pendingRequestId;
-        String kind = pendingKind;
-        pendingRequestId = "";
-        pendingKind = "";
+    void onActivityResult(int requestCode, int resultCode, Intent data) {
         if (destroyed) return;
-
+        AttachmentPickSession.Request request = session.acceptResult(requestCode);
+        if (request == null) return;
+        String requestId = request.id;
         if (resultCode != android.app.Activity.RESULT_OK) {
+            session.finish(request);
             deliverer.deliverAttachments(requestId,
                     BridgeContract.attachmentsResultJson("cancelled", null, null));
             return;
         }
         List<Uri> uris = selectedUris(data);
         if (uris == null || uris.isEmpty()) {
+            session.finish(request);
             deliverer.deliverAttachments(requestId,
                     BridgeContract.attachmentsResultJson("cancelled", null, null));
             return;
         }
         if (uris.size() > BridgeContract.MAX_ATTACHMENT_FILES) {
+            session.finish(request);
             deliverer.deliverAttachments(requestId, BridgeContract.attachmentErrorJson(
                     BridgeContract.ATTACH_TOO_MANY_FILES));
             return;
         }
-        synchronized (active) {
-            if (destroyed) return;
-            Future<?> previous = active.remove(requestId);
-            if (previous != null) previous.cancel(true);
-            Future<?> future = pool.submit(() -> readAttachments(requestId, kind, uris));
-            active.put(requestId, future);
-        }
+        activeRead = pool.submit(() -> readAttachments(request, uris));
     }
 
     private static List<Uri> selectedUris(Intent data) {
@@ -153,22 +156,25 @@ final class AttachmentPicker {
         return uris;
     }
 
-    private void readAttachments(String requestId, String kind, List<Uri> uris) {
+    private void readAttachments(AttachmentPickSession.Request request, List<Uri> uris) {
         String result;
         try {
-            result = BridgeContract.attachmentsResultJson("success", readAll(kind, uris), null);
+            result = BridgeContract.attachmentsResultJson("success", readAll(request.kind, uris), null);
         } catch (PickerException e) {
             result = BridgeContract.attachmentErrorJson(e.code);
+        } catch (SecurityException e) {
+            result = BridgeContract.attachmentErrorJson("permission-denied");
         } catch (Exception e) {
             // Never expose an exception message: it may contain a content URI.
             result = BridgeContract.attachmentErrorJson(BridgeContract.ATTACH_READ_FAILED);
-        } finally {
-            active.remove(requestId);
         }
         if (Thread.currentThread().isInterrupted() || destroyed) return;
         final String payload = result;
         mainHandler.post(() -> {
-            if (!destroyed) deliverer.deliverAttachments(requestId, payload);
+            if (!destroyed && session.finish(request)) {
+                activeRead = null;
+                deliverer.deliverAttachments(request.id, payload);
+            }
         });
     }
 
@@ -226,6 +232,9 @@ final class AttachmentPicker {
                 fail(BridgeContract.ATTACH_FILE_TOO_LARGE);
             }
             return out.toByteArray();
+        } catch (SecurityException e) {
+            fail("permission-denied");
+            return null;
         } catch (IOException | RuntimeException e) {
             fail(BridgeContract.ATTACH_READ_FAILED);
             return null;
@@ -267,11 +276,22 @@ final class AttachmentPicker {
         throw new PickerException(code);
     }
 
+    void cancel(String requestId) {
+        if (!BridgeContract.validRequestId(requestId)) return;
+        mainHandler.post(() -> {
+            if (session.cancel(requestId) && activeRead != null) {
+                activeRead.cancel(true);
+                activeRead = null;
+            }
+        });
+    }
+
     void destroy() {
         destroyed = true;
-        synchronized (active) {
-            for (Future<?> future : active.values()) future.cancel(true);
-            active.clear();
+        session.close();
+        if (activeRead != null) {
+            activeRead.cancel(true);
+            activeRead = null;
         }
         pool.shutdownNow();
     }

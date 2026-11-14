@@ -1,4 +1,4 @@
-import { useEffect, useState, type FormEvent, type ReactNode } from 'react';
+import { useEffect, useRef, useState, type FormEvent, type ReactNode } from 'react';
 import { ArrowUp, Check, ChevronDown, Image as ImageIcon, Paperclip, Search, Square, X } from 'lucide-react';
 import VaulSheet from './VaulSheet';
 import { COLORS } from '../theme/optionATokens';
@@ -123,6 +123,8 @@ export function useComposerFields(scope: string, threadId: string, threadModel?:
   const [sheetOpen, setSheetOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
+  const pickingRef = useRef(false);
+  const [picking, setPicking] = useState(false);
   const composer = useComposerState();
 
   useEffect(() => { selectComposer(scope, threadId); }, [scope, threadId]);
@@ -144,26 +146,36 @@ export function useComposerFields(scope: string, threadId: string, threadModel?:
   };
 
   const pick = async (kind: 'image' | 'file'): Promise<void> => {
-    // Capture origin synchronously: a foreground picker can switch thread/remount.
-    const originScope = scope;
-    const originThread = threadId;
-    setError('');
-    const result = await pickAttachments(kind);
-    const selectedState = currentComposerState();
-    const base = composerStateFor(originScope, originThread);
-    const outcome = pickerTrayForResult({
-      result, kind, originScope, originThread,
-      selectedScope: selectedState.scope, selectedThread: selectedState.threadId,
-      existing: base.attachments, imageSupport: supportsImages(catalog, preference.model),
-    });
-    if (outcome.ignored) return;
-    if (outcome.error) { setError(outcome.error || pickerErrorMessage(result)); return; }
-    setComposerAttachments(outcome.attachments, outcome.targetScope, outcome.targetThread);
+    if (pickingRef.current) return;
+    pickingRef.current = true;
+    setPicking(true);
+    try {
+      // Capture origin synchronously: a foreground picker can switch thread/remount.
+      const originScope = scope;
+      const originThread = threadId;
+      setError('');
+      const result = await pickAttachments(kind);
+      const selectedState = currentComposerState();
+      const base = composerStateFor(originScope, originThread);
+      const outcome = pickerTrayForResult({
+        result, kind, originScope, originThread,
+        selectedScope: selectedState.scope, selectedThread: selectedState.threadId,
+        existing: base.attachments, imageSupport: supportsImages(catalog, preference.model),
+      });
+      if (outcome.ignored) return;
+      if (outcome.error) { setError(outcome.error || pickerErrorMessage(result)); return; }
+      setComposerAttachments(outcome.attachments, outcome.targetScope, outcome.targetThread);
+    } catch {
+      setError(pickerErrorMessage({ status: 'error', error: 'picker-unavailable' }));
+    } finally {
+      pickingRef.current = false;
+      setPicking(false);
+    }
   };
 
   return {
     composer, catalog, preference, imageSupport, sheetOpen, setSheetOpen,
-    busy, setBusy, error, setError, select, pick, scope, threadId,
+    busy, setBusy, picking, error, setError, select, pick, scope, threadId,
     removeAttachment: (id: string) => { removeComposerAttachment(id, scope, threadId); setError(''); },
   };
 }
@@ -207,6 +219,7 @@ export function ComposerFields({ fields, primary, enterKeyHint = 'send' }: {
             <ChevronDown size={13} color={COLORS.labelSecondary} aria-hidden="true" />
           </button>
           <button type="button" className="tl-press tl-composer-icon" aria-label="图片" title="图片"
+            disabled={fields.picking}
             onClick={() => {
               // Explain a known text-only model before opening the native picker.
               if (imageSupport === false) {
@@ -216,6 +229,7 @@ export function ComposerFields({ fields, primary, enterKeyHint = 'send' }: {
               haptic('selection'); void pick('image');
             }}><ImageIcon size={18} /></button>
           <button type="button" className="tl-press tl-composer-icon" aria-label="附件" title="附件"
+            disabled={fields.picking}
             onClick={() => { haptic('selection'); void pick('file'); }}><Paperclip size={18} /></button>
           <span className="tl-composer-spacer" />
           {primary}

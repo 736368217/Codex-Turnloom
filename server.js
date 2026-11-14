@@ -24,6 +24,7 @@ import { fileURLToPath } from "node:url";
 import { zstdDecompress } from "node:zlib";
 import qrcode from "qrcode-terminal";
 import { createHttpBackend } from "./backends/http-backend.js";
+import { startAppServerFirstTurn } from "./shared/codex-first-turn.js";
 import { createRequire } from "node:module";
 
 const require = createRequire(import.meta.url);
@@ -2278,7 +2279,7 @@ class DesktopCodexIpcClient {
 
   async startConversation(text, images = [], turnSettings = {}, project = null) {
     await this.ensureReady();
-    const { model, effort } = normalizeTurnSettings(turnSettings);
+    const { model, effort } = preparedTurnSettings(turnSettings);
     // The host files a session into a project by its root path, so the project
     // root doubles as the working directory for the new conversation.
     const cwd = project?.root || process.cwd();
@@ -4890,7 +4891,7 @@ function modelConfigurationFromCatalog(catalog, config = {}) {
             ? String(entry.default_reasoning_level).trim()
             : efforts.includes(DEFAULT_CODEX_EFFORT)
               ? DEFAULT_CODEX_EFFORT
-              : efforts[0];
+              : efforts[0] || "";
           const supportsImages = entry.supports_images === true ||
             (Array.isArray(entry.input_modalities) && entry.input_modalities.some((item) => String(item).toLowerCase() === "image"));
           return {
@@ -4902,7 +4903,6 @@ function modelConfigurationFromCatalog(catalog, config = {}) {
             priority: Number.isFinite(Number(entry.priority)) ? Number(entry.priority) : Number.MAX_SAFE_INTEGER
           };
         })
-        .filter((entry) => entry.efforts.length)
         .sort((left, right) => left.priority - right.priority || left.id.localeCompare(right.id))
         .map(({ priority, ...entry }) => entry)
     : [];
@@ -5025,7 +5025,7 @@ function normalizeTurnSettings({ model, effort } = {}, modelConfiguration = acti
     ? String(effort).trim()
     : selectedModel.efforts.includes(configuredDefaultEffort)
       ? configuredDefaultEffort
-      : selectedModel.defaultEffort || selectedModel.efforts[0];
+      : selectedModel.defaultEffort || selectedModel.efforts[0] || "";
   return { model: selectedModel.id, effort: selectedEffort };
 }
 
@@ -6379,7 +6379,7 @@ async function sendToCodex(text, threadId, images = [], { newThread = false, mod
         cwd: project?.root || "",
         model: turnSettings.model || "",
         rolloutPath: "",
-        source: "desktop-ipc",
+        source: result.source || "desktop-ipc",
         // Show the new conversation in its folder right away instead of only
         // after the next facade sync.
         ...(project ? { project: { key: `project:${project.id}`, id: project.id, name: project.name, native: true } } : {})
@@ -6713,9 +6713,11 @@ function turnIdFromStartConversation(response) {
   return firstString(result?.turn?.id, result?.turnId, result?.turn_id, response?.turnId, response?.turn_id);
 }
 
-async function startNewCodexThread(text, turnSettings, project = null, images = []) {
+async function startNewCodexThread(text, turnSettings, project = null, images = [], {
+  ipcClient = getCodexIpcClient(), fallbackStart = startNewCodexThreadViaAppServer
+} = {}) {
   try {
-    const response = await getCodexIpcClient().startConversation(text, images, turnSettings, project);
+    const response = await ipcClient.startConversation(text, images, turnSettings, project);
     const threadId = conversationIdFromStartConversation(response);
     if (!threadId) throw new Error(`Codex Desktop did not return a conversation id. ${compact(response, 1200)}`);
     return {
@@ -6724,8 +6726,12 @@ async function startNewCodexThread(text, turnSettings, project = null, images = 
       source: "desktop-ipc"
     };
   } catch (error) {
-    if (images.length || PI_NATIVE_QUEUE) throw error;
-    const fallback = await startNewCodexThreadViaAppServer(text);
+    // An acknowledgement timeout or malformed result may hide an already-created
+    // conversation. Only fall back after a definite pre-execution rejection.
+    const unavailable = /^(?:no-client-found|unsupported method(?::|\b)|method not found\b)/i.test(String(error?.message || ""))
+      || ["ENOENT", "ECONNREFUSED"].includes(error?.code);
+    if (images.length || PI_NATIVE_QUEUE || !unavailable) throw error;
+    const fallback = await fallbackStart(text, turnSettings, project);
     return {
       ...fallback,
       source: "app-server-fallback",
@@ -6734,67 +6740,19 @@ async function startNewCodexThread(text, turnSettings, project = null, images = 
   }
 }
 
-function startNewCodexThreadViaAppServer(text) {
-  return new Promise((resolve, reject) => {
-    const { home } = codexPaths();
-    const child = spawnHidden(CODEX_CLI, ["debug", "app-server", "send-message-v2", text], {
-      cwd: process.cwd(),
-      env: {
-        ...process.env,
-        CODEX_HOME: home
-      },
-      stdio: ["ignore", "pipe", "pipe"],
-      windowsHide: true
-    });
-    let stdout = "";
-    let stderr = "";
-    let settled = false;
-    let threadId = "";
-    let turnId = "";
-    const timer = setTimeout(() => {
-      if (settled) return;
-      settled = true;
-      child.kill("SIGTERM");
-      const err = new Error("Timed out starting a new Codex conversation.");
-      err.status = 504;
-      reject(err);
-    }, 45000);
-
-    const maybeResolve = () => {
-      threadId ||= firstRegexGroup(stdout, /"thread"[\s\S]*?"id"\s*:\s*"([^"]+)"/);
-      turnId ||= firstRegexGroup(stdout, /"turn"[\s\S]*?"id"\s*:\s*"([^"]+)"/);
-      if (!settled && threadId && turnId) {
-        settled = true;
-        clearTimeout(timer);
-        resolve({ threadId, turnId });
-      }
-    };
-
-    child.stdout.on("data", (chunk) => {
-      stdout += chunk.toString("utf8");
-      if (stdout.length > 2_000_000) stdout = stdout.slice(-1_000_000);
-      maybeResolve();
-    });
-    child.stderr.on("data", (chunk) => {
-      stderr += chunk.toString("utf8");
-      if (stderr.length > 200_000) stderr = stderr.slice(-100_000);
-    });
-    child.on("error", (error) => {
-      if (settled) return;
-      settled = true;
-      clearTimeout(timer);
-      reject(error);
-    });
-    child.on("close", (code) => {
-      clearTimeout(timer);
-      if (settled) return;
-      maybeResolve();
-      if (settled) return;
-      const detail = firstString(stderr, stdout, `codex app-server exited with code ${code}`);
-      const err = new Error(`Failed to start a new Codex conversation. ${compact(detail, 1200)}`);
-      err.status = 502;
-      reject(err);
-    });
+function startNewCodexThreadViaAppServer(text, turnSettings = {}, project = null, { spawnProcess = spawnHidden } = {}) {
+  const { model, effort } = preparedTurnSettings(turnSettings);
+  const { home } = codexPaths();
+  return startAppServerFirstTurn({
+    command: CODEX_CLI, home, cwd: project?.root || process.cwd(),
+    text, model, effort, spawnProcess,
+    onBackgroundError: (threadId) => {
+      if (threadId) recordNotice(threadId, {
+        severity: "error", title: "首轮执行失败",
+        content: "电脑端首轮执行未能完成。请在会话中检查错误后重试；本轮没有自动重复发送。",
+        source: "new-thread"
+      });
+    }
   });
 }
 
@@ -8899,6 +8857,8 @@ export {
   refreshCodexDesktopAfterSend,
   shouldRecordDesktopRefreshNotice,
   startTurnWithOwnerRecovery,
+  startNewCodexThread,
+  startNewCodexThreadViaAppServer,
   stripHiddenMessageLocalAssets,
   isSubagentThread,
   threadListMetadata,

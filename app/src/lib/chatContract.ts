@@ -143,10 +143,10 @@ export function normalizeHealthCatalog(raw: unknown, scope: string): ModelCatalo
     ? health.models.map((entry): ModelCatalogEntry | null => {
       const row = object(entry);
       const id = stringValue(row?.id);
-      if (!row || !id || !cleanEfforts(row.efforts).length) return null;
+      if (!row || !id) return null;
       const efforts = cleanEfforts(row.efforts);
       const defaultEffort = efforts.includes(stringValue(row.defaultEffort))
-        ? stringValue(row.defaultEffort) : efforts[0];
+        ? stringValue(row.defaultEffort) : efforts[0] || '';
       return {
         id,
         label: stringValue(row.label) || id,
@@ -161,7 +161,7 @@ export function normalizeHealthCatalog(raw: unknown, scope: string): ModelCatalo
     ? stringValue(health.defaultModel) : models[0]?.id || '';
   const selected = models.find((entry) => entry.id === defaultModel);
   const defaultEffort = selected?.efforts.includes(stringValue(health.defaultEffort))
-    ? stringValue(health.defaultEffort) : selected?.defaultEffort || models[0]?.defaultEffort || '';
+    ? stringValue(health.defaultEffort) : selected?.defaultEffort || '';
   return { scope: String(scope || ''), models, defaultModel, defaultEffort };
 }
 
@@ -190,7 +190,7 @@ export function resolveTurnPreference(
       ? selected.defaultEffort
       : healthDefaultEffort && selected.efforts.includes(healthDefaultEffort)
         ? healthDefaultEffort
-        : selected.efforts[0];
+        : selected.efforts[0] || '';
   return { model: selected.id, effort };
 }
 export function effortLabel(effort: string): string {

@@ -454,3 +454,24 @@ test('approval card requires exact request identity and never renders a generic 
   assert.match(screen, /缺少可核对的请求详情/);
   assert.doesNotMatch(screen, /sessionStore\.getState\(\).*approval/);
 });
+
+test('models without reasoning remain selectable and never inherit another model effort', async () => {
+  const h = harness();
+  const catalog = h.contract.normalizeHealthCatalog({ defaultModel: 'p/plain', defaultEffort: 'high', models: [
+    { id: 'p/reason', efforts: ['high'], defaultEffort: 'high' },
+    { id: 'p/plain', efforts: [], defaultEffort: '' },
+  ] }, 'p');
+  assert.equal(catalog.models.length, 2);
+  assert.equal(catalog.defaultEffort, '');
+  assert.deepEqual(h.contract.resolveTurnPreference(catalog, { model: 'p/plain', effort: 'high' }, ''), { model: 'p/plain', effort: '' });
+  assert.deepEqual(h.logic.sheetPreference(catalog, { model: 'p/reason', effort: 'high' }, 'p/plain'), { model: 'p/plain', effort: '' });
+});
+
+test('native attachment limits have actionable messages that match the actual limits', () => {
+  const h = harness();
+  const message = error => h.logic.pickerErrorMessage({ status: 'error', error, items: [] });
+  assert.match(message('too-many-files'), /4 个附件/);
+  assert.match(message('file-too-large'), /4 MB/);
+  assert.match(message('attachments-too-large'), /6 MB/);
+  assert.match(message('invalid-mime-type'), /类型不受支持/);
+});

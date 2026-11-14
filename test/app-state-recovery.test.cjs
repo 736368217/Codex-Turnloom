@@ -208,3 +208,38 @@ test('R07: an older running list arriving after Stop cannot revive badge or filt
   assert.equal(state.statusByThread.one.thinking, false);
   assert.equal(projectThread(state.threads[0], state.statusByThread).tone, 'done');
 });
+
+test('message history retries the cursor, keeps live status and survives tail polling', async () => {
+  const h = harness(); await h.session.connectWithPairing(h.pairing);
+  const ctx = h.session.currentRequestContext(); h.data.resetForScope(ctx);
+  h.setReply(() => ({ messages: [{ id: 'tail', content: 'new' }], status: { thinking: false }, hasOlderMessages: true, olderCursor: 'tail' }));
+  await h.data.refreshMessages(ctx, 'one');
+  h.setReply(() => ({ __nativeResult: { status: 500, body: '{}' } }));
+  await h.data.loadOlderMessages(ctx, 'one');
+  assert.equal(h.data.dataStore.getState().messagePages.one.olderCursor, 'tail');
+  assert.match(h.data.dataStore.getState().messagePages.one.error, /服务出错/);
+  h.setReply((route, req) => { assert.equal(new URL(req.url).searchParams.get('before'), 'tail'); return { messages: [{ id: 'old', content: 'history' }, { id: 'tail', content: 'new' }], status: { thinking: true }, hasOlderMessages: false }; });
+  await h.data.loadOlderMessages(ctx, 'one');
+  assert.equal(h.data.dataStore.getState().statusByThread.one.thinking, false);
+  h.setReply(() => ({ messages: [{ id: 'tail', content: 'updated' }, { id: 'fresh', content: 'latest' }], status: { thinking: false }, hasOlderMessages: true, olderCursor: 'tail' }));
+  await h.data.refreshMessages(ctx, 'one');
+  const state = h.data.dataStore.getState();
+  assert.deepEqual(state.messagesByThread.one.map(row => row.id), ['old', 'tail', 'fresh']);
+  assert.equal(state.messagesByThread.one[1].content, 'updated');
+  assert.equal(state.messagePages.one.hasOlder, false);
+});
+
+test('a late message history page is discarded after changing service', async () => {
+  const h = harness(); await h.session.connectWithPairing(h.pairing);
+  const ctx = h.session.currentRequestContext(); h.data.resetForScope(ctx);
+  h.setReply(() => ({ messages: [{ id: 'tail' }], olderCursor: 'tail', hasOlderMessages: true }));
+  await h.data.refreshMessages(ctx, 'one');
+  let release;
+  h.setReply(() => new Promise(resolve => { release = resolve; }));
+  const pending = h.data.loadOlderMessages(ctx, 'one');
+  h.api.setActiveRequestScope('pi', { origin: 'http://example.test', token: 'other' });
+  const next = { scope: 'pi', target: { origin: 'http://example.test', token: 'other' }, generation: h.api.getActiveGeneration() };
+  h.data.resetForScope(next); release({ messages: [{ id: 'old-codex' }] }); await pending;
+  assert.deepEqual(h.data.dataStore.getState().messagesByThread, {});
+  assert.deepEqual(h.data.dataStore.getState().messagePages, {});
+});

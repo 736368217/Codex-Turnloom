@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type FormEvent, type ReactNode } from 'react';
+import { useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from 'react';
 import { ChevronDown, ChevronRight, ChevronLeft, Brain, Terminal, FileDiff, Loader2, Check, X } from 'lucide-react';
 import { ComposerFields, ChatPrimaryButton, useComposerFields, requestIdForIdentity } from '../components/ChatComposer';
 import MarkdownMessage from '../components/MarkdownMessage';
@@ -9,7 +9,7 @@ import { messageText, compactMessageText, isRunning, supportsImages,
 import { composerSubmitDecision } from '../lib/composerSubmit';
 import { haptic } from '../lib/nativeBridge';
 import {
-  useDataState, dataStore, refreshMessages, refreshChanges, sendMessage, interruptThread, resolveApproval,
+  useDataState, dataStore, refreshMessages, loadOlderMessages, refreshChanges, sendMessage, interruptThread, resolveApproval,
 } from '../state/dataStore';
 import { closeDetail } from '../state/tabStore';
 import { currentRequestContext } from '../state/sessionStore';
@@ -98,6 +98,16 @@ export default function ChatDetailScreen({ threadId, title }: { threadId: string
   const running = isRunning(status);
   const fields = useComposerFields(scope, threadId, threadModel);
   const [submitting, setSubmitting] = useState(false);
+  const bodyRef = useRef<HTMLElement>(null);
+  const history = data.messagePages[threadId];
+  const loadHistory = async () => {
+    if (!context) return;
+    const body = bodyRef.current;
+    const height = body?.scrollHeight || 0;
+    const top = body?.scrollTop || 0;
+    await loadOlderMessages(context, threadId);
+    requestAnimationFrame(() => { if (body && body === bodyRef.current) body.scrollTop = top + body.scrollHeight - height; });
+  };
 
   useEffect(() => {
     if (!context) return;
@@ -194,7 +204,13 @@ export default function ChatDetailScreen({ threadId, title }: { threadId: string
         </div>
       </header>
 
-      <main className="tl-detail-body tl-no-scrollbar">
+      <main ref={bodyRef} className="tl-detail-body tl-no-scrollbar">
+        {history?.hasOlder && <div style={{ padding: '8px 12px' }}>
+          <button type="button" className="tl-connect-manual" disabled={history.loading || !history.olderCursor} onClick={() => { void loadHistory(); }}>
+            {history.loading ? '正在加载历史…' : history.olderCursor ? '加载更早消息' : '电脑端暂未提供更早消息游标'}
+          </button>
+          {history.error && <div role="alert" className="tl-page-note tl-page-note--error">{history.error} 可再次点击重试。</div>}
+        </div>}
         <div className="tl-chat-list" role="log" aria-label="消息流">
           {messages.length === 0 ? (
             <div role="status" style={{ fontSize: 13, lineHeight: '19px', color: COLORS.labelSecondary, padding: '8px 4px' }}>
