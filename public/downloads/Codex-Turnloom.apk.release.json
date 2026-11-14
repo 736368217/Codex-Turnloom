@@ -1,30 +1,30 @@
 {
-  "generatedAt": "2026-11-12T00:36:48.1465507+08:00",
-  "startedAt": "2026-11-12T00:36:06.3856522+08:00",
+  "generatedAt": "2026-11-14T15:27:41.7049778+08:00",
+  "startedAt": "2026-11-14T15:27:07.2546337+08:00",
   "result": "ok",
   "route": "dom-shell",
   "packageName": "com.codex.turnloom.app",
-  "versionName": "2.1.1",
-  "versionCode": 82,
+  "versionName": "2.1.2",
+  "versionCode": 83,
   "apkName": "Codex-Turnloom.apk",
-  "sha256": "f020edd46893f1b712c3ef2baa586ce64c9d5c4b8c1e25082e493e1ac64f613e",
-  "sizeBytes": 1735509,
-  "notes": "连接恢复、草稿和缓存、更新续传及安装交接、窄屏与对比度修复",
+  "sha256": "4129d2e04be72207bae6fc5a2fdcede221f8d2e95b9acda33f9c38863b3fc234",
+  "sizeBytes": 1780565,
+  "notes": "修复 PI 桥重载与消息重试，补齐首轮模型设置、文件超时恢复及历史消息分页。电脑端请同步更新服务和桥插件。",
   "identity": {
     "applicationId": "com.codex.turnloom.app",
-    "versionName": "2.1.1",
-    "versionCode": "82"
+    "versionName": "2.1.2",
+    "versionCode": "83"
   },
   "buildSteps": [
     {
       "name": "validate",
       "status": "ok",
-      "detail": "D:\\pi11\\11\\Codex-Turnloom / D:\\pi-data\\data\\scratch\\a267b24d-319e-47b6-86d5-19d57bd827bd\\app-build-tree"
+      "detail": "D:\\pi-data\\data\\scratch\\a267b24d-319e-47b6-86d5-19d57bd827bd\\remaining-20261114-paging\\source / D:\\pi-data\\data\\scratch\\a267b24d-319e-47b6-86d5-19d57bd827bd\\remaining-20261114-paging\\frontend"
     },
     {
       "name": "sync-source",
       "status": "ok",
-      "detail": "D:\\pi-data\\data\\scratch\\a267b24d-319e-47b6-86d5-19d57bd827bd\\app-build-tree"
+      "detail": "D:\\pi-data\\data\\scratch\\a267b24d-319e-47b6-86d5-19d57bd827bd\\remaining-20261114-paging\\frontend"
     },
     {
       "name": "vite-build",
@@ -34,12 +34,12 @@
     {
       "name": "copy-assets",
       "status": "ok",
-      "detail": "D:\\pi11\\11\\Codex-Turnloom\\native-shell\\app\\src\\main\\assets\\public"
+      "detail": "D:\\pi-data\\data\\scratch\\a267b24d-319e-47b6-86d5-19d57bd827bd\\remaining-20261114-paging\\source\\native-shell\\app\\src\\main\\assets\\public"
     },
     {
       "name": "assembleRelease",
       "status": "ok",
-      "detail": "D:\\pi11\\11\\Codex-Turnloom\\native-shell\\app\\build\\outputs\\apk\\release\\app-release-unsigned.apk"
+      "detail": "D:\\pi-data\\data\\scratch\\a267b24d-319e-47b6-86d5-19d57bd827bd\\remaining-20261114-paging\\source\\native-shell\\app\\build\\outputs\\apk\\release\\app-release-unsigned.apk"
     },
     {
       "name": "zipalign",
@@ -59,20 +59,22 @@
     {
       "name": "aapt2-badging",
       "status": "ok",
-      "detail": "com.codex.turnloom.app/2.1.1/82"
+      "detail": "com.codex.turnloom.app/2.1.2/83"
     }
   ],
   "apk": {
     "name": "Codex-Turnloom.apk",
     "path": "D:\\pi11\\11\\Codex-Turnloom\\public\\downloads\\Codex-Turnloom.apk",
-    "bytes": 1735509,
-    "sha256": "f020edd46893f1b712c3ef2baa586ce64c9d5c4b8c1e25082e493e1ac64f613e"
+    "bytes": 1780565,
+    "sha256": "4129d2e04be72207bae6fc5a2fdcede221f8d2e95b9acda33f9c38863b3fc234"
   },
   "entryUrl": "file:///android_asset/public/index.html",
   "gradleArgs": [
     "assembleRelease",
     "--no-daemon",
-    "--console=plain"
+    "--console=plain",
+    "--offline"
   ],
-  "apkPath": "D:\\pi11\\11\\Codex-Turnloom\\public\\downloads\\Codex-Turnloom.apk"
+  "reusedVerifiedApk": true,
+  "originalBuildManifestSha256": "e63f90e5584467d7976ad9b9e602d2f7c3d1ed32079338c0d68aa7752568d5c7"
 }
