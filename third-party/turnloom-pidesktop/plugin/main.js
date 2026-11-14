@@ -869,8 +869,8 @@ const PIPE_PATH = "\\\\.\\pipe\\pidesktop-codex-ipc";
 const TURNLOOM_DIR = path.resolve(__dirname, "..", "..", "..");
 const TURNLOOM_PORT = 8799;
 const TURNLOOM_PASSWORD = process.env.TURNLOOM_ACCESS_CODE || "";
-const TURNLOOM_LOG = path.join(__dirname, "turnloom-8799.log");
-const TURNLOOM_ERR = path.join(__dirname, "turnloom-8799.err.log");
+const TURNLOOM_LOG = path.join(PI_DATA_ROOT, "logs", "turnloom-8799.log");
+const TURNLOOM_ERR = path.join(PI_DATA_ROOT, "logs", "turnloom-8799.err.log");
 const NODE_BIN = process.platform === "win32" ? "node.exe" : "node";
 const SYNC_INTERVAL_MS = 3000;
 /** 门面是否也镜像 Codex 会话。默认关闭：Codex 已有独立设备，混在一起两个列表会重复。 */
@@ -884,6 +884,7 @@ const rolloutFiles = new Map();
 let lastErrorLogAt = 0;
 let syncTimer = null;
 let pipeServer = null;
+const pipeSockets = new Set();
 let turnloomChild = null;
 let turnloomTimer = null;
 let unloading = false;
@@ -2099,7 +2100,11 @@ function encodeFrame(obj) {
 }
 
 function startPipeServer() {
-  pipeServer = net.createServer((socket) => {
+  return new Promise((resolve, reject) => {
+  const server = net.createServer((socket) => {
+    if (unloading) { socket.destroy(); return; }
+    pipeSockets.add(socket);
+    socket.once("close", () => pipeSockets.delete(socket));
     let buffer = Buffer.alloc(0);
     socket.on("data", (chunk) => {
       buffer = Buffer.concat([buffer, chunk]);
@@ -2115,6 +2120,7 @@ function startPipeServer() {
           continue;
         }
         if (message?.type !== "request") continue;
+        if (unloading) { socket.destroy(); return; }
         const respond = (resultType, result, error) => {
           const frame = { type: "response", requestId: message.requestId, method: message.method, resultType };
           if (resultType === "success") frame.result = result ?? {};
@@ -2135,8 +2141,19 @@ function startPipeServer() {
     });
     socket.on("error", () => {});
   });
-  pipeServer.on("error", (error) => log("pipe server error:", error?.message || error));
-  pipeServer.listen(PIPE_PATH, () => log("codex IPC facade listening on", PIPE_PATH));
+  pipeServer = server;
+  const startupError = (error) => {
+    if (pipeServer === server) pipeServer = null;
+    reject(error);
+  };
+  server.once("error", startupError);
+  server.listen(PIPE_PATH, () => {
+    server.removeListener("error", startupError);
+    server.on("error", (error) => log("pipe server error:", error?.message || error));
+    log("codex IPC facade listening on", PIPE_PATH);
+    resolve();
+  });
+  });
 }
 
 // ── Turnloom 托管 ────────────────────────────────────────────────────────
@@ -2162,6 +2179,7 @@ async function ensureTurnloom() {
     return;
   }
   log("starting turnloom on port", TURNLOOM_PORT);
+  fs.mkdirSync(path.dirname(TURNLOOM_LOG), { recursive: true });
   const out = fs.openSync(TURNLOOM_LOG, "a");
   const err = fs.openSync(TURNLOOM_ERR, "a");
   turnloomChild = spawn(
@@ -2189,10 +2207,12 @@ async function ensureTurnloom() {
 
 // ── 生命周期 ─────────────────────────────────────────────────────────────
 async function onLoad() {
+  unloading = false;
   log("loading: merged mirror (PI-Desktop + Codex) + IPC facade + turnloom supervisor");
+  // Do not report a successful load while another instance owns the control pipe.
+  await startPipeServer();
   syncOnce();
   syncTimer = setInterval(syncOnce, SYNC_INTERVAL_MS);
-  startPipeServer();
   ensureTurnloom().catch((error) => log("ensureTurnloom failed:", error?.message || error));
   turnloomTimer = setInterval(() => ensureTurnloom().catch(() => {}), 60000);
 }
@@ -2203,13 +2223,14 @@ async function onUnload() {
   if (turnloomTimer) clearInterval(turnloomTimer);
   syncTimer = null;
   turnloomTimer = null;
-  if (pipeServer) {
-    try {
-      pipeServer.close();
-    } catch {
-      /* ignore */
-    }
-    pipeServer = null;
+  const server = pipeServer;
+  pipeServer = null;
+  if (server) {
+    await new Promise((resolve) => {
+      try { server.close(resolve); } catch { resolve(); }
+      for (const socket of pipeSockets) socket.destroy();
+      pipeSockets.clear();
+    });
   }
   turnloomChild = null;
   log("unloaded");
