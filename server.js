@@ -5821,9 +5821,14 @@ function runIdempotentSend(requestId, fingerprint, execute, store = recentSendRe
     }
     return existing.promise;
   }
-  const promise = Promise.resolve().then(execute);
+  const promise = Promise.resolve().then(execute).catch((error) => {
+    // A confirmed pre-send gate did no host work. Let the unchanged draft retry
+    // after that gate clears; ambiguous execution failures stay deduplicated.
+    if (error?.sendNotStarted === true && store.get(key)?.promise === promise) store.delete(key);
+    throw error;
+  });
   store.set(key, { fingerprint, promise });
-  const timer = setTimeout(() => store.delete(key), 5 * 60 * 1000);
+  const timer = setTimeout(() => { if (store.get(key)?.promise === promise) store.delete(key); }, 5 * 60 * 1000);
   timer.unref?.();
   return promise;
 }
@@ -6452,6 +6457,7 @@ async function sendToCodex(text, threadId, images = [], { newThread = false, mod
     if (current.status?.thinking) {
       const err = new Error("Codex is still running. Choose Queue or Insert for this follow-up message.");
       err.status = 409;
+      err.sendNotStarted = true;
       throw err;
     }
 
@@ -6472,6 +6478,7 @@ async function sendToCodex(text, threadId, images = [], { newThread = false, mod
     if (finalStatus.status?.thinking) {
       const err = new Error("Codex is still running. Choose Queue or Insert for this follow-up message.");
       err.status = 409;
+      err.sendNotStarted = true;
       throw err;
     }
 
