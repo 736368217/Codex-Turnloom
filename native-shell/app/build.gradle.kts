@@ -10,8 +10,8 @@ android {
         applicationId = "com.codex.turnloom.app"
         minSdk = 26
         targetSdk = 35
-        versionCode = 83
-        versionName = "2.1.2"
+        versionCode = 84
+        versionName = "2.1.3"
         testInstrumentationRunner = "android.test.InstrumentationTestRunner"
     }
 

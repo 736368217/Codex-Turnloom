@@ -1,0 +1,315 @@
+{
+  "at": "2026-11-14T08:07:03.104Z",
+  "candidate": true,
+  "published": false,
+  "apkSha256": "4129d2e04be72207bae6fc5a2fdcede221f8d2e95b9acda33f9c38863b3fc234",
+  "images": 13,
+  "results": [
+    {
+      "file": "ui-result.json",
+      "checks": [
+        {
+          "name": "125 会话列表分三页加载",
+          "pass": true,
+          "pages": [
+            0,
+            0,
+            60,
+            120,
+            0,
+            60,
+            120
+          ]
+        },
+        {
+          "name": "205 条长会话消息翻页去重且轮询后保留",
+          "pass": true,
+          "rows": 205
+        },
+        {
+          "name": "新建任务、项目、模型抽屉及逐层系统返回",
+          "pass": true
+        },
+        {
+          "name": "运行信息与忘记电脑确认抽屉可返回且配对保留",
+          "pass": true
+        },
+        {
+          "name": "同 threadId 双服务的消息、草稿和无档位模型隔离",
+          "pass": true
+        },
+        {
+          "name": "切换服务后释放 A 迟到响应不会污染 B",
+          "pass": true
+        },
+        {
+          "name": "真实 IME 下发送键可见并由原生触点发送",
+          "pass": true,
+          "ime": true,
+          "bottom": 662.5454711914062,
+          "visibleHeight": 675
+        }
+      ],
+      "ok": true,
+      "error": null
+    },
+    {
+      "file": "file-result.json",
+      "checks": [
+        {
+          "name": "系统 SAF 慢选超过旧 180 秒仍返回托盘",
+          "pass": true,
+          "durationMs": 190001
+        },
+        {
+          "name": "文件 503 重试同 ID、265 字节及 SHA 一致",
+          "pass": true,
+          "clientRequestId": "app-1794642291071-tnej9jpw",
+          "sha256": "08b5404ccef823238e5635f0f3d2dcef90d15ca42b03ea89f2e449488d49e8ad"
+        },
+        {
+          "name": "系统取消后解锁且无附件",
+          "pass": true
+        },
+        {
+          "name": "注入短超时取消原生请求，旧选择结果被丢弃",
+          "pass": true
+        }
+      ],
+      "ok": false,
+      "error": "Error: UI timeout document.querySelector('.tl-composer-attachment')?.innerText.includes(\"TURNLOOM_QA_1794642095027.bin\")\n    at Object.wait (file:///D:/pi-data/data/scratch/a267b24d-319e-47b6-86d5-19d57bd827bd/remaining-device.mjs:6:1460)\n    at async file:///D:/pi-data/data/scratch/a267b24d-319e-47b6-86d5-19d57bd827bd/remaining-reselect.mjs:1:743"
+    },
+    {
+      "file": "real-codex-result.json",
+      "checks": [
+        {
+          "name": "真实 assistant 第1轮显示",
+          "pass": true,
+          "threadId": "01a1d910-033e-7843-83a5-3cf3dfb00d8e",
+          "turnId": null,
+          "expected": "REMAINING_CODEX_ONE"
+        },
+        {
+          "name": "真实 assistant 第2轮显示",
+          "pass": true,
+          "threadId": "01a1d910-033e-7843-83a5-3cf3dfb00d8e",
+          "expected": "REMAINING_CODEX_TWO"
+        }
+      ],
+      "ok": true,
+      "error": null
+    },
+    {
+      "file": "offline-result.json",
+      "checks": [
+        {
+          "name": "实际 APK：关闭本地服务后发送失败保留草稿，同端口恢复重试一次成功",
+          "pass": true
+        }
+      ],
+      "ok": true,
+      "error": null
+    },
+    {
+      "file": "link-result.json",
+      "checks": [
+        {
+          "name": "链接确认抽屉显示完整地址并返回，不导航外网",
+          "pass": true
+        }
+      ],
+      "ok": true,
+      "error": null
+    },
+    {
+      "file": "picker-reopen-result.json",
+      "checks": [
+        {
+          "name": "取消系统选择后在 App 原进程内重新打开选择器",
+          "pass": true
+        }
+      ],
+      "ok": true,
+      "error": null
+    }
+  ],
+  "files": [
+    {
+      "file": "identity.json",
+      "bytes": 1136,
+      "sha256": "2993adcbba6259e1f8e89adc09a13c98fabee0b0c8a880de60e9d1a3f6add3ae"
+    },
+    {
+      "file": "device.json",
+      "bytes": 205,
+      "sha256": "26284b0e800e320ff706450f024267b531e75776162dc3ab9d66ade4d6731365"
+    },
+    {
+      "file": "ui-result.json",
+      "bytes": 1970,
+      "sha256": "6df680de461f182bb99470ac357ea6adcfbb1e579d4ba3dbd884ccf270d4fdc6"
+    },
+    {
+      "file": "file-result.json",
+      "bytes": 1751,
+      "sha256": "7e7affc7dea217cdd941ffca06255281e07aecc1e2ea85913d0ecf3bcc76fb45"
+    },
+    {
+      "file": "file-identity.json",
+      "bytes": 170,
+      "sha256": "30c90b76b5c6b45413448ace7afe22b28176bfaedc28e505597bd79afa649c4b"
+    },
+    {
+      "file": "source-verification.json",
+      "bytes": 584,
+      "sha256": "4e577e6d4fad41c7c6ca92cda5623140d95c9934d2e095087c97ae6c4419cb38"
+    },
+    {
+      "file": "codex-health.json",
+      "bytes": 385,
+      "sha256": "7176c1abb80951d455b0c0af9b03d94e10bdd5e7ac87aa3ec1ee16c5338f5979"
+    },
+    {
+      "file": "pi-health.json",
+      "bytes": 368,
+      "sha256": "2e45faf29ef62e4306b02c6b3cd6904a5c2618ca276fb8182212c0c811c5df8c"
+    },
+    {
+      "file": "real-codex-result.json",
+      "bytes": 1569,
+      "sha256": "cfb397469cbac8376fc2df6bc3a534af054237b717db603f194537e1564ee596"
+    },
+    {
+      "file": "real-codex-context.json",
+      "bytes": 459,
+      "sha256": "f596435d2002e1184f71cde13d0526b67f169e7c9a7b2b41f38f3adfd68fef30"
+    },
+    {
+      "file": "real-pi-result.json",
+      "bytes": 568,
+      "sha256": "7730fdd488305bb53098df0231a7537512ba34901c22d1087b8155933f98ad14"
+    },
+    {
+      "file": "offline-result.json",
+      "bytes": 401,
+      "sha256": "42b97e4c74e2951c4f881f98bb68e1d1482a607d11783d7cbb6d608f4eee8cc6"
+    },
+    {
+      "file": "link-result.json",
+      "bytes": 370,
+      "sha256": "28995287930d0c5f66bd2f68b6c0c35e5450f2a2c033c20a66b6b2539ac7fabc"
+    },
+    {
+      "file": "picker-reopen-result.json",
+      "bytes": 167,
+      "sha256": "35132ddf09e06360650465c0199e30b99d36077d41660011ab462f65f09a64e9"
+    },
+    {
+      "file": "qa-cleanup.json",
+      "bytes": 158,
+      "sha256": "9867d02e8139f05488f4f476ce4998fc254f96bbd630d5883827520945a45d9b"
+    },
+    {
+      "file": "cleanup.json",
+      "bytes": 368,
+      "sha256": "d3e8715a60060b83ac0f887f10a7a25b8bf8796ff31ce5f97e2b44449ca59ddb"
+    },
+    {
+      "file": "evidence/01-fresh-user-first-launch.png",
+      "bytes": 135141,
+      "sha256": "e90df734d8f3f292df1349f8900772ccb48901d7740c20a4cf925cca96e4cead"
+    },
+    {
+      "file": "evidence/02-long-history.png",
+      "bytes": 253460,
+      "sha256": "8b50c4eaa9d875381269d97f265100e76fb2810fd50976f3b645462a4d7a654f"
+    },
+    {
+      "file": "evidence/03-nested-model-drawer.png",
+      "bytes": 174617,
+      "sha256": "924f22046b7b8301c0a6a7339f0080ba4f0dc0afedb550fcc5a4e6b3c10b5ab5"
+    },
+    {
+      "file": "evidence/04-diagnostics.png",
+      "bytes": 169937,
+      "sha256": "70ee8c890bab3efbbbfca79c4680b02373594f87bebdecba0984f94d5d538905"
+    },
+    {
+      "file": "evidence/05-service-isolation.png",
+      "bytes": 113418,
+      "sha256": "1abdd4afaf299c9e0bda6b569a1726f75cb417c81f8cd0fcf23aa0b2b1853551"
+    },
+    {
+      "file": "evidence/06-ime-button.png",
+      "bytes": 122270,
+      "sha256": "1f7d6be78bab09c40f881a90373c6e69d0b1af5c3988d8097669ef2809783b3b"
+    },
+    {
+      "file": "evidence/08-slow-picker-return.png",
+      "bytes": 123988,
+      "sha256": "03a9bc3afc5d5da7f3c6df5d2c248f1b6a85afab5ffbeea9f57797f27245c30c"
+    },
+    {
+      "file": "evidence/real-codex-turn1.png",
+      "bytes": 166249,
+      "sha256": "16fa7c259e6e0ab1bc1677dca83a076aff1bc08ae2b6b93b0b61399c78662ca4"
+    },
+    {
+      "file": "evidence/real-codex-failure.png",
+      "bytes": 217040,
+      "sha256": "8c097a830d063d53c351a6d5f2cdcdeb1c1706a07b40295dca01a0bb8331046f"
+    },
+    {
+      "file": "evidence/real-codex-turn2.png",
+      "bytes": 362076,
+      "sha256": "80950d4899bee1a3a3f1be6d2adc95ab7acf3da9387914fa8002ca4b64e571f8"
+    },
+    {
+      "file": "evidence/real-pi-failure.png",
+      "bytes": 195043,
+      "sha256": "1e92c0cee2cbc653d1827f4d6f2c25d4a6dd9f11f373d8e53c32a0708b938e8a"
+    },
+    {
+      "file": "evidence/10-offline-recovered.png",
+      "bytes": 239343,
+      "sha256": "b35370d1883e61464a3d02e2f2ad3373bf2abdbdceb8c3a4e1df3f45dbb2f668"
+    },
+    {
+      "file": "evidence/11-link-confirmation.png",
+      "bytes": 227088,
+      "sha256": "56f599f0d0642b3db143c88d46b50d5ffd7a638a7c85a72d7d4f961773f176cd"
+    },
+    {
+      "file": "Codex-Turnloom-2.1.2-app.apk",
+      "bytes": 1780565,
+      "sha256": "4129d2e04be72207bae6fc5a2fdcede221f8d2e95b9acda33f9c38863b3fc234"
+    },
+    {
+      "file": "build-manifest-2.1.2.json",
+      "bytes": 3876,
+      "sha256": "e63f90e5584467d7976ad9b9e602d2f7c3d1ed32079338c0d68aa7752568d5c7"
+    },
+    {
+      "file": "build-source.json",
+      "bytes": 10312,
+      "sha256": "a07901f4a4edbe57c7ec4fcd0526aa518511663650f64e48ec14b5254e1da82b"
+    },
+    {
+      "file": "REPORT.md",
+      "bytes": 6772,
+      "sha256": "e9716181b7208fbf5167e4f98e9e7696ac7b6a0171a378398e2e02276fdeab9d"
+    },
+    {
+      "file": "index.html",
+      "bytes": 5315,
+      "sha256": "95bd3fb95fa64f99efaa01b41becb813f22a6fc8909df33121edceac596e0742"
+    }
+  ],
+  "independent": {
+    "reviewedCommit": "5a7a6e2e6a6307353ea8bbc27439ebed01c59b5c",
+    "images": 4,
+    "limit1": "PASS",
+    "limit2": "BLOCKED_ROOT_CAUSE_UNDETERMINED",
+    "archiveManifest": "independent-review/archive-manifest.json"
+  }
+}

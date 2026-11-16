@@ -1,0 +1,18 @@
+{
+  "checks": [
+    {
+      "name": "实际 APK：关闭本地服务后发送失败保留草稿，同端口恢复重试一次成功",
+      "pass": true
+    }
+  ],
+  "screenshots": [
+    {
+      "name": "10-offline-recovered",
+      "sha256": "b35370d1883e61464a3d02e2f2ad3373bf2abdbdceb8c3a4e1df3f45dbb2f668",
+      "bytes": 239343,
+      "width": 1080,
+      "height": 1920
+    }
+  ],
+  "ok": true
+}

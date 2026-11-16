@@ -1,0 +1,107 @@
+{
+  "at": "2026-11-14T03:11:13.272Z",
+  "pid": 3151,
+  "result": {
+    "url": "file:///android_asset/public/index.html",
+    "title": "Codex-Turnloom",
+    "innerHeight": 675,
+    "visualHeight": 675.272705078125,
+    "dpr": 2.75,
+    "text": "QA398 手机隔离任务\n运行中\n本会话合成消息，非真实任务\n\n合成夹具固定文本；不是模型真实回复。\n\nQA398_085b_independent.txt\n视觉夹具398\n高\n当前任务仍在运行。消息未发送，草稿已保留；请先点“停止”或等待本轮结束。",
+    "inputs": [
+      {
+        "label": "消息",
+        "value": "Running_Enter_398\n",
+        "enterKeyHint": "done",
+        "rect": {
+          "x": 18.72727394104004,
+          "y": 503.54547119140625,
+          "width": 355.6363830566406,
+          "height": 40,
+          "bottom": 543.5454711914062
+        }
+      }
+    ],
+    "buttons": [
+      {
+        "text": "",
+        "aria": "返回",
+        "type": "button",
+        "disabled": false,
+        "rect": {
+          "x": 10,
+          "y": 6,
+          "width": 44,
+          "height": 44,
+          "bottom": 50
+        }
+      },
+      {
+        "text": "",
+        "aria": "移除 QA398_085b_independent.txt",
+        "type": "button",
+        "disabled": false,
+        "rect": {
+          "x": 181.72727966308594,
+          "y": 548.5454711914062,
+          "width": 28,
+          "height": 28,
+          "bottom": 576.5454711914062
+        }
+      },
+      {
+        "text": "视觉夹具398\n高",
+        "aria": "模型与思考强度：视觉夹具398 · 高",
+        "type": "button",
+        "disabled": false,
+        "rect": {
+          "x": 20.72727394104004,
+          "y": 583.5454711914062,
+          "width": 122.28409576416016,
+          "height": 40,
+          "bottom": 623.5454711914062
+        }
+      },
+      {
+        "text": "",
+        "aria": "图片",
+        "type": "button",
+        "disabled": false,
+        "rect": {
+          "x": 143.01136779785156,
+          "y": 583.5454711914062,
+          "width": 38,
+          "height": 40,
+          "bottom": 623.5454711914062
+        }
+      },
+      {
+        "text": "",
+        "aria": "附件",
+        "type": "button",
+        "disabled": false,
+        "rect": {
+          "x": 181.01136779785156,
+          "y": 583.5454711914062,
+          "width": 38,
+          "height": 40,
+          "bottom": 623.5454711914062
+        }
+      },
+      {
+        "text": "",
+        "aria": "停止",
+        "type": "button",
+        "disabled": false,
+        "rect": {
+          "x": 334.3636474609375,
+          "y": 583.5454711914062,
+          "width": 40,
+          "height": 40,
+          "bottom": 623.5454711914062
+        }
+      }
+    ],
+    "dialogs": []
+  }
+}

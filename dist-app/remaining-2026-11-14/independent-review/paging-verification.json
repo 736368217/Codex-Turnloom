@@ -1,0 +1,90 @@
+{
+  "at": "2026-11-14T08:34:03.558Z",
+  "fixture": {
+    "base": "http://127.0.0.1:7841",
+    "total": 205,
+    "pageSize": 80
+  },
+  "steps": [
+    {
+      "page": 1,
+      "before": null,
+      "returned": 80,
+      "totalAfterMerge": 80,
+      "hasOlderMessages": true,
+      "olderCursor": "paging-125",
+      "statusState": "ended",
+      "firstId": "paging-125",
+      "lastId": "paging-204"
+    },
+    {
+      "page": 2,
+      "before": "paging-125",
+      "returned": 80,
+      "totalAfterMerge": 160,
+      "hasOlderMessages": true,
+      "olderCursor": "paging-045",
+      "statusState": "ended",
+      "firstId": "paging-045",
+      "lastId": "paging-124"
+    },
+    {
+      "page": 3,
+      "before": "paging-045",
+      "returned": 45,
+      "totalAfterMerge": 205,
+      "hasOlderMessages": false,
+      "olderCursor": null,
+      "statusState": "ended",
+      "firstId": "paging-000",
+      "lastId": "paging-044"
+    }
+  ],
+  "totals": {
+    "pages": 3,
+    "mergedRows": 205,
+    "uniqueRows": 205,
+    "duplicates": 0,
+    "firstPage": 80,
+    "secondPageCumulative": 160,
+    "finalCumulative": 205
+  },
+  "assertions": {
+    "page1Is80": true,
+    "page2Is160Cumulative": true,
+    "finalIs205": true,
+    "noDuplicates": true,
+    "chronologicalOrderPreserved": true,
+    "exactlyMatchesExpectedSet": true,
+    "pagingDidNotChangeRuntimeState": true,
+    "cursorNeverRepeats": true,
+    "stoppedWhenNoOlder": true
+  },
+  "fixturePages": [
+    {
+      "before": null,
+      "limit": 80,
+      "returned": 80,
+      "range": "126-205",
+      "hasOlder": true,
+      "olderCursor": "paging-125"
+    },
+    {
+      "before": "paging-125",
+      "limit": 80,
+      "returned": 80,
+      "range": "46-125",
+      "hasOlder": true,
+      "olderCursor": "paging-045"
+    },
+    {
+      "before": "paging-045",
+      "limit": 80,
+      "returned": 45,
+      "range": "1-45",
+      "hasOlder": false,
+      "olderCursor": null
+    }
+  ],
+  "allPassed": true
+}

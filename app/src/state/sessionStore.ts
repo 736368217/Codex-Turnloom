@@ -8,7 +8,7 @@
  */
 
 import { createStore, useStore } from './store';
-import { secureGet, secureSet, secureRemove } from '../lib/nativeBridge';
+import { secureGet, secureSet, secureRemove, cancelAllNativeRequests } from '../lib/nativeBridge';
 import { tabStore, closeDetail } from './tabStore';
 import { closeSheet } from './sheetStore';
 import { APP_IDENTITY } from '../theme/optionATokens';
@@ -205,6 +205,8 @@ export async function revalidatePersisted(machine: PersistedMachine): Promise<bo
   );
   if (attempt !== transitionSeq) return false;
   if (!discovered.ok) {
+    // 401 = 机器访问码已轮换。先用本地保存的服务码自愈，避免用户被迫重新扫码。
+    if (discovered.status === 401 && await recoverWithSavedHarnesses(machine)) return true;
     setConnectionError(connectionErrorMessage(discovered.status, discovered.error));
     return false;
   }
@@ -220,6 +222,26 @@ export async function revalidatePersisted(machine: PersistedMachine): Promise<bo
     updated.harnesses.find((item) => item.id === updated.defaultHarnessId) || updated.harnesses[0];
   updated.defaultHarnessId = selected.id;
   return activateMachine(updated, selected.id, true, attempt);
+}
+
+/**
+ * 401 自愈：手机里存的机器访问码可能已被电脑端轮换（例如清掉了旧机器码）。
+ * 此时不该让用户「忘记这台电脑 → 重新扫码」才能恢复。发现失败但本地已保存的
+ * harness 列表仍在时，直接用保存的服务访问码逐个探活，能通就继续用。
+ */
+export async function recoverWithSavedHarnesses(machine: PersistedMachine): Promise<boolean> {
+  const saved = machine.harnesses.filter((item) => item && item.token);
+  if (!saved.length) return false;
+  const attempt = ++transitionSeq;
+  setActiveRequestScope('revalidate');
+  for (const harness of saved) {
+    const scope = scopeFor(machine.machineId, harness.id);
+    const health = await verifyHarness({ origin: machine.serverUrl, token: harness.token }, scope);
+    if (attempt !== transitionSeq) return false;
+    if (!health.ok) continue;
+    return activateMachine({ ...machine, defaultHarnessId: harness.id }, harness.id, true, attempt);
+  }
+  return false;
 }
 
 /** Pair from a canonical QR or manual URL+code; persist only after verification. */
@@ -304,6 +326,24 @@ export async function switchHarness(harnessId: string): Promise<boolean> {
     setConnectionError('切换服务未完成，请重试或重新配对');
   }
   return ok;
+}
+
+/**
+ * 连接过程中主动停止：取消在途请求、作废本次尝试，界面立刻回到可操作状态。
+ * 已配对的电脑保留（可直接重试或改地址），从未连接过则回到未配对。
+ */
+export function stopConnecting(message = '已停止连接。'): void {
+  const state = sessionStore.getState();
+  if (state.status !== 'checking' && state.status !== 'connecting' && state.status !== 'reconnecting') return;
+  transitionSeq += 1;
+  cancelAllNativeRequests();
+  const paired = Boolean(state.machineId || state.harnesses.length);
+  sessionStore.setState({
+    status: paired ? 'error' : 'unpaired',
+    online: false,
+    error: message,
+    ...(paired ? {} : { harnesses: [], serverUrl: '', machineToken: '' }),
+  });
 }
 
 export function unpair(): void {

@@ -1,0 +1,19 @@
+{
+  "at": "2026-11-14T08:35:52.016Z",
+  "purpose": "Probe the real host-control path used by the app: turnloom/host/invoke -> pi.desktop.invoke(plugin/list). Read-only.",
+  "probes": {
+    "pluginList": {
+      "elapsedMs": 8,
+      "ok": true,
+      "resultType": "error",
+      "error": "Plugin host process is no longer active"
+    },
+    "skillList": {
+      "elapsedMs": 1,
+      "ok": true,
+      "resultType": "error",
+      "error": "Plugin host process is no longer active"
+    }
+  },
+  "hostControlUsable": false
+}

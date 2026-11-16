@@ -1,0 +1,40 @@
+{
+  "commit": "5a7a6e2e6a6307353ea8bbc27439ebed01c59b5c",
+  "apkSha256": "4129d2e04be72207bae6fc5a2fdcede221f8d2e95b9acda33f9c38863b3fc234",
+  "archivedFiles": 34,
+  "additionalFiles": [
+    {
+      "file": "source-commit.json",
+      "sha256": "77896543a14817779ee9076f61f2381bf2ad9cf76f5745318979a0aeb6507dcd"
+    },
+    {
+      "file": "archive-verification.json",
+      "sha256": "6b34e55e84b73a11f7339df2100b73168007fde090ad26503fb7c2319d5dcb7a"
+    }
+  ],
+  "images": 13,
+  "brokenLinks": 0,
+  "hashMismatches": 0,
+  "galleryBrowser": {
+    "imagesLoaded": 13,
+    "imageWidth": 1080,
+    "imageHeight": 1920,
+    "horizontalOverflow": false,
+    "pointerOpenAndClose": true
+  },
+  "qa": {
+    "archivedCodex": 1,
+    "piCreated": 0,
+    "androidQaUserRemoved": true,
+    "phoneLeaseReleased": true
+  },
+  "finalDocumentationCommit": "45c9af892ef184f0e462213e78699289e8326d4b",
+  "independent": {
+    "archivedFiles": 45,
+    "images": 4,
+    "hashMismatches": 0,
+    "brokenLinks": 0,
+    "reportSha256": "1879252260e2f7627c2bb6a375a4b4369cf0e2082873b4e8e5dd5da4286dd6f6",
+    "gallerySha256": "e0865d818d275ba65e77c563b61ec3a12fb6eeb9d0ff59f65d14334f21c34661"
+  }
+}

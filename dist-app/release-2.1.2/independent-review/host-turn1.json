@@ -1,0 +1,22 @@
+﻿{
+    "at":  "2026-11-15T01:38:50.3774767+08:00",
+    "threadId":  "c76aa111-59a6-47e7-ae78-91796054331d",
+    "state":  null,
+    "thinking":  false,
+    "turnId":  null,
+    "totalMessages":  2,
+    "modelRequested":  "wb反代/deepseek-v4.1-flash",
+    "effortRequested":  "max",
+    "messages":  [
+                     {
+                         "role":  "user",
+                         "turnId":  "1e543ac9-1a04-4f11-9d76-c36c8effc210",
+                         "content":  "（可删）QA332E 独立复测第1轮。Reply with exactly QA332E_TURN_ONE and nothing else. Do not use tools."
+                     },
+                     {
+                         "role":  "assistant",
+                         "turnId":  "1e543ac9-1a04-4f11-9d76-c36c8effc210",
+                         "content":  "QA332E_TURN_ONE"
+                     }
+                 ]
+}

@@ -1,0 +1,21 @@
+{
+  "kind": "pi",
+  "marker": "REMAINPIMWG4AJMX",
+  "checks": [],
+  "screenshots": [
+    {
+      "name": "real-pi-failure",
+      "sha256": "1e92c0cee2cbc653d1827f4d6f2c25d4a6dd9f11f373d8e53c32a0708b938e8a",
+      "bytes": 195043,
+      "width": 1080,
+      "height": 1920
+    }
+  ],
+  "at": "2026-11-14T08:01:54.153Z",
+  "modelLabel": "模型与思考强度：DeepSeek V4.1 Flash 1017 · 低",
+  "ok": false,
+  "error": "Exact marked QA thread absent",
+  "alerts": [
+    "电脑端服务出错，请检查桌面端状态后重试。 草稿与附件已保留。"
+  ]
+}

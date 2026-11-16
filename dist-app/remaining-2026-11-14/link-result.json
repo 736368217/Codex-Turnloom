@@ -1,0 +1,18 @@
+{
+  "checks": [
+    {
+      "name": "链接确认抽屉显示完整地址并返回，不导航外网",
+      "pass": true
+    }
+  ],
+  "screenshots": [
+    {
+      "name": "11-link-confirmation",
+      "sha256": "56f599f0d0642b3db143c88d46b50d5ffd7a638a7c85a72d7d4f961773f176cd",
+      "bytes": 227088,
+      "width": 1080,
+      "height": 1920
+    }
+  ],
+  "ok": true
+}

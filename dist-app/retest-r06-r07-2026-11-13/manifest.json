@@ -1,0 +1,346 @@
+{
+  "at": "2026-11-14T05:01:30.260Z",
+  "commit": "398f924a29adca033db1857f9d5d285edc8fb651",
+  "apkSha256": "16e38f0387142673c810a7e71e431f60d87a29976cfb064aaf20ad45c07775f0",
+  "version": "2.1.2/83",
+  "device": {
+    "android": "35",
+    "size": "1080x1920",
+    "density": "440"
+  },
+  "sourceBinding": {
+    "checkedFiles": 47,
+    "mismatches": 0
+  },
+  "checks": [
+    {
+      "name": "新 APK 实装 SHA 与构建产物一致",
+      "pass": true,
+      "group": "R06/R07 · 实际 APK"
+    },
+    {
+      "name": "R07 前置：会话列表显示运行中",
+      "pass": true,
+      "group": "R06/R07 · 实际 APK"
+    },
+    {
+      "name": "R06 运行中 Enter 不发送也不停止，草稿保留",
+      "pass": true,
+      "group": "R06/R07 · 实际 APK"
+    },
+    {
+      "name": "R06 独立 Stop 按钮只停止当前 thread",
+      "pass": true,
+      "group": "R06/R07 · 实际 APK"
+    },
+    {
+      "name": "R07 监控停止后归零",
+      "pass": true,
+      "group": "R06/R07 · 实际 APK"
+    },
+    {
+      "name": "R07 会话列表徽标使用权威状态",
+      "pass": true,
+      "group": "R06/R07 · 实际 APK"
+    },
+    {
+      "name": "R07 运行中筛选排除已停止会话",
+      "pass": true,
+      "group": "R06/R07 · 实际 APK"
+    },
+    {
+      "name": "R07 首页任务卡使用权威状态",
+      "pass": true,
+      "group": "R06/R07 · 实际 APK"
+    },
+    {
+      "name": "R06 空闲 Enter 正常发送且不再触发 Stop",
+      "pass": true,
+      "group": "R06/R07 · 实际 APK"
+    },
+    {
+      "name": "真实 IME 显示时发送键在可视区且可点击",
+      "pass": true,
+      "group": "R06/R07 · 实际 APK"
+    },
+    {
+      "name": "嵌套模型抽屉第一次 Back 保留新建任务",
+      "pass": true,
+      "group": "R06/R07 · 实际 APK"
+    },
+    {
+      "name": "第二次 Back 关闭新建任务",
+      "pass": true,
+      "group": "R06/R07 · 实际 APK"
+    },
+    {
+      "name": "通用文件系统选择器取消后不产生附件",
+      "pass": true,
+      "group": "文件/网络 · 实际 APK + 隔离服务"
+    },
+    {
+      "name": "通用文件通过 Android 系统选择器回到输入框",
+      "pass": true,
+      "group": "文件/网络 · 实际 APK + 隔离服务"
+    },
+    {
+      "name": "通用文件 503 保留草稿附件且字节哈希正确",
+      "pass": true,
+      "group": "文件/网络 · 实际 APK + 隔离服务"
+    },
+    {
+      "name": "通用文件失败重试保持同请求 ID 并成功清空",
+      "pass": true,
+      "group": "文件/网络 · 实际 APK + 隔离服务"
+    },
+    {
+      "name": "受控断网保留草稿，服务恢复后发送成功",
+      "pass": true,
+      "group": "文件/网络 · 实际 APK + 隔离服务"
+    },
+    {
+      "name": "手机已配对真实电脑网关（127.0.0.1:8787，机器访问码）",
+      "pass": true,
+      "group": "真实宿主 · 实际 APK"
+    },
+    {
+      "name": "手机界面已选择真实 Codex 服务",
+      "pass": true,
+      "group": "真实宿主 · 实际 APK"
+    },
+    {
+      "name": "手机真实 Codex 新建任务并送达",
+      "pass": true,
+      "group": "真实宿主 · 实际 APK"
+    },
+    {
+      "name": "第一轮真实 assistant 回复显示在手机",
+      "pass": true,
+      "group": "真实宿主 · 实际 APK"
+    },
+    {
+      "name": "第二轮真实 assistant 连续回复",
+      "pass": true,
+      "group": "真实宿主 · 实际 APK"
+    }
+  ],
+  "screenshots": [
+    {
+      "name": "01-running-enter-blocked",
+      "dir": "mobile-evidence",
+      "caption": "运行中按 Enter：0 发送、0 停止，草稿仍在",
+      "class": "APK + 隔离服务",
+      "width": 1080,
+      "height": 1920,
+      "bytes": 101381,
+      "sha256": "5a0e2073fb30b722747d0e5366137e3e3c88570782e86552c5dcad12750c4900"
+    },
+    {
+      "name": "02-explicit-stop",
+      "dir": "mobile-evidence",
+      "caption": "独立停止按钮只停当前会话",
+      "class": "APK + 隔离服务",
+      "width": 1080,
+      "height": 1920,
+      "bytes": 72163,
+      "sha256": "d7da3dcb17c956d2ab483c7e465066d969b9c8a168b1c3adcf77e60d56e8667f"
+    },
+    {
+      "name": "03-monitor-zero",
+      "dir": "mobile-evidence",
+      "caption": "Stop 后监控运行数字归零、运行列表空态",
+      "class": "APK + 隔离服务",
+      "width": 1080,
+      "height": 1920,
+      "bytes": 127210,
+      "sha256": "fd98073100d392303d60761cfc3ce1163a8cee015f0eb505d40faee535f7d23a"
+    },
+    {
+      "name": "04-list-home-ended",
+      "dir": "mobile-evidence",
+      "caption": "会话列表徽标与首页任务卡同步显示“已结束”",
+      "class": "APK + 隔离服务（旧列表仍返回运行中）",
+      "width": 1080,
+      "height": 1920,
+      "bytes": 179482,
+      "sha256": "2c05493b12e7267a97d29f0355fc33a92ec02676685427dad63e4e58945bef46"
+    },
+    {
+      "name": "05-idle-enter-sent",
+      "dir": "mobile-evidence",
+      "caption": "空闲 Enter 正常发送且不再触发 Stop",
+      "class": "APK + 隔离服务",
+      "width": 1080,
+      "height": 1920,
+      "bytes": 75018,
+      "sha256": "e9c959a13f4dc2073750b996ac4e1de054c38b903343173f262938c11b9c638e"
+    },
+    {
+      "name": "06-ime-send",
+      "dir": "mobile-evidence",
+      "caption": "真实系统输入法显示时发送键在可视区并可点",
+      "class": "APK + 真实 IME",
+      "width": 1080,
+      "height": 1920,
+      "bytes": 82576,
+      "sha256": "edd4a6e4ac14fe02e014911f88621e253faa2802a61e907521b3de62f8544fb2"
+    },
+    {
+      "name": "07-nested-back",
+      "dir": "mobile-evidence",
+      "caption": "新建任务内模型抽屉返回只关抽屉",
+      "class": "APK + 系统返回键",
+      "width": 1080,
+      "height": 1920,
+      "bytes": 183131,
+      "sha256": "17da992cc74b110a20bac2cbddd09526bd08b3d9480733bec27e87f520922075"
+    },
+    {
+      "name": "01-file-failed",
+      "dir": "file-evidence",
+      "caption": "503：草稿与附件保留，字节未丢",
+      "class": "APK + 系统文件选择器 + 隔离服务",
+      "width": 1080,
+      "height": 1920,
+      "bytes": 100449,
+      "sha256": "76be44464ea8757f07bb10decd34de3110753ac886a2b4ed9751c23a2d98d3c4"
+    },
+    {
+      "name": "02-file-retried",
+      "dir": "file-evidence",
+      "caption": "同请求 ID 重试成功并清空",
+      "class": "APK + 系统文件选择器 + 隔离服务",
+      "width": 1080,
+      "height": 1920,
+      "bytes": 71663,
+      "sha256": "6387b0520a24a240d3b9026a4df2d6adbddcb4bf38b7061506bd964286924a1d"
+    },
+    {
+      "name": "03-network-recovered",
+      "dir": "file-evidence",
+      "caption": "受控断网后恢复，发送成功",
+      "class": "APK + 隔离服务",
+      "width": 1080,
+      "height": 1920,
+      "bytes": 79067,
+      "sha256": "7544439b5835e3af03c7b79a898aaaaa8acad0aa331d129d09bc1c859b2c3517"
+    },
+    {
+      "name": "00-real-machine-connected",
+      "dir": "real-evidence",
+      "caption": "手机配对真实电脑网关（非夹具）",
+      "class": "APK + 真实后台",
+      "width": 1080,
+      "height": 1920,
+      "bytes": 189127,
+      "sha256": "2b74c9de6a83e0eee2e135e04158199837731b227f6370e1d6c020dab17192ff"
+    },
+    {
+      "name": "01-real-turn1",
+      "dir": "real-evidence",
+      "caption": "真实 Codex 第一轮回复 TURNLOOM_REAL_REPLY_1",
+      "class": "APK + 真实 Codex 宿主",
+      "width": 1080,
+      "height": 1920,
+      "bytes": 144532,
+      "sha256": "d41407008f5cc378a5d5e795b4c2d0786b5d60243ea3773bbe222d2290d423c9"
+    },
+    {
+      "name": "02-real-turn2",
+      "dir": "real-evidence",
+      "caption": "真实 Codex 第二轮回复 TURNLOOM_REAL_REPLY_2",
+      "class": "APK + 真实 Codex 宿主",
+      "width": 1080,
+      "height": 1920,
+      "bytes": 187094,
+      "sha256": "f9a6abe5b344890a57910afcd473949941f7c00079179feaa9daf584c011eb8e"
+    }
+  ],
+  "realHost": {
+    "threadId": "01a1d5de-b337-7191-b2b5-a3660d8b255e",
+    "modelLabel": "模型与思考强度：GPT-5.6-Sol · 低",
+    "replies": [
+      "TURNLOOM_REAL_REPLY_1",
+      "TURNLOOM_REAL_REPLY_2"
+    ],
+    "probeThreadId": "01a1d5e0-3111-78b2-aebb-4f91a84319e8",
+    "probeTurnContext": {
+      "model": "gpt-5.6-sol",
+      "effort": "high",
+      "settingsEffort": "high"
+    },
+    "rootCause": "unresolved between backend, IPC and app-server",
+    "independentlyRetested": false
+  },
+  "eightItems": [
+    {
+      "name": "软键盘下 Send 真实触点可达",
+      "status": "独立通过",
+      "kind": "实际 APK",
+      "detail": "独立轮真实系统输入法 + Android 触点，发送键 bottom 662.55 < 675"
+    },
+    {
+      "name": "新建任务内嵌套模型抽屉逐层 Back",
+      "status": "独立通过",
+      "kind": "实际 APK",
+      "detail": "第一次返回只关模型抽屉，第二次返回关闭新建任务"
+    },
+    {
+      "name": "通用文件完整字节 / 取消 / 重试",
+      "status": "字节与重试独立通过",
+      "kind": "实际 APK + 系统选择器",
+      "detail": "独立轮47 B文件同ID重试成功；取消仅开发自测。慢选首次未入托盘，重选成功"
+    },
+    {
+      "name": "受控断网重连",
+      "status": "仅开发自测通过",
+      "kind": "实际 APK + 隔离服务",
+      "detail": "独立轮意外中断不计受控断网通过"
+    },
+    {
+      "name": "真实助手连续多轮角色回复",
+      "status": "仅Codex开发自测通过",
+      "kind": "实际 APK + 真实 Codex",
+      "detail": "独立轮全部业务请求使用夹具，未计真实助手回复"
+    },
+    {
+      "name": "真实宿主接受 model / effort",
+      "status": "部分通过、待定位",
+      "kind": "历史证据",
+      "detail": "第二轮 effort low；新建首轮实际 high，直接接口复现，但后端到宿主的具体丢参位置未定位"
+    },
+    {
+      "name": "公网手机链路",
+      "status": "不适用",
+      "kind": "用户2026-11-14确认",
+      "detail": "旧公网服务器已退役，不适用。禁止再探测/连接/重试/恢复121.40.69.97；新入口须由用户另行指定"
+    },
+    {
+      "name": "全部抽屉 / 长会话 / 分页 / 服务切换组合",
+      "status": "未完成",
+      "kind": "仅单测",
+      "detail": "分页与 harness 切换有单测，手机组合流程未走完"
+    }
+  ],
+  "independentReview": {
+    "sessionId": "085b0cda-a463-419e-bafc-bafd3bad412f",
+    "commit": "398f924a29adca033db1857f9d5d285edc8fb651",
+    "apkSha256": "16e38f0387142673c810a7e71e431f60d87a29976cfb064aaf20ad45c07775f0",
+    "totals": {
+      "passed": 17,
+      "failed": 0
+    },
+    "images": 14,
+    "gallery": "independent-review/index.html",
+    "manifest": "independent-review/evidence-manifest.json",
+    "report": "independent-review/report.md",
+    "separateFromDeveloperCounts": true
+  },
+  "retiredEndpoint": {
+    "address": "121.40.69.97",
+    "status": "retired",
+    "disposition": "旧公网服务器已退役，不适用",
+    "callsDuringCloseout": 0
+  },
+  "scope": "R06/R07 independent acceptance completed for covered scenarios; developer history retained separately; candidate not published"
+}

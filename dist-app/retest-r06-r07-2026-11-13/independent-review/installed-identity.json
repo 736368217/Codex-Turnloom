@@ -1,0 +1,22 @@
+{
+  "observedBy": "independent review session 085b0cda-a463-419e-bafc-bafd3bad412f",
+  "deviceIndex": 1,
+  "serial": "127.0.0.1:16416",
+  "api": 35,
+  "width": 1080,
+  "height": 1920,
+  "density": 440,
+  "packageName": "com.codex.turnloom.app",
+  "versionName": "2.1.2",
+  "versionCode": 83,
+  "targetSdk": 35,
+  "minSdk": 26,
+  "installedBaseApkSha256": "16e38f0387142673c810a7e71e431f60d87a29976cfb064aaf20ad45c07775f0",
+  "apkWasAlreadyInstalled": true,
+  "qaMethod": "pm install-existing for own ephemeral Android user; no user0 preference overwrite",
+  "qaAndroidUser": 11,
+  "runtimePid": 3151,
+  "initialFailure": "fresh QA user11 WebView lock creation ENOENT; own user11 app data clear restored launch; initial-qa-crash.txt kept separately",
+  "httpScope": "own synthetic loopback fixture via 10.0.2.2:7831; no real model or approval request",
+  "frameObservation": "file:///android_asset/public/index.html; 66px native status bar; dpr 2.75"
+}

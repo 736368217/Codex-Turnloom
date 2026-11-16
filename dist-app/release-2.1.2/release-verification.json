@@ -1,0 +1,69 @@
+{
+  "at": "2026-11-14T17:49:45.842Z",
+  "created": true,
+  "published": true,
+  "tag": "v2.1.2",
+  "targetCommit": "d086deb8a7fb52b7aa00279b05640ef1c40df38f",
+  "targetCommitish": "d086deb8a7fb52b7aa00279b05640ef1c40df38f",
+  "url": "https://github.com/736368217/Codex-Turnloom/releases/tag/v2.1.2",
+  "publishedAt": "2026-11-14T17:49:44Z",
+  "ci": {
+    "runId": 43622970795,
+    "conclusion": "success",
+    "headSha": "d086deb8a7fb52b7aa00279b05640ef1c40df38f",
+    "status": "completed"
+  },
+  "assets": [
+    {
+      "name": "Codex-Turnloom-2.1.2-app.apk",
+      "bytes": 1780565,
+      "sha256": "4129d2e04be72207bae6fc5a2fdcede221f8d2e95b9acda33f9c38863b3fc234",
+      "remoteDigest": "sha256:4129d2e04be72207bae6fc5a2fdcede221f8d2e95b9acda33f9c38863b3fc234",
+      "url": "https://github.com/736368217/Codex-Turnloom/releases/download/v2.1.2/Codex-Turnloom-2.1.2-app.apk"
+    },
+    {
+      "name": "Codex-Turnloom-2.1.2-app.apk.sha256",
+      "bytes": 95,
+      "sha256": "8657954a12795f23e0b0cdc37a56a4779604cba25254f6b1d4b5f9c677dbc6ef",
+      "remoteDigest": "sha256:8657954a12795f23e0b0cdc37a56a4779604cba25254f6b1d4b5f9c677dbc6ef",
+      "url": "https://github.com/736368217/Codex-Turnloom/releases/download/v2.1.2/Codex-Turnloom-2.1.2-app.apk.sha256"
+    },
+    {
+      "name": "Codex-Turnloom-2.1.2-app.apk.release.json",
+      "bytes": 2646,
+      "sha256": "7cc91efefdeee70efa484af7429a813c7feec20be9a06a0d301bd3b8c32994e3",
+      "remoteDigest": "sha256:7cc91efefdeee70efa484af7429a813c7feec20be9a06a0d301bd3b8c32994e3",
+      "url": "https://github.com/736368217/Codex-Turnloom/releases/download/v2.1.2/Codex-Turnloom-2.1.2-app.apk.release.json"
+    },
+    {
+      "name": "build-manifest-2.1.2.json",
+      "bytes": 2646,
+      "sha256": "7cc91efefdeee70efa484af7429a813c7feec20be9a06a0d301bd3b8c32994e3",
+      "remoteDigest": "sha256:7cc91efefdeee70efa484af7429a813c7feec20be9a06a0d301bd3b8c32994e3",
+      "url": "https://github.com/736368217/Codex-Turnloom/releases/download/v2.1.2/build-manifest-2.1.2.json"
+    },
+    {
+      "name": "REPORT.md",
+      "bytes": 4917,
+      "sha256": "6df5cadbc5fa446facd1032fe51253d2d59be96e45934114353624a31f594029",
+      "remoteDigest": "sha256:6df5cadbc5fa446facd1032fe51253d2d59be96e45934114353624a31f594029",
+      "url": "https://github.com/736368217/Codex-Turnloom/releases/download/v2.1.2/REPORT.md"
+    },
+    {
+      "name": "delivery.html",
+      "bytes": 1688,
+      "sha256": "b8a2b9f6cc4a47d469f735f288ba99b4bf0ead050dcfdae06847801350023dd4",
+      "remoteDigest": "sha256:b8a2b9f6cc4a47d469f735f288ba99b4bf0ead050dcfdae06847801350023dd4",
+      "url": "https://github.com/736368217/Codex-Turnloom/releases/download/v2.1.2/delivery.html"
+    },
+    {
+      "name": "Codex-Turnloom-2.1.2-review-evidence.zip",
+      "bytes": 356963,
+      "sha256": "b81ff60b3941f52d2b7e97efdd5f35058993605c4e971b11290a2a540b816602",
+      "remoteDigest": "sha256:b81ff60b3941f52d2b7e97efdd5f35058993605c4e971b11290a2a540b816602",
+      "url": "https://github.com/736368217/Codex-Turnloom/releases/download/v2.1.2/Codex-Turnloom-2.1.2-review-evidence.zip"
+    }
+  ],
+  "allAssetDigestsMatch": true,
+  "previousReleaseModified": false
+}

@@ -1,0 +1,10 @@
+{
+  "apkSha256": "4129d2e04be72207bae6fc5a2fdcede221f8d2e95b9acda33f9c38863b3fc234",
+  "unchangedApkInputs": 61,
+  "mismatches": [],
+  "sourceOnlyChanges": [
+    "server.js",
+    "third-party/turnloom-pidesktop/plugin/main.js"
+  ],
+  "previousIndependentEvidence": "../remaining-2026-11-14/independent-review/archive-manifest.json"
+}

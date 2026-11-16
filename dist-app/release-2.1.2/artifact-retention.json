@@ -1,0 +1,15 @@
+{
+  "current": "release-2.1.2/Codex-Turnloom-2.1.2-app.apk",
+  "historyKeep": [
+    "Codex-Turnloom-2.1.1-app.apk",
+    "Codex-Turnloom-2.1.0-app.apk"
+  ],
+  "olderCandidate": [
+    {
+      "file": "Codex-Turnloom-2.0.0-app.apk",
+      "bytes": 296497
+    }
+  ],
+  "deleted": [],
+  "reason": "历史产物删除未获逐路径确认，仅列清单，保留所有既有产物。"
+}

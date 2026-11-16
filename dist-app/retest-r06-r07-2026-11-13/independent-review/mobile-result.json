@@ -1,0 +1,176 @@
+{
+  "commit": "398f924a29adca033db1857f9d5d285edc8fb651",
+  "apkSha256": "16e38f0387142673c810a7e71e431f60d87a29976cfb064aaf20ad45c07775f0",
+  "totals": {
+    "passed": 17,
+    "failed": 0
+  },
+  "cases": [
+    {
+      "id": "M01",
+      "title": "运行中 Enter：阻止提交且不误停，草稿保留",
+      "status": "passed",
+      "evidence": "independent actual APK + own synthetic HTTP fixture; native input with DOM observation",
+      "refs": [
+        "snapshot-running-enter.json",
+        "fixture-running-enter.json"
+      ]
+    },
+    {
+      "id": "M02",
+      "title": "Shift+Enter 插入换行，不发送也不停止",
+      "status": "passed",
+      "evidence": "independent actual APK + own synthetic HTTP fixture; native input with DOM observation",
+      "refs": [
+        "snapshot-shift-enter.json",
+        "fixture-shift-enter.json"
+      ]
+    },
+    {
+      "id": "M03",
+      "title": "运行态带文件提交显示阻止提示，保留正文与附件",
+      "status": "passed",
+      "evidence": "independent actual APK + own synthetic HTTP fixture; native input with DOM observation",
+      "refs": [
+        "snapshot-before-stop.json",
+        "probe-read-picker-trace.json"
+      ]
+    },
+    {
+      "id": "M04",
+      "title": "独立 type=button Stop 只中断当前 thread",
+      "status": "passed",
+      "evidence": "independent actual APK + own synthetic HTTP fixture; native input with DOM observation",
+      "refs": [
+        "snapshot-before-stop.json",
+        "fixture-after-stop-late-poll.json"
+      ]
+    },
+    {
+      "id": "M05",
+      "title": "Stop 之前的迟到运行态轮询不复活任务",
+      "status": "passed",
+      "evidence": "independent actual APK + own synthetic HTTP fixture; native input with DOM observation",
+      "refs": [
+        "fixture-poll-held-before-stop.json",
+        "fixture-after-stop-late-poll.json",
+        "snapshot-after-stop-late-poll.json"
+      ]
+    },
+    {
+      "id": "M06",
+      "title": "刷新旧 running 列表后徽标仍为已结束",
+      "status": "passed",
+      "evidence": "independent actual APK + own synthetic HTTP fixture; native input with DOM observation",
+      "refs": [
+        "snapshot-refreshed-ended.json",
+        "fixture-list-refreshed.json"
+      ]
+    },
+    {
+      "id": "M07",
+      "title": "运行中筛选排除已停止任务",
+      "status": "passed",
+      "evidence": "independent actual APK + own synthetic HTTP fixture; native input with DOM observation",
+      "refs": [
+        "snapshot-running-filter-empty.json"
+      ]
+    },
+    {
+      "id": "M08",
+      "title": "首页卡片与运行计数使用已停止状态",
+      "status": "passed",
+      "evidence": "independent actual APK + own synthetic HTTP fixture; native input with DOM observation",
+      "refs": [
+        "snapshot-home-ended.json"
+      ]
+    },
+    {
+      "id": "M09",
+      "title": "监控数字为 0 且运行列表为空",
+      "status": "passed",
+      "evidence": "independent actual APK + own synthetic HTTP fixture; native input with DOM observation",
+      "refs": [
+        "snapshot-monitor-zero.json"
+      ]
+    },
+    {
+      "id": "M10",
+      "title": "空闲 Enter 发起文件请求，停止计数不增加",
+      "status": "passed",
+      "evidence": "independent actual APK + own synthetic HTTP fixture; native input with DOM observation",
+      "refs": [
+        "fixture-file-503.json"
+      ]
+    },
+    {
+      "id": "M11",
+      "title": "HTTP 503 后正文和文件保留",
+      "status": "passed",
+      "evidence": "independent actual APK + own synthetic HTTP fixture; native input with DOM observation",
+      "refs": [
+        "fixture-file-503.json",
+        "snapshot-file-503-retained.json"
+      ]
+    },
+    {
+      "id": "M12",
+      "title": "失败重试沿用请求 ID，文件字节 SHA 完全一致",
+      "status": "passed",
+      "evidence": "independent actual APK + own synthetic HTTP fixture; native input with DOM observation",
+      "refs": [
+        "fixture-file-retried.json"
+      ]
+    },
+    {
+      "id": "M13",
+      "title": "重试成功后清空正文和附件槽",
+      "status": "passed",
+      "evidence": "independent actual APK + own synthetic HTTP fixture; native input with DOM observation",
+      "refs": [
+        "snapshot-file-retry-cleared.json"
+      ]
+    },
+    {
+      "id": "M14",
+      "title": "系统输入视图显示时发送键位于可视区并命中",
+      "status": "passed",
+      "evidence": "independent actual APK + own synthetic HTTP fixture; native input with DOM observation",
+      "refs": [
+        "phone/qa398-ime.txt",
+        "plan-send.json",
+        "snapshot-ime-before-send.json"
+      ]
+    },
+    {
+      "id": "M15",
+      "title": "真实 Android 触点点 Send 后正确发送并清空",
+      "status": "passed",
+      "evidence": "independent actual APK + own synthetic HTTP fixture; native input with DOM observation",
+      "refs": [
+        "fixture-ime-send.json",
+        "snapshot-ime-send-complete.json"
+      ]
+    },
+    {
+      "id": "M16",
+      "title": "嵌套抽屉第一次系统 Back 仅关模型，保留新建任务",
+      "status": "passed",
+      "evidence": "independent actual APK + own synthetic HTTP fixture; native input with DOM observation",
+      "refs": [
+        "nested-open.json",
+        "nested-first-back.json"
+      ]
+    },
+    {
+      "id": "M17",
+      "title": "第二次系统 Back 关闭新建任务，回到列表",
+      "status": "passed",
+      "evidence": "independent actual APK + own synthetic HTTP fixture; native input with DOM observation",
+      "refs": [
+        "nested-second-back.json"
+      ]
+    }
+  ],
+  "scope": "17 phone behavior checks, not 17 unit tests or real model E2E; fixture was restarted before the stop sequence"
+}

@@ -1,0 +1,30 @@
+﻿{
+    "at":  "2026-11-15T01:39:27.4189414+08:00",
+    "threadId":  "c76aa111-59a6-47e7-ae78-91796054331d",
+    "thinking":  false,
+    "totalMessages":  4,
+    "modelRequested":  "wb反代/deepseek-v4.1-flash",
+    "effortRequested":  "max",
+    "messages":  [
+                     {
+                         "role":  "user",
+                         "turnId":  "1e543ac9-1a04-4f11-9d76-c36c8effc210",
+                         "content":  "（可删）QA332E 独立复测第1轮。Reply with exactly QA332E_TURN_ONE and nothing else. Do not use tools."
+                     },
+                     {
+                         "role":  "assistant",
+                         "turnId":  "1e543ac9-1a04-4f11-9d76-c36c8effc210",
+                         "content":  "QA332E_TURN_ONE"
+                     },
+                     {
+                         "role":  "user",
+                         "turnId":  "27b474cf-1935-46af-859d-13183b0de23d",
+                         "content":  "（可删）QA332E 独立复测第2轮。Reply with exactly QA332E_TURN_TWO and nothing else. Do not use tools."
+                     },
+                     {
+                         "role":  "assistant",
+                         "turnId":  "27b474cf-1935-46af-859d-13183b0de23d",
+                         "content":  "QA332E_TURN_TWO"
+                     }
+                 ]
+}

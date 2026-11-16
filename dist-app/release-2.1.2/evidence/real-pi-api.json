@@ -1,0 +1,35 @@
+{
+  "at": "2026-11-14T17:27:36.160Z",
+  "marker": "PI_RELEASE_MWGOI1GG",
+  "model": "wb反代/deepseek-v4.1-flash",
+  "effort": "max",
+  "turns": [
+    {
+      "id": "823e73bf-1bd9-4c86-b5f7-a69c186e0036",
+      "status": "completed",
+      "error_code": null,
+      "provider_id": "e1496432-5212-4d47-a765-8456f1ec5b3f",
+      "model_id": "deepseek-v4.1-flash",
+      "input_tokens": 21406,
+      "output_tokens": 75,
+      "expected": "TURNLOOM_PI_RELEASE_1",
+      "reply": "TURNLOOM_PI_RELEASE_1",
+      "pass": true
+    },
+    {
+      "id": "5ab38cf8-7cc6-4e4a-8b35-11035f89f3f8",
+      "status": "completed",
+      "error_code": null,
+      "provider_id": "e1496432-5212-4d47-a765-8456f1ec5b3f",
+      "model_id": "deepseek-v4.1-flash",
+      "input_tokens": 156,
+      "output_tokens": 11,
+      "reply": "TURNLOOM_PI_RELEASE_2",
+      "pass": true,
+      "expected": "TURNLOOM_PI_RELEASE_2"
+    }
+  ],
+  "sessionId": "ba72dbb3-7544-45ce-83e5-5184ce358dd7",
+  "ok": true,
+  "initialSecondSendError": "Expected values to be strictly equal:\n\n409 !== 200\n"
+}

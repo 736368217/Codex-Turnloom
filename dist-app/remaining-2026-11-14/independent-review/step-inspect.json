@@ -1,0 +1,36 @@
+{
+  "at": "2026-11-14T08:36:28.042Z",
+  "result": {
+    "text": "QA398 手机隔离任务\n空闲\n本会话合成消息，非真实任务\n\n合成夹具固定文本；不是模型真实回复。\n\nQA5A7A 第五轮附件提交复测\n视觉夹具398\n高",
+    "input": "",
+    "attachments": null,
+    "alerts": [],
+    "buttons": [
+      {
+        "aria": "返回",
+        "text": "",
+        "disabled": false
+      },
+      {
+        "aria": "模型与思考强度：视觉夹具398 · 高",
+        "text": "视觉夹具398\n高",
+        "disabled": false
+      },
+      {
+        "aria": "图片",
+        "text": "",
+        "disabled": false
+      },
+      {
+        "aria": "附件",
+        "text": "",
+        "disabled": false
+      },
+      {
+        "aria": "发送",
+        "text": "",
+        "disabled": true
+      }
+    ]
+  }
+}

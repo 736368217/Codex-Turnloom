@@ -1,0 +1,25 @@
+{
+  "productCommit": "48f081df3d9a0479f6fcd991a526ffacc4b49c1f",
+  "versionName": "2.1.2",
+  "versionCode": 83,
+  "apkSha256": "4129d2e04be72207bae6fc5a2fdcede221f8d2e95b9acda33f9c38863b3fc234",
+  "apkCodeUnchangedSince": "45c9af892ef184f0e462213e78699289e8326d4b",
+  "files": [
+    {
+      "file": "server.js",
+      "sha256": "43881df3523876ef332099f2cd4ad4e2d41ea15b99c83bc0501d2fa448f31415"
+    },
+    {
+      "file": "third-party/turnloom-pidesktop/plugin/main.js",
+      "sha256": "0ead670a2032408400a68010c4b9d08da63c44ec3e1ee1b114465ac5431e87e9"
+    },
+    {
+      "file": "test/pi-bridge-lifecycle.test.js",
+      "sha256": "bd25a2f3ab4ba30d9ae0aa4fca788cb18a89c67650073ab4c491c991ae56a0f0"
+    },
+    {
+      "file": "test/send-preflight-retry.test.js",
+      "sha256": "666c13654243abb48ec55684a32bc6e7613485dbaec66ffa70bd5e5c5b2cbec8"
+    }
+  ]
+}

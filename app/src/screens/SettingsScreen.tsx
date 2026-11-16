@@ -12,7 +12,7 @@ import { getAppUpdate, type RequestContext } from '../lib/turnloomApi';
 import { assessUpdate, absoluteApkUrl } from '../lib/appUpdate';
 import { useUpdate, updateStore, setState, setMessage, setRelease, setRequestId } from '../state/updateStore';
 
-function UpdatePanel() {
+export function UpdatePanel() {
   const session = useSessionState();
   const { state, message, release, progress } = useUpdate();
   const lastCheckRef = useRef(0);

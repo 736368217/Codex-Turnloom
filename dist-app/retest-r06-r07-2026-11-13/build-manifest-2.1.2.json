@@ -1,0 +1,78 @@
+{
+    "generatedAt":  "2026-11-14T00:54:25.4529433+08:00",
+    "startedAt":  "2026-11-14T00:53:40.7911982+08:00",
+    "result":  "ok",
+    "route":  "dom-shell",
+    "packageName":  "com.codex.turnloom.app",
+    "versionName":  "2.1.2",
+    "versionCode":  83,
+    "apkName":  "Codex-Turnloom-2.1.2-app.apk",
+    "sha256":  "16e38f0387142673c810a7e71e431f60d87a29976cfb064aaf20ad45c07775f0",
+    "sizeBytes":  1776469,
+    "notes":  "R06-R07 repair mobile acceptance; not published.",
+    "identity":  {
+                     "applicationId":  "com.codex.turnloom.app",
+                     "versionName":  "2.1.2",
+                     "versionCode":  "83"
+                 },
+    "buildSteps":  [
+                       {
+                           "name":  "validate",
+                           "status":  "ok",
+                           "detail":  "D:\\pi-data\\data\\scratch\\a267b24d-319e-47b6-86d5-19d57bd827bd\\retest-r06-r07\\source / D:\\pi-data\\data\\scratch\\a267b24d-319e-47b6-86d5-19d57bd827bd\\retest-r06-r07\\frontend"
+                       },
+                       {
+                           "name":  "sync-source",
+                           "status":  "ok",
+                           "detail":  "D:\\pi-data\\data\\scratch\\a267b24d-319e-47b6-86d5-19d57bd827bd\\retest-r06-r07\\frontend"
+                       },
+                       {
+                           "name":  "vite-build",
+                           "status":  "ok",
+                           "detail":  "dist/index.html base=\u0027./\u0027"
+                       },
+                       {
+                           "name":  "copy-assets",
+                           "status":  "ok",
+                           "detail":  "D:\\pi-data\\data\\scratch\\a267b24d-319e-47b6-86d5-19d57bd827bd\\retest-r06-r07\\source\\native-shell\\app\\src\\main\\assets\\public"
+                       },
+                       {
+                           "name":  "assembleRelease",
+                           "status":  "ok",
+                           "detail":  "D:\\pi-data\\data\\scratch\\a267b24d-319e-47b6-86d5-19d57bd827bd\\retest-r06-r07\\source\\native-shell\\app\\build\\outputs\\apk\\release\\app-release-unsigned.apk"
+                       },
+                       {
+                           "name":  "zipalign",
+                           "status":  "ok",
+                           "detail":  "-p 4"
+                       },
+                       {
+                           "name":  "apksigner-sign",
+                           "status":  "ok",
+                           "detail":  "v1/v2/v3"
+                       },
+                       {
+                           "name":  "apksigner-verify",
+                           "status":  "ok",
+                           "detail":  "v2/v3"
+                       },
+                       {
+                           "name":  "aapt2-badging",
+                           "status":  "ok",
+                           "detail":  "com.codex.turnloom.app/2.1.2/83"
+                       }
+                   ],
+    "apk":  {
+                "name":  "Codex-Turnloom-2.1.2-app.apk",
+                "path":  "D:\\pi-data\\data\\scratch\\a267b24d-319e-47b6-86d5-19d57bd827bd\\retest-r06-r07\\artifact\\Codex-Turnloom-2.1.2-app.apk",
+                "bytes":  1776469,
+                "sha256":  "16e38f0387142673c810a7e71e431f60d87a29976cfb064aaf20ad45c07775f0"
+            },
+    "entryUrl":  "file:///android_asset/public/index.html",
+    "gradleArgs":  [
+                       "assembleRelease",
+                       "--no-daemon",
+                       "--console=plain",
+                       "--offline"
+                   ]
+}

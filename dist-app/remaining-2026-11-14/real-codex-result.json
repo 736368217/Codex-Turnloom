@@ -1,0 +1,59 @@
+{
+  "kind": "codex",
+  "marker": "REMAINCODEXMWG45306",
+  "checks": [
+    {
+      "name": "真实 assistant 第1轮显示",
+      "pass": true,
+      "threadId": "01a1d910-033e-7843-83a5-3cf3dfb00d8e",
+      "turnId": null,
+      "expected": "REMAINING_CODEX_ONE"
+    },
+    {
+      "name": "真实 assistant 第2轮显示",
+      "pass": true,
+      "threadId": "01a1d910-033e-7843-83a5-3cf3dfb00d8e",
+      "expected": "REMAINING_CODEX_TWO"
+    }
+  ],
+  "screenshots": [
+    {
+      "name": "real-codex-turn1",
+      "sha256": "16fa7c259e6e0ab1bc1677dca83a076aff1bc08ae2b6b93b0b61399c78662ca4",
+      "bytes": 166249,
+      "width": 1080,
+      "height": 1920
+    },
+    {
+      "name": "real-codex-failure",
+      "sha256": "8c097a830d063d53c351a6d5f2cdcdeb1c1706a07b40295dca01a0bb8331046f",
+      "bytes": 217040,
+      "width": 1080,
+      "height": 1920
+    },
+    {
+      "name": "real-codex-turn2",
+      "sha256": "80950d4899bee1a3a3f1be6d2adc95ab7acf3da9387914fa8002ca4b64e571f8",
+      "bytes": 362076,
+      "width": 1080,
+      "height": 1920
+    }
+  ],
+  "at": "2026-11-14T07:57:39.318Z",
+  "modelLabel": "模型与思考强度：GPT-5.6-Sol · 低",
+  "threadId": "01a1d910-033e-7843-83a5-3cf3dfb00d8e",
+  "status": {
+    "thinking": false,
+    "turnId": null,
+    "startedAtMs": null,
+    "interactionRequired": false,
+    "possibleDesktopAttention": false,
+    "latestCompletedAtMs": 1794643075000,
+    "staleTurn": false,
+    "staleTurnId": null,
+    "staleTurnLastUpdatedAtMs": null,
+    "queueLength": 0,
+    "queuedMessages": []
+  },
+  "ok": true
+}

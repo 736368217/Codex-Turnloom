@@ -1,0 +1,185 @@
+{
+  "at": "2026-11-14T03:15:56.918Z",
+  "pid": 3151,
+  "result": {
+    "url": "file:///android_asset/public/index.html",
+    "title": "Codex-Turnloom",
+    "innerHeight": 675,
+    "visualHeight": 675.272705078125,
+    "dpr": 2.75,
+    "text": "会话\n全部\n运行中\n待审批\n已完成\n已加载 2 / 2 个会话\nQA398 手机隔离任务\n本会话合成数据\n已结束\nQA398 空闲隔离任务\nqa398-idle\n已结束\n刷新会话列表\n首页\n会话\n监控\n设置",
+    "inputs": [
+      {
+        "label": null,
+        "value": "",
+        "enterKeyHint": "",
+        "rect": {
+          "x": 57,
+          "y": 67,
+          "width": 304.0909118652344,
+          "height": 44,
+          "bottom": 111
+        }
+      }
+    ],
+    "buttons": [
+      {
+        "text": "",
+        "aria": "新建任务",
+        "type": "button",
+        "disabled": false,
+        "rect": {
+          "x": 333.0909118652344,
+          "y": 12.5,
+          "width": 40,
+          "height": 40,
+          "bottom": 52.5
+        }
+      },
+      {
+        "text": "全部",
+        "aria": null,
+        "type": "submit",
+        "disabled": false,
+        "rect": {
+          "x": 22,
+          "y": 125,
+          "width": 84.2727279663086,
+          "height": 44,
+          "bottom": 169
+        }
+      },
+      {
+        "text": "运行中",
+        "aria": null,
+        "type": "submit",
+        "disabled": false,
+        "rect": {
+          "x": 110.2727279663086,
+          "y": 125,
+          "width": 84.2727279663086,
+          "height": 44,
+          "bottom": 169
+        }
+      },
+      {
+        "text": "待审批",
+        "aria": null,
+        "type": "submit",
+        "disabled": false,
+        "rect": {
+          "x": 198.5454559326172,
+          "y": 125,
+          "width": 84.2727279663086,
+          "height": 44,
+          "bottom": 169
+        }
+      },
+      {
+        "text": "已完成",
+        "aria": null,
+        "type": "submit",
+        "disabled": false,
+        "rect": {
+          "x": 286.81817626953125,
+          "y": 125,
+          "width": 84.2727279663086,
+          "height": 44,
+          "bottom": 169
+        }
+      },
+      {
+        "text": "QA398 手机隔离任务\n本会话合成数据\n已结束",
+        "aria": null,
+        "type": "button",
+        "disabled": false,
+        "rect": {
+          "x": 16,
+          "y": 215,
+          "width": 361.0909118652344,
+          "height": 64,
+          "bottom": 279
+        }
+      },
+      {
+        "text": "QA398 空闲隔离任务\nqa398-idle\n已结束",
+        "aria": null,
+        "type": "button",
+        "disabled": false,
+        "rect": {
+          "x": 16,
+          "y": 280,
+          "width": 361.0909118652344,
+          "height": 64,
+          "bottom": 344
+        }
+      },
+      {
+        "text": "刷新会话列表",
+        "aria": null,
+        "type": "button",
+        "disabled": false,
+        "rect": {
+          "x": 143.5454559326172,
+          "y": 352,
+          "width": 106,
+          "height": 44,
+          "bottom": 396
+        }
+      },
+      {
+        "text": "首页",
+        "aria": "首页",
+        "type": "button",
+        "disabled": false,
+        "rect": {
+          "x": 8,
+          "y": 619.2727661132812,
+          "width": 94.2727279663086,
+          "height": 56,
+          "bottom": 675.2727661132812
+        }
+      },
+      {
+        "text": "会话",
+        "aria": "会话",
+        "type": "button",
+        "disabled": false,
+        "rect": {
+          "x": 102.2727279663086,
+          "y": 619.2727661132812,
+          "width": 94.2727279663086,
+          "height": 56,
+          "bottom": 675.2727661132812
+        }
+      },
+      {
+        "text": "监控",
+        "aria": "监控",
+        "type": "button",
+        "disabled": false,
+        "rect": {
+          "x": 196.5454559326172,
+          "y": 619.2727661132812,
+          "width": 94.2727279663086,
+          "height": 56,
+          "bottom": 675.2727661132812
+        }
+      },
+      {
+        "text": "设置",
+        "aria": "设置",
+        "type": "button",
+        "disabled": false,
+        "rect": {
+          "x": 290.81817626953125,
+          "y": 619.2727661132812,
+          "width": 94.2727279663086,
+          "height": 56,
+          "bottom": 675.2727661132812
+        }
+      }
+    ],
+    "dialogs": []
+  }
+}

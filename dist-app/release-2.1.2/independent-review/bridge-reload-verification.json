@@ -1,0 +1,25 @@
+﻿{
+    "at":  "2026-11-15T01:40:40.3253448+08:00",
+    "framing":  "uint32le-length-prefix + json{type:\"request\"}",
+    "beforeReload":  {
+                         "pluginListMs":  13,
+                         "usable":  true,
+                         "resultType":  "success",
+                         "skillListMs":  38
+                     },
+    "afterReload":  {
+                        "pluginListMs":  6,
+                        "usable":  true,
+                        "resultType":  "success",
+                        "skillListMs":  17
+                    },
+    "reloadSequence":  [
+                           "unloaded",
+                           "loading",
+                           "codex IPC facade listening",
+                           "plugin.load.success",
+                           "plugin.reload.success"
+                       ],
+    "reloadHadEaddrInUse":  false,
+    "concurrentRealSend":  false
+}

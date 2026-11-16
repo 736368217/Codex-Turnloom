@@ -29,6 +29,7 @@ export const API_ENDPOINTS = {
   projects: '/api/projects',
   account: '/api/account',
   appUpdate: '/api/app/update',
+  appUpdatePublic: '/api/app/update-public',
   apk: '/api/apk',
   queueCancel: '/api/queue/cancel',
   queueSteer: '/api/queue/steer',
@@ -466,6 +467,31 @@ export const getHostDiff = (context: RequestContext, params?: { threadId?: strin
 export const getProjects = (context: RequestContext): Promise<ApiResult<{ projects?: ProjectInfo[] }>> => get(context, API_ENDPOINTS.projects);
 export const getAccount = (context: RequestContext): Promise<ApiResult<AccountInfo>> => get(context, API_ENDPOINTS.account);
 export const getAppUpdate = (context: RequestContext): Promise<ApiResult<AppUpdateInfo>> => get(context, API_ENDPOINTS.appUpdate, undefined, 12_000);
+
+/**
+ * 公开更新检查：不需要配对或有效机器码，未连接电脑时也能拿到最新版本信息。
+ * 只读版本号 / SHA / 下载路径，不含任何会话或凭据数据。
+ */
+export async function getPublicAppUpdate(serverUrl: string, timeoutMs = 10_000): Promise<ApiResult<AppUpdateInfo>> {
+  const origin = normalizeBaseUrl(serverUrl);
+  if (!origin) return { ok: false, status: 0, error: 'invalid-origin', offline: true };
+  const handle = nativeHttpRequest({
+    url: `${origin}${API_ENDPOINTS.appUpdatePublic}`,
+    method: 'GET',
+    headers: { Accept: 'application/json' },
+    timeoutMs,
+  });
+  const result = await handle.promise;
+  if (result.status === 0) return { ok: false, status: 0, error: result.error || 'OFFLINE', offline: true };
+  let body: unknown = null;
+  if (result.body) {
+    try { body = JSON.parse(result.body); } catch { body = null; }
+  }
+  if (result.status >= 200 && result.status < 300) {
+    return { ok: true, status: result.status, data: body as AppUpdateInfo, offline: false };
+  }
+  return { ok: false, status: result.status, error: 'update-unavailable', offline: false };
+}
 
 export const postQueueCancel = (context: RequestContext, body: { threadId?: string; itemId?: string; edit?: boolean }): Promise<ApiResult<QueueItem>> => post(context, API_ENDPOINTS.queueCancel, body);
 export const postQueueSteer = (context: RequestContext, body: { threadId?: string; itemId?: string; text?: string }): Promise<ApiResult<QueueItem>> => post(context, API_ENDPOINTS.queueSteer, body);

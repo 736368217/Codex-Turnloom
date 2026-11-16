@@ -1,0 +1,109 @@
+{
+  "reviewedCommit": "48f081df3d9a0479f6fcd991a526ffacc4b49c1f",
+  "apkSha256": "4129d2e04be72207bae6fc5a2fdcede221f8d2e95b9acda33f9c38863b3fc234",
+  "originalReportSha256": "44f49e702c06af11946a9ed9c69e487f51e9750dca6238e6a0ce491039101282",
+  "originalGallerySha256": "a43735bc55e777d675d6b409bac2b6fbb6d5175338e616c6245ef35e5b1a1e77",
+  "images": 2,
+  "archivedFiles": 19,
+  "bridge": "PASS",
+  "realPi": "PASS",
+  "privateQaBackupsOmitted": true,
+  "brokenLinks": [],
+  "files": [
+    {
+      "file": "QA332E_10_turn1.png",
+      "bytes": 109591,
+      "sha256": "26e0b2df3038b72703b2b03d77d3cdcf08d48b6cc216aafb91d365c583b43b36"
+    },
+    {
+      "file": "QA332E_11_turn2.png",
+      "bytes": 153826,
+      "sha256": "c1980801ed2e8278c97f09c586f8497afeff911069c118611bacc897497d2355"
+    },
+    {
+      "file": "identity-48f.json",
+      "bytes": 2075,
+      "sha256": "316e0889f6172800c199f35fdfc7e40c48e3045ba271584f0789d66521674e72"
+    },
+    {
+      "file": "verify-ci-48f.json",
+      "bytes": 879,
+      "sha256": "46017985c1acbe7bd48a60e01a23ca0d3cb7bfa38f52a774c18fcc0e9559bf2e"
+    },
+    {
+      "file": "verify-ci-48f.log",
+      "bytes": 136165,
+      "sha256": "1e59226e177e6222bf15ad1aaf9713b37893364898fdcd405e407e4f935835af"
+    },
+    {
+      "file": "host-control-readonly-48f.json",
+      "bytes": 1435,
+      "sha256": "9ba5b1f4768b9e474bd5b731124b327b24c189f6e06401be06998c17386161f9"
+    },
+    {
+      "file": "host-control-after-reload.json",
+      "bytes": 1434,
+      "sha256": "c3a9b4c6fcb6739e5e9eb801aceb116b275911db2e45ac694c7152d1fb9edde4"
+    },
+    {
+      "file": "bridge-reload-verification.json",
+      "bytes": 954,
+      "sha256": "6e4c92e1b8a9a8d2512c3d15689577071638bf9e284c214d29001ce960fc4554"
+    },
+    {
+      "file": "host-turn1.json",
+      "bytes": 888,
+      "sha256": "75b2e98136232aab81dfc9ed1b9388b83315a185bf03a836c9704edbbddda42b"
+    },
+    {
+      "file": "host-turn2.json",
+      "bytes": 1396,
+      "sha256": "8e9c1c1aada448f57762ce8dffa3fe6af8f84c0bd698558a2d100752b2bc1dd1"
+    },
+    {
+      "file": "rollout-turns.json",
+      "bytes": 1505,
+      "sha256": "b063864e1ec495ac4034f3f63a5c579be17227d49994bb82379cba4921cc9a6b"
+    },
+    {
+      "file": "rollout-c76aa111.jsonl",
+      "bytes": 1628,
+      "sha256": "3ce955cce60778b1ed8cd8a96b6d632a81054dca75e4a5b73671c12efd796f84"
+    },
+    {
+      "file": "webview-init-failed-first.xml",
+      "bytes": 3114,
+      "sha256": "42d50fa26027f746cc29bdcbb8468f718864a2711bd01f0bbb33e41cd584a5c9"
+    },
+    {
+      "file": "device-restoration-48f.json",
+      "bytes": 1322,
+      "sha256": "798626ebd501ddd2b7a8bb6e2ae286aa4e9cc9d010281497441d2d8c0e6cfdd1"
+    },
+    {
+      "file": "evidence-manifest.json",
+      "bytes": 5091,
+      "sha256": "88bc5330ff939e7c233846b818d05166aac58f78edf24a9d8a04dcb10e0b542a"
+    },
+    {
+      "file": "delivery-verification.json",
+      "bytes": 1031,
+      "sha256": "031a68e5ec086bbbc5cb37505dcf9cfd93201b5ae803dc48935a90185ac334ba"
+    },
+    {
+      "file": "index.html",
+      "bytes": 3983,
+      "sha256": "a43735bc55e777d675d6b409bac2b6fbb6d5175338e616c6245ef35e5b1a1e77"
+    },
+    {
+      "file": "report-original.md",
+      "bytes": 11233,
+      "sha256": "44f49e702c06af11946a9ed9c69e487f51e9750dca6238e6a0ce491039101282"
+    },
+    {
+      "file": "report.md",
+      "bytes": 11153,
+      "sha256": "8754dd0f94865e4e1e64c87d33fd49587e3f6bcc66359987015af5063dbbb0af"
+    }
+  ]
+}

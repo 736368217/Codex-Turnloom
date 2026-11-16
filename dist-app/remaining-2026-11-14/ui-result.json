@@ -1,0 +1,83 @@
+{
+  "checks": [
+    {
+      "name": "125 会话列表分三页加载",
+      "pass": true,
+      "pages": [
+        0,
+        0,
+        60,
+        120,
+        0,
+        60,
+        120
+      ]
+    },
+    {
+      "name": "205 条长会话消息翻页去重且轮询后保留",
+      "pass": true,
+      "rows": 205
+    },
+    {
+      "name": "新建任务、项目、模型抽屉及逐层系统返回",
+      "pass": true
+    },
+    {
+      "name": "运行信息与忘记电脑确认抽屉可返回且配对保留",
+      "pass": true
+    },
+    {
+      "name": "同 threadId 双服务的消息、草稿和无档位模型隔离",
+      "pass": true
+    },
+    {
+      "name": "切换服务后释放 A 迟到响应不会污染 B",
+      "pass": true
+    },
+    {
+      "name": "真实 IME 下发送键可见并由原生触点发送",
+      "pass": true,
+      "ime": true,
+      "bottom": 662.5454711914062,
+      "visibleHeight": 675
+    }
+  ],
+  "screenshots": [
+    {
+      "name": "02-long-history",
+      "sha256": "8b50c4eaa9d875381269d97f265100e76fb2810fd50976f3b645462a4d7a654f",
+      "bytes": 253460,
+      "width": 1080,
+      "height": 1920
+    },
+    {
+      "name": "03-nested-model-drawer",
+      "sha256": "924f22046b7b8301c0a6a7339f0080ba4f0dc0afedb550fcc5a4e6b3c10b5ab5",
+      "bytes": 174617,
+      "width": 1080,
+      "height": 1920
+    },
+    {
+      "name": "04-diagnostics",
+      "sha256": "70ee8c890bab3efbbbfca79c4680b02373594f87bebdecba0984f94d5d538905",
+      "bytes": 169937,
+      "width": 1080,
+      "height": 1920
+    },
+    {
+      "name": "05-service-isolation",
+      "sha256": "1abdd4afaf299c9e0bda6b569a1726f75cb417c81f8cd0fcf23aa0b2b1853551",
+      "bytes": 113418,
+      "width": 1080,
+      "height": 1920
+    },
+    {
+      "name": "06-ime-button",
+      "sha256": "1f7d6be78bab09c40f881a90373c6e69d0b1af5c3988d8097669ef2809783b3b",
+      "bytes": 122270,
+      "width": 1080,
+      "height": 1920
+    }
+  ],
+  "ok": true
+}

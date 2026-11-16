@@ -1,0 +1,172 @@
+{
+  "round": 5,
+  "generatedAt": "2026-11-14T08:39:19.037Z",
+  "identity": {
+    "commit": "5a7a6e2e6a6307353ea8bbc27439ebed01c59b5c",
+    "productCommit": "fbd3e529c04ddab100a1f2a091d91c12abba0a59",
+    "apkBytes": 1780565,
+    "apkSha256": "4129d2e04be72207bae6fc5a2fdcede221f8d2e95b9acda33f9c38863b3fc234",
+    "headDiffExit": 0
+  },
+  "report": {
+    "path": "D:\\pi-data\\data\\scratch\\085b0cda-a463-419e-bafc-bafd3bad412f\\main-branch-quality-retest-5a7a6e2e.md",
+    "bytes": 13356,
+    "sha256": "1879252260e2f7627c2bb6a375a4b4369cf0e2082873b4e8e5dd5da4286dd6f6"
+  },
+  "checks": {
+    "verifyCi": {
+      "tests": 389,
+      "pass": 389,
+      "fail": 0,
+      "cancelled": 0,
+      "localPass": 389,
+      "ciPass": 389
+    },
+    "focused": {
+      "tests": 49,
+      "pass": 49,
+      "fail": 0,
+      "cancelled": 0
+    },
+    "newRepairsFocused": {
+      "command": "node --test test/pi-thinking-catalog.test.js test/pi-sidecar-migration.test.js test/new-thread-settings.test.js",
+      "tests": 13,
+      "pass": 13,
+      "fail": 0,
+      "cancelled": 0
+    },
+    "paging": {
+      "assertions": 9,
+      "allPassed": true,
+      "totals": {
+        "pages": 3,
+        "mergedRows": 205,
+        "uniqueRows": 205,
+        "duplicates": 0,
+        "firstPage": 80,
+        "secondPageCumulative": 160,
+        "finalCumulative": 205
+      }
+    }
+  },
+  "limit1": {
+    "verdict": "PASS",
+    "pid": 2043,
+    "processRestarted": false,
+    "timerShortenedHits": 1,
+    "picks": {
+      "events": 1,
+      "id": "attach-1794644927953-5",
+      "status": "success",
+      "name": "QA5A7A_ROUND5.txt",
+      "mimeType": "text/plain",
+      "sizeBytes": 178,
+      "dataUrlChars": 263
+    },
+    "sentCount": 1,
+    "sentFile": {
+      "name": "QA5A7A_ROUND5.txt",
+      "mimeType": "text/plain",
+      "base64Chars": 240,
+      "bytes": 178,
+      "sha256": "7a8e112c1d74ea53b9bd5517c859e80ece1e32eca56d8a9e9e72f020f928eb23"
+    },
+    "clientRequestId": "app-1794644978967-taaew4dm"
+  },
+  "limit2": {
+    "verdict": "BLOCKED_ROOT_CAUSE_UNDETERMINED",
+    "pipeServerAlive": true,
+    "pipeServerReply": {
+      "listPlugins": {
+        "ok": true,
+        "response": {
+          "type": "response",
+          "requestId": "qa5a7a-plugin.list-1794645300080",
+          "method": "plugin.list",
+          "resultType": "error",
+          "error": "unsupported method: plugin.list"
+        }
+      },
+      "hostHealth": {
+        "ok": true,
+        "response": {
+          "type": "response",
+          "requestId": "qa5a7a-desktop.health-1794645300091",
+          "method": "desktop.health",
+          "resultType": "error",
+          "error": "unsupported method: desktop.health"
+        }
+      }
+    },
+    "hostInvoke": {
+      "pluginList": {
+        "elapsedMs": 8,
+        "ok": true,
+        "resultType": "error",
+        "error": "Plugin host process is no longer active"
+      },
+      "skillList": {
+        "elapsedMs": 1,
+        "ok": true,
+        "resultType": "error",
+        "error": "Plugin host process is no longer active"
+      }
+    },
+    "hostControlUsable": false,
+    "invalidProbeExcluded": "INVALID_TEST_EXCLUDED"
+  },
+  "environment": {
+    "qaUserRemoved": true,
+    "currentUser": "0",
+    "qaFilesRemoved": 10,
+    "forwardListAfter": "",
+    "fixturesStopped": [
+      23392,
+      21692
+    ],
+    "leaseReleased": true,
+    "foreignInstanceTouched": false
+  },
+  "images": [
+    {
+      "file": "QA5A7A_01_short_reopen.png",
+      "title": "短超时后同进程重选成功",
+      "note": "超时取消 → 重开 picker → 选中 178 B text/plain，requestId 后缀 3",
+      "bytes": 99189,
+      "sha256": "ab74a843fee0141a1c41792e697a3a205d19738373558484a6b53162ee48c634",
+      "width": 1080,
+      "height": 1920
+    },
+    {
+      "file": "QA5A7A_02_third_pick.png",
+      "title": "同进程第三次选择仍可用",
+      "note": "超时后迟到结果被丢弃，第三次点附件仍能正常选中（后缀 5）",
+      "bytes": 99570,
+      "sha256": "ed343002940c1042cd0f4d58b41d757f94d0fc8fd5087afb8c499f92732e2282",
+      "width": 1080,
+      "height": 1920
+    },
+    {
+      "file": "QA5A7A_03_sent.png",
+      "title": "带附件发送成功",
+      "note": "夹具收到唯一一次发送，文件 SHA 与本地一致",
+      "bytes": 102805,
+      "sha256": "68f323e0cfe40e02cc59084e60afc78bef9958bea5d7a8fd786d99dd041e9623",
+      "width": 1080,
+      "height": 1920
+    },
+    {
+      "file": "QA5A7A_04_final.png",
+      "title": "发送后终态",
+      "note": "草稿与附件均清空，发送按钮回到禁用态",
+      "bytes": 102385,
+      "sha256": "f86aa5a1c79680defceeee3976c991a45dd3574f1f7b880f8226957f937e241c",
+      "width": 1080,
+      "height": 1920
+    }
+  ],
+  "counts": {
+    "images": 4,
+    "evidenceFiles": 42
+  }
+}

@@ -232,8 +232,15 @@ export function normalizeDiscovery(payload: unknown, pairing: MachinePairing): D
   } catch (error) {
     return fail('invalid-harnesses', error instanceof Error ? error.message : '服务列表无效');
   }
-  if (harnesses.length > 1 && harnesses.some((item) => item.token === clean(pairing.machineToken))) {
-    return fail('machine-token-reuse', '多服务模式下机器访问码不能同时作为服务访问码');
+  // 只拦「多服务模式下真正的凭据混用」：机器访问码同时被当作某个服务访问码。
+  // 单服务模式下两者相同是兼容部署，必须放行，否则老机器码会在配对这一步被拦死。
+  if (harnesses.length > 1) {
+    const machineToken = clean(pairing.machineToken);
+    const clashes = harnesses.filter((item) => item.token === machineToken);
+    if (clashes.length) {
+      const names = clashes.map((item) => item.name || item.id).join('、');
+      return fail('machine-token-reuse', `机器访问码与「${names}」的服务访问码相同，请在电脑端改成不同的值后重新扫码。`);
+    }
   }
   const selected = harnesses.find((item) => item.defaultHarness) || harnesses[0];
   return {
@@ -253,6 +260,11 @@ export function connectionErrorMessage(status: number, error: string): string {
   if (code === 'tls_error') return '无法验证电脑的 HTTPS 证书，请检查服务证书或使用同一局域网的地址。';
   if (code === 'http_origin_not_paired' || code === 'cleartext_blocked_by_policy') return '此地址未获得局域网连接许可，请重新输入电脑配对页上的地址。';
   if (status === 502 || status === 503 || status === 504) return '电脑上的服务暂时不可用，请稍后重试或选择其他服务。';
+  // 校验类错误优先：它们自带可操作原因，不能被「连不上」这类传输文案盖掉。
+  if (code.includes('machine-token-reuse')) {
+    return '机器访问码和某个服务访问码重复了。请在电脑端把机器访问码改成不同的值，再重新扫码。';
+  }
+  if (code.includes('machine-token-requires-discovery')) return '机器访问码只能用于发现服务，请使用发现到的服务重新连接。';
   if (status === 0 || code === 'offline' || code === 'timeout') {
     return '连不上这台机器。请确认手机与电脑在同一网络、服务已启动，然后重试。';
   }
@@ -260,7 +272,6 @@ export function connectionErrorMessage(status: number, error: string): string {
     return '机器访问码不正确或已更换。请在电脑端查看最新的机器访问码后重试。';
   }
   if (status === 429) return '尝试次数过多，请稍等片刻再连接。';
-  if (code.includes('machine-token-requires-discovery')) return '机器访问码只能用于发现服务，请使用发现到的服务重新连接。';
   if (code.includes('harness') || status === 502) return '电脑上的服务暂时不可用，请检查桌面端服务状态后重试。';
   if (code === 'invalid-response' || code.startsWith('invalid-') || code.startsWith('machine-') || code === 'unsupported-version') {
     return `连接校验未通过：${clean(error)}。请确认桌面端已升级到支持一机一码的版本。`;

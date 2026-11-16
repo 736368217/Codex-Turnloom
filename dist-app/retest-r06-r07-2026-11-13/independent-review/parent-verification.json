@@ -1,0 +1,14 @@
+{
+  "at": "2026-11-14T04:51:56.908Z",
+  "commit": "398f924a29adca033db1857f9d5d285edc8fb651",
+  "apkSha256": "16e38f0387142673c810a7e71e431f60d87a29976cfb064aaf20ad45c07775f0",
+  "apkBytes": 1776469,
+  "verifiedArtifacts": 39,
+  "images": 14,
+  "independentPassed": 17,
+  "independentFailed": 0,
+  "uniqueGalleryReferences": 43,
+  "reportSha256": "4eff14c4c9f700fff06a889ce87a3302f578578a347fa920d4fd0974c4476e77",
+  "gallerySha256": "7cfdc90a0be64e17ff15d6e6d720ce9262a1f11cfa69a41fd1602a50b07c0ed0",
+  "problems": []
+}

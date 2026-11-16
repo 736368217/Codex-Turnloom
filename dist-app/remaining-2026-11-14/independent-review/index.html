@@ -1,0 +1,79 @@
+<!doctype html>
+<html lang="zh-CN"><head><meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>第五轮独立复测画廊 — 5a7a6e2e</title>
+<style>
+  :root { color-scheme: light; }
+  body { margin: 0; background: #f2f2f7; color: #1c1c1e; font: 15px/1.6 -apple-system, "Segoe UI", "Microsoft YaHei", sans-serif; }
+  header { padding: 28px 24px 18px; background: #fff; border-bottom: 1px solid #e5e5ea; }
+  h1 { margin: 0 0 8px; font-size: 21px; }
+  .meta { color: #8e8e93; font-size: 13px; word-break: break-all; }
+  main { padding: 20px 24px 40px; max-width: 1180px; margin: 0 auto; }
+  .grid { display: grid; gap: 18px; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); }
+  figure { margin: 0; background: #fff; border-radius: 14px; overflow: hidden; box-shadow: 0 1px 3px rgba(0,0,0,.06); }
+  img { display: block; width: 100%; height: auto; background: #efeff4; }
+  figcaption { padding: 12px 14px 14px; display: grid; gap: 4px; }
+  figcaption strong { font-size: 14px; }
+  figcaption span { color: #8e8e93; font-size: 12.5px; }
+  code { font-size: 11.5px; color: #007aff; word-break: break-all; }
+  table { border-collapse: collapse; width: 100%; background: #fff; border-radius: 12px; overflow: hidden; margin: 10px 0 24px; font-size: 13.5px; }
+  th, td { text-align: left; padding: 9px 12px; border-bottom: 1px solid #e5e5ea; vertical-align: top; }
+  th { background: #efeff4; font-weight: 600; }
+  h2 { font-size: 16px; margin: 26px 0 8px; }
+  .pass { color: #34c759; font-weight: 700; }
+  .blocked { color: #ff9500; font-weight: 700; }
+  .warn { color: #ff3b30; font-weight: 700; }
+</style></head>
+<body>
+<header>
+  <h1>主分支第五轮独立复测 — HEAD <code>5a7a6e2e</code></h1>
+  <div class="meta">
+    APK 2.1.2/83 · 1780565 B · SHA-256 4129d2e04be72207bae6fc5a2fdcede221f8d2e95b9acda33f9c38863b3fc234<br />
+    设备 MuMu phone index 1 · ephemeral 用户 10 · 合成夹具（非真实供应商）· 退役端点访问 0 次
+  </div>
+</header>
+<main>
+  <h2>结论</h2>
+  <table>
+    <tr><th>项</th><th>结果</th></tr>
+    <tr><td>独立 CI（Node 24/22）</td><td class="pass">389/389 pass，fail 0，cancelled 0</td></tr>
+    <tr><td>新修复专项</td><td class="pass">49/49</td></tr>
+    <tr><td>首轮/档位/迁移专项</td><td class="pass">13/13</td></tr>
+    <tr><td>限制① 短超时后同进程重选</td><td class="pass">通过</td></tr>
+    <tr><td>限制② PI 真实两轮</td><td class="blocked">受阻，根因未定</td></tr>
+    <tr><td>历史分页 80→160→205</td><td class="pass">9/9 断言</td></tr>
+  </table>
+
+  <h2>限制②：宿主控制路径定位</h2>
+  <table>
+    <tr><th>探针</th><th>结果</th></tr>
+    <tr><td>pipe server（正确帧格式）</td><td class="pass">有应答：unsupported method: plugin.list</td></tr>
+    <tr><td>turnloom/host/invoke → plugin/list</td><td class="warn">Plugin host process is no longer active (8 ms)</td></tr>
+    <tr><td>turnloom/host/invoke → skill/list</td><td class="warn">Plugin host process is no longer active (1 ms)</td></tr>
+    <tr><td>原 host-control-probe.json</td><td class="blocked">已作废（协议错误，见 INVALID-hostprobe-exclusion.json）</td></tr>
+  </table>
+
+  <h2>原生截图（1080×1920）</h2>
+  <div class="grid">
+  <figure>
+    <img src="QA5A7A_01_short_reopen.png" alt="短超时后同进程重选成功" loading="lazy" />
+    <figcaption><strong>短超时后同进程重选成功</strong><span>超时取消 → 重开 picker → 选中 178 B text/plain，requestId 后缀 3</span>
+    <code>1080×1920 · 99189 B · ab74a843fee0141a…</code></figcaption>
+  </figure>
+  <figure>
+    <img src="QA5A7A_02_third_pick.png" alt="同进程第三次选择仍可用" loading="lazy" />
+    <figcaption><strong>同进程第三次选择仍可用</strong><span>超时后迟到结果被丢弃，第三次点附件仍能正常选中（后缀 5）</span>
+    <code>1080×1920 · 99570 B · ed343002940c1042…</code></figcaption>
+  </figure>
+  <figure>
+    <img src="QA5A7A_03_sent.png" alt="带附件发送成功" loading="lazy" />
+    <figcaption><strong>带附件发送成功</strong><span>夹具收到唯一一次发送，文件 SHA 与本地一致</span>
+    <code>1080×1920 · 102805 B · 68f323e0cfe40e02…</code></figcaption>
+  </figure>
+  <figure>
+    <img src="QA5A7A_04_final.png" alt="发送后终态" loading="lazy" />
+    <figcaption><strong>发送后终态</strong><span>草稿与附件均清空，发送按钮回到禁用态</span>
+    <code>1080×1920 · 102385 B · f86aa5a1c79680de…</code></figcaption>
+  </figure></div>
+</main>
+</body></html>

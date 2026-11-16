@@ -1,0 +1,83 @@
+{
+  "at": "2026-11-14T17:47:50.115Z",
+  "commit": "d086deb8a7fb52b7aa00279b05640ef1c40df38f",
+  "version": "2.1.2",
+  "versionCode": 83,
+  "files": [
+    {
+      "file": "Codex-Turnloom-2.1.2-app.apk",
+      "bytes": 1780565,
+      "sha256": "4129d2e04be72207bae6fc5a2fdcede221f8d2e95b9acda33f9c38863b3fc234"
+    },
+    {
+      "file": "Codex-Turnloom-2.1.2-app.apk.sha256",
+      "bytes": 95,
+      "sha256": "8657954a12795f23e0b0cdc37a56a4779604cba25254f6b1d4b5f9c677dbc6ef"
+    },
+    {
+      "file": "Codex-Turnloom-2.1.2-app.apk.release.json",
+      "bytes": 2646,
+      "sha256": "7cc91efefdeee70efa484af7429a813c7feec20be9a06a0d301bd3b8c32994e3"
+    },
+    {
+      "file": "build-manifest-2.1.2.json",
+      "bytes": 2646,
+      "sha256": "7cc91efefdeee70efa484af7429a813c7feec20be9a06a0d301bd3b8c32994e3"
+    },
+    {
+      "file": "REPORT.md",
+      "bytes": 4917,
+      "sha256": "6df5cadbc5fa446facd1032fe51253d2d59be96e45934114353624a31f594029"
+    },
+    {
+      "file": "delivery.html",
+      "bytes": 1688,
+      "sha256": "b8a2b9f6cc4a47d469f735f288ba99b4bf0ead050dcfdae06847801350023dd4"
+    },
+    {
+      "file": "local-update-verification.json",
+      "bytes": 199,
+      "sha256": "4c339f66f253f589eb160b821c211a50de4ad02dc3ebafdb540da76a97436d35"
+    },
+    {
+      "file": "served-apk-verification.json",
+      "bytes": 228,
+      "sha256": "2a872d72ef22f63228623b4bbf6383d008a46401b3d155697fe59878437c9768"
+    },
+    {
+      "file": "apk-reuse-verification.json",
+      "bytes": 333,
+      "sha256": "b07ca56a2e54ed5b1853adbdcf3fb96afb71397358e63014ceb14db978bdec67"
+    },
+    {
+      "file": "release-source.json",
+      "bytes": 858,
+      "sha256": "46e68bd73c0df915f439a56e1e54603428349c9b35c1a6ad2a3784644aa1b0f4"
+    },
+    {
+      "file": "evidence-manifest.json",
+      "bytes": 1328,
+      "sha256": "e3f17396d9af1ba6a10fbd6162e5045936021fb1bccc28b56af5b44ccf9cacbb"
+    },
+    {
+      "file": "independent-review/archive-manifest.json",
+      "bytes": 3451,
+      "sha256": "ce039842ed310492c56f9f0f9fd4baa9b3a62fd0e4b82e983b4c9d8384980a4c"
+    }
+  ],
+  "independentReviewedCommit": "48f081df3d9a0479f6fcd991a526ffacc4b49c1f",
+  "independentBridge": "PASS",
+  "independentRealPi": "PASS",
+  "independentFiles": 19,
+  "images": 2,
+  "hashMismatches": 0,
+  "brokenLinks": 0,
+  "latestPiHttpPid": 19404,
+  "sourceTests": {
+    "node24": 393,
+    "node22": 393,
+    "fail": 0,
+    "cancelled": 0
+  },
+  "remaining": "单一历史供应商PROVIDER_ERROR；完整native-shell JVM套件离线依赖缺失，不影响当前已验发布范围。"
+}

@@ -1,0 +1,274 @@
+{
+  "baseCommit": "4649cc73ceb3eae94f98d0f108b1cac9d7907e98",
+  "workingTreeSources": true,
+  "files": [
+    {
+      "path": "app/src/AppRoot.tsx",
+      "sha256": "bea46f6b7e317a7c0ecb0fd5aceceafbf2619bcdc4a37a67e8f6e85d9abd55ca"
+    },
+    {
+      "path": "app/src/components/ApprovalSheet.tsx",
+      "sha256": "4a4930b79da6d31ea08f78f1d29d49ab05995990946498483f68870d07d8ba56"
+    },
+    {
+      "path": "app/src/components/AppShell.tsx",
+      "sha256": "c0ca7e841b72f8caf71da19ca5a2ccef6df1c0f8cf4abcaf6472f41b5a88542a"
+    },
+    {
+      "path": "app/src/components/ChatComposer.tsx",
+      "sha256": "e2610150a4beb1d168d2c0282b8290b9ad23326066e7d44e69a9b1275dacb983"
+    },
+    {
+      "path": "app/src/components/CupertinoSheetHost.tsx",
+      "sha256": "bb43d02a3fdfedaf3b5545c45bf90cfb8c68fcacc8fef4011b70d975467ebfa0"
+    },
+    {
+      "path": "app/src/components/DiffCard.tsx",
+      "sha256": "f8a116e5aee0c994fc42c1fc9aa7019472e282cc77866a88f957e9616aa24b04"
+    },
+    {
+      "path": "app/src/components/GlassTabBar.tsx",
+      "sha256": "87c5d4b8be79dd996e776886fc76cbc8bb99fdbf6dbcd0d61497d654679827c1"
+    },
+    {
+      "path": "app/src/components/MachineHubHeader.tsx",
+      "sha256": "44b2ec09c84a6313fa1d13508cc6315df22a91cde2166503aecefc8db1d40842"
+    },
+    {
+      "path": "app/src/components/MarkdownMessage.tsx",
+      "sha256": "e7b388ace0fb6b4f6e78957a0040675c71ed6028005ccbc4948f18ca423809c5"
+    },
+    {
+      "path": "app/src/components/NewTaskSheet.tsx",
+      "sha256": "26a6dbdd10e96e7e53eafa10795d407ea26c8d33a6594c0dac02b94105cd1fbb"
+    },
+    {
+      "path": "app/src/components/PairingSheet.tsx",
+      "sha256": "36134d7537640b5984ae7f47e672ad739d83677cb74d309566e2ee4ca9fa204d"
+    },
+    {
+      "path": "app/src/components/Segmented.tsx",
+      "sha256": "02bfdeae3211401624c22f2fcb09472cd322ef9b4c6bf497d63844f56b009383"
+    },
+    {
+      "path": "app/src/components/StatusCard.tsx",
+      "sha256": "e7c5ffd47de89a5eebd3b4874f9eaf46eb9ec68ab054226762102aeb218b955e"
+    },
+    {
+      "path": "app/src/components/TaskStream.tsx",
+      "sha256": "6670af988cd295c93235b3b520b87c9b08ff2ce5726d22cb1780a4cb0e97dfd0"
+    },
+    {
+      "path": "app/src/components/ThumbGlassBar.tsx",
+      "sha256": "da49bc2865a39b8f9c1b0ce380df822900a0588353aa309f9704ab0dc83e9840"
+    },
+    {
+      "path": "app/src/components/ui.tsx",
+      "sha256": "d962f6d504ee4ad56c4ed9e1a84b1647b85b020d7ba88ecc3e8198e6c933b5d4"
+    },
+    {
+      "path": "app/src/components/VaulSheet.tsx",
+      "sha256": "0a92a967b80e8b2075e6f14385ac72f252b12d0c0caab7210650260cc604adfa"
+    },
+    {
+      "path": "app/src/lib/appUpdate.ts",
+      "sha256": "aab231239184d520d58358fedf56db3e484e8c56d80fb54fde8ba1ad8d45e8da"
+    },
+    {
+      "path": "app/src/lib/chatContract.ts",
+      "sha256": "5163cf13fa878907a6933ec18d149f1396a1cb78e2e7762a9e9a3fcc20e5ab81"
+    },
+    {
+      "path": "app/src/lib/composerLogic.ts",
+      "sha256": "1c515fa3aab7a47339c87777fe765ebaa332fab5483abb5bcc9c5ac69093a0c1"
+    },
+    {
+      "path": "app/src/lib/composerSubmit.ts",
+      "sha256": "6f5280593f0ab3c66072a23136fec51c5527ece216a18c6958908bbae1f58762"
+    },
+    {
+      "path": "app/src/lib/externalUrl.ts",
+      "sha256": "0b66d38e7bb444b2365d2aa09b50eed144937ba16c45d9d0a5e36efce01f6e06"
+    },
+    {
+      "path": "app/src/lib/machinePairing.ts",
+      "sha256": "fcea95790e5dd14f1077e772635e38864109125a6e0407eae9a110ac682b2796"
+    },
+    {
+      "path": "app/src/lib/markdown.ts",
+      "sha256": "766724322b9fea05f85a490c1f1cc396c7fb905e0a95d77cc5bba9993f809216"
+    },
+    {
+      "path": "app/src/lib/messagePaging.ts",
+      "sha256": "d6953453507eadb5c8975c01b6c67eb371667a4d15ab6bbb5004d1bae00fcef1"
+    },
+    {
+      "path": "app/src/lib/nativeBridge.ts",
+      "sha256": "6f91528e9e8f7ab752cd50ca0d11466b02f64cbed848f1dc3800653bbd85e018"
+    },
+    {
+      "path": "app/src/lib/threadProjection.ts",
+      "sha256": "b99de806e8c964f3662a8dda0de3f354439bbc5fd83cd0b6913df0f1b06999cc"
+    },
+    {
+      "path": "app/src/lib/turnloomApi.ts",
+      "sha256": "1894c22938ee988a07f135227ab27c2046979433a226068a41b8e70fcf149000"
+    },
+    {
+      "path": "app/src/main.tsx",
+      "sha256": "3da3a1ce60b4ec0f8774b973cfd39c90e9ac6d76d4d71db078a9e9c43b1f60d0"
+    },
+    {
+      "path": "app/src/screens/ChatDetailScreen.tsx",
+      "sha256": "29a1467fcc18a5f863b2675bd51a760bbd9762226b8b262eba414a0103b29edb"
+    },
+    {
+      "path": "app/src/screens/ConnectScreen.tsx",
+      "sha256": "aaa398f97fddb8c58c95cedc3b690abd32fa1fc54eae59c3b45a32ce3e745931"
+    },
+    {
+      "path": "app/src/screens/HomeScreen.tsx",
+      "sha256": "a0d1e70add9c154f61afa19cfb3201bbb2ca4b41f507c36c6b5d3c2ccbff95fe"
+    },
+    {
+      "path": "app/src/screens/MonitorsScreen.tsx",
+      "sha256": "f591ce5fa36c4f45dc5ba5907be757124ab9da97ece117c408191c5e8c8059da"
+    },
+    {
+      "path": "app/src/screens/SettingsScreen.tsx",
+      "sha256": "01faf83d7c75915307cfc3c175f93ffd70c86f57b7566ed7e24a985e1e36a8d7"
+    },
+    {
+      "path": "app/src/screens/ThreadsScreen.tsx",
+      "sha256": "152499ce8e6e174e9e9b246fb9f2270ddcaf563bdf7e80b2d8d3042103e99fbf"
+    },
+    {
+      "path": "app/src/state/composerStore.ts",
+      "sha256": "b3c3cffd3d58a4b8ad1f872d4e6e5cd8a746e909db4b7c45cc78c9218faa820e"
+    },
+    {
+      "path": "app/src/state/dataStore.ts",
+      "sha256": "4d466b48393299d1df91b7bff7cb3b1b75efe977460fd143ff6f1b77216c4a0c"
+    },
+    {
+      "path": "app/src/state/draftStore.ts",
+      "sha256": "e35109b18d47fe6a0f35039d0bd01cd8d61b61dfd1a2b4c15fabcec05a1df48d"
+    },
+    {
+      "path": "app/src/state/offlineStore.ts",
+      "sha256": "33a767e4abf8b92b3b0fb76a196531d5d268e6f0101b7c9bd3ea9e5fb992115d"
+    },
+    {
+      "path": "app/src/state/runtimeStore.ts",
+      "sha256": "6e60db21a39e7e2dc8481155a8a260945b89426160cf92e017bc7cf48e143442"
+    },
+    {
+      "path": "app/src/state/sessionStore.ts",
+      "sha256": "e918efd680b0c4273703f1cb47b65bfe6ff62778508379dfba8b3a21c92f7441"
+    },
+    {
+      "path": "app/src/state/sheetStore.ts",
+      "sha256": "f770798504e90e468fc85a8762334966cdec27925238fe9487b03520f5985966"
+    },
+    {
+      "path": "app/src/state/store.ts",
+      "sha256": "670542491503e800467485c6f271d67c79da89dea2372f59fcdbe9d4247b914b"
+    },
+    {
+      "path": "app/src/state/tabStore.ts",
+      "sha256": "2c4e52cbe35c3cf190f30198a060f606418495630d2c43bea505227da520e1c9"
+    },
+    {
+      "path": "app/src/state/updateStore.ts",
+      "sha256": "ed9b80e5df9a44324f22320628f0730cda29930ee60e3799676ad4b284a70f75"
+    },
+    {
+      "path": "app/src/theme/chatStyles.ts",
+      "sha256": "78830f465cf7a669453bb0f7a0fc953ef30bb94d5648d5980be12e4fa680bbc5"
+    },
+    {
+      "path": "app/src/theme/globals.css",
+      "sha256": "542abcda430a87092c240e93caa547f3201ab113c2eef2d8aab537b3b8e60504"
+    },
+    {
+      "path": "app/src/theme/optionATokens.ts",
+      "sha256": "674f11a5a9d185bcf8edd9aa0d2760a020b622ae6738f7946750809f511adb41"
+    },
+    {
+      "path": "native-shell/app/src/main/java/com/codex/turnloom/app/AttachmentPicker.java",
+      "sha256": "e0c161897309481890d644934d35ed80fcea4e73f019daea33e1e48872082f6c"
+    },
+    {
+      "path": "native-shell/app/src/main/java/com/codex/turnloom/app/AttachmentPickSession.java",
+      "sha256": "511da9fe7dee4de4f0daf88b8558a3a390172d53f134dee6f51dfb02972a85c9"
+    },
+    {
+      "path": "native-shell/app/src/main/java/com/codex/turnloom/app/BridgeContract.java",
+      "sha256": "87518e02c4fe764640e9452f270250e90092d9f6132954f2031a8299976ed211"
+    },
+    {
+      "path": "native-shell/app/src/main/java/com/codex/turnloom/app/MainActivity.java",
+      "sha256": "b4602ebe3537af3c5b67497b29ba7968baa53cd9e2c3b07ac832f62325f68f61"
+    },
+    {
+      "path": "native-shell/app/src/main/java/com/codex/turnloom/app/NativeHttpClient.java",
+      "sha256": "80beff3b88d9256b7c56c0ac37b74cbf1ae585f3af008238091ae21582942438"
+    },
+    {
+      "path": "native-shell/app/src/main/java/com/codex/turnloom/app/NativeHttpPolicy.java",
+      "sha256": "8d06a7f905d3625824320b7d663d7fa84a0ecdacf2c47bcfa085497795325b79"
+    },
+    {
+      "path": "native-shell/app/src/main/java/com/codex/turnloom/app/ScannerActivity.java",
+      "sha256": "00e36824005a776e941886f07fa41436c3a26d7f19cbea8993935b0d273d1d08"
+    },
+    {
+      "path": "native-shell/app/src/main/java/com/codex/turnloom/app/UpdateFileProvider.java",
+      "sha256": "89fdf2637458a8e8bcc211344b250b1345ac450a35d988f762a8847e07542db8"
+    },
+    {
+      "path": "native-shell/app/src/main/java/com/codex/turnloom/app/UpdateManager.java",
+      "sha256": "b05e13f0947d9a90c7b96fb8a5c2f2a7d346de17b74ad4693a286bbba6338aee"
+    },
+    {
+      "path": "native-shell/app/src/main/java/com/codex/turnloom/app/WebViewStartup.java",
+      "sha256": "c08511e73ffb8e6b5680557dc91eed7914debc0bd585df28b15f3c3b3a684162"
+    },
+    {
+      "path": "native-shell/app/src/test/java/com/codex/turnloom/app/AttachmentPickSessionTest.java",
+      "sha256": "21d4743735d75eece7bc0527e4e9862ca5a5822a1ef90d55f327b70b4c74716a"
+    },
+    {
+      "path": "native-shell/app/src/test/java/com/codex/turnloom/app/BridgeContractTest.java",
+      "sha256": "6c71294ea9eedef8d7f111ab589228e67d9d37704bd36ac00dde1e6cc60900d8"
+    },
+    {
+      "path": "native-shell/app/src/test/java/com/codex/turnloom/app/WebViewStartupTest.java",
+      "sha256": "4de181af9e53a3fc2e9f1748e8e9b4ac215e2bf8bb2b928da5a80679fa0351c8"
+    },
+    {
+      "path": "shared/app-release.cjs",
+      "sha256": "7191c1e7259f7231f89245cfa1effa44c3d22c3cf12c7e0accadaf997494d5a7"
+    },
+    {
+      "path": "shared/codex-first-turn.js",
+      "sha256": "4250f456b5a683186449185e8b8e86e3ff13d95ed54396ac1f7e5adda4b2589c"
+    },
+    {
+      "path": "shared/machine-pairing.cjs",
+      "sha256": "e7fa66d58c147a70ea8d634c0bf4eb6f0be525ffba59f31f06c97fa9f2f24b23"
+    },
+    {
+      "path": "shared/send-files.cjs",
+      "sha256": "b80a4e95f6a159c0dfad5ea4db753b67d7426a4dcf486d958a553b372f7fc5cb"
+    },
+    {
+      "path": "server.js",
+      "sha256": "52a0074b57439d01204c31b681f680b632bd6e42864496b206fd393dc413cde4"
+    },
+    {
+      "path": "third-party/turnloom-pidesktop/plugin/main.js",
+      "sha256": "d26e28020ff202818fab36056dcde984edd2db3d84224bfeef7eed1b1ae054d3"
+    }
+  ]
+}

@@ -1,0 +1,32 @@
+﻿{
+    "at":  "2026-11-15T01:42:58.4551985+08:00",
+    "qaUser":  10,
+    "qaUserLabel":  "CodexTurnloomQA332E",
+    "qaUserRemoved":  true,
+    "currentUserAfter":  "0",
+    "usersAfter":  "UserInfo{0:机主:4c13} running",
+    "qaFilesRemoved":  [
+                           "QA332E_01..07.xml",
+                           "QA332E_06.png",
+                           "QA332E_T1.png",
+                           "QA332E_T2.png"
+                       ],
+    "qaFilesRemovalVerified":  true,
+    "forwardRemoved":  true,
+    "forwardListAfter":  "",
+    "qaSessionSoftDeleted":  {
+                                 "changes":  1,
+                                 "backup":  "qa-session-backup-c76aa111.json",
+                                 "backupBytes":  3137,
+                                 "deletedAt":  1794678151645,
+                                 "sessionId":  "c76aa111-59a6-47e7-ae78-91796054331d"
+                             },
+    "hostUntouched":  {
+                          "realApprovalTouched":  false,
+                          "piKilled":  false,
+                          "providerChanged":  false,
+                          "sourceChanged":  false,
+                          "realUserTaskTouched":  false
+                      },
+    "retiredEndpointCalls":  0
+}

@@ -1,0 +1,33 @@
+{
+  "at": "2026-11-14T07:28:57.767Z",
+  "apkSha256": "4129d2e04be72207bae6fc5a2fdcede221f8d2e95b9acda33f9c38863b3fc234",
+  "bytes": 1780565,
+  "user": 10,
+  "firstLaunchWithoutClear": true,
+  "localWebView": true,
+  "appInfo": {
+    "label": "Codex-Turnloom",
+    "version": "2.1.2",
+    "versionCode": 83,
+    "route": "dom-shell",
+    "applicationId": "com.codex.turnloom.app",
+    "packageName": "com.codex.turnloom.app",
+    "cameraAvailable": true,
+    "updatesAvailable": true,
+    "nativeHttp": true,
+    "https": true,
+    "pairedLanCleartext": false
+  },
+  "firstScreen": "连接电脑\n\n打开电脑端的配对二维码，扫码即可连接。\n\n扫码连接\n输入地址和访问码\n电脑服务地址\n机器访问码\n验证并连接\n 地址和访问码在电脑端配对页查看。\nCodex-Turnloom · 2.1.2",
+  "geometry": {
+    "size": "Physical size: 1080x1920",
+    "density": "Physical density: 440"
+  },
+  "screenshot": {
+    "name": "01-fresh-user-first-launch",
+    "sha256": "e90df734d8f3f292df1349f8900772ccb48901d7740c20a4cf925cca96e4cead",
+    "bytes": 135141,
+    "width": 1080,
+    "height": 1920
+  }
+}

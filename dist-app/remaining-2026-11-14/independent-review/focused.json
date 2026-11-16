@@ -1,0 +1,11 @@
+{
+  "exit": 0,
+  "error": "",
+  "tests": 49,
+  "pass": 49,
+  "fail": 0,
+  "cancelled": 0,
+  "localPass": -1,
+  "ciPass": -1,
+  "hasPass": false
+}

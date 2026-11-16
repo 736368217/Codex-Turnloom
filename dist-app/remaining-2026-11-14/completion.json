@@ -1,0 +1,71 @@
+{
+  "head": "45c9af892ef184f0e462213e78699289e8326d4b",
+  "productCommit": "fbd3e529c04ddab100a1f2a091d91c12abba0a59",
+  "testOnlyFollowup": "5a7a6e2e6a6307353ea8bbc27439ebed01c59b5c",
+  "pushed": true,
+  "candidateVersion": "2.1.2",
+  "versionCode": 83,
+  "apkSha256": "4129d2e04be72207bae6fc5a2fdcede221f8d2e95b9acda33f9c38863b3fc234",
+  "published": false,
+  "existingReleaseTagChanged": false,
+  "localGates": {
+    "node24": {
+      "pass": 389,
+      "fail": 0,
+      "cancelled": 0
+    },
+    "node22": {
+      "pass": 389,
+      "fail": 0,
+      "cancelled": 0
+    },
+    "typecheck": "pass"
+  },
+  "remote": {
+    "runId": 43577206723,
+    "head": "45c9af892ef184f0e462213e78699289e8326d4b",
+    "server": "success",
+    "android": "success"
+  },
+  "priorRemoteFailure": {
+    "runId": 43574315700,
+    "cause": "PI test source slicing assumed LF after Windows CRLF checkout",
+    "fixed": true,
+    "isolatedOldReaderExit": 1,
+    "isolatedFixedReaderExit": 0
+  },
+  "reviewHandoff": {
+    "sessionId": "085b0cda-a463-419e-bafc-bafd3bad412f",
+    "messageId": "720f245e-5284-4ce0-9950-556c676d7d2d",
+    "ready": true,
+    "newCandidateRetest": "completed; picker recovery PASS, PI host binding BLOCKED",
+    "reviewedCommit": "5a7a6e2e6a6307353ea8bbc27439ebed01c59b5c"
+  },
+  "remaining": [
+    "PI real two-turn acceptance blocked by Plugin host process is no longer active after a confirmed dev reload; historical supplier HTTP400 not retested",
+    "Complete native-shell Gradle JVM suite unavailable offline due to missing JUnit/org.json artifacts; direct helper JUnit 8/8 and Java/release build results remain separate"
+  ],
+  "cleanup": {
+    "codexQaArchived": 1,
+    "piQaCreated": 0,
+    "androidCurrentUser": 0,
+    "ephemeralQaUserRemoved": true,
+    "exactQaFileRemovedAfterHashCheck": true,
+    "forwardMappings": 0,
+    "reverseMappings": 0,
+    "temporaryFixtureAndBackendListeners": 0,
+    "phoneLeaseReleasedAndStopped": true,
+    "durableSidecarPid": 40344,
+    "durableSidecarWindowHandle": 0
+  },
+  "retiredEndpointCalls": 0,
+  "documentationCloseoutCommit": "45c9af892ef184f0e462213e78699289e8326d4b",
+  "independent": {
+    "archivedFiles": 45,
+    "images": 4,
+    "reportSha256": "1879252260e2f7627c2bb6a375a4b4369cf0e2082873b4e8e5dd5da4286dd6f6",
+    "gallerySha256": "e0865d818d275ba65e77c563b61ec3a12fb6eeb9d0ff59f65d14334f21c34661",
+    "picker": "PASS",
+    "pi": "BLOCKED_ROOT_CAUSE_UNDETERMINED"
+  }
+}

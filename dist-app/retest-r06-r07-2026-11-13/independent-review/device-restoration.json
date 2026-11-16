@@ -1,0 +1,21 @@
+{
+  "qaAndroidUsersCreated": [10, 11],
+  "currentAndroidUser": 0,
+  "remainingAndroidUsers": [0],
+  "qaUser11Reclaimed": true,
+  "user0PairingModified": false,
+  "user0DataCleared": false,
+  "qa398DeviceFilesAbsent": true,
+  "qa398TestTextFileAbsent": true,
+  "priorQaUser11LoginPngRemoved": true,
+  "priorLoginPngIdentitySha256": "e8e6efc63a71b7ff1b5221c35dd163d51de39a05cd2839dcb7d4c97f0820add4",
+  "qaDebugPid3151Absent": true,
+  "ownedAdbForward14116Removed": true,
+  "globalHttpProxy": null,
+  "realQaSessionsCreated": 0,
+  "realUserTaskMessagesOrInterruptsOrApprovals": 0,
+  "productionCodeModified": false,
+  "commitPushPublish": false,
+  "leaseResult": "lease-release.json",
+  "hostCleanup": "host-cleanup.json"
+}

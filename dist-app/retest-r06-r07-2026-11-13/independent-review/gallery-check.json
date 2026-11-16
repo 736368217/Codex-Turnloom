@@ -1,0 +1,23 @@
+{
+  "taskSpaceId": 2,
+  "desktop": {
+    "images": 14,
+    "allLoaded": true,
+    "width": 900,
+    "scrollWidth": 885
+  },
+  "mobile": {
+    "width": 390,
+    "scrollWidth": 390,
+    "images": 14,
+    "allLoaded": true
+  },
+  "zoom": {
+    "opened": true,
+    "width": 1080,
+    "height": 1920,
+    "closed": true
+  },
+  "passed": true,
+  "scope": "report gallery loading and pointer zoom interaction; not subjective APK visual grading"
+}

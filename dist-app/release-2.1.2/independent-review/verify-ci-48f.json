@@ -1,0 +1,21 @@
+﻿{
+    "at":  "2026-11-15T01:42:13.6617673+08:00",
+    "commit":  "48f081df3d9a0479f6fcd991a526ffacc4b49c1f",
+    "worktreeCommit":  "48f081df3d9a0479f6fcd991a526ffacc4b49c1f",
+    "logBytes":  136165,
+    "logSha256":  "1e59226e177e6222bf15ad1aaf9713b37893364898fdcd405e407e4f935835af",
+    "tests":  393,
+    "pass":  393,
+    "fail":  0,
+    "cancelled":  0,
+    "ciRuntimeLine":  "[verify-ci] node 22 --test (CI runtime): 393 pass, 0 fail, 0 cancelled",
+    "passMarker":  "[verify-ci] PASS: this commit would satisfy the GitHub Actions server job",
+    "focusedTests":  {
+                         "piBridgeLifecycle":  2,
+                         "fail":  0,
+                         "pass":  4,
+                         "total":  4,
+                         "cancelled":  0,
+                         "sendPreflightRetry":  2
+                     }
+}

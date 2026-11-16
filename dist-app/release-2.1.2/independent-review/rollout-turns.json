@@ -1,0 +1,37 @@
+﻿{
+    "at":  "2026-11-15T01:41:43.8251751+08:00",
+    "threadId":  "c76aa111-59a6-47e7-ae78-91796054331d",
+    "rollout":  "sessions/rollout-2026-11-14T17-38-18-380Z-c76aa111-59a6-47e7-ae78-91796054331d.jsonl",
+    "rolloutBytes":  1628,
+    "rolloutSha256":  "3ce955cce60778b1ed8cd8a96b6d632a81054dca75e4a5b73671c12efd796f84",
+    "turns":  [
+                  {
+                      "type":  "task_started",
+                      "turn":  "1e543ac9-1a04-4f11-9d76-c36c8effc210",
+                      "msg":  null,
+                      "durationMs":  null
+                  },
+                  {
+                      "type":  "task_complete",
+                      "turn":  "1e543ac9-1a04-4f11-9d76-c36c8effc210",
+                      "msg":  null,
+                      "durationMs":  2205
+                  },
+                  {
+                      "type":  "task_started",
+                      "turn":  "27b474cf-1935-46af-859d-13183b0de23d",
+                      "msg":  null,
+                      "durationMs":  null
+                  },
+                  {
+                      "type":  "task_complete",
+                      "turn":  "27b474cf-1935-46af-859d-13183b0de23d",
+                      "msg":  null,
+                      "durationMs":  3008
+                  }
+              ],
+    "assistantMessages":  [
+                              "QA332E_TURN_ONE",
+                              "QA332E_TURN_TWO"
+                          ]
+}

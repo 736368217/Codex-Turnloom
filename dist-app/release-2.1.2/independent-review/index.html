@@ -1,0 +1,69 @@
+<!doctype html>
+<html lang="zh-CN"><head><meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>第六轮独立复测 — 48f081df</title>
+<style>
+  :root { color-scheme: light; }
+  body { margin: 0; background: #f2f2f7; color: #1c1c1e; font: 15px/1.6 -apple-system, "Segoe UI", "Microsoft YaHei", sans-serif; }
+  header { padding: 28px 24px 18px; background: #fff; border-bottom: 1px solid #e5e5ea; }
+  h1 { margin: 0 0 8px; font-size: 21px; }
+  .meta { color: #8e8e93; font-size: 13px; word-break: break-all; }
+  main { padding: 20px 24px 40px; max-width: 1180px; margin: 0 auto; }
+  .grid { display: grid; gap: 18px; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); }
+  figure { margin: 0; background: #fff; border-radius: 14px; overflow: hidden; box-shadow: 0 1px 3px rgba(0,0,0,.06); }
+  img { display: block; width: 100%; height: auto; background: #efeff4; }
+  figcaption { padding: 12px 14px 14px; display: grid; gap: 4px; }
+  figcaption strong { font-size: 14px; }
+  figcaption span { color: #8e8e93; font-size: 12.5px; }
+  code { font-size: 11.5px; color: #007aff; word-break: break-all; }
+  table { border-collapse: collapse; width: 100%; background: #fff; border-radius: 12px; overflow: hidden; margin: 10px 0 24px; font-size: 13.5px; }
+  th, td { text-align: left; padding: 9px 12px; border-bottom: 1px solid #e5e5ea; vertical-align: top; }
+  th { background: #efeff4; font-weight: 600; }
+  h2 { font-size: 16px; margin: 26px 0 8px; }
+  .pass { color: #34c759; font-weight: 700; }
+</style></head>
+<body>
+<header>
+  <h1>主分支第六轮独立复测 — HEAD <code>48f081df</code></h1>
+  <div class="meta">
+    APK 2.1.2/83 · 1780565 B · SHA-256 4129d2e04be72207bae6fc5a2fdcede221f8d2e95b9acda33f9c38863b3fc234<br />
+    MuMu phone index 1 · ephemeral 用户 10 · 真实 PI 宿主（8799 / pidesk）· 退役端点 0 次访问
+  </div>
+</header>
+<main>
+  <h2>两个上轮限制</h2>
+  <table>
+    <tr><th>项</th><th>本轮结果</th></tr>
+    <tr><td>限制① 桥可用性（只读 host/invoke）</td><td class="pass">通过 · success 13ms / success 38ms</td></tr>
+    <tr><td>限制① 热重载后自有连接恢复</td><td class="pass">通过 · 重载后 6ms success，无 EADDRINUSE</td></tr>
+    <tr><td>限制② 真实 PI 连续两轮</td><td class="pass">通过 · QA332E_TURN_ONE / QA332E_TURN_TWO</td></tr>
+  </table>
+
+  <h2>门禁</h2>
+  <table>
+    <tr><th>项</th><th>结果</th></tr>
+    <tr><td>独立 CI（Node 24/22）</td><td class="pass">393/393 pass · fail 0 · cancelled 0</td></tr>
+    <tr><td>桥生命周期专项</td><td class="pass">2/2</td></tr>
+    <tr><td>发送前 409 缓存专项</td><td class="pass">2/2</td></tr>
+  </table>
+
+  <h2>两轮落库（rollout）</h2>
+  <table>
+    <tr><th>turn</th><th>事件</th><th>时长</th></tr>
+    <tr><td><code>1e543ac9-1a04-4f11-9d76-c36c8effc210</code></td><td>task_started</td><td>—</td></tr><tr><td><code>1e543ac9-1a04-4f11-9d76-c36c8effc210</code></td><td>task_complete</td><td>2205</td></tr><tr><td><code>27b474cf-1935-46af-859d-13183b0de23d</code></td><td>task_started</td><td>—</td></tr><tr><td><code>27b474cf-1935-46af-859d-13183b0de23d</code></td><td>task_complete</td><td>3008</td></tr>
+  </table>
+
+  <h2>原生截图（1080×1920）</h2>
+  <div class="grid">
+  <figure>
+    <img src="QA332E_10_turn1.png" alt="真实第 1 轮回复" loading="lazy" />
+    <figcaption><strong>真实第 1 轮回复</strong><span>wb反代/deepseek-v4.1-flash · max；assistant 显示 QA332E_TURN_ONE</span>
+    <code>1080×1920 · 109591 B · 26e0b2df3038b727…</code></figcaption>
+  </figure>
+  <figure>
+    <img src="QA332E_11_turn2.png" alt="真实第 2 轮回复" loading="lazy" />
+    <figcaption><strong>真实第 2 轮回复</strong><span>同一会话连续第二轮；assistant 显示 QA332E_TURN_TWO</span>
+    <code>1080×1920 · 153826 B · c1980801ed2e8278…</code></figcaption>
+  </figure></div>
+</main>
+</body></html>

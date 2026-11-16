@@ -1,0 +1,10 @@
+{
+  "confirmedBy": "user",
+  "date": "2026-11-14",
+  "retiredEndpoint": "121.40.69.97",
+  "prohibited": ["probe any port", "connect", "retry", "deploy", "restore", "use dependent old public endpoints"],
+  "reportDisposition": "旧公网服务器已退役，不适用",
+  "newEndpoint": "requires a separately supplied user endpoint",
+  "thisIndependentRoundNetworkCallsToRetiredEndpoint": 0,
+  "localRetestContinues": true
+}

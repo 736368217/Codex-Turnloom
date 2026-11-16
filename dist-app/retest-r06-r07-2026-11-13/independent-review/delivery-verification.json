@@ -1,0 +1,19 @@
+{
+  "passed": true,
+  "markdownLinks": 36,
+  "galleryReferences": 74,
+  "broken": [],
+  "badHashes": [],
+  "mobileChecks": 17,
+  "mobilePassed": 17,
+  "phoneImages": 14,
+  "allPhoneDimensions": true,
+  "galleryBrowserChecked": true,
+  "retiredEndpointCalls": 0,
+  "retiredEndpointDisposition": "旧公网服务器已退役，不适用",
+  "qaRuntimeFatalEntries": 0,
+  "initialQaFailureRetained": true,
+  "reportSha256": "4eff14c4c9f700fff06a889ce87a3302f578578a347fa920d4fd0974c4476e77",
+  "gallerySha256": "7cfdc90a0be64e17ff15d6e6d720ce9262a1f11cfa69a41fd1602a50b07c0ed0",
+  "verifiedAt": "2026-11-14T03:58:35.958Z"
+}

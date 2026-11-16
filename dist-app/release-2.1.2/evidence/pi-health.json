@@ -1,0 +1,20 @@
+{
+  "at": "2026-11-14T17:24:59.640Z",
+  "status": 200,
+  "defaultModel": "wb反代/deepseek-v4.1-flash",
+  "defaultEffort": "max",
+  "chosen": {
+    "id": "77625 free/deepseek-flash",
+    "label": "DeepSeek V4.1 Flash 1017 · 77625 free",
+    "efforts": [
+      "off",
+      "low",
+      "medium",
+      "high",
+      "max"
+    ],
+    "defaultEffort": "max",
+    "supportsImages": true
+  },
+  "models": 39
+}

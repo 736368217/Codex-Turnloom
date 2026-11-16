@@ -13,6 +13,7 @@ const {
   publicConfig,
   defaultConfig,
   mergeConfig,
+  normalizeConfig,
   validateConfig,
   detectCodexHomes,
   generateAccessCode,
@@ -23,6 +24,10 @@ const {
   normalizeExtraDevices,
   slugifyDeviceId,
   lanAddress,
+  normalizeServers,
+  activeServerOf,
+  syncActiveServer,
+  normalizeServerEntry,
   APP_DIR
 } = require("./service/config.cjs");
 const { LogBuffer } = require("./service/logger.cjs");
@@ -51,6 +56,7 @@ let tray = null;
 let runtime = null;
 let logger = null;
 let configState = null;
+let configWatcher = null;
 let tasks = [];
 let taskTimer = null;
 let logFlushTimer = null;
@@ -128,6 +134,7 @@ async function bootstrap() {
     return;
   }
 
+  watchConfigFile();
   initLogger();
   if (runtime) await runtime.dispose();
   runtime = new RuntimeManager({ config: configState.config, logger });
@@ -647,6 +654,60 @@ async function finishSmokeTest(label) {
   setTimeout(() => quitApp(), 250);
 }
 
+/**
+ * 配置落盘 + 应用的唯一入口。config:save 与 servers:* 都走这里，
+ * 保证「改表单」和「切服务端」产生完全相同的校验、保存与生效路径。
+ */
+async function applyConfigPatch(patch) {
+  if (!currentConfig()) return { ok: false, errors: [{ field: "config", message: "尚未完成初始设置。" }] };
+  const clean = JSON.parse(JSON.stringify(patch || {}));
+  if (clean.accessCode && /^•+$/.test(String(clean.accessCode))) delete clean.accessCode;
+  if (clean.accessCode !== undefined && !String(clean.accessCode).trim()) delete clean.accessCode;
+  let next = mergeConfig(currentConfig(), clean);
+  // 表单改的是 publicUrl / tunnel；先回填到活动服务端条目，再由条目统一派生。
+  if (clean.publicUrl !== undefined || clean.tunnel !== undefined) syncActiveServer(next);
+  next = normalizeConfig(next);
+  const errors = validateConfig(next);
+  if (errors.length) return { ok: false, errors };
+  try {
+    next = saveConfig(next);
+    configState.config = next;
+    logger.setSecrets(allSecrets(next));
+    const impact = await runtime.applyConfig(next);
+    applyTheme(next.console?.theme || "system");
+    applyLoginItem(next);
+    sendState();
+    return { ok: true, impact, config: publicConfig(next), runtime: runtimeSnapshot() };
+  } catch (error) {
+    return { ok: false, errors: [{ field: "config", message: error.message }] };
+  }
+}
+
+/** 外部改了 config.json（脚本/其它会话）时，控制台跟着重载，别显示过期地址。 */
+function watchConfigFile() {
+  const file = configPath();
+  if (!file || configWatcher) return;
+  try {
+    let timer = null;
+    configWatcher = fs.watch(file, { persistent: false }, () => {
+      clearTimeout(timer);
+      timer = setTimeout(async () => {
+        const loaded = loadConfig();
+        if (!loaded.config) return;
+        const before = JSON.stringify(publicConfig(currentConfig()));
+        if (before === JSON.stringify(publicConfig(loaded.config))) return;
+        configState = loaded;
+        logger.setSecrets(allSecrets(loaded.config));
+        if (runtime) await runtime.applyConfig(loaded.config).catch(() => {});
+        sendState();
+      }, 400);
+    });
+    configWatcher.on("error", () => {});
+  } catch (error) {
+    console.error(`[config] watch failed: ${error.message}`);
+  }
+}
+
 function registerIpc() {
   ipcMain.handle("app:bootstrap", async () => ({
     needsSetup: !currentConfig(),
@@ -672,26 +733,50 @@ function registerIpc() {
   ipcMain.handle("service:stop", async () => { await guardServiceAction(() => runtime.stop()); return statePayload(); });
   ipcMain.handle("service:restart", async () => { await guardServiceAction(() => runtime.restart()); return statePayload(); });
 
-  ipcMain.handle("config:save", async (_event, patch = {}) => {
-    if (!currentConfig()) return { ok: false, errors: [{ field: "config", message: "尚未完成初始设置。" }] };
-    const clean = JSON.parse(JSON.stringify(patch || {}));
-    if (clean.accessCode && /^•+$/.test(String(clean.accessCode))) delete clean.accessCode;
-    if (clean.accessCode !== undefined && !String(clean.accessCode).trim()) delete clean.accessCode;
-    let next = mergeConfig(currentConfig(), clean);
-    const errors = validateConfig(next);
-    if (errors.length) return { ok: false, errors };
-    try {
-      next = saveConfig(next);
-      configState.config = next;
-      logger.setSecrets(allSecrets(next));
-      const impact = await runtime.applyConfig(next);
-      applyTheme(next.console?.theme || "system");
-      applyLoginItem(next);
-      sendState();
-      return { ok: true, impact, config: publicConfig(next), runtime: runtimeSnapshot() };
-    } catch (error) {
-      return { ok: false, errors: [{ field: "config", message: error.message }] };
-    }
+  ipcMain.handle("config:save", async (_event, patch = {}) => applyConfigPatch(patch));
+
+  ipcMain.handle("servers:list", async () => {
+    const config = currentConfig();
+    if (!config) return { ok: false, servers: [], activeServerId: "" };
+    const view = publicConfig(config);
+    return { ok: true, servers: view.servers, activeServerId: view.activeServerId };
+  });
+
+  // 新增 / 编辑一个服务端；activate=false 时只保存不切换。
+  ipcMain.handle("servers:save", async (_event, input = {}) => {
+    const config = currentConfig();
+    if (!config) return { ok: false, error: "尚未完成初始设置。" };
+    const rows = JSON.parse(JSON.stringify(config.servers || []));
+    const entry = normalizeServerEntry(input, rows.length, { tunnel: config.tunnel });
+    if (!entry) return { ok: false, error: "服务端数据无效。" };
+    const index = rows.findIndex((item) => item.id === entry.id);
+    if (index >= 0) rows[index] = entry; else rows.push(entry);
+    const activate = input.activate !== false;
+    return applyConfigPatch({
+      servers: rows,
+      ...(activate ? { activeServerId: entry.id, publicUrl: entry.publicUrl, tunnel: entry.tunnel } : {}),
+    });
+  });
+
+  ipcMain.handle("servers:activate", async (_event, id = "") => {
+    const config = currentConfig();
+    if (!config) return { ok: false, error: "尚未完成初始设置。" };
+    const entry = (config.servers || []).find((item) => item.id === id);
+    if (!entry) return { ok: false, error: "找不到该服务端。" };
+    return applyConfigPatch({ activeServerId: entry.id, publicUrl: entry.publicUrl, tunnel: entry.tunnel });
+  });
+
+  ipcMain.handle("servers:remove", async (_event, id = "") => {
+    const config = currentConfig();
+    if (!config) return { ok: false, error: "尚未完成初始设置。" };
+    const rows = (config.servers || []).filter((item) => item.id !== id);
+    if (!rows.length) return { ok: false, error: "至少保留一个服务端。" };
+    const wasActive = config.activeServerId === id;
+    const fallback = rows[0];
+    return applyConfigPatch({
+      servers: rows,
+      ...(wasActive ? { activeServerId: fallback.id, publicUrl: fallback.publicUrl, tunnel: fallback.tunnel } : {}),
+    });
   });
 
   ipcMain.handle("config:autoStart", async (_event, enabled) => setAutoStart(Boolean(enabled)));

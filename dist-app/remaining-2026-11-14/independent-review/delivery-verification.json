@@ -1,0 +1,23 @@
+{
+  "at": "2026-11-14T08:39:19.043Z",
+  "reportPath": "D:\\pi-data\\data\\scratch\\085b0cda-a463-419e-bafc-bafd3bad412f\\main-branch-quality-retest-5a7a6e2e.md",
+  "reportBytes": 13356,
+  "reportSha256": "1879252260e2f7627c2bb6a375a4b4369cf0e2082873b4e8e5dd5da4286dd6f6",
+  "galleryPath": "D:\\pi-data\\data\\scratch\\085b0cda-a463-419e-bafc-bafd3bad412f\\retest-5a7a-evidence\\index.html",
+  "galleryBytes": 4659,
+  "gallerySha256": "e0865d818d275ba65e77c563b61ec3a12fb6eeb9d0ff59f65d14334f21c34661",
+  "manifestPath": "D:\\pi-data\\data\\scratch\\085b0cda-a463-419e-bafc-bafd3bad412f\\retest-5a7a-evidence\\evidence-manifest.json",
+  "checks": {
+    "imagesPresent": true,
+    "imagesAre1080x1920": true,
+    "galleryReferencesAllImages": true,
+    "reportExists": true,
+    "reportNonEmpty": true,
+    "ciNumbersPresent": true,
+    "pagingAllPassed": true,
+    "invalidProbeExcluded": true,
+    "hostControlBlockedRecorded": true,
+    "environmentRestored": true
+  },
+  "allPassed": true
+}

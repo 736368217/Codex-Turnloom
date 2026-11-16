@@ -1314,6 +1314,14 @@
   function bindSettings() {
     $("#settings-form")?.addEventListener("submit", saveSettings);
     $("#set-network-mode")?.addEventListener("change", () => { updateTunnelTag(); updateSettingsDirty(); });
+    $("#set-server-select")?.addEventListener("change", () => {
+      const server = serverById($("#set-server-select")?.value);
+      if (server) fillSettingsFromServer(server);
+      setServerNotice("");
+    });
+    $("#btn-server-connect")?.addEventListener("click", () => { void connectServer(); });
+    $("#btn-server-add")?.addEventListener("click", () => { void addServer(); });
+    $("#btn-server-remove")?.addEventListener("click", () => { void removeServer(); });
     $("#btn-discard")?.addEventListener("click", discardSettings);
     $("#btn-open-config")?.addEventListener("click", () => openPathSafe("config", "配置目录"));
     $("#btn-settings-open-logs")?.addEventListener("click", () => openPathSafe("logs", "日志目录"));
@@ -1428,6 +1436,130 @@
       });
   }
 
+  // ---- 服务端（公网入口）选择与连接 ----
+  function serversOf() {
+    const list = state.config?.servers;
+    return Array.isArray(list) ? list : [];
+  }
+
+  function serverById(id) {
+    return serversOf().find((server) => server.id === id) || null;
+  }
+
+  function setServerNotice(message, isError = false) {
+    const hint = $("#server-hint");
+    if (hint) hint.textContent = message || "";
+    const error = $("#err-servers");
+    if (error) {
+      error.hidden = !isError;
+      error.textContent = isError ? (message || "") : "";
+    }
+  }
+
+  function fillSettingsFromServer(server) {
+    if (!server) return;
+    setInputValue("#set-server-name", server.name);
+    setInputValue("#set-public-url", server.publicUrl);
+    setInputValue("#set-tunnel-host", server.sshHost);
+    setInputValue("#set-tunnel-user", server.sshUser);
+    setInputValue("#set-tunnel-port", server.remotePort);
+    if (server.keyPath) setInputValue("#set-key-path", server.keyPath);
+    updateTunnelTag();
+    updateSettingsDirty();
+  }
+
+  function renderServersCard(config) {
+    const select = $("#set-server-select");
+    if (!select) return;
+    const servers = Array.isArray(config?.servers) ? config.servers : [];
+    const activeId = config?.activeServerId || servers[0]?.id || "";
+    const previous = select.value;
+    const options = servers.map((server) => {
+      const option = document.createElement("option");
+      option.value = server.id;
+      option.textContent = server.id === activeId ? `${server.name}（当前）` : server.name;
+      return option;
+    });
+    if (!options.length) {
+      const option = document.createElement("option");
+      option.value = "";
+      option.textContent = "尚无服务端";
+      options.push(option);
+    }
+    select.replaceChildren(...options);
+    select.value = servers.some((server) => server.id === previous) ? previous : activeId;
+    const remove = $("#btn-server-remove");
+    if (remove) remove.disabled = servers.length <= 1;
+    const current = servers.find((server) => server.id === select.value);
+    setInputValue("#set-server-name", current?.name || "");
+  }
+
+  function serverFormValue() {
+    return {
+      publicUrl: ($("#set-public-url")?.value || "").trim(),
+      tunnel: {
+        enabled: true,
+        host: ($("#set-tunnel-host")?.value || "").trim(),
+        user: ($("#set-tunnel-user")?.value || "").trim(),
+        remotePort: Number($("#set-tunnel-port")?.value) || 0,
+        keyPath: ($("#set-key-path")?.value || "").trim(),
+        knownHostsPath: ($("#set-known-hosts")?.value || "").trim()
+      }
+    };
+  }
+
+  async function connectServer() {
+    const server = serverById($("#set-server-select")?.value);
+    if (!server) { setServerNotice("请先新增一个服务端。", true); return; }
+    const name = ($("#set-server-name")?.value || "").trim() || server.name;
+    const form = serverFormValue();
+    setServerNotice("正在连接…");
+    const result = await api.saveServer({ id: server.id, name, ...form, activate: true });
+    if (!result?.ok) {
+      const message = result?.errors?.[0]?.message || result?.error || "连接失败，请检查地址与端口。";
+      setServerNotice(message, true);
+      showToast(message, "error");
+      return;
+    }
+    if (result.config) state.config = result.config;
+    await loadPairing({ force: true });
+    renderServersCard(state.config);
+    setServerNotice(`已连接 ${name} · ${form.publicUrl}`);
+    showToast(`已切换到服务端：${name}`, "success");
+  }
+
+  async function addServer() {
+    const index = serversOf().length + 1;
+    const created = await api.saveServer({
+      id: `srv-${Date.now()}`,
+      name: `服务端 ${index}`,
+      publicUrl: "",
+      tunnel: { ...serverFormValue().tunnel, host: "" },
+      activate: false
+    });
+    if (!created?.ok) { setServerNotice(created?.error || "新增失败。", true); return; }
+    if (created.config) state.config = created.config;
+    renderServersCard(state.config);
+    const select = $("#set-server-select");
+    const rows = serversOf();
+    const last = rows[rows.length - 1];
+    if (select && last) select.value = last.id;
+    fillSettingsFromServer(last);
+    setServerNotice("已新增服务端：填好公网地址与服务器信息后点「连接」。");
+  }
+
+  async function removeServer() {
+    const server = serverById($("#set-server-select")?.value);
+    if (!server) return;
+    const result = await api.removeServer(server.id);
+    if (!result?.ok) { setServerNotice(result?.error || "删除失败。", true); return; }
+    if (result.config) state.config = result.config;
+    await loadPairing({ force: true });
+    renderServersCard(state.config);
+    fillSettingsFromServer(serverById(state.config?.activeServerId));
+    setServerNotice(`已删除服务端：${server.name}`);
+  }
+
   function renderSettings(config, force = false) {
     if (!config) return;
     if (state.settings.saving && !force) return;
@@ -1474,6 +1606,7 @@
     clearFieldErrors();
     updateSettingsDirty();
     renderDevicesCard(config);
+    renderServersCard(config);
   }
 
   function setInputValue(selector, value) {
@@ -2604,6 +2737,28 @@
         return { ok: true, ...emitState() };
       },
       saveConfig: async (patch) => saveConfigDemo(patch),
+      listServers: async () => ({
+        ok: true,
+        servers: Array.isArray(demo.config.servers) ? demo.config.servers : [],
+        activeServerId: demo.config.activeServerId || ""
+      }),
+      saveServer: async (input = {}) => {
+        const rows = Array.isArray(demo.config.servers) ? demo.config.servers.slice() : [];
+        const index = rows.findIndex((item) => item.id === input.id);
+        const entry = { ...input, id: input.id || `srv-${Date.now()}` };
+        if (index >= 0) rows[index] = entry; else rows.push(entry);
+        demo.config.servers = rows;
+        if (input.activate !== false) demo.config.activeServerId = entry.id;
+        return { ok: true, config: configPublic() };
+      },
+      activateServer: async (id) => {
+        demo.config.activeServerId = id;
+        return { ok: true, config: configPublic() };
+      },
+      removeServer: async (id) => {
+        demo.config.servers = (demo.config.servers || []).filter((item) => item.id !== id);
+        return { ok: true, config: configPublic() };
+      },
       setAutoStart: async (enabled) => {
         demo.config.console.autoStart = Boolean(enabled);
         return { ok: true, config: configPublic() };

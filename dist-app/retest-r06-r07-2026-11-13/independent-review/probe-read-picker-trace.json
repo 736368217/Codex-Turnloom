@@ -1,0 +1,27 @@
+{
+  "at": "2026-11-14T03:00:40.398Z",
+  "value": {
+    "trace": [
+      {
+        "at": 1794625216891,
+        "id": "attach-1794625215834-2",
+        "status": "success",
+        "items": [
+          {
+            "name": "QA398_085b_independent.txt",
+            "mimeType": "text/plain",
+            "sizeBytes": 47,
+            "dataUrlChars": 87
+          }
+        ]
+      }
+    ],
+    "text": "QA398 手机隔离任务\n运行中\n本会话合成消息，非真实任务\n\n合成夹具固定文本；不是模型真实回复。\n\nQA398_085b_independent.txt\n视觉夹具398\n高",
+    "inputs": [
+      {
+        "value": "Running_Enter_398\n"
+      }
+    ],
+    "attachments": "QA398_085b_independent.txt"
+  }
+}

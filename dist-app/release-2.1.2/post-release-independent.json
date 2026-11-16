@@ -1,0 +1,173 @@
+﻿{
+    "at":  "2026-11-15T01:52:19.0670762+08:00",
+    "scope":  "post-release read-only verification",
+    "repoHead":  "d086deb8a7fb52b7aa00279b05640ef1c40df38f",
+    "verifiedCommit":  "48f081df3d9a0479f6fcd991a526ffacc4b49c1f",
+    "diffSinceVerified":  [
+                              "docs/RELEASE_2_1_2_2026-11-15.md",
+                              "public/downloads/Codex-Turnloom.apk.release.json"
+                          ],
+    "productCodeChangedSinceVerified":  false,
+    "release":  {
+                    "isDraft":  false,
+                    "tagName":  "v2.1.2",
+                    "publishedAt":  "2026-11-14T17:49:44Z",
+                    "isPrerelease":  false,
+                    "url":  "https://github.com/736368217/Codex-Turnloom/releases/tag/v2.1.2",
+                    "targetCommitish":  "d086deb8a7fb52b7aa00279b05640ef1c40df38f"
+                },
+    "assetCount":  7,
+    "assets":  [
+                   {
+                       "name":  "build-manifest-2.1.2.json",
+                       "localBytes":  2646,
+                       "remoteBytes":  2646,
+                       "bytesMatch":  true,
+                       "localSha256":  "7cc91efefdeee70efa484af7429a813c7feec20be9a06a0d301bd3b8c32994e3",
+                       "remoteDigest":  "7cc91efefdeee70efa484af7429a813c7feec20be9a06a0d301bd3b8c32994e3",
+                       "shaMatch":  true,
+                       "state":  "uploaded"
+                   },
+                   {
+                       "name":  "Codex-Turnloom-2.1.2-app.apk",
+                       "localBytes":  1780565,
+                       "remoteBytes":  1780565,
+                       "bytesMatch":  true,
+                       "localSha256":  "4129d2e04be72207bae6fc5a2fdcede221f8d2e95b9acda33f9c38863b3fc234",
+                       "remoteDigest":  "4129d2e04be72207bae6fc5a2fdcede221f8d2e95b9acda33f9c38863b3fc234",
+                       "shaMatch":  true,
+                       "state":  "uploaded"
+                   },
+                   {
+                       "name":  "Codex-Turnloom-2.1.2-app.apk.release.json",
+                       "localBytes":  2646,
+                       "remoteBytes":  2646,
+                       "bytesMatch":  true,
+                       "localSha256":  "7cc91efefdeee70efa484af7429a813c7feec20be9a06a0d301bd3b8c32994e3",
+                       "remoteDigest":  "7cc91efefdeee70efa484af7429a813c7feec20be9a06a0d301bd3b8c32994e3",
+                       "shaMatch":  true,
+                       "state":  "uploaded"
+                   },
+                   {
+                       "name":  "Codex-Turnloom-2.1.2-app.apk.sha256",
+                       "localBytes":  95,
+                       "remoteBytes":  95,
+                       "bytesMatch":  true,
+                       "localSha256":  "8657954a12795f23e0b0cdc37a56a4779604cba25254f6b1d4b5f9c677dbc6ef",
+                       "remoteDigest":  "8657954a12795f23e0b0cdc37a56a4779604cba25254f6b1d4b5f9c677dbc6ef",
+                       "shaMatch":  true,
+                       "state":  "uploaded"
+                   },
+                   {
+                       "name":  "Codex-Turnloom-2.1.2-review-evidence.zip",
+                       "localBytes":  356963,
+                       "remoteBytes":  356963,
+                       "bytesMatch":  true,
+                       "localSha256":  "b81ff60b3941f52d2b7e97efdd5f35058993605c4e971b11290a2a540b816602",
+                       "remoteDigest":  "b81ff60b3941f52d2b7e97efdd5f35058993605c4e971b11290a2a540b816602",
+                       "shaMatch":  true,
+                       "state":  "uploaded"
+                   },
+                   {
+                       "name":  "delivery.html",
+                       "localBytes":  1688,
+                       "remoteBytes":  1688,
+                       "bytesMatch":  true,
+                       "localSha256":  "b8a2b9f6cc4a47d469f735f288ba99b4bf0ead050dcfdae06847801350023dd4",
+                       "remoteDigest":  "b8a2b9f6cc4a47d469f735f288ba99b4bf0ead050dcfdae06847801350023dd4",
+                       "shaMatch":  true,
+                       "state":  "uploaded"
+                   },
+                   {
+                       "name":  "REPORT.md",
+                       "localBytes":  4917,
+                       "remoteBytes":  4917,
+                       "bytesMatch":  true,
+                       "localSha256":  "6df5cadbc5fa446facd1032fe51253d2d59be96e45934114353624a31f594029",
+                       "remoteDigest":  "6df5cadbc5fa446facd1032fe51253d2d59be96e45934114353624a31f594029",
+                       "shaMatch":  true,
+                       "state":  "uploaded"
+                   }
+               ],
+    "mismatchCount":  0,
+    "mismatchList":  [
+
+                     ],
+    "allAssetDigestsMatch":  true,
+    "apkSignature":  {
+                         "sha256":  "2feb63c511cd725795cadc8fa890f9cbc754fe59c0bbfe0787ac33f94f44fa9c",
+                         "matches211":  true
+                     },
+    "sha256Sidecar":  {
+                          "fileBytes":  95,
+                          "matchesApk":  true,
+                          "declared":  "4129d2e04be72207bae6fc5a2fdcede221f8d2e95b9acda33f9c38863b3fc234"
+                      },
+    "updateEndpoints":  [
+                            {
+                                "port":  8799,
+                                "available":  true,
+                                "versionName":  "2.1.2",
+                                "versionCode":  83,
+                                "sha256":  "4129d2e04be72207bae6fc5a2fdcede221f8d2e95b9acda33f9c38863b3fc234",
+                                "sizeBytes":  1780565,
+                                "apkUrl":  "/api/apk",
+                                "matchesApk":  true
+                            },
+                            {
+                                "port":  18788,
+                                "available":  true,
+                                "versionName":  "2.1.2",
+                                "versionCode":  83,
+                                "sha256":  "4129d2e04be72207bae6fc5a2fdcede221f8d2e95b9acda33f9c38863b3fc234",
+                                "sizeBytes":  1780565,
+                                "apkUrl":  "/api/apk",
+                                "matchesApk":  true
+                            }
+                        ],
+    "apkDownload8799":  {
+                            "sha256":  "4129d2e04be72207bae6fc5a2fdcede221f8d2e95b9acda33f9c38863b3fc234",
+                            "matchesRelease":  true,
+                            "bytes":  1780565
+                        },
+    "serverProcess":  {
+                          "oldPidGone":  true,
+                          "loadedFrom":  "D:\\pi11\\11\\Codex-Turnloom\\server.js",
+                          "pid":  19404,
+                          "createdAt":  "2026-11-15T01:45:41.3153490+08:00"
+                      },
+    "hostInvoke":  {
+                       "skillList":  {
+                                         "resultType":  "success",
+                                         "elapsedMs":  13
+                                     },
+                       "framing":  "uint32le-length-prefix + json{type:\"request\"}",
+                       "pluginList":  {
+                                          "resultType":  "success",
+                                          "elapsedMs":  4
+                                      },
+                       "oldBindingErrorPresent":  false
+                   },
+    "notes":  {
+                  "lineCount":  4,
+                  "mentionsProviderError":  true,
+                  "mentionsDesktopSync":  true
+              },
+    "evidenceZip":  {
+                        "pngCount":  2,
+                        "entries":  39,
+                        "containsPrivateQaBackup":  false,
+                        "bytes":  356963
+                    },
+    "previousRelease":  {
+                            "isLatest":  false,
+                            "tag":  "v2.1.1",
+                            "modified":  false
+                        },
+    "latestRelease":  "v2.1.2",
+    "touchedUserState":  false,
+    "touchedProviderConfig":  false,
+    "touchedSource":  false,
+    "killedHost":  false,
+    "retiredEndpointCalls":  0
+}

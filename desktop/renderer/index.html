@@ -623,6 +623,33 @@
               <section class="card settings-card">
                 <div class="card-h"><h3>访问方式与公网转发</h3><span class="tag muted" id="tunnel-state-tag">直连</span></div>
                 <div class="field">
+                  <div class="field-info">
+                    <label class="field-label" for="set-server-select">服务端</label>
+                    <div class="desc">先选一台中转服务器，再点「连接」；换服务器时改这里即可</div>
+                  </div>
+                  <div class="field-control">
+                    <div class="input-row">
+                      <select class="input select" id="set-server-select"></select>
+                      <button class="btn primary" type="button" id="btn-server-connect">连接</button>
+                    </div>
+                    <div class="input-row" style="margin-top:8px">
+                      <button class="btn ghost" type="button" id="btn-server-add">新增服务端</button>
+                      <button class="btn ghost" type="button" id="btn-server-remove">删除当前</button>
+                    </div>
+                    <div class="field-error" id="err-servers" data-error-for="servers" hidden></div>
+                    <p class="network-hint" id="server-hint" role="status"></p>
+                  </div>
+                </div>
+                <div class="field">
+                  <div class="field-info">
+                    <label class="field-label" for="set-server-name">服务端名称</label>
+                    <div class="desc">例如「阿里云 · 杭州」，只在本机显示</div>
+                  </div>
+                  <div class="field-control">
+                    <input class="input" type="text" id="set-server-name" spellcheck="false" autocomplete="off" placeholder="阿里云 · 杭州">
+                  </div>
+                </div>
+                <div class="field">
                   <div class="field-info"><label class="field-label" for="set-network-mode">连接方式</label><div class="desc">独立于本机服务；可随环境切换</div></div>
                   <div class="field-control"><select class="input select" id="set-network-mode" data-setting="network.mode">
                     <option value="direct">局域网 / VPN 直连</option>

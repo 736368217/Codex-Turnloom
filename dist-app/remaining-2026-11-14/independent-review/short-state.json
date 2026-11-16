@@ -1,0 +1,40 @@
+{
+  "at": "2026-11-14T08:29:01.191Z",
+  "step": "state",
+  "result": {
+    "text": "QA398 手机隔离任务\n运行中\n本会话合成消息，非真实任务\n\n合成夹具固定文本；不是模型真实回复。\n\nQA5A7A_ROUND5.txt\n视觉夹具398\n高",
+    "input": "",
+    "tray": "QA5A7A_ROUND5.txt",
+    "alerts": [],
+    "arm": {
+      "armed": false,
+      "hits": [
+        {
+          "at": 1794644902166,
+          "from": 600000,
+          "to": 2000
+        }
+      ]
+    },
+    "trace": [
+      {
+        "at": 1794644938544,
+        "id": "attach-1794644927953-5",
+        "status": "success",
+        "error": "",
+        "items": [
+          {
+            "name": "QA5A7A_ROUND5.txt",
+            "mimeType": "text/plain",
+            "sizeBytes": 178,
+            "dataUrlChars": 263
+          }
+        ]
+      }
+    ],
+    "attachBtn": {
+      "x": 550,
+      "y": 1833
+    }
+  }
+}

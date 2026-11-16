@@ -1,0 +1,48 @@
+{
+  "record": "invalid-probe-exclusion",
+  "at": "2026-11-14T08:36:00Z",
+  "artifacts": [
+    "qa5a7a-hostprobe.mjs",
+    "retest-5a7a-evidence/host-control-probe.json"
+  ],
+  "verdict": "INVALID_TEST_EXCLUDED",
+  "reason": "The probe wrote newline-delimited JSON (`JSON.stringify({id,method,params}) + '\\n'`) to \\\\.\\pipe\\pidesktop-codex-ipc. The bridge's own receiver (installed cn.star.turnloom-bridge main.js, startPipeServer, lines 2094-2140) reads a 4-byte UInt32LE length prefix followed by a JSON frame, and ignores any frame whose `type` is not \"request\". A newline-delimited frame makes readUInt32LE(0) interpret the first 4 bytes of the JSON text as an enormous length, so the receiver waits forever and never replies. The observed timeout is therefore a protocol mismatch produced by the probe, not evidence about host responsiveness.",
+  "protocolFactsReadOnly": {
+    "source": "D:\\pi-data\\data\\plugins\\installed\\cn.star.turnloom-bridge\\main.js",
+    "encodeFrame": "lines 2094-2099: Buffer.alloc(4); header.writeUInt32LE(payload.length, 0); concat([header, payload])",
+    "decodeFrame": "lines 2106-2110: while buffer.length >= 4 -> length = buffer.readUInt32LE(0); payload = subarray(4, 4+length)",
+    "requiredEnvelope": "lines 2117-2119: message.type must equal \"request\"; response carries type:\"response\", requestId, method, resultType",
+    "pipePath": "line 868: \\\\.\\pipe\\pidesktop-codex-ipc"
+  },
+  "mustNotBeCitedAs": [
+    "proof that the host control plane does not respond",
+    "proof that the agent-sidecar OOM caused the bridge failure",
+    "root-cause evidence for Plugin host process is no longer active"
+  ],
+  "stillValidEvidenceForBridgeBlocked": [
+    "Two real POST /api/send attempts returned `Plugin host process is no longer active` (reported by the repairing session, 07:58:34Z and 08:02:05Z; not reproduced independently here)",
+    "plugin.log lines 1854-1865: plugin.reload.success immediately followed by `[turnloom-bridge] pipe server error: listen EADDRINUSE: address already in use`",
+    "registry.json entry cn.star.turnloom-bridge: enabled true, status ready, permissions [desktop.control]",
+    "\\\\.\\pipe\\pidesktop-codex-ipc exists in the OS pipe namespace"
+  ],
+  "rootCauseStatus": "UNDETERMINED",
+  "rootCauseNote": "The repairing session reproduced production startPipeServer/onUnload in an isolated temporary named pipe and observed a successful rebind (rebind=true) after closing the listener. That does not support attributing the EADDRINUSE to sockets not being destroyed in onUnload. No source change, no host kill and no provider change were made here.",
+  "supersedingProbe": {
+    "script": "qa5a7a-hostprobe-v2.mjs",
+    "evidence": "retest-5a7a-evidence/host-control-probe-v2.json",
+    "framingUsed": "uint32le-length-prefix + json{type:\"request\"}",
+    "outcome": "The bridge pipe server DID reply (2 responses, resultType=error 'unsupported method: plugin.list' and 'unsupported method: desktop.health'). So the pipe server is alive and bound; the first probe's timeout was purely a framing mistake."
+  },
+  "hostControlPathEvidence": {
+    "script": "qa5a7a-hostbridge.mjs",
+    "evidence": "retest-5a7a-evidence/host-control-via-bridge.json",
+    "method": "turnloom/host/invoke with read-only operations plugin/list and skill/list (both on the bridge read whitelist, lines 586-596)",
+    "observed": {
+      "pluginList": { "elapsedMs": 8, "resultType": "error", "error": "Plugin host process is no longer active" },
+      "skillList": { "elapsedMs": 1, "resultType": "error", "error": "Plugin host process is no longer active" }
+    },
+    "conclusion": "The app-facing host-control path is genuinely blocked: the pipe server answers in single-digit milliseconds, but every pi.desktop.invoke call fails with 'Plugin host process is no longer active'. This reproduces the same error the repairing session saw on two real POST /api/send attempts, using only read-only operations and without touching any real session, task or approval.",
+    "rootCauseStatus": "UNDETERMINED",
+    "rootCauseBoundary": "The failure is inside the plugin-host binding behind pi.desktop.invoke, not in the pipe framing, not in the bridge's own server, and not attributable to the agent-sidecar OOM seen in runtime.log."
+  }
+}

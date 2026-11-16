@@ -1,0 +1,1 @@
+(()=>{globalThis.__qa5a7aShortResult='pending';globalThis.__qa5a7aPick=()=>{const f=globalThis.__qa5a7aPickFn;if(typeof f!=='function')throw Error('pickAttachments not exposed');return f('file',1500).then(r=>{globalThis.__qa5a7aShortResult=JSON.stringify(r);return r});};return{helperReady:true};})()

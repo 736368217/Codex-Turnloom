@@ -1,0 +1,19 @@
+{
+  "at": "2026-11-14T17:40:30.236Z",
+  "purpose": "Probe the real host-control path used by the app: turnloom/host/invoke -> pi.desktop.invoke(plugin/list). Read-only.",
+  "probes": {
+    "pluginList": {
+      "elapsedMs": 6,
+      "ok": true,
+      "resultType": "success",
+      "resultPreview": "{\"ok\":true,\"operation\":\"plugin/list\",\"result\":{\"plugins\":[{\"author\":\"TheFlareStar\",\"autoUpdate\":true,\"bundled\":false,\"capabilities\":[\"commands\",\"views\",\"agentExtension\",\"skills\",\"services\"],\"description\":\"做完一轮把还能再用的流程写成 SKILL.md。长会话会静默复盘。\",\"enabled\":true,\"id\":\"cn.star.skill-learning\",\"installedAt\":\""
+    },
+    "skillList": {
+      "elapsedMs": 17,
+      "ok": true,
+      "resultType": "success",
+      "resultPreview": "{\"ok\":true,\"operation\":\"skill/list\",\"result\":{\"skills\":[{\"createdAt\":\"2026-10-23T11:09:06.862421400+00:00\",\"description\":\"AGENTS.md / CLAUDE.md 这类「跨 Agent 通用作战协议」会被多个宿主读取，于是容易沉淀下三类垃圾：写死的模型型号、「只有某个宿主才有」的调用链、以及只在原作者工作目录下才解析得到的相对路径。本技能给出一轮维护的流程：先扫描列证据再删、用 PI edit 的行锚点做最小替换、最后用残留串扫描 + 路径实测 + BOM/表格结构验收收"
+    }
+  },
+  "hostControlUsable": true
+}

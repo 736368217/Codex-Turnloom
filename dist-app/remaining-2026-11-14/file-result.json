@@ -1,0 +1,41 @@
+{
+  "file": {
+    "name": "TURNLOOM_QA_1794642095027.bin",
+    "sha256": "08b5404ccef823238e5635f0f3d2dcef90d15ca42b03ea89f2e449488d49e8ad",
+    "bytes": 265,
+    "openedAt": 1794642098515
+  },
+  "checks": [
+    {
+      "name": "系统 SAF 慢选超过旧 180 秒仍返回托盘",
+      "pass": true,
+      "durationMs": 190001
+    },
+    {
+      "name": "文件 503 重试同 ID、265 字节及 SHA 一致",
+      "pass": true,
+      "clientRequestId": "app-1794642291071-tnej9jpw",
+      "sha256": "08b5404ccef823238e5635f0f3d2dcef90d15ca42b03ea89f2e449488d49e8ad"
+    },
+    {
+      "name": "系统取消后解锁且无附件",
+      "pass": true
+    },
+    {
+      "name": "注入短超时取消原生请求，旧选择结果被丢弃",
+      "pass": true
+    }
+  ],
+  "screenshots": [
+    {
+      "name": "08-slow-picker-return",
+      "sha256": "03a9bc3afc5d5da7f3c6df5d2c248f1b6a85afab5ffbeea9f57797f27245c30c",
+      "bytes": 123988,
+      "width": 1080,
+      "height": 1920
+    }
+  ],
+  "ok": false,
+  "priorToolError": "Error: Native harness INSTRUMENTATION_RESULT: error=java.lang.IllegalStateException: ROOT_MISSING\r\nINSTRUMENTATION_CODE: 1\n    at system (file:///D:/pi-data/data/scratch/a267b24d-319e-47b6-86d5-19d57bd827bd/remaining-device.mjs:7:241)\n    at file:///D:/pi-data/data/scratch/a267b24d-319e-47b6-86d5-19d57bd827bd/remaining-files-continue.mjs:3:187",
+  "error": "Error: UI timeout document.querySelector('.tl-composer-attachment')?.innerText.includes(\"TURNLOOM_QA_1794642095027.bin\")\n    at Object.wait (file:///D:/pi-data/data/scratch/a267b24d-319e-47b6-86d5-19d57bd827bd/remaining-device.mjs:6:1460)\n    at async file:///D:/pi-data/data/scratch/a267b24d-319e-47b6-86d5-19d57bd827bd/remaining-reselect.mjs:1:743"
+}

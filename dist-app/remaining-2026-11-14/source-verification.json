@@ -1,0 +1,17 @@
+{
+  "apkSha256": "4129d2e04be72207bae6fc5a2fdcede221f8d2e95b9acda33f9c38863b3fc234",
+  "installedSha256": "4129d2e04be72207bae6fc5a2fdcede221f8d2e95b9acda33f9c38863b3fc234",
+  "boundSourceCount": 67,
+  "mismatches": [],
+  "packagedAssets": [
+    {
+      "path": "index.html",
+      "sha256": "96c7748edc973ad58c021650b66f813181b06ab1e0124e42bb1bc2eab8a7218c"
+    },
+    {
+      "path": "assets/index-BcyB_JNg.js",
+      "sha256": "1cdf65f1adb3c46fdc2847d8011f99d7f880dab32bdd04b469288e39d8a5b3b6"
+    }
+  ],
+  "baseCommit": "4649cc73ceb3eae94f98d0f108b1cac9d7907e98"
+}

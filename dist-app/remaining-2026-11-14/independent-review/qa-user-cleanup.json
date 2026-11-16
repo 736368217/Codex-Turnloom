@@ -1,0 +1,21 @@
+﻿{
+    "at":  "2026-11-14T16:37:00.7216305+08:00",
+    "qaUser":  10,
+    "qaUserLabel":  "CodexTurnloomQA5A7A",
+    "appPidBefore":  2043,
+    "filesRemoved":  [
+                         "QA5A7A_01_short_reopen.png",
+                         "QA5A7A_02_third_pick.png",
+                         "QA5A7A_03_sent.png",
+                         "QA5A7A_04_final.png",
+                         "QA5A7A_PICKER.xml",
+                         "QA5A7A_PICKER2.xml",
+                         "QA5A7A_PICKER3.xml",
+                         "QA5A7A_PICKER4.xml",
+                         "QA5A7A_PICKER5.xml",
+                         "Download/QA5A7A_ROUND5.txt"
+                     ],
+    "filesRemovedVerified":  true,
+    "currentUserAfterSwitch":  "0",
+    "usersAfter":  "Users: | \tUserInfo{0:机主:4c13} running"
+}

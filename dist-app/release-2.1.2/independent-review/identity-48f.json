@@ -1,0 +1,38 @@
+﻿{
+    "at":  "2026-11-15T01:39:51.2244643+08:00",
+    "head":  "48f081df3d9a0479f6fcd991a526ffacc4b49c1f",
+    "originMain":  "48f081df3d9a0479f6fcd991a526ffacc4b49c1f",
+    "bridgeCommit":  "332e163b8d540be53474dc946d4da7c29b88866e",
+    "apk":  {
+                "path":  "D:\\pi11\\11\\Codex-Turnloom\\dist-app\\release-2.1.2\\Codex-Turnloom-2.1.2-app.apk",
+                "sha256":  "4129d2e04be72207bae6fc5a2fdcede221f8d2e95b9acda33f9c38863b3fc234",
+                "bytes":  1780565
+            },
+    "installedOnDevice":  {
+                              "sha256":  "4129d2e04be72207bae6fc5a2fdcede221f8d2e95b9acda33f9c38863b3fc234",
+                              "versionCode":  83,
+                              "versionName":  "2.1.2",
+                              "bytes":  1780565
+                          },
+    "bridgeCopies":  [
+                         {
+                             "path":  "D:\\pi11\\11\\Codex-Turnloom\\third-party\\turnloom-pidesktop\\plugin\\main.js",
+                             "sha256":  "0ead670a2032408400a68010c4b9d08da63c44ec3e1ee1b114465ac5431e87e9",
+                             "bytes":  94947,
+                             "role":  "source"
+                         },
+                         {
+                             "path":  "D:\\pi11\\11\\turnloom-pidesktop\\plugin\\main.js",
+                             "sha256":  "acb00a3c40ade8fb4aec6b0ddd1801d7caed111a1f69a4f74b77651263fd0d51",
+                             "bytes":  94943,
+                             "role":  "repo-external"
+                         },
+                         {
+                             "path":  "D:\\pi-data\\data\\plugins\\installed\\cn.star.turnloom-bridge\\main.js",
+                             "sha256":  "acb00a3c40ade8fb4aec6b0ddd1801d7caed111a1f69a4f74b77651263fd0d51",
+                             "bytes":  94943,
+                             "role":  "installed-running"
+                         }
+                     ],
+    "hostRestartedAt":  "2026-11-15T01:11:22+08:00"
+}

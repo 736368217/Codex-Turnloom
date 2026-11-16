@@ -1,11 +1,11 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { App } from 'konsta/react';
-import { QrCode, Link2, ScanLine, RefreshCw, ChevronDown, Eye, EyeOff } from 'lucide-react';
+import { QrCode, Link2, ScanLine, RefreshCw, ChevronDown, Eye, EyeOff, Square } from 'lucide-react';
 import { COLORS } from '../theme/optionATokens';
 import { ActionButton } from '../components/ui';
 import { haptic, requestQrScan } from '../lib/nativeBridge';
 import { parseMachinePairingPayload, manualPairing, type MachinePairing } from '../lib/machinePairing';
-import { connectWithPairing, useSessionState, setConnectionError, switchHarness, unpair } from '../state/sessionStore';
+import { connectWithPairing, useSessionState, setConnectionError, switchHarness, unpair, stopConnecting } from '../state/sessionStore';
 
 export default function ConnectScreen({ onRevalidate }: { onRevalidate?: () => void }) {
   const session = useSessionState();
@@ -66,6 +66,14 @@ export default function ConnectScreen({ onRevalidate }: { onRevalidate?: () => v
     if (!parsed.ok) { setConnectionError(parsed.error); return; }
     await connect(parsed.value);
   }
+  function stop() {
+    if (!working) return;
+    stopConnecting();
+    lastPairing.current = null;
+    setNotice('已停止连接，可重新扫码或改用其它地址。');
+    haptic('warning');
+  }
+
   function retry() {
     if (working) return;
     if (showManual && serverUrl.trim() && accessCode.trim()) submit();
@@ -94,6 +102,9 @@ export default function ConnectScreen({ onRevalidate }: { onRevalidate?: () => v
           <ActionButton icon={<ScanLine size={18} />} onClick={() => void scan()} disabled={working || !session.cameraAvailable}>
             {working ? '正在连接…' : '扫码连接'}
           </ActionButton>
+          {working && <button type="button" className="tl-connect-manual tl-press" onClick={stop} aria-label="停止连接">
+            <Square size={15} /> 停止连接
+          </button>}
           {!session.cameraAvailable && <p className="tl-connect-hint">此设备没有可用相机，请手动连接。</p>}
           <button type="button" className="tl-connect-manual tl-press" aria-expanded={showManual} aria-controls="manual-connection" onClick={revealManual} disabled={working}>
             <Link2 size={17} /> 输入地址和访问码 <ChevronDown size={16} style={{ marginLeft: 'auto', transform: showManual ? 'rotate(180deg)' : undefined }} />

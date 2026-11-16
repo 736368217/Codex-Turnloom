@@ -1,0 +1,81 @@
+{
+  "at": "2026-11-14T03:14:47.321Z",
+  "pid": 3151,
+  "result": {
+    "url": "file:///android_asset/public/index.html",
+    "title": "Codex-Turnloom",
+    "innerHeight": 675,
+    "visualHeight": 675.272705078125,
+    "dpr": 2.75,
+    "text": "监控\n隔离夹具398 的运行概览\n运行态摘要\n0\n运行中\n0\n错误\n2\n会话\n距上次同步\n00:46\n连接状态\n已连接\n运行中的会话\n\n当前已加载的会话中没有运行任务\n\n错误与告警\n暂无错误\n刷新运行态\n首页\n会话\n监控\n设置",
+    "inputs": [],
+    "buttons": [
+      {
+        "text": "刷新运行态",
+        "aria": null,
+        "type": "button",
+        "disabled": false,
+        "rect": {
+          "x": 135.5454559326172,
+          "y": 509,
+          "width": 122,
+          "height": 44,
+          "bottom": 553
+        }
+      },
+      {
+        "text": "首页",
+        "aria": "首页",
+        "type": "button",
+        "disabled": false,
+        "rect": {
+          "x": 8,
+          "y": 619.2727661132812,
+          "width": 94.2727279663086,
+          "height": 56,
+          "bottom": 675.2727661132812
+        }
+      },
+      {
+        "text": "会话",
+        "aria": "会话",
+        "type": "button",
+        "disabled": false,
+        "rect": {
+          "x": 102.2727279663086,
+          "y": 619.2727661132812,
+          "width": 94.2727279663086,
+          "height": 56,
+          "bottom": 675.2727661132812
+        }
+      },
+      {
+        "text": "监控",
+        "aria": "监控",
+        "type": "button",
+        "disabled": false,
+        "rect": {
+          "x": 196.5454559326172,
+          "y": 619.2727661132812,
+          "width": 94.2727279663086,
+          "height": 56,
+          "bottom": 675.2727661132812
+        }
+      },
+      {
+        "text": "设置",
+        "aria": "设置",
+        "type": "button",
+        "disabled": false,
+        "rect": {
+          "x": 290.81817626953125,
+          "y": 619.2727661132812,
+          "width": 94.2727279663086,
+          "height": 56,
+          "bottom": 675.2727661132812
+        }
+      }
+    ],
+    "dialogs": []
+  }
+}

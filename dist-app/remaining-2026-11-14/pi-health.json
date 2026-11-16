@@ -1,0 +1,17 @@
+{
+  "kind": "pi",
+  "status": 200,
+  "models": 220,
+  "emptyEffortModels": 181,
+  "defaultModel": "一剪梅/deepseek-v4.1-flash",
+  "defaultEffort": "max",
+  "defaultModelRow": {
+    "id": "一剪梅/deepseek-v4.1-flash",
+    "label": "deepseek-v4.1-flash · 一剪梅",
+    "efforts": [
+      "max"
+    ],
+    "defaultEffort": "max",
+    "supportsImages": true
+  }
+}

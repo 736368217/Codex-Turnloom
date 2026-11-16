@@ -1,0 +1,9 @@
+{
+  "at": "2026-11-14T17:39:06.898Z",
+  "endpoint": "/api/apk",
+  "status": 200,
+  "bytes": 1780565,
+  "sha256": "4129d2e04be72207bae6fc5a2fdcede221f8d2e95b9acda33f9c38863b3fc234",
+  "versionName": "2.1.2",
+  "versionCode": 83
+}

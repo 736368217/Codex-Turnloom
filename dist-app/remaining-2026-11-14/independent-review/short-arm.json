@@ -1,0 +1,8 @@
+{
+  "at": "2026-11-14T08:27:59.983Z",
+  "step": "arm",
+  "result": {
+    "armed": true,
+    "hasTrace": true
+  }
+}

@@ -1,0 +1,25 @@
+{
+  "at": "2026-11-14T17:43:52.012Z",
+  "reportPath": "D:\\pi-data\\data\\scratch\\085b0cda-a463-419e-bafc-bafd3bad412f\\main-branch-quality-retest-48f081df.md",
+  "reportBytes": 11233,
+  "reportSha256": "44f49e702c06af11946a9ed9c69e487f51e9750dca6238e6a0ce491039101282",
+  "galleryPath": "D:\\pi-data\\data\\scratch\\085b0cda-a463-419e-bafc-bafd3bad412f\\retest-332e-evidence\\index.html",
+  "galleryBytes": 3983,
+  "gallerySha256": "a43735bc55e777d675d6b409bac2b6fbb6d5175338e616c6245ef35e5b1a1e77",
+  "manifestPath": "D:\\pi-data\\data\\scratch\\085b0cda-a463-419e-bafc-bafd3bad412f\\retest-332e-evidence\\evidence-manifest.json",
+  "checks": {
+    "imagesPresent": true,
+    "imagesAre1080x1920": true,
+    "galleryReferencesAllImages": true,
+    "reportExists": true,
+    "reportNonEmpty": true,
+    "ciNumbers": true,
+    "bridgeReadonlySuccess": true,
+    "reloadClean": true,
+    "twoRealTurns": true,
+    "twoDistinctTurns": true,
+    "environmentRestored": true,
+    "retiredEndpointZero": true
+  },
+  "allPassed": true
+}

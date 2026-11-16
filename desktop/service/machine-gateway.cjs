@@ -147,13 +147,20 @@ function normalizeMachineConfig(raw, { configPath = "" } = {}) {
   if (harnesses.length > 1 && harnesses.some((item) => item.token === machineToken)) {
     throw new Error("machine.json: 多 harness 模式下 machineToken 不得等于任何 harness token");
   }
+  // legacyMachineTokens 能通过发现接口认证，所以它也不能等于任何 harness token。
+  // 但不能直接报错：那会让「手机里还存着旧机器码」的用户在保存/启动时被硬拦，
+  // 且已配对设备会 401 后彻底无法自愈。改为静默剔除，并记一条诊断。
+  const conflictingLegacy = legacyMachineTokens.filter((token) => harnesses.some((item) => item.token === token));
+  const safeLegacyMachineTokens = legacyMachineTokens.filter((token) => !conflictingLegacy.includes(token));
   const selected = harnesses.find((item) => item.defaultHarness) || harnesses[0];
   return {
     configPath: configPath ? path.resolve(configPath) : "",
     machineId,
     machineName,
     machineToken,
-    legacyMachineTokens,
+    legacyMachineTokens: safeLegacyMachineTokens,
+    // 被剔除的冲突码只用于诊断，不参与任何鉴权。
+    conflictingLegacyMachineTokens: conflictingLegacy,
     defaultHarnessId: selected.id,
     harnesses,
     publicUrl: shared.normalizeBaseUrl(raw.publicUrl || ""),

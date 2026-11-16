@@ -1,0 +1,26 @@
+{
+  "at": "2026-11-14T05:01:31.513Z",
+  "productCommit": "398f924a29adca033db1857f9d5d285edc8fb651",
+  "apkSha256": "16e38f0387142673c810a7e71e431f60d87a29976cfb064aaf20ad45c07775f0",
+  "independentPassed": 17,
+  "independentImages": 14,
+  "developerChecks": 22,
+  "developerImages": 13,
+  "archivedFiles": 65,
+  "checkedLinks": 105,
+  "galleries": [
+    {
+      "file": "dist-app\\retest-r06-r07-2026-11-13\\index.html",
+      "images": 13,
+      "sha256": "0ef3471b6b65cdeddbd00976fa6c0388899bdbb99162baa8022554510bb7a4ce"
+    },
+    {
+      "file": "dist-app\\retest-r06-r07-2026-11-13\\independent-review\\index.html",
+      "images": 14,
+      "sha256": "7cfdc90a0be64e17ff15d6e6d720ce9262a1f11cfa69a41fd1602a50b07c0ed0"
+    }
+  ],
+  "retiredEndpointDisposition": "旧公网服务器已退役，不适用",
+  "retiredEndpointCalls": 0,
+  "problems": []
+}

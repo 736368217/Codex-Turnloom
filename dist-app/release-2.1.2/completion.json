@@ -1,0 +1,45 @@
+{
+  "at": "2026-11-14T17:51:48.811Z",
+  "published": true,
+  "url": "https://github.com/736368217/Codex-Turnloom/releases/tag/v2.1.2",
+  "tag": "v2.1.2",
+  "releaseCommit": "d086deb8a7fb52b7aa00279b05640ef1c40df38f",
+  "productCommit": "48f081df3d9a0479f6fcd991a526ffacc4b49c1f",
+  "apkSha256": "4129d2e04be72207bae6fc5a2fdcede221f8d2e95b9acda33f9c38863b3fc234",
+  "assetsVerified": 7,
+  "trackedWorktreeClean": true,
+  "unrelatedUntrackedPreserved": true,
+  "independentSession": "085b0cda-a463-419e-bafc-bafd3bad412f",
+  "independentPreRelease": {
+    "bridge": "PASS",
+    "realPiTwoTurns": "PASS",
+    "node22": 393,
+    "node24": 393,
+    "specialized": 4
+  },
+  "runtime": {
+    "piHttpPid": 19404,
+    "sourceUpdated": true,
+    "updateVersion": "2.1.2",
+    "oldBindingErrorCleared": true
+  },
+  "remaining": [
+    "77625 free/deepseek-flash 返回 PROVIDER_ERROR；现有 wb反代模型两轮成功。",
+    "完整 native-shell Gradle JVM 套件受离线依赖限制；本地与远端其他已执行门禁通过。"
+  ],
+  "retiredEndpointCalls": 0,
+  "previousReleaseUnchanged": true,
+  "postReleaseIndependentPending": false,
+  "postReleaseIndependent": {
+    "sessionId": "085b0cda-a463-419e-bafc-bafd3bad412f",
+    "messageId": "292093c4-210e-41b0-8155-7a14f2dd474b",
+    "ready": true,
+    "assetsVerified": 7,
+    "mismatchCount": 0,
+    "hostInvoke": "success",
+    "localFile": "post-release-independent.json",
+    "bytes": 8514,
+    "sha256": "b7c1f0ea8c29f0fa0c2b284690cd15e803193aea4df6fc6aee9ba93ad28ba9d1"
+  },
+  "completed": true
+}

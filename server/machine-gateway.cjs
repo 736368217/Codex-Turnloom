@@ -405,6 +405,34 @@ function createGateway(config, options = {}) {
       return;
     }
 
+    // 免鉴权的更新公告：未配对/机器码已轮换的手机也要能查更新，否则「扫码坏了」
+    // 就永远升不了级、修不了。只回版本号 / SHA / 下载路径，无会话与凭据。
+    if (req.method === "GET" && auth.pathname === "/api/app/update-public") {
+      const harness = config.harnesses.find((item) => item.defaultHarness) || config.harnesses[0];
+      if (!harness) {
+        sendJson(res, 503, { error: "no-harness" });
+        return;
+      }
+      try {
+        const upstream = await fetch(`http://127.0.0.1:${harness.port}/api/app/update`, {
+          headers: { "x-access-token": harness.token },
+        });
+        const body = await upstream.json();
+        sendJson(res, 200, {
+          available: Boolean(body?.available),
+          packageName: body?.packageName || "",
+          versionCode: Number(body?.versionCode) || 0,
+          versionName: body?.versionName || "",
+          sha256: body?.sha256 || "",
+          sizeBytes: Number(body?.sizeBytes) || 0,
+          notes: body?.notes || "",
+          apkUrl: body?.apkUrl || "/api/apk",
+        });
+      } catch (error) {
+        sendJson(res, 502, { error: "update-unavailable", detail: redactTokens(error?.message, config) });
+      }
+      return;
+    }
     if (req.method === "GET" && auth.pathname === "/__turnloom/health") {
       sendJson(res, 200, {
         ok: true,

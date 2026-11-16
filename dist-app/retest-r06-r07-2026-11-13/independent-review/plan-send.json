@@ -1,0 +1,25 @@
+{
+  "at": "2026-11-14T03:19:49.696Z",
+  "pid": 3151,
+  "result": {
+    "action": "send",
+    "enabled": true,
+    "hit": true,
+    "text": "发送",
+    "rect": {
+      "x": 334.3636474609375,
+      "y": 622.5454711914062,
+      "width": 40,
+      "height": 40,
+      "bottom": 662.5454711914062
+    },
+    "dpr": 2.75,
+    "innerHeight": 675,
+    "visualHeight": 675.272705078125,
+    "nativeStatusBarPx": 66,
+    "tap": {
+      "x": 975,
+      "y": 1833
+    }
+  }
+}

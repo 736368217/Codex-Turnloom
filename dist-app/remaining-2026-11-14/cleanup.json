@@ -1,0 +1,12 @@
+{
+  "at": "2026-11-14T08:06:30.017Z",
+  "currentUser": "0",
+  "users": "Users:\r\n\tUserInfo{0:机主:4c13} running",
+  "qaUserRemoved": true,
+  "afterApkSha256": "4129d2e04be72207bae6fc5a2fdcede221f8d2e95b9acda33f9c38863b3fc234",
+  "exactQaFileRemoved": true,
+  "normalLaunch": true,
+  "debugSocketAbsent": true,
+  "remainingForwards": "",
+  "remainingReverses": ""
+}

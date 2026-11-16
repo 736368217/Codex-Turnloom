@@ -1,0 +1,32 @@
+﻿{
+    "capturedAt":  "2026-11-14T16:29:49.8501022+08:00",
+    "totalRequests":  400,
+    "sent":  [
+                 {
+                     "at":  1794644978976,
+                     "threadId":  "qa398-run",
+                     "newThread":  false,
+                     "message":  "QA5A7A 第五轮附件提交复测",
+                     "model":  "demo/vision",
+                     "effort":  "high",
+                     "clientRequestId":  "app-1794644978967-taaew4dm",
+                     "images":  [
+
+                                ],
+                     "files":  [
+                                   {
+                                       "name":  "QA5A7A_ROUND5.txt",
+                                       "mimeType":  "text/plain",
+                                       "base64Chars":  240,
+                                       "bytes":  178,
+                                       "sha256":  "7a8e112c1d74ea53b9bd5517c859e80ece1e32eca56d8a9e9e72f020f928eb23"
+                                   }
+                               ],
+                     "success":  true
+                 }
+             ],
+    "stopped":  [
+                    "qa398-run"
+                ],
+    "failure":  ""
+}

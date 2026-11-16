@@ -1,0 +1,43 @@
+﻿{
+    "at":  "2026-11-14T16:38:13.9395072+08:00",
+    "forwardRemoved":  true,
+    "forwardListAfter":  "",
+    "fixturesStopped":  [
+                            23392,
+                            21692
+                        ],
+    "listenersOn7831or7841":  [
+
+                              ],
+    "leaseRelease":  {
+                         "ok":  true,
+                         "action":  "release",
+                         "index":  "1",
+                         "released":  true
+                     },
+    "qaUser10Removed":  true,
+    "qaUser10RemovalEvidence":  "pm remove-user 10 -\u003e Success: removed user; pm list users then showed only UserInfo{0:机主:4c13}",
+    "currentUserAfterSwitch":  "0",
+    "qaFilesRemoved":  [
+                           "QA5A7A_01_short_reopen.png",
+                           "QA5A7A_02_third_pick.png",
+                           "QA5A7A_03_sent.png",
+                           "QA5A7A_04_final.png",
+                           "QA5A7A_PICKER.xml",
+                           "QA5A7A_PICKER2.xml",
+                           "QA5A7A_PICKER3.xml",
+                           "QA5A7A_PICKER4.xml",
+                           "QA5A7A_PICKER5.xml",
+                           "Download/QA5A7A_ROUND5.txt"
+                       ],
+    "qaFilesRemovalVerified":  true,
+    "deviceIndex1StoppedByLeaseRelease":  true,
+    "untouchtedForeignInstance":  "index 6 running on adb 16576 with no owner; not acquired and not touched by this session",
+    "hostUntouched":  {
+                          "piDesktopKilled":  false,
+                          "providerChanged":  false,
+                          "sourceChanged":  false,
+                          "realUserTaskTouched":  false,
+                          "realApprovalTouched":  false
+                      }
+}

@@ -1,0 +1,135 @@
+﻿{
+    "requests":  [
+                     {
+                         "path":  "/api/harnesses",
+                         "tokenClass":  "machine"
+                     },
+                     {
+                         "path":  "/api/health",
+                         "at":  1794624562653
+                     },
+                     {
+                         "path":  "/api/health",
+                         "at":  1794624562719
+                     },
+                     {
+                         "path":  "/api/threads",
+                         "at":  1794624562765
+                     },
+                     {
+                         "path":  "/api/threads/qa398-run/messages",
+                         "at":  1794624587598
+                     },
+                     {
+                         "path":  "/api/threads/qa398-run/changes",
+                         "at":  1794624587603
+                     },
+                     {
+                         "path":  "/api/threads/qa398-run/messages",
+                         "at":  1794624590641
+                     },
+                     {
+                         "path":  "/api/threads/qa398-run/changes",
+                         "at":  1794624590643
+                     },
+                     {
+                         "path":  "/api/threads/qa398-run/messages",
+                         "at":  1794624593652
+                     },
+                     {
+                         "path":  "/api/threads/qa398-run/changes",
+                         "at":  1794624593652
+                     },
+                     {
+                         "path":  "/api/threads/qa398-run/messages",
+                         "at":  1794624596657
+                     },
+                     {
+                         "path":  "/api/threads/qa398-run/changes",
+                         "at":  1794624596659
+                     },
+                     {
+                         "path":  "/api/threads/qa398-run/messages",
+                         "at":  1794624599666
+                     },
+                     {
+                         "path":  "/api/threads/qa398-run/changes",
+                         "at":  1794624599668
+                     },
+                     {
+                         "path":  "/api/threads/qa398-run/messages",
+                         "at":  1794624602676
+                     },
+                     {
+                         "path":  "/api/threads/qa398-run/changes",
+                         "at":  1794624602677
+                     },
+                     {
+                         "path":  "/api/threads/qa398-run/messages",
+                         "at":  1794624605683
+                     },
+                     {
+                         "path":  "/api/threads/qa398-run/changes",
+                         "at":  1794624605684
+                     },
+                     {
+                         "path":  "/api/threads/qa398-run/messages",
+                         "at":  1794624608692
+                     },
+                     {
+                         "path":  "/api/threads/qa398-run/changes",
+                         "at":  1794624608694
+                     },
+                     {
+                         "path":  "/api/threads/qa398-run/messages",
+                         "at":  1794624611706
+                     },
+                     {
+                         "path":  "/api/threads/qa398-run/changes",
+                         "at":  1794624611711
+                     },
+                     {
+                         "path":  "/api/threads/qa398-run/messages",
+                         "at":  1794624614715
+                     },
+                     {
+                         "path":  "/api/threads/qa398-run/changes",
+                         "at":  1794624614715
+                     },
+                     {
+                         "path":  "/api/threads/qa398-run/messages",
+                         "at":  1794624617722
+                     },
+                     {
+                         "path":  "/api/threads/qa398-run/changes",
+                         "at":  1794624617725
+                     },
+                     {
+                         "path":  "/api/threads/qa398-run/messages",
+                         "at":  1794624620730
+                     },
+                     {
+                         "path":  "/api/threads/qa398-run/changes",
+                         "at":  1794624620732
+                     },
+                     {
+                         "path":  "/api/threads/qa398-run/messages",
+                         "at":  1794624623739
+                     },
+                     {
+                         "path":  "/api/threads/qa398-run/changes",
+                         "at":  1794624623740
+                     }
+                 ],
+    "sent":  [
+
+             ],
+    "stopped":  [
+
+                ],
+    "failure":  "",
+    "holdNext":  false,
+    "held":  0,
+    "released":  0,
+    "pending":  0
+}

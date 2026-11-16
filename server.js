@@ -8023,6 +8023,22 @@ const server = http.createServer(async (req, res) => {
       await serveApk(req, res);
       return;
     }
+    // 公开更新入口：未配对/连不上电脑时也要能查更新。只暴露版本号、SHA 与下载路径，
+    // 不泄漏任何会话、路径或凭据；APK 本身仍走 /api/apk 的鉴权下载。
+    if (req.method === "GET" && url.pathname === "/api/app/update-public") {
+      const release = appRelease.publicUpdatePayload(await currentAppRelease());
+      sendJson(res, 200, {
+        available: release.available,
+        packageName: release.packageName,
+        versionCode: release.versionCode,
+        versionName: release.versionName,
+        sha256: release.sha256,
+        sizeBytes: release.sizeBytes,
+        notes: release.notes,
+        apkUrl: release.apkUrl,
+      });
+      return;
+    }
     if (req.method === "GET" && url.pathname === "/api/app/update") {
       if (!requireAuthorized(req, res, url)) return;
       sendJson(res, 200, appRelease.publicUpdatePayload(await currentAppRelease()));

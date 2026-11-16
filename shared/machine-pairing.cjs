@@ -312,8 +312,13 @@ function normalizeDiscovery(payload, pairing) {
   } catch (error) {
     return fail("invalid-harnesses", error?.message || "harness 列表无效");
   }
-  if (harnesses.length > 1 && harnesses.some((item) => item.token === cleanString(pairing.machineToken))) {
-    return fail("machine-token-reuse", "多 harness 模式下机器访问码不能同时作为 harness 访问码");
+  if (harnesses.length > 1) {
+    const machineToken = cleanString(pairing.machineToken);
+    const clashes = harnesses.filter((item) => item.token === machineToken);
+    if (clashes.length) {
+      const names = clashes.map((item) => item.name || item.id).join("、");
+      return fail("machine-token-reuse", `机器访问码与「${names}」的服务访问码相同，请在电脑端改成不同的值后重新扫码`);
+    }
   }
   const selected = harnesses.find((item) => item.defaultHarness) || harnesses[0];
   return {

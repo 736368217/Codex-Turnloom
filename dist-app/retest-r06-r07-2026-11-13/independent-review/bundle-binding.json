@@ -1,0 +1,14 @@
+﻿[
+    {
+        "match":  true,
+        "apkSha256":  "d4119ef13b1bd079ac99cac41d60238a6735ac99880b9b0e6bee47ac6b1f9473",
+        "buildSha256":  "d4119ef13b1bd079ac99cac41d60238a6735ac99880b9b0e6bee47ac6b1f9473",
+        "file":  "assets/public/assets/index-yc-RzmEq.js"
+    },
+    {
+        "match":  true,
+        "apkSha256":  "17656bdab6cc2f1031c02b3d9a758dc02f3e96af0a58d2ecd7adbaf86f12cdfc",
+        "buildSha256":  "17656bdab6cc2f1031c02b3d9a758dc02f3e96af0a58d2ecd7adbaf86f12cdfc",
+        "file":  "assets/public/index.html"
+    }
+]

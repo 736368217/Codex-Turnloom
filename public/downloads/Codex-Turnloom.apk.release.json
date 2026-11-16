@@ -1,80 +1,72 @@
 {
-  "generatedAt": "2026-11-14T15:27:41.7049778+08:00",
-  "startedAt": "2026-11-14T15:27:07.2546337+08:00",
-  "result": "ok",
-  "route": "dom-shell",
-  "packageName": "com.codex.turnloom.app",
-  "versionName": "2.1.2",
-  "versionCode": 83,
-  "apkName": "Codex-Turnloom.apk",
-  "sha256": "4129d2e04be72207bae6fc5a2fdcede221f8d2e95b9acda33f9c38863b3fc234",
-  "sizeBytes": 1780565,
-  "notes": "修复 PI 桥重载与消息重试，补齐首轮模型设置、文件超时恢复及历史消息分页。电脑端请同步更新服务和桥插件。",
-  "identity": {
-    "applicationId": "com.codex.turnloom.app",
-    "versionName": "2.1.2",
-    "versionCode": "83"
-  },
-  "buildSteps": [
-    {
-      "name": "validate",
-      "status": "ok",
-      "detail": "D:\\pi-data\\data\\scratch\\a267b24d-319e-47b6-86d5-19d57bd827bd\\remaining-20261114-paging\\source / D:\\pi-data\\data\\scratch\\a267b24d-319e-47b6-86d5-19d57bd827bd\\remaining-20261114-paging\\frontend"
-    },
-    {
-      "name": "sync-source",
-      "status": "ok",
-      "detail": "D:\\pi-data\\data\\scratch\\a267b24d-319e-47b6-86d5-19d57bd827bd\\remaining-20261114-paging\\frontend"
-    },
-    {
-      "name": "vite-build",
-      "status": "ok",
-      "detail": "dist/index.html base='./'"
-    },
-    {
-      "name": "copy-assets",
-      "status": "ok",
-      "detail": "D:\\pi-data\\data\\scratch\\a267b24d-319e-47b6-86d5-19d57bd827bd\\remaining-20261114-paging\\source\\native-shell\\app\\src\\main\\assets\\public"
-    },
-    {
-      "name": "assembleRelease",
-      "status": "ok",
-      "detail": "D:\\pi-data\\data\\scratch\\a267b24d-319e-47b6-86d5-19d57bd827bd\\remaining-20261114-paging\\source\\native-shell\\app\\build\\outputs\\apk\\release\\app-release-unsigned.apk"
-    },
-    {
-      "name": "zipalign",
-      "status": "ok",
-      "detail": "-p 4"
-    },
-    {
-      "name": "apksigner-sign",
-      "status": "ok",
-      "detail": "v1/v2/v3"
-    },
-    {
-      "name": "apksigner-verify",
-      "status": "ok",
-      "detail": "v2/v3"
-    },
-    {
-      "name": "aapt2-badging",
-      "status": "ok",
-      "detail": "com.codex.turnloom.app/2.1.2/83"
-    }
-  ],
-  "apk": {
-    "name": "Codex-Turnloom.apk",
-    "path": "D:\\pi11\\11\\Codex-Turnloom\\public\\downloads\\Codex-Turnloom.apk",
-    "bytes": 1780565,
-    "sha256": "4129d2e04be72207bae6fc5a2fdcede221f8d2e95b9acda33f9c38863b3fc234"
-  },
-  "entryUrl": "file:///android_asset/public/index.html",
-  "gradleArgs": [
-    "assembleRelease",
-    "--no-daemon",
-    "--console=plain",
-    "--offline"
-  ],
-  "reusedVerifiedApk": true,
-  "originalBuildManifestSha256": "e63f90e5584467d7976ad9b9e602d2f7c3d1ed32079338c0d68aa7752568d5c7"
+    "schema":  "turnloom-app-release/1",
+    "generatedAt":  "2026-11-16T14:45:33.3110336+08:00",
+    "packageName":  "com.codex.turnloom.app",
+    "versionName":  "2.1.3",
+    "versionCode":  84,
+    "apkName":  "Codex-Turnloom.apk",
+    "apkPath":  "D:\\pi11\\11\\Codex-Turnloom\\public\\downloads\\Codex-Turnloom.apk",
+    "sha256":  "9fe15fafe2eb5a6b1ab3780a30d4c451130825c3a365337e3241a45cfe3a5adb",
+    "sizeBytes":  1784661,
+    "notes":  "2.1.3：修复扫码配对主路径（机器访问码与服务访问码冲突导致无法连接）；首页自动检查应用更新，未配对也能收到更新提示；连接过程中可主动停止；桌面端可保存并切换多个服务端。",
+    "artifactSha256":  "9fe15fafe2eb5a6b1ab3780a30d4c451130825c3a365337e3241a45cfe3a5adb",
+    "artifactSizeBytes":  1784661,
+    "identity":  {
+                     "applicationId":  "com.codex.turnloom.app",
+                     "versionName":  "2.1.3",
+                     "versionCode":  "84"
+                 },
+    "apk":  {
+                "name":  "Codex-Turnloom.apk",
+                "bytes":  1784661,
+                "sha256":  "9fe15fafe2eb5a6b1ab3780a30d4c451130825c3a365337e3241a45cfe3a5adb"
+            },
+    "buildSteps":  [
+                       {
+                           "name":  "validate",
+                           "status":  "ok",
+                           "detail":  "D:\\pi11\\11\\Codex-Turnloom / D:\\pi-data\\data\\scratch\\8acb7d33-45f0-4751-9313-a9546fc993f8\\app-build-tree"
+                       },
+                       {
+                           "name":  "sync-source",
+                           "status":  "ok",
+                           "detail":  "D:\\pi-data\\data\\scratch\\8acb7d33-45f0-4751-9313-a9546fc993f8\\app-build-tree"
+                       },
+                       {
+                           "name":  "vite-build",
+                           "status":  "ok",
+                           "detail":  "dist/index.html base=\u0027./\u0027"
+                       },
+                       {
+                           "name":  "copy-assets",
+                           "status":  "ok",
+                           "detail":  "D:\\pi11\\11\\Codex-Turnloom\\native-shell\\app\\src\\main\\assets\\public"
+                       },
+                       {
+                           "name":  "assembleRelease",
+                           "status":  "ok",
+                           "detail":  "D:\\pi11\\11\\Codex-Turnloom\\native-shell\\app\\build\\outputs\\apk\\release\\app-release-unsigned.apk"
+                       },
+                       {
+                           "name":  "zipalign",
+                           "status":  "ok",
+                           "detail":  "-p 4"
+                       },
+                       {
+                           "name":  "apksigner-sign",
+                           "status":  "ok",
+                           "detail":  "v1/v2/v3"
+                       },
+                       {
+                           "name":  "apksigner-verify",
+                           "status":  "ok",
+                           "detail":  "v2/v3"
+                       },
+                       {
+                           "name":  "aapt2-badging",
+                           "status":  "ok",
+                           "detail":  "com.codex.turnloom.app/2.1.3/84"
+                       }
+                   ],
+    "sourceBuildManifest":  "D:\\pi-data\\data\\scratch\\8acb7d33-45f0-4751-9313-a9546fc993f8\\apk-stage2\\build-manifest-2.1.3.json"
 }

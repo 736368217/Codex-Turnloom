@@ -1,0 +1,30 @@
+{
+  "commit": "5a7a6e2e6a6307353ea8bbc27439ebed01c59b5c",
+  "apkSha256": "4129d2e04be72207bae6fc5a2fdcede221f8d2e95b9acda33f9c38863b3fc234",
+  "sourceFiles": 67,
+  "worktreeByteMismatches": 0,
+  "contentMismatches": [],
+  "gitNewlineNormalization": [
+    {
+      "path": "app/src/lib/chatContract.ts",
+      "gitBlobSha256": "6af78de3aadb9cc2025c5d74d9f12172e7b8a94a87bcbf57c699073a7ed3da9e",
+      "buildInputSha256": "5163cf13fa878907a6933ec18d149f1396a1cb78e2e7762a9e9a3fcc20e5ab81"
+    },
+    {
+      "path": "app/src/state/composerStore.ts",
+      "gitBlobSha256": "87766b8cf793ee78dced01c7651cb4f7a5d82882c14a1a302868cb42bbc93055",
+      "buildInputSha256": "b3c3cffd3d58a4b8ad1f872d4e6e5cd8a746e909db4b7c45cc78c9218faa820e"
+    },
+    {
+      "path": "app/src/state/dataStore.ts",
+      "gitBlobSha256": "518d54258f206598a67303fece6926d190fb60bbba670be48d048f4f3e30755b",
+      "buildInputSha256": "4d466b48393299d1df91b7bff7cb3b1b75efe977460fd143ff6f1b77216c4a0c"
+    },
+    {
+      "path": "server.js",
+      "gitBlobSha256": "faf003470959a846bc0d7a21ece4e20de9ff8055988ff158fda2c7e66289b93d",
+      "buildInputSha256": "52a0074b57439d01204c31b681f680b632bd6e42864496b206fd393dc413cde4"
+    }
+  ],
+  "baseSnapshot": "4649cc73ceb3eae94f98d0f108b1cac9d7907e98"
+}

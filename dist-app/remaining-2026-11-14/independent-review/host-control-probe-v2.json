@@ -1,0 +1,28 @@
+{
+  "at": "2026-11-14T08:35:00.077Z",
+  "pipe": "\\\\.\\pipe\\pidesktop-codex-ipc",
+  "framing": "uint32le-length-prefix + json{type:\"request\"}",
+  "probes": {
+    "listPlugins": {
+      "ok": true,
+      "response": {
+        "type": "response",
+        "requestId": "qa5a7a-plugin.list-1794645300080",
+        "method": "plugin.list",
+        "resultType": "error",
+        "error": "unsupported method: plugin.list"
+      }
+    },
+    "hostHealth": {
+      "ok": true,
+      "response": {
+        "type": "response",
+        "requestId": "qa5a7a-desktop.health-1794645300091",
+        "method": "desktop.health",
+        "resultType": "error",
+        "error": "unsupported method: desktop.health"
+      }
+    }
+  },
+  "anyReply": true
+}

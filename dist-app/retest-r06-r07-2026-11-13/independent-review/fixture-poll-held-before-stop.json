@@ -1,0 +1,159 @@
+﻿{
+    "requests":  [
+                     {
+                         "path":  "/api/threads/qa398-run/messages",
+                         "at":  1794625823914
+                     },
+                     {
+                         "path":  "/api/threads/qa398-run/changes",
+                         "at":  1794625823919
+                     },
+                     {
+                         "path":  "/api/threads/qa398-run/messages",
+                         "at":  1794625827043
+                     },
+                     {
+                         "path":  "/api/threads/qa398-run/changes",
+                         "at":  1794625827045
+                     },
+                     {
+                         "path":  "/api/threads/qa398-run/messages",
+                         "at":  1794625830061
+                     },
+                     {
+                         "path":  "/api/threads/qa398-run/changes",
+                         "at":  1794625830062
+                     },
+                     {
+                         "path":  "/api/threads/qa398-run/messages",
+                         "at":  1794625833071
+                     },
+                     {
+                         "path":  "/api/threads/qa398-run/changes",
+                         "at":  1794625833072
+                     },
+                     {
+                         "path":  "/api/threads/qa398-run/messages",
+                         "at":  1794625836075
+                     },
+                     {
+                         "path":  "/api/threads/qa398-run/changes",
+                         "at":  1794625836077
+                     },
+                     {
+                         "path":  "/api/threads/qa398-run/messages",
+                         "at":  1794625839083
+                     },
+                     {
+                         "path":  "/api/threads/qa398-run/changes",
+                         "at":  1794625839085
+                     },
+                     {
+                         "path":  "/api/threads/qa398-run/messages",
+                         "at":  1794625842089
+                     },
+                     {
+                         "path":  "/api/threads/qa398-run/changes",
+                         "at":  1794625842091
+                     },
+                     {
+                         "path":  "/api/threads/qa398-run/messages",
+                         "at":  1794625845104
+                     },
+                     {
+                         "path":  "/api/threads/qa398-run/changes",
+                         "at":  1794625845106
+                     },
+                     {
+                         "path":  "/api/threads/qa398-run/messages",
+                         "at":  1794625848117
+                     },
+                     {
+                         "path":  "/api/threads/qa398-run/changes",
+                         "at":  1794625848120
+                     },
+                     {
+                         "path":  "/api/threads/qa398-run/messages",
+                         "at":  1794625851129
+                     },
+                     {
+                         "path":  "/api/threads/qa398-run/changes",
+                         "at":  1794625851130
+                     },
+                     {
+                         "path":  "/api/threads/qa398-run/messages",
+                         "at":  1794625854138
+                     },
+                     {
+                         "path":  "/api/threads/qa398-run/changes",
+                         "at":  1794625854141
+                     },
+                     {
+                         "path":  "/api/threads/qa398-run/messages",
+                         "at":  1794625857147
+                     },
+                     {
+                         "path":  "/api/threads/qa398-run/changes",
+                         "at":  1794625857150
+                     },
+                     {
+                         "path":  "/api/threads/qa398-run/messages",
+                         "at":  1794625860155
+                     },
+                     {
+                         "path":  "/api/threads/qa398-run/changes",
+                         "at":  1794625860158
+                     },
+                     {
+                         "path":  "/api/threads/qa398-run/messages",
+                         "at":  1794625863168
+                     },
+                     {
+                         "path":  "/api/threads/qa398-run/changes",
+                         "at":  1794625863171
+                     },
+                     {
+                         "path":  "/api/threads/qa398-run/messages",
+                         "at":  1794625866188
+                     },
+                     {
+                         "path":  "/api/threads/qa398-run/changes",
+                         "at":  1794625866191
+                     },
+                     {
+                         "path":  "/api/threads/qa398-run/messages",
+                         "at":  1794625869197
+                     },
+                     {
+                         "path":  "/api/threads/qa398-run/changes",
+                         "at":  1794625869198
+                     },
+                     {
+                         "path":  "/api/threads/qa398-run/messages",
+                         "at":  1794625872201
+                     },
+                     {
+                         "path":  "/api/threads/qa398-run/changes",
+                         "at":  1794625872202
+                     },
+                     {
+                         "path":  "/api/threads/qa398-run/messages",
+                         "at":  1794625875207
+                     },
+                     {
+                         "path":  "/api/threads/qa398-run/changes",
+                         "at":  1794625875207
+                     }
+                 ],
+    "sent":  [
+
+             ],
+    "stopped":  [
+
+                ],
+    "failure":  "",
+    "holdNext":  false,
+    "held":  1,
+    "released":  0,
+    "pending":  1
+}

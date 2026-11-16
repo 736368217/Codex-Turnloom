@@ -1,0 +1,71 @@
+{
+  "at": "2026-11-13T08:48:03.897Z",
+  "checks": [
+    {
+      "name": "新 APK 实装 SHA 与构建产物一致",
+      "pass": true
+    },
+    {
+      "name": "手机监控显示一个运行任务",
+      "pass": true
+    },
+    {
+      "name": "R04：Android 系统返回只关闭模型抽屉，保留聊天",
+      "pass": true
+    },
+    {
+      "name": "R05：停止后监控摘要与运行列表同时归零，旧列表不能覆盖",
+      "pass": true,
+      "count": "0",
+      "interruptThreadId": "qa-running"
+    },
+    {
+      "name": "新建任务内模型抽屉返回保留新建抽屉",
+      "pass": true
+    },
+    {
+      "name": "再次系统返回关闭新建任务抽屉",
+      "pass": true
+    }
+  ],
+  "screenshots": [
+    {
+      "name": "01-monitor-running",
+      "sha256": "e05f78967744f2db789e6dc4b442fbbfd2ce7084acb014bddbb56ab9cb7c48df",
+      "apkSha256": "a68c81edc637789496065ec478ab29a76d3b88a230410d799f0b1fd1ee4f98fc"
+    },
+    {
+      "name": "02-model-open",
+      "sha256": "96bb7b43f2dc2adfd620de540e2fb31ec5760a3d98164123022ba89f11d0c556",
+      "apkSha256": "a68c81edc637789496065ec478ab29a76d3b88a230410d799f0b1fd1ee4f98fc"
+    },
+    {
+      "name": "03-model-back-chat",
+      "sha256": "d223e450b6b6584676ff6c938dd48c8df1f20f730684fc067b98516e49bd0f0e",
+      "apkSha256": "a68c81edc637789496065ec478ab29a76d3b88a230410d799f0b1fd1ee4f98fc"
+    },
+    {
+      "name": "04-monitor-stopped",
+      "sha256": "15347e0b2e806e28caabe836451ce0085c0e41f95fed7ebecf47951b33905e3c",
+      "apkSha256": "a68c81edc637789496065ec478ab29a76d3b88a230410d799f0b1fd1ee4f98fc"
+    },
+    {
+      "name": "05-newtask-back",
+      "sha256": "1fc6618a166bb0512db73fc4c5b525e22ac74044a1b0bfa3d6e6cb99520d55e2",
+      "apkSha256": "a68c81edc637789496065ec478ab29a76d3b88a230410d799f0b1fd1ee4f98fc"
+    }
+  ],
+  "size": "Physical size: 1080x1920",
+  "density": "Physical density: 440",
+  "apkSha256": "a68c81edc637789496065ec478ab29a76d3b88a230410d799f0b1fd1ee4f98fc",
+  "ok": true,
+  "prefsRestored": true,
+  "normalLaunch": true,
+  "debugSocketAbsent": true,
+  "sourceVerification": {
+    "checkedFrontendFiles": 45,
+    "mismatches": [],
+    "at": "2026-11-13T08:51:35.417Z"
+  },
+  "scope": "R01-R05 repair; mobile fixture acceptance, not full phone readiness"
+}

@@ -1,0 +1,22 @@
+{
+  "kind": "codex",
+  "status": 200,
+  "models": 10,
+  "emptyEffortModels": 0,
+  "defaultModel": "gpt-5.6-sol",
+  "defaultEffort": "high",
+  "defaultModelRow": {
+    "id": "gpt-5.6-sol",
+    "label": "GPT-5.6-Sol",
+    "efforts": [
+      "low",
+      "medium",
+      "high",
+      "xhigh",
+      "max",
+      "ultra"
+    ],
+    "defaultEffort": "low",
+    "supportsImages": true
+  }
+}

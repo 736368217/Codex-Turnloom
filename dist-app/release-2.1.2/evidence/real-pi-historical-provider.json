@@ -1,0 +1,23 @@
+{
+  "at": "2026-11-14T17:25:58.071Z",
+  "marker": "PI_RELEASE_MWGOFXRR",
+  "model": "77625 free/deepseek-flash",
+  "effort": "low",
+  "turns": [
+    {
+      "id": "3355c0bd-0127-4bc3-b18b-a82f4e3bd868",
+      "status": "error",
+      "error_code": "PROVIDER_ERROR",
+      "provider_id": "71f5be8b-928e-4449-a356-fc96425740c4",
+      "model_id": "deepseek-flash",
+      "input_tokens": 0,
+      "output_tokens": 0,
+      "expected": "TURNLOOM_PI_RELEASE_1",
+      "reply": "",
+      "pass": false
+    }
+  ],
+  "sessionId": "3ab49404-8b55-4bd2-b29f-d5a05d05c200",
+  "ok": false,
+  "error": "QA turn 1 error PROVIDER_ERROR"
+}

@@ -1,0 +1,4 @@
+      mImeWindowVis=3
+      mInputShown=true
+  mDecorViewVisible=true mDecorViewWasVisible=true mWindowVisible=true mInShowWindow=false
+  mIsInputViewShown=true mStatusIcon=0

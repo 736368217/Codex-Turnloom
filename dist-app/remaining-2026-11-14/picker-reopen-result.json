@@ -1,0 +1,10 @@
+{
+  "checks": [
+    {
+      "name": "取消系统选择后在 App 原进程内重新打开选择器",
+      "pass": true
+    }
+  ],
+  "screenshots": [],
+  "ok": true
+}

@@ -1,0 +1,170 @@
+{
+  "round": 6,
+  "generatedAt": "2026-11-14T17:43:52.009Z",
+  "identity": {
+    "head": "48f081df3d9a0479f6fcd991a526ffacc4b49c1f",
+    "originMain": "48f081df3d9a0479f6fcd991a526ffacc4b49c1f",
+    "bridgeCommit": "332e163b8d540be53474dc946d4da7c29b88866e",
+    "apkBytes": 1780565,
+    "apkSha256": "4129d2e04be72207bae6fc5a2fdcede221f8d2e95b9acda33f9c38863b3fc234",
+    "apkPath": "D:\\pi11\\11\\Codex-Turnloom\\dist-app\\release-2.1.2\\Codex-Turnloom-2.1.2-app.apk",
+    "installedMatchesRelease": true,
+    "bridgeCopies": [
+      {
+        "path": "D:\\pi11\\11\\Codex-Turnloom\\third-party\\turnloom-pidesktop\\plugin\\main.js",
+        "sha256": "0ead670a2032408400a68010c4b9d08da63c44ec3e1ee1b114465ac5431e87e9",
+        "bytes": 94947,
+        "role": "source"
+      },
+      {
+        "path": "D:\\pi11\\11\\turnloom-pidesktop\\plugin\\main.js",
+        "sha256": "acb00a3c40ade8fb4aec6b0ddd1801d7caed111a1f69a4f74b77651263fd0d51",
+        "bytes": 94943,
+        "role": "repo-external"
+      },
+      {
+        "path": "D:\\pi-data\\data\\plugins\\installed\\cn.star.turnloom-bridge\\main.js",
+        "sha256": "acb00a3c40ade8fb4aec6b0ddd1801d7caed111a1f69a4f74b77651263fd0d51",
+        "bytes": 94943,
+        "role": "installed-running"
+      }
+    ]
+  },
+  "report": {
+    "path": "D:\\pi-data\\data\\scratch\\085b0cda-a463-419e-bafc-bafd3bad412f\\main-branch-quality-retest-48f081df.md",
+    "bytes": 11233,
+    "sha256": "44f49e702c06af11946a9ed9c69e487f51e9750dca6238e6a0ce491039101282"
+  },
+  "limit1Bridge": {
+    "verdict": "PASS",
+    "framing": "uint32le-length-prefix + json{type:\"request\"}",
+    "beforeReload": {
+      "pluginListMs": 13,
+      "usable": true,
+      "resultType": "success",
+      "skillListMs": 38
+    },
+    "afterReload": {
+      "pluginListMs": 6,
+      "usable": true,
+      "resultType": "success",
+      "skillListMs": 17
+    },
+    "reloadSequence": [
+      "unloaded",
+      "loading",
+      "codex IPC facade listening",
+      "plugin.load.success",
+      "plugin.reload.success"
+    ],
+    "reloadHadEaddrInUse": false,
+    "concurrentRealSend": false,
+    "lifecycleTests": {
+      "tests": 2,
+      "pass": 2,
+      "fail": 0,
+      "cancelled": 0
+    }
+  },
+  "limit2RealPi": {
+    "verdict": "PASS",
+    "threadId": "c76aa111-59a6-47e7-ae78-91796054331d",
+    "modelRequested": "wb反代/deepseek-v4.1-flash",
+    "effortRequested": "max",
+    "totalMessages": 4,
+    "turns": [
+      {
+        "type": "task_started",
+        "turn": "1e543ac9-1a04-4f11-9d76-c36c8effc210",
+        "msg": null,
+        "durationMs": null
+      },
+      {
+        "type": "task_complete",
+        "turn": "1e543ac9-1a04-4f11-9d76-c36c8effc210",
+        "msg": null,
+        "durationMs": 2205
+      },
+      {
+        "type": "task_started",
+        "turn": "27b474cf-1935-46af-859d-13183b0de23d",
+        "msg": null,
+        "durationMs": null
+      },
+      {
+        "type": "task_complete",
+        "turn": "27b474cf-1935-46af-859d-13183b0de23d",
+        "msg": null,
+        "durationMs": 3008
+      }
+    ],
+    "assistantMessages": [
+      "QA332E_TURN_ONE",
+      "QA332E_TURN_TWO"
+    ],
+    "rolloutSha256": "3ce955cce60778b1ed8cd8a96b6d632a81054dca75e4a5b73671c12efd796f84",
+    "rolloutBytes": 1628,
+    "turn1Messages": [
+      {
+        "role": "user",
+        "turnId": "1e543ac9-1a04-4f11-9d76-c36c8effc210",
+        "content": "（可删）QA332E 独立复测第1轮。Reply with exactly QA332E_TURN_ONE and nothing else. Do not use tools."
+      },
+      {
+        "role": "assistant",
+        "turnId": "1e543ac9-1a04-4f11-9d76-c36c8effc210",
+        "content": "QA332E_TURN_ONE"
+      }
+    ]
+  },
+  "checks": {
+    "verifyCi": {
+      "commit": "48f081df3d9a0479f6fcd991a526ffacc4b49c1f",
+      "tests": 393,
+      "pass": 393,
+      "fail": 0,
+      "cancelled": 0,
+      "logSha256": "1e59226e177e6222bf15ad1aaf9713b37893364898fdcd405e407e4f935835af"
+    },
+    "sendPreflightRetry": {
+      "tests": 2,
+      "pass": 2,
+      "fail": 0,
+      "cancelled": 0
+    }
+  },
+  "environment": {
+    "qaUserRemoved": true,
+    "currentUser": "0",
+    "qaSessionSoftDeleted": {
+      "changes": 1,
+      "backup": "qa-session-backup-c76aa111.json",
+      "backupBytes": 3137,
+      "deletedAt": 1794678151645,
+      "sessionId": "c76aa111-59a6-47e7-ae78-91796054331d"
+    },
+    "forwardRemoved": true,
+    "leaseReleased": true,
+    "retiredEndpointCalls": 0
+  },
+  "images": [
+    {
+      "file": "QA332E_10_turn1.png",
+      "title": "真实第 1 轮回复",
+      "note": "wb反代/deepseek-v4.1-flash · max；assistant 显示 QA332E_TURN_ONE",
+      "bytes": 109591,
+      "sha256": "26e0b2df3038b72703b2b03d77d3cdcf08d48b6cc216aafb91d365c583b43b36",
+      "width": 1080,
+      "height": 1920
+    },
+    {
+      "file": "QA332E_11_turn2.png",
+      "title": "真实第 2 轮回复",
+      "note": "同一会话连续第二轮；assistant 显示 QA332E_TURN_TWO",
+      "bytes": 153826,
+      "sha256": "c1980801ed2e8278c97f09c586f8497afeff911069c118611bacc897497d2355",
+      "width": 1080,
+      "height": 1920
+    }
+  ]
+}

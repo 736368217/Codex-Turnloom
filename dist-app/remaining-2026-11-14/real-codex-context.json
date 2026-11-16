@@ -1,0 +1,20 @@
+{
+  "threadId": "01a1d910-033e-7843-83a5-3cf3dfb00d8e",
+  "marker": "REMAINCODEXMWG45306",
+  "contexts": [
+    {
+      "model": "gpt-5.6-sol",
+      "effort": "low",
+      "settingsEffort": "low",
+      "turnId": "01a1d910-0e91-7d32-a912-2b6c05a00b4e"
+    },
+    {
+      "model": "gpt-5.6-sol",
+      "effort": "low",
+      "settingsEffort": "low",
+      "turnId": "01a1d912-eef8-76a3-8abd-40429dd6f4ca"
+    }
+  ],
+  "completed": 2,
+  "firstAssistant": true
+}

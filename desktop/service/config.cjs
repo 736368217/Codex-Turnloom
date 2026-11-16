@@ -114,6 +114,8 @@ function defaultConfig(overrides = {}) {
     },
     console: { ...DEFAULT_CONSOLE },
     extraDevices: [],
+    servers: [],
+    activeServerId: "",
     machineGateway: {
       enabled: false,
       machineConfigPath: "",
@@ -170,6 +172,100 @@ function normalizeExtraDevices(list) {
   return result.slice(0, 12);
 }
 
+/**
+ * 服务端（公网入口）表：一台电脑可以保存多个中转服务器，桌面端选一个再连接。
+ * servers 是列表真源，activeServerId 指向当前使用项；publicUrl / tunnel 由活动项
+ * 派生，因此配对二维码、隧道与守护脚本仍只读这两个旧字段。
+ */
+function normalizeServerEntry(raw, index = 0, defaults = {}) {
+  if (!raw || typeof raw !== "object") return null;
+  const baseTunnel = defaults.tunnel || {};
+  const tunnel = { ...baseTunnel, ...(raw.tunnel || {}) };
+  const name = String(raw.name || "").trim().slice(0, 60) || `服务端 ${index + 1}`;
+  const id = String(raw.id || "").trim() || `srv-${index + 1}`;
+  return {
+    id,
+    name,
+    publicUrl: String(raw.publicUrl || "").trim().replace(/\/+$/, ""),
+    tunnel: {
+      enabled: tunnel.enabled !== false,
+      host: String(tunnel.host || "").trim(),
+      user: String(tunnel.user || "codextunnel").trim() || "codextunnel",
+      remotePort: Number(tunnel.remotePort) || 0,
+      keyPath: String(tunnel.keyPath || baseTunnel.keyPath || "").trim(),
+      knownHostsPath: String(tunnel.knownHostsPath || baseTunnel.knownHostsPath || "").trim(),
+    },
+  };
+}
+
+function normalizeServers(config) {
+  const defaults = { tunnel: defaultConfig().tunnel };
+  const list = [];
+  const seen = new Set();
+  const rows = Array.isArray(config.servers) ? config.servers : [];
+  for (const [index, raw] of rows.entries()) {
+    const entry = normalizeServerEntry(raw, index, defaults);
+    if (!entry) continue;
+    if (seen.has(entry.id)) entry.id = `${entry.id}-${index + 1}`;
+    seen.add(entry.id);
+    list.push(entry);
+  }
+  if (list.length === 0) {
+    // 迁移旧配置：把现有 publicUrl / tunnel 变成一个服务端条目，行为不变。
+    const legacy = normalizeServerEntry({
+      id: "srv-local",
+      name: config.tunnel?.host ? `默认 · ${config.tunnel.host}` : "默认服务端",
+      publicUrl: config.publicUrl,
+      tunnel: config.tunnel,
+    }, 0, defaults);
+    if (legacy) list.push(legacy);
+  }
+  let activeId = String(config.activeServerId || "").trim();
+  if (!list.some((item) => item.id === activeId)) {
+    const byUrl = list.find((item) => item.publicUrl && item.publicUrl === config.publicUrl);
+    activeId = (byUrl || list[0]).id;
+  }
+  config.servers = list.slice(0, 12);
+  config.activeServerId = activeId;
+  return config;
+}
+
+function activeServerOf(config) {
+  if (!config) return null;
+  const list = Array.isArray(config.servers) ? config.servers : [];
+  return list.find((item) => item.id === config.activeServerId) || list[0] || null;
+}
+
+/** 把表单里改过的 publicUrl / tunnel 写回活动服务端条目（保存前的回填）。 */
+function syncActiveServer(config) {
+  const servers = Array.isArray(config.servers) ? config.servers : [];
+  const active = activeServerOf(config);
+  if (!active) return config;
+  const tunnel = config.tunnel || {};
+  config.servers = servers.map((item) => item.id !== active.id ? item : {
+    ...item,
+    publicUrl: String(config.publicUrl || "").replace(/\/+$/, ""),
+    tunnel: {
+      ...item.tunnel,
+      enabled: tunnel.enabled !== false,
+      host: String(tunnel.host || ""),
+      user: String(tunnel.user || item.tunnel.user || "codextunnel"),
+      remotePort: Number(tunnel.remotePort) || 0,
+      keyPath: String(tunnel.keyPath || item.tunnel.keyPath || ""),
+      knownHostsPath: String(tunnel.knownHostsPath || item.tunnel.knownHostsPath || ""),
+    },
+  });
+  return config;
+}
+
+/** 活动服务端条目是 publicUrl / tunnel 的唯一来源。 */
+function applyActiveServer(config) {
+  const active = activeServerOf(config);
+  if (!active) return config;
+  config.publicUrl = String(active.publicUrl || "").replace(/\/+$/, "");
+  config.tunnel = { ...defaultConfig().tunnel, ...(active.tunnel || {}) };
+  return config;
+}
 function normalizeConfig(raw) {
   const base = defaultConfig();
   const merged = mergeConfig(base, raw || {});
@@ -183,6 +279,9 @@ function normalizeConfig(raw) {
   merged.logDir = merged.logDir || DEFAULT_LOG_DIR;
   merged.ipcSocket = String(merged.ipcSocket || "").trim();
   merged.extraDevices = normalizeExtraDevices(merged.extraDevices);
+  normalizeServers(merged);
+  // 直连模式没有公网入口：保留用户清空 publicUrl / 关闭隧道的意图，不被条目覆盖。
+  if (transportMode(merged) !== "direct") applyActiveServer(merged);
   const gateway = merged.machineGateway || {};
   gateway.enabled = Boolean(gateway.enabled);
   gateway.machineConfigPath = String(gateway.machineConfigPath || "").trim();
@@ -340,6 +439,17 @@ function publicConfig(config) {
     extraDeviceCount: (config.extraDevices || []).length,
     hasAccessCode: Boolean(config.accessCode),
     accessCodeMasked: pairingToken,
+    servers: (config.servers || []).map((server) => ({
+      id: server.id,
+      name: server.name,
+      publicUrl: server.publicUrl,
+      active: server.id === config.activeServerId,
+      sshHost: server.tunnel.host,
+      sshUser: server.tunnel.user,
+      remotePort: server.tunnel.remotePort,
+      keyPath: server.tunnel.keyPath,
+    })),
+    activeServerId: config.activeServerId || "",
     machineGateway: gateway,
   };
 }
@@ -437,5 +547,10 @@ module.exports = {
   machinePairingPayload,
   maskAccessCode,
   normalizeExtraDevices,
+  normalizeServerEntry,
+  normalizeServers,
+  activeServerOf,
+  syncActiveServer,
+  applyActiveServer,
   slugifyDeviceId
 };

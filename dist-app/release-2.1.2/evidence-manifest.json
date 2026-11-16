@@ -1,0 +1,44 @@
+{
+  "files": [
+    {
+      "file": "evidence/readonly-host-probe.json",
+      "bytes": 142,
+      "sha256": "3887a6b53015b57faa841c5a4dea08e08a1e10376de10b0033ee28c4ec07694a"
+    },
+    {
+      "file": "evidence/reload-runtime.json",
+      "bytes": 128,
+      "sha256": "d347494edc25f90afebfb251cafc06a430330bd98f80ee20eb3b57308f99ca9f"
+    },
+    {
+      "file": "evidence/pi-health.json",
+      "bytes": 407,
+      "sha256": "904120cb1bace7269d57fa7bc17c5564ba6c3b3b504931f608d4cf0d822e1086"
+    },
+    {
+      "file": "evidence/real-pi-api.json",
+      "bytes": 1065,
+      "sha256": "112375ac5c83270764fe9002f3a946695f3c9ff1dc6106e42f9949116d1d1a72"
+    },
+    {
+      "file": "evidence/real-pi-historical-provider.json",
+      "bytes": 622,
+      "sha256": "21e97f13105fe8ed8626fe58c926721a986592c4d51e0e344f3cd3809c1bae33"
+    },
+    {
+      "file": "evidence/qa-cleanup.json",
+      "bytes": 200,
+      "sha256": "31291072d180ce70be5a91d8daa214cee4169d946b9a03b365bf3c3a723bfd95"
+    },
+    {
+      "file": "evidence/verify-ci-release.log",
+      "bytes": 264462,
+      "sha256": "bc544e6c5d0691dbf785f1381169830ae807384240fa0c71deda4d92fff7e68d"
+    },
+    {
+      "file": "evidence/preflight-tests.log",
+      "bytes": 4454,
+      "sha256": "e0a89ef4c83da5557fcf38d19f2716a9fa5f16477919d5078ffec5722cb1056e"
+    }
+  ]
+}
