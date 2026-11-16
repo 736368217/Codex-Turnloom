@@ -1,11 +1,17 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { App } from 'konsta/react';
-import { QrCode, Link2, ScanLine, RefreshCw, ChevronDown, Eye, EyeOff, Square } from 'lucide-react';
+import { QrCode, Link2, ScanLine, RefreshCw, ChevronDown, Eye, EyeOff, Square, Download } from 'lucide-react';
 import { COLORS } from '../theme/optionATokens';
 import { ActionButton } from '../components/ui';
 import { haptic, requestQrScan } from '../lib/nativeBridge';
 import { parseMachinePairingPayload, manualPairing, type MachinePairing } from '../lib/machinePairing';
 import { connectWithPairing, useSessionState, setConnectionError, switchHarness, unpair, stopConnecting } from '../state/sessionStore';
+import { openSheet } from '../state/sheetStore';
+import { assessUpdate } from '../lib/appUpdate';
+import { getPublicAppUpdate } from '../lib/turnloomApi';
+
+// 未配对时没有记住的地址，退回内置入口（与发布通道一致）。
+const DEFAULT_UPDATE_ORIGIN = 'https://tl.z736.cc.cd';
 
 export default function ConnectScreen({ onRevalidate }: { onRevalidate?: () => void }) {
   const session = useSessionState();
@@ -19,6 +25,36 @@ export default function ConnectScreen({ onRevalidate }: { onRevalidate?: () => v
   const form = useRef<HTMLFormElement>(null);
   const working = busy || ['checking', 'connecting', 'reconnecting'].includes(session.status);
   const saved = session.harnesses.length > 0;
+  const [updateCheck, setUpdateCheck] = useState<'idle' | 'checking' | 'available' | 'current' | 'error'>('idle');
+  const [updateVersion, setUpdateVersion] = useState('');
+
+  /**
+   * 连接页的更新检查：不依赖配对状态，也不需要有效机器码。
+   * 用上次记住的服务端地址走公开入口；地址为空时退回内置默认入口。
+   */
+  async function checkUpdate(force = false) {
+    if (updateCheck === 'checking') return;
+    const origin = session.serverUrl || serverUrl.trim() || DEFAULT_UPDATE_ORIGIN;
+    setUpdateCheck('checking');
+    try {
+      const result = await getPublicAppUpdate(origin);
+      if (!result.ok) { setUpdateCheck('error'); return; }
+      const assessed = assessUpdate(result.data, {
+        versionCode: session.appVersionCode,
+        packageName: session.packageName,
+      });
+      if (assessed.state === 'available') {
+        setUpdateVersion(assessed.release?.versionName || '');
+        setUpdateCheck('available');
+      } else if (assessed.state === 'current') {
+        setUpdateCheck('current');
+      } else {
+        setUpdateCheck(force ? 'error' : 'idle');
+      }
+    } catch {
+      setUpdateCheck('error');
+    }
+  }
 
   useEffect(() => {
     if (session.status === 'checking') {
@@ -31,6 +67,12 @@ export default function ConnectScreen({ onRevalidate }: { onRevalidate?: () => v
       setShowManual(true); setAccessCode(''); lastPairing.current = null;
     }
   }, [session.status, session.error]);
+
+  // 进入连接页就查一次更新：这是「连不上」时用户唯一的自救入口。
+  useEffect(() => {
+    void checkUpdate(false);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   async function connect(pairing: MachinePairing) {
     lastPairing.current = pairing;
@@ -129,6 +171,24 @@ export default function ConnectScreen({ onRevalidate }: { onRevalidate?: () => v
           <button type="button" className="tl-connect-manual" onClick={() => { unpair(); setAccessCode(''); lastPairing.current = null; setShowManual(true); }}>忘记这台电脑</button>
         </section>}
         <footer className="tl-connect-footer"><QrCode size={15} /> 地址和访问码在电脑端配对页查看。<br />Codex-Turnloom · {session.appVersion}</footer>
+        {/* 未配对也必须能升级：扫码/访问码出问题时，这里是他唯一的自救入口。 */}
+        <section className="tl-card tl-connect-card" aria-label="应用更新">
+          <p className="tl-connect-hint">
+            {updateCheck === 'checking' && '正在检查新版本…'}
+            {updateCheck === 'available' && `发现新版本 ${updateVersion}，可先升级再连接。`}
+            {updateCheck === 'current' && `当前已是最新版本 ${session.appVersion}。`}
+            {updateCheck === 'error' && '暂时无法检查更新（连不上服务器时也可稍后重试）。'}
+            {updateCheck === 'idle' && '连不上电脑时，也可以在这里检查应用更新。'}
+          </p>
+          <button type="button" className="tl-connect-manual tl-press" onClick={() => { void checkUpdate(true); }} disabled={updateCheck === 'checking'}>
+            <RefreshCw size={16} /> {updateCheck === 'checking' ? '检查中…' : '检查应用更新'}
+          </button>
+          {updateCheck === 'available' && (
+            <button type="button" className="tl-connect-submit tl-press" onClick={() => { haptic('selection'); openSheet('update'); }}>
+              <Download size={16} /> 查看并安装
+            </button>
+          )}
+        </section>
       </div>
     </main>
   </App>;

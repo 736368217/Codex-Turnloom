@@ -1,25 +1,25 @@
 {
     "schema":  "turnloom-app-release/1",
-    "generatedAt":  "2026-11-16T14:45:33.3110336+08:00",
+    "generatedAt":  "2026-11-16T15:05:59.1989914+08:00",
     "packageName":  "com.codex.turnloom.app",
-    "versionName":  "2.1.3",
-    "versionCode":  84,
+    "versionName":  "2.1.4",
+    "versionCode":  85,
     "apkName":  "Codex-Turnloom.apk",
     "apkPath":  "D:\\pi11\\11\\Codex-Turnloom\\public\\downloads\\Codex-Turnloom.apk",
-    "sha256":  "9fe15fafe2eb5a6b1ab3780a30d4c451130825c3a365337e3241a45cfe3a5adb",
+    "sha256":  "f878feb3b776f0609ea45e8f703e378db21b19ca37500bbc94224c7fe768b6a1",
     "sizeBytes":  1784661,
-    "notes":  "2.1.3：修复扫码配对主路径（机器访问码与服务访问码冲突导致无法连接）；首页自动检查应用更新，未配对也能收到更新提示；连接过程中可主动停止；桌面端可保存并切换多个服务端。",
-    "artifactSha256":  "9fe15fafe2eb5a6b1ab3780a30d4c451130825c3a365337e3241a45cfe3a5adb",
+    "notes":  "2.1.4：连接页也能检查应用更新（未配对时唯一的自救入口）；二维码随配置/机器码变化自动重新生成，避免扫到失效旧码。",
+    "artifactSha256":  "f878feb3b776f0609ea45e8f703e378db21b19ca37500bbc94224c7fe768b6a1",
     "artifactSizeBytes":  1784661,
     "identity":  {
                      "applicationId":  "com.codex.turnloom.app",
-                     "versionName":  "2.1.3",
-                     "versionCode":  "84"
+                     "versionName":  "2.1.4",
+                     "versionCode":  "85"
                  },
     "apk":  {
                 "name":  "Codex-Turnloom.apk",
                 "bytes":  1784661,
-                "sha256":  "9fe15fafe2eb5a6b1ab3780a30d4c451130825c3a365337e3241a45cfe3a5adb"
+                "sha256":  "f878feb3b776f0609ea45e8f703e378db21b19ca37500bbc94224c7fe768b6a1"
             },
     "buildSteps":  [
                        {
@@ -65,8 +65,8 @@
                        {
                            "name":  "aapt2-badging",
                            "status":  "ok",
-                           "detail":  "com.codex.turnloom.app/2.1.3/84"
+                           "detail":  "com.codex.turnloom.app/2.1.4/85"
                        }
                    ],
-    "sourceBuildManifest":  "D:\\pi-data\\data\\scratch\\8acb7d33-45f0-4751-9313-a9546fc993f8\\apk-stage2\\build-manifest-2.1.3.json"
+    "sourceBuildManifest":  "D:\\pi-data\\data\\scratch\\8acb7d33-45f0-4751-9313-a9546fc993f8\\apk-stage214\\build-manifest-2.1.4.json"
 }

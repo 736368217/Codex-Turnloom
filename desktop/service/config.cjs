@@ -439,6 +439,10 @@ function publicConfig(config) {
     extraDeviceCount: (config.extraDevices || []).length,
     hasAccessCode: Boolean(config.accessCode),
     accessCodeMasked: pairingToken,
+    // 二维码重算指纹：同长度不同机器码也能区分，避免继续展示失效二维码。
+    accessCodeFingerprint: gateway.enabled
+      ? (gateway.machineTokenFingerprint || "")
+      : (config.accessCode ? require("node:crypto").createHash("sha256").update(String(config.accessCode)).digest("hex").slice(0, 16) : ""),
     servers: (config.servers || []).map((server) => ({
       id: server.id,
       name: server.name,

@@ -266,7 +266,8 @@
 
   function configPairingKey(config) {
     if (!config) return "";
-    return [config.machineName, config.port, config.publicUrl, config.accessCodeMasked, config.hasAccessCode,
+    return [config.machineName, config.port, config.publicUrl, config.accessCodeMasked, config.accessCodeFingerprint,
+      config.activeServerId, config.hasAccessCode,
       (config.extraDevices || []).map((device) => `${device.id}:${device.url}:${device.hasAccessCode}`).join(",")].join("|");
   }
 
@@ -858,12 +859,33 @@
     });
   }
 
+  /**
+   * 二维码缓存指纹：活动服务端 + 公网地址 + 隧道 + 机器码掩码 + 机器名。
+   * 任意一项变化都必须重新生成二维码，否则手机扫到的是失效凭据。
+   */
+  function pairingFingerprint() {
+    const config = state.config || {};
+    const active = (config.servers || []).find((s) => s.id === config.activeServerId) || {};
+    return [
+      config.activeServerId || "",
+      active.publicUrl || config.publicUrl || "",
+      active.sshHost || config.tunnel?.host || "",
+      active.remotePort || config.tunnel?.remotePort || "",
+      config.accessCodeMasked || "",
+      config.machineName || ""
+    ].join("|");
+  }
+
   async function loadPairing({ force = false } = {}) {
     if (state.pairingLoading) return;
-    if (state.pairing && !force) {
+    // 缓存必须绑定「这份配置」。机器码/服务端一换，旧二维码就是废票：
+    // 手机扫到它只会拿到 401，用户还以为是「访问码不正确」。
+    const fingerprint = pairingFingerprint();
+    if (state.pairing && !force && state.pairingFingerprint === fingerprint) {
       renderPairing();
       return;
     }
+    state.pairingFingerprint = fingerprint;
     state.pairingLoading = true;
     state.pairingError = "";
     renderPairing();

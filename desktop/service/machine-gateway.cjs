@@ -484,6 +484,11 @@ function gatewaySummary(config) {
     summary.defaultHarnessId = machine.defaultHarnessId;
     summary.hasMachineToken = Boolean(machine.machineToken);
     summary.machineTokenMasked = maskToken(machine.machineToken);
+    // 只用于「二维码是否需要重算」的指纹：不暴露明文，但能区分同长度的不同机器码。
+    // 没有它，机器码轮换后控制台会继续展示旧二维码，手机扫到只会 401。
+    summary.machineTokenFingerprint = machine.machineToken
+      ? require("node:crypto").createHash("sha256").update(String(machine.machineToken)).digest("hex").slice(0, 16)
+      : "";
     if (!summary.origin && machine.publicUrl) summary.origin = machine.publicUrl;
   } catch {
     // A missing/invalid machine.json is surfaced by validateConfig / runtime,
