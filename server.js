@@ -3273,6 +3273,14 @@ async function loadThreadsUncached({ preserveIds = [], preserveKey = "" } = {}) 
       ...row,
       status: statusById.get(String(row.id || "")) || { state: "unknown", thinking: false, interactionRequired: false }
     }));
+    {
+      // 把 PI-Desktop 侧真实的归档状态合并进来：手机端默认隐藏的「已归档」必须
+      // 和桌面侧栏看到的一致，而不是手机自己另存一份。
+      const archivedIds = await readSidebarArchivedIds();
+      if (archivedIds.size) {
+        value = value.map((row) => (archivedIds.has(String(row.id || "")) ? { ...row, archived: true } : row));
+      }
+    }
     if (cacheGeneration === threadsCacheGeneration) {
       threadsCache = { key: preserveKey, cachedAt: Date.now(), value };
     }
@@ -5077,6 +5085,172 @@ function resolveTurnSettings({ model, effort } = {}, modelConfiguration = active
   };
 }
 
+/**
+ * 通过桥的 host/invoke 白名单调用宿主能力。
+ *
+ * 为什么走这条路而不是等桥自己改：桥是 PI-Desktop 里的插件，改完要重启宿主才生效；
+ * 而 host/invoke 是桥**当前版本就已经暴露**的通用通道（session/configure 属于
+ * 它的 dangerous 白名单，要求调用方显式 confirm）。服务端在这里直接下发模型切换，
+ * 手机端不需要有人坐在电脑前点确认框。
+ */
+async function requestHostOperation(operation, args, { confirm = false, timeoutMs = 20000 } = {}) {
+  const client = getCodexIpcClient();
+  await client.ensureReady();
+  const response = await client.request(
+    "turnloom/host/invoke",
+    { operation, args, confirm },
+    { timeoutMs }
+  );
+  const payload = response?.result ?? response ?? {};
+  if (payload?.ok === false) throw new Error(payload?.error || `host ${operation} failed`);
+  return payload?.result ?? payload;
+}
+
+/** PI 会话当前真正生效的 (provider, model, 思考强度)，直接从 pi.sqlite 读。 */
+async function piSessionTurnSettings(threadId) {
+  const id = String(threadId || "").trim();
+  if (!id) return null;
+  try {
+    const rows = await runSqlJsonFromDb(
+      path.join(PI_DATA_ROOT, "pi.sqlite"),
+      `SELECT s.provider_id AS providerId, s.model_id AS modelId, s.thinking_level AS thinkingLevel,
+              p.name AS providerName
+         FROM sessions s LEFT JOIN providers p ON p.id = s.provider_id
+        WHERE s.id = '${sqlString(id)}' LIMIT 1;`
+    );
+    return Array.isArray(rows) && rows[0] ? rows[0] : null;
+  } catch {
+    return null;
+  }
+}
+
+/** 模型目录里的 slug 是「供应商名/模型 id」，宿主只认 (providerId, modelId)。 */
+async function piProviderByCatalogSlug(slug) {
+  const name = String(slug || "").split("/")[0].trim();
+  if (!name) return null;
+  try {
+    const rows = await runSqlJsonFromDb(
+      path.join(PI_DATA_ROOT, "pi.sqlite"),
+      `SELECT id, name FROM providers WHERE name = '${sqlString(name)}' LIMIT 1;`
+    );
+    return Array.isArray(rows) && rows[0] ? rows[0] : null;
+  } catch {
+    return null;
+  }
+}
+
+function modelSwitchError(requested, actual, reason) {
+  const err = new Error(
+    `模型切换未生效：请求「${requested}」，电脑端当前仍是「${actual}」。${reason || ""}`
+  );
+  err.status = 409;
+  err.code = "MODEL_SWITCH_NOT_APPLIED";
+  return err;
+}
+
+/**
+ * 把这次发送要用的模型真正下发到 PI 会话，并用数据库回读证明它落地了。
+ * 只在「客户端显式指定了模型」时调用；同模型同强度直接返回，不打扰宿主。
+ */
+async function applyPiThreadModel(threadId, resolved) {
+  const slug = String(resolved?.model || "").trim();
+  const modelId = slug.includes("/") ? slug.slice(slug.indexOf("/") + 1) : slug;
+  const provider = await piProviderByCatalogSlug(slug);
+  if (!provider || !modelId) {
+    throw modelSwitchError(slug, (await piSessionTurnSettings(threadId))?.modelId || "未知",
+      "目录里的这个模型没有对应的 PI 供应商，请刷新模型列表。");
+  }
+  const current = await piSessionTurnSettings(threadId);
+  const sameModel = Boolean(current) && current.providerId === provider.id && current.modelId === modelId;
+  const wantedEffort = String(resolved?.effort || "").trim();
+  const sameEffort = !wantedEffort || !current?.thinkingLevel || current.thinkingLevel === wantedEffort;
+  if (sameModel && sameEffort) {
+    return { changed: false, verified: true, model: slug, effort: wantedEffort };
+  }
+  // 直接改会话行，而不是走 session/configure：后者在宿主里属于 dangerous，
+  // 会挂起等桌面确认（实测 25 秒超时，日志里连 desktop.invoke 都没发出），
+  // 手机端不可能有人去点。改行 + prompt 已被实测证明宿主就是按这一行选模型
+  // （同一轮 turns.provider_id/model_id 与写入值一致）。
+  const sql = `UPDATE sessions
+                  SET provider_id = '${sqlString(provider.id)}',
+                      model_id = '${sqlString(modelId)}'
+                      ${wantedEffort ? `, thinking_level = '${sqlString(wantedEffort)}'` : ""}
+                WHERE id = '${sqlString(String(threadId))}';`;
+  try {
+    await runSqlJsonFromDb(path.join(PI_DATA_ROOT, "pi.sqlite"), sql, { write: true });
+  } catch (error) {
+    throw modelSwitchError(slug, current?.modelId || "未知", `写会话模型失败：${error?.message || error}`);
+  }
+  const after = await piSessionTurnSettings(threadId);
+  if (!after || after.providerId !== provider.id || after.modelId !== modelId) {
+    throw modelSwitchError(slug, after?.modelId || "未知", "写入后回读仍不是目标模型。");
+  }
+  logInfo(`[model] session ${threadId} -> ${provider.name}/${modelId}${wantedEffort ? ` (${wantedEffort})` : ""}`);
+  return { changed: true, verified: true, model: slug, effort: after.thinkingLevel || wantedEffort };
+}
+
+/**
+ * PI-Desktop 的「归档」不在数据库里，而是渲染层状态：sidebar-preferences.json 的
+ * sessionMeta[id].archived。手机端要跟桌面看到同一份事实，就必须读这个文件，
+ * 而不是自己另发明一套归档。
+ */
+const SIDEBAR_PREFS_PATH = () => path.join(PI_DATA_ROOT, "sidebar-preferences.json");
+let sidebarArchiveCache = { at: 0, mtimeMs: 0, ids: new Set() };
+
+function parseSidebarArchivedIds(raw) {
+  const parsed = JSON.parse(raw);
+  const meta = parsed?.sessionMeta && typeof parsed.sessionMeta === "object" ? parsed.sessionMeta : {};
+  return new Set(Object.keys(meta).filter((id) => meta[id]?.archived === true));
+}
+
+async function readSidebarArchivedIds() {
+  const file = SIDEBAR_PREFS_PATH();
+  try {
+    const stat = await fs.stat(file);
+    if (sidebarArchiveCache.mtimeMs === stat.mtimeMs && Date.now() - sidebarArchiveCache.at < 10_000) {
+      return sidebarArchiveCache.ids;
+    }
+    const ids = parseSidebarArchivedIds(await fs.readFile(file, "utf8"));
+    sidebarArchiveCache = { at: Date.now(), mtimeMs: stat.mtimeMs, ids };
+    return ids;
+  } catch {
+    return sidebarArchiveCache.ids;
+  }
+}
+
+/** 写回 PI-Desktop 的归档状态：只改 sessionMeta[id].archived，其余字段逐字保留。 */
+async function writeSidebarArchived(threadId, archived) {
+  const id = String(threadId || "").trim();
+  if (!id) {
+    const err = new Error("缺少会话 id");
+    err.status = 400;
+    throw err;
+  }
+  const file = SIDEBAR_PREFS_PATH();
+  let raw = "{}";
+  try {
+    raw = await fs.readFile(file, "utf8");
+  } catch {
+    /* 文件不存在时从空对象开始，和宿主第一次写盘一致 */
+  }
+  const parsed = JSON.parse(raw || "{}");
+  const meta = parsed?.sessionMeta && typeof parsed.sessionMeta === "object" ? parsed.sessionMeta : {};
+  meta[id] = { ...(meta[id] || {}), archived: Boolean(archived) };
+  const next = { ...parsed, sessionMeta: meta };
+  const tmp = `${file}.turnloom-tmp`;
+  try {
+    await fs.writeFile(tmp, `${JSON.stringify(next, null, 2)}\n`, "utf8");
+    await fs.rename(tmp, file);
+  } catch (error) {
+    try { await fs.unlink(tmp); } catch { /* 清不掉临时文件不影响主流程 */ }
+    const err = new Error(`写入 PI-Desktop 归档状态失败：${error?.message || error}`);
+    err.status = 500;
+    throw err;
+  }
+  sidebarArchiveCache = { at: 0, mtimeMs: 0, ids: new Set() };
+  return Boolean(archived);
+}
+
 /** 模型能力查询：catalog 里没写能力时按「未知」处理，不误拦用户的图片。 */
 function modelSupportsImages(modelId, modelConfiguration = activeModelConfiguration) {
   const models = Array.isArray(modelConfiguration?.models) && modelConfiguration.models.length
@@ -6411,6 +6585,20 @@ async function sendToCodex(text, threadId, images = [], { newThread = false, mod
     logInfo(`[send] model "${resolved.requestedModel}" remapped to "${resolved.model}"`);
   }
   const turnSettings = { model: resolved.model, effort: resolved.effort };
+  // PI 后端：把「手机端显式选的模型」真正下发到会话，并回读验证。失败就 409。
+  // 排队发送不在这里切：真正的下发发生在 drain（那时会话才空闲）。
+  if (PI_NATIVE_QUEUE && !newThread && threadId && resolved.requestedModel
+      && String(mode || "start").toLowerCase() !== "queue") {
+    const live = await getMessages(threadId, { limit: 1, fullHistory: true });
+    if (live.status?.thinking) {
+      const err = new Error("会话正在运行，无法切换模型。请等这一轮结束后再发送，或改用排队。");
+      err.status = 409;
+      err.code = "MODEL_SWITCH_BUSY";
+      throw err;
+    }
+    const applied = await applyPiThreadModel(threadId, turnSettings);
+    if (applied?.effort) turnSettings.effort = applied.effort;
+  }
   if (normalizedImages.length && !(await modelSupportsImagesForSend(turnSettings.model, modelConfiguration))) {
     const err = new Error("当前模型不支持图片。请在模型面板切换到带「支持图片」标记的模型后再发送，或移除图片只发文字。");
     err.status = 409;
@@ -8534,6 +8722,18 @@ const server = http.createServer(async (req, res) => {
       if (!requireAuthorized(req, res, url)) return;
       const body = await readJsonBody(req);
       sendJson(res, 200, await setThreadPinned(pinMatch[1], Boolean(body.pinned)));
+      return;
+    }
+    const archiveMatch = url.pathname.match(/^\/api\/threads\/([^/]+)\/archive$/);
+    if (req.method === "POST" && archiveMatch) {
+      if (!requireAuthorized(req, res, url)) return;
+      if (!requireWriteEnabled(res)) return;
+      const body = await readJsonBody(req);
+      const archived = body.archived !== false;
+      const written = await writeSidebarArchived(decodeURIComponent(archiveMatch[1]), archived);
+      // 归档状态变了，下一次列表必须重新读盘，不能拿旧缓存。
+      threadsCache = { key: "", cachedAt: 0, value: [] };
+      sendJson(res, 200, { ok: true, threadId: decodeURIComponent(archiveMatch[1]), archived: written });
       return;
     }
     const goalMatch = url.pathname.match(/^\/api\/threads\/([0-9a-fA-F-]{20,})\/goal$/);
