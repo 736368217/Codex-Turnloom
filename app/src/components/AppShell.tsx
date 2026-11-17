@@ -1,6 +1,7 @@
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { App } from 'konsta/react';
 import { motion, AnimatePresence } from 'motion/react';
+import { Download, X } from 'lucide-react';
 import GlassTabBar from './GlassTabBar';
 import CupertinoSheetHost from './CupertinoSheetHost';
 import HomeScreen from '../screens/HomeScreen';
@@ -11,14 +12,31 @@ import ChatDetailScreen from '../screens/ChatDetailScreen';
 import { useTabState, closeDetail, setActiveTab, tabStore } from '../state/tabStore';
 import { COLORS } from '../theme/optionATokens';
 import { haptic, registerBackHandler } from '../lib/nativeBridge';
-import { backFromSheet } from '../state/sheetStore';
+import { backFromSheet, openSheet } from '../state/sheetStore';
 import { useSessionState, currentRequestContext, retryPersistedSession } from '../state/sessionStore';
 import { revalidateForForeground } from '../state/dataStore';
+import { getPublicAppUpdate } from '../lib/turnloomApi';
 
 /** App chrome. This subtree is mounted only after verified machine pairing. */
 export default function AppShell() {
   const { activeTab, detailThreadId, detailTitle } = useTabState();
   const session = useSessionState();
+
+  // 进入应用先自动查一次更新；有更新就弹层，用户可稍后或去设置里装。
+  const [updateOffer, setUpdateOffer] = useState<{ versionName: string; versionCode: number } | null>(null);
+  useEffect(() => {
+    let cancelled = false;
+    if (!session.serverUrl) return;
+    void (async () => {
+      const result = await getPublicAppUpdate(session.serverUrl);
+      if (cancelled || !result.ok) return;
+      const code = Number(result.data?.versionCode || 0);
+      if (code > Number(session.appVersionCode || 0)) {
+        setUpdateOffer({ versionName: String(result.data?.versionName || ''), versionCode: code });
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [session.serverUrl, session.generation]);
   const inDetail = detailThreadId !== null;
 
   useEffect(() => {
@@ -70,6 +88,24 @@ export default function AppShell() {
             )}
           </AnimatePresence>
           {!inDetail && <GlassTabBar activeTab={activeTab} />}
+          {updateOffer && (
+            <div className="tl-confirm-backdrop" role="dialog" aria-modal="true" aria-label="发现新版本">
+              <div className="tl-confirm-card">
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <Download size={18} color={COLORS.blue} />
+                  <div className="tl-confirm-title" style={{ flex: 1 }}>发现新版本 {updateOffer.versionName}</div>
+                  <button type="button" className="tl-press" aria-label="稍后再说" onClick={() => setUpdateOffer(null)} style={{ width: 36, height: 36, border: 0, background: 'transparent', color: COLORS.labelSecondary, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                    <X size={16} />
+                  </button>
+                </div>
+                <div className="tl-confirm-note">当前 {session.appVersion}，可升级到 {updateOffer.versionName}。</div>
+                <div className="tl-confirm-actions">
+                  <button type="button" className="tl-confirm-cancel" onClick={() => setUpdateOffer(null)}>稍后</button>
+                  <button type="button" className="tl-confirm-ok" onClick={() => { haptic('success'); setUpdateOffer(null); setActiveTab('settings'); openSheet('update'); }}>去更新</button>
+                </div>
+              </div>
+            </div>
+          )}
         </div>
         <CupertinoSheetHost />
       </div>

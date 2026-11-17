@@ -77,7 +77,7 @@ export function UpdatePanel() {
 
   return (
     <InsetGroup title="应用更新">
-      <div style={{ padding: '10px 16px 6px' }}>
+      <div className="tl-update-body" style={{ padding: '10px 16px 6px' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
           <span style={{ flex: 1, fontSize: 14, fontWeight: 600 }}>当前版本 {session.appVersion}</span>
           <StatusPill tone={state === 'error' ? 'red' : state === 'available' || state === 'ready' ? 'blue' : 'neutral'}>

@@ -36,6 +36,10 @@ function bootstrap(): void {
   if (saved) void revalidatePersisted(saved);
 }
 
+// 同步读一次已配对信息：否则首帧 harnesses 为空，会闪一下连接页。
+// hydrateSession 只读安全存储，不触发网络，放在模块初始化里是安全的。
+const bootSaved = hydrateSession();
+
 export default function AppRoot() {
   const session = useSessionState();
   useEffect(() => {
@@ -51,6 +55,8 @@ export default function AppRoot() {
   }, []);
   // 已配对过就先进入工作台读缓存，后台再校验；只有从未配对才停在连接页。
   const usable = session.harnesses.length > 0;
+  // 首帧还没读完配对信息时，什么都不渲染（白底交给 App 外壳），绝不先闪连接页。
+  if (!usable && bootSaved) return null;
   return usable
     ? <AppShell key={`${session.scope}-${session.generation}`} />
     : <ConnectScreen onRevalidate={retrySaved} />;

@@ -97,6 +97,7 @@ input, textarea {
 /* ---------- surfaces / cards ---------- */
 
 .tl-card {
+  display: block;
   background: var(--tl-surface);
   border-radius: var(--tl-radius-card);
   box-shadow: var(--tl-card-shadow);
@@ -402,10 +403,23 @@ input, textarea {
 
 /* Compact empty states on short/narrow screens. */
 .tl-empty-card {
+  display: block !important;
+  height: auto !important;
+  min-height: 0 !important;
+  align-self: flex-start !important;
   padding: 16px !important;
   margin: 0 16px !important;
+  text-align: center;
 }
-.tl-empty-card [data-empty-icon] { margin-bottom: 6px !important; }
+.tl-empty-card [data-empty-icon] {
+  display: flex !important;
+  justify-content: center;
+  color: var(--tl-label-secondary);
+  margin-bottom: 8px !important;
+}
+.tl-empty-card .tl-empty-title { font-size: 15px; line-height: 21px; font-weight: 600; color: var(--tl-label-primary); }
+.tl-update-body { display: flex !important; flex-direction: column; gap: 8px; height: auto !important; line-height: 19px !important; }
+.tl-update-body > * { flex: 0 0 auto !important; min-height: 0 !important; }
 
 /* Touch targets in the new composer are pinned to >=44px at every width. */
 
@@ -1245,3 +1259,90 @@ button:focus-visible, a:focus-visible { outline: 2px solid var(--tl-blue); outli
   line-height: 19px;
   overflow-wrap: anywhere;
 }
+
+/* 会话页：视图切换 / 项目分组 / 归档入口 / 确认弹层 */
+.tl-view-switch {
+  display: flex;
+  gap: 4px;
+  margin-top: 10px;
+  padding: 3px;
+  border-radius: 12px;
+  background: var(--tl-fill-secondary);
+}
+.tl-view-switch__item {
+  flex: 1 1 0;
+  min-height: 38px;
+  border: 0;
+  border-radius: 9px;
+  background: transparent;
+  color: var(--tl-label-secondary);
+  font-size: 13px;
+  font-weight: 600;
+}
+.tl-view-switch__item.is-active { background: var(--tl-surface); color: var(--tl-label-primary); box-shadow: 0 1px 3px rgba(0, 0, 0, .08); }
+.tl-group { margin-bottom: 4px; }
+.tl-group-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: calc(100% - 32px);
+  min-height: 44px;
+  margin: 8px 16px 4px;
+  padding: 0 4px;
+  border: 0;
+  background: transparent;
+  color: var(--tl-label-secondary);
+  font-size: 13px;
+  font-weight: 600;
+  text-align: left;
+}
+.tl-group-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tl-group-count { color: var(--tl-label-secondary); font-weight: 500; }
+.tl-archive-toggle {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 40px;
+  margin: 10px 20px 0;
+  padding: 0 4px;
+  border: 0;
+  background: transparent;
+  color: var(--tl-label-secondary);
+  font-size: 12px;
+}
+.tl-confirm-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background: rgba(0, 0, 0, .28);
+}
+.tl-confirm-card {
+  width: 100%;
+  max-width: 320px;
+  padding: 18px 16px 12px;
+  border-radius: 18px;
+  background: var(--tl-surface);
+  box-shadow: 0 12px 40px rgba(0, 0, 0, .18);
+}
+.tl-confirm-title { font-size: 16px; font-weight: 600; color: var(--tl-label-primary); }
+.tl-confirm-body { margin-top: 6px; font-size: 14px; line-height: 20px; color: var(--tl-label-primary); overflow-wrap: anywhere; }
+.tl-confirm-note { margin-top: 6px; font-size: 12px; line-height: 17px; color: var(--tl-label-secondary); }
+.tl-confirm-actions { display: flex; gap: 8px; margin-top: 14px; }
+.tl-confirm-actions button {
+  flex: 1 1 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-height: 44px;
+  border: 0;
+  border-radius: 12px;
+  font-size: 15px;
+  font-weight: 600;
+}
+.tl-confirm-cancel { background: var(--tl-fill-secondary); color: var(--tl-label-primary); }
+.tl-confirm-ok { background: var(--tl-blue); color: #FFFFFF; }

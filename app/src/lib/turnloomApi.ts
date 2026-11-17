@@ -463,6 +463,9 @@ export const postSend = (context: RequestContext, body: SendOptions): Promise<Ap
 
 export const postInterrupt = (context: RequestContext, body: { threadId: string }): Promise<ApiResult<{ ok?: boolean }>> => post(context, API_ENDPOINTS.interrupt, body);
 export const postApproval = (context: RequestContext, body: { threadId: string; requestId: string; approvalKind: 'command' | 'file' | 'permission'; detailsHash: string; decision: 'approve' | 'approveForSession' | 'decline'; approved: boolean }): Promise<ApiResult<{ ok?: boolean; requestId?: string }>> => post(context, API_ENDPOINTS.approval, body);
+/** 手机端归档：写回 PI-Desktop 的 sidebar-preferences（服务端原子写，只改该会话）。 */
+export const postThreadArchive = (context: RequestContext, threadId: string, archived: boolean): Promise<ApiResult<{ ok?: boolean; archived?: boolean }>> =>
+  post(context, `/api/threads/${encodeURIComponent(threadId)}/archive`, { archived });
 export const getHostDiff = (context: RequestContext, params?: { threadId?: string; path?: string }): Promise<ApiResult<{ diff?: string; lines?: string[] }>> => get(context, API_ENDPOINTS.hostDiff, params);
 export const getProjects = (context: RequestContext): Promise<ApiResult<{ projects?: ProjectInfo[] }>> => get(context, API_ENDPOINTS.projects);
 export const getAccount = (context: RequestContext): Promise<ApiResult<AccountInfo>> => get(context, API_ENDPOINTS.account);

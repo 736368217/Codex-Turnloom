@@ -174,10 +174,10 @@ export function EmptyState({
   icon?: ReactNode;
 }) {
   return (
-    <div className="tl-card tl-empty-card" style={{ ...cardStyle, padding: 16, textAlign: 'center', margin: '0 16px' }}>
-      {icon && <div data-empty-icon style={{ color: COLORS.labelSecondary, marginBottom: 6 }}>{icon}</div>}
-      <div style={{ fontSize: 15, fontWeight: 600, color: COLORS.labelPrimary }}>{title}</div>
-      {description && <div style={{ fontSize: 12, lineHeight: 17, color: COLORS.labelSecondary, marginTop: 4 }}>{description}</div>}
+    <div className="tl-card tl-empty-card">
+      {icon && <div data-empty-icon>{icon}</div>}
+      <div className="tl-empty-title">{title}</div>
+      {description && <div className="tl-empty-desc">{description}</div>}
     </div>
   );
 }
