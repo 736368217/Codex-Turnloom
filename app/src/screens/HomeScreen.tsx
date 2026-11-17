@@ -3,7 +3,7 @@ import { useEffect, useRef, useState } from 'react';
 import { Plus, ChevronRight, Zap, Download, RefreshCw, Sparkles } from 'lucide-react';
 import MachineHubHeader from '../components/MachineHubHeader';
 import StatusCard from '../components/StatusCard';
-import TaskStream from '../components/TaskStream';
+import TaskStream, { toneOfThread } from '../components/TaskStream';
 import { SectionTitle, TapRow, StatusPill } from '../components/ui';
 import { COLORS } from '../theme/optionATokens';
 import { useDataState } from '../state/dataStore';
@@ -29,6 +29,8 @@ function writeLastCheck(at: number): void {
  */
 export default function HomeScreen() {
   const data = useDataState();
+  // 首页只展示正在运行的任务；历史会话统一放到「会话」页。
+  const runningThreads = data.threads.filter((thread) => toneOfThread(thread, data.statusByThread) === 'running');
   const session = useSessionState();
   const [update, setUpdate] = useState<UpdateAssessment | null>(null);
   const [checking, setChecking] = useState(false);
@@ -108,12 +110,19 @@ export default function HomeScreen() {
       )}
 
       <div style={{ display: 'flex', alignItems: 'center', padding: '18px 20px 8px' }}>
-        <span className="tl-section-title" style={{ flex: 1, padding: 0 }}>活跃任务</span>
+        <span className="tl-section-title" style={{ flex: 1, padding: 0 }}>运行中的任务</span>
         <button type="button" className="tl-press" onClick={() => { haptic('selection'); openSheet('newTask'); }} aria-label="新建任务" style={{ display: 'flex', alignItems: 'center', gap: 4, minHeight: 44, padding: '0 10px', border: 0, background: 'transparent', color: COLORS.blue, fontSize: 13, fontWeight: 600 }}>
           <Plus size={16} /> 新建
         </button>
       </div>
-      <TaskStream threads={data.threads} statusByThread={data.statusByThread} limit={5} />
+      <TaskStream
+        threads={runningThreads}
+        statusByThread={data.statusByThread}
+        limit={5}
+        emptyTitle="当前没有运行中的任务"
+        emptyDescription="任务开始运行后会出现在这里；历史会话在「会话」页。"
+      />
+      <p className="tl-page-note">仅显示正在运行的任务；全部会话见「会话」页。</p>
 
       <SectionTitle>快捷操作</SectionTitle>
       <div className="tl-card" style={{ background: COLORS.surface, borderRadius: 16, boxShadow: '0 1px 3px rgba(0,0,0,.04)', margin: '0 16px', overflow: 'hidden' }}>

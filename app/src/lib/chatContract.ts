@@ -177,10 +177,22 @@ export function resolveTurnPreference(
   const models = catalog?.models || [];
   const savedModelId = stringValue(saved?.model);
   const savedModel = savedModelId ? models.find((entry) => entry.id === savedModelId) : undefined;
+  // 用户明确选过的模型即使暂时不在目录里也要保留：静默换成目录里的别的模型，
+  // 会让手机显示的和电脑端实际跑的不是同一个（真机上已复现）。
+  const savedOverride: ModelCatalogEntry | undefined = savedModelId && !savedModel
+    ? {
+      id: savedModelId,
+      label: savedModelId,
+      provider: savedModelId.includes('/') ? savedModelId.slice(0, savedModelId.indexOf('/')) : '',
+      efforts: [],
+      defaultEffort: '',
+      supportsImages: null,
+    }
+    : undefined;
   const byId = (id: unknown): ModelCatalogEntry | undefined => models.find((entry) => entry.id === stringValue(id));
   // A saved per-thread choice is an intentional override; threadModel is only
   // the first-entry fallback before the user has picked anything.
-  const selected = savedModel || byId(threadModel) || byId(catalog?.defaultModel) || models[0];
+  const selected = savedModel || savedOverride || byId(threadModel) || byId(catalog?.defaultModel) || models[0];
   if (!selected) return { model: '', effort: '' };
   const savedEffort = selected.id === savedModelId ? stringValue(saved?.effort) : "";
   const healthDefaultEffort = stringValue(catalog?.defaultEffort);

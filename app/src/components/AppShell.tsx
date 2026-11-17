@@ -12,7 +12,7 @@ import { useTabState, closeDetail, setActiveTab, tabStore } from '../state/tabSt
 import { COLORS } from '../theme/optionATokens';
 import { haptic, registerBackHandler } from '../lib/nativeBridge';
 import { backFromSheet } from '../state/sheetStore';
-import { useSessionState, currentRequestContext } from '../state/sessionStore';
+import { useSessionState, currentRequestContext, retryPersistedSession } from '../state/sessionStore';
 import { revalidateForForeground } from '../state/dataStore';
 
 /** App chrome. This subtree is mounted only after verified machine pairing. */
@@ -45,6 +45,16 @@ export default function AppShell() {
     <App theme="ios" dark={false} safeAreas>
       <div className="tl-app" style={{ background: COLORS.canvas }}>
         <div data-vaul-drawer-wrapper="" style={{ height: '100%', width: '100%', background: COLORS.canvas }}>
+          {session.status !== 'ready' && (
+            <div className="tl-conn-banner" role="status">
+              <span>
+                {session.status === 'checking' || session.status === 'reconnecting'
+                  ? '正在重新连接电脑…（先显示上次缓存）'
+                  : '离线：显示上次缓存的内容'}
+              </span>
+              <button type="button" className="tl-press" onClick={() => { haptic('selection'); retryPersistedSession(); }}>重试</button>
+            </div>
+          )}
           <AnimatePresence mode="wait" initial={false}>
             {inDetail ? (
               <motion.div key="detail" initial={{ opacity: 0, x: 24 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: 24 }} transition={{ duration: 0.18, ease: 'easeOut' }} style={{ height: '100%', width: '100%' }}>

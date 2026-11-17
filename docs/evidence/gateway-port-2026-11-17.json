@@ -1,0 +1,55 @@
+{
+  "verifiedAt": "2026-11-17T09:38:30.852Z",
+  "localPort": 42873,
+  "oldPortReleased": true,
+  "publicUrl": "https://tl.z736.cc.cd",
+  "publicDiscovery": 200,
+  "configOnlyPortChanged": true,
+  "controllerCopiesMatch": true,
+  "controllerSha256": "1766d15704631b67188f57f35a775030927b977e890c98b50ed3c9a8e8dc0141",
+  "starts": [
+    {
+      "round": 1,
+      "pid": 35404,
+      "state": "running",
+      "external": true,
+      "restartCount": 0,
+      "elapsedMs": 1035
+    },
+    {
+      "round": 2,
+      "pid": 35404,
+      "state": "running",
+      "external": true,
+      "restartCount": 0,
+      "elapsedMs": 869
+    },
+    {
+      "round": 3,
+      "pid": 35404,
+      "state": "running",
+      "external": true,
+      "restartCount": 0,
+      "elapsedMs": 738
+    }
+  ],
+  "harnesses": [
+    {
+      "id": "codex",
+      "health": 200,
+      "threads": 200,
+      "count": 69
+    },
+    {
+      "id": "pidesk",
+      "health": 200,
+      "threads": 200,
+      "count": 250
+    }
+  ],
+  "pairing": {
+    "url": "https://tl.z736.cc.cd",
+    "lanUrl": "http://192.168.1.10:42873",
+    "machineTokenMatches": true
+  }
+}

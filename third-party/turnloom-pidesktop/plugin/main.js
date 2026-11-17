@@ -899,6 +899,8 @@ const codexThreadIds = new Set();
  */
 let modelIndex = { bySlug: new Map(), byPair: new Map(), byModelId: new Map() };
 const sessionModels = new Map();
+/** sessions 表是否有 thinking_level 列；null = 还没探测过。 */
+let sessionModelHasThinkingColumn = null;
 const configureApplied = new Set();
 const configureFailed = new Set();
 
@@ -1652,11 +1654,20 @@ function sessionModelPair(sessionId) {
   if (!id) return null;
   const db = new DatabaseSync(PI_DB, { readOnly: true });
   try {
-    const row = db.prepare(`SELECT provider_id, model_id FROM sessions WHERE id = ?`).get(id);
+    // thinking_level 只在较新的 PI 库里存在；老库/测试库没有这列时退回两列查询，
+    // 绝不能因为多选一列就整条会话读不到（那会让「模型没变」被误判成变了）。
+    if (sessionModelHasThinkingColumn === null) {
+      sessionModelHasThinkingColumn = db.prepare("PRAGMA table_info(sessions)").all()
+        .some((column) => String(column.name) === "thinking_level");
+    }
+    const row = db.prepare(sessionModelHasThinkingColumn
+      ? "SELECT provider_id, model_id, thinking_level FROM sessions WHERE id = ?"
+      : "SELECT provider_id, model_id FROM sessions WHERE id = ?").get(id);
     if (!row) return null;
     return {
       providerId: String(row.provider_id || ""),
       modelId: String(row.model_id || ""),
+      thinkingLevel: sessionModelHasThinkingColumn ? String(row.thinking_level || "") : "",
     };
   } catch {
     return null;
@@ -1838,7 +1849,13 @@ async function applyModelIfChanged(sessionId, settings) {
   // 内存快照每 3 秒同步一次；桥刚重载时它还是空的。没有快照就以数据库为准，
   // 否则「模型其实没变」也会触发一次危险操作的确认框。
   const current = currentSessionModel(sessionId) || sessionModelPair(sessionId);
-  if (current && current.providerId === settings.providerId && current.modelId === settings.modelId) return;
+  const samePair = Boolean(current)
+    && current.providerId === settings.providerId
+    && current.modelId === settings.modelId;
+  // 同一模型只换思考强度也必须真的下发一次，否则「强度改不动」永远是假的。
+  const currentEffort = String(current?.thinkingLevel || "").trim();
+  const sameEffort = !settings.thinkingLevel || !currentEffort || currentEffort === settings.thinkingLevel;
+  if (samePair && sameEffort) return;
   const wanted = `${settings.providerId}/${settings.modelId}`;
   const key = `${sessionId}|${wanted}`;
   if (configureFailed.has(key)) {
@@ -1852,7 +1869,11 @@ async function applyModelIfChanged(sessionId, settings) {
   try {
     await invokeHostArgs("session/configure", [sessionId, config], { confirm: true });
     configureApplied.add(key);
-    sessionModels.set(String(sessionId), { providerId: settings.providerId, modelId: settings.modelId });
+    sessionModels.set(String(sessionId), {
+      providerId: settings.providerId,
+      modelId: settings.modelId,
+      thinkingLevel: settings.thinkingLevel || "",
+    });
     log(`session ${sessionId} -> ${wanted}`);
   } catch (error) {
     configureFailed.add(key);
@@ -1981,6 +2002,17 @@ async function handleAction(method, params, version) {
     const text = textFromTurnInput(input);
     const attachments = attachmentsFromTurnInput(input, conversationId);
     if (!conversationId) throw new Error("start-turn without conversationId");
+    // 手机端显式选了模型才下发切换：这是用户的一次明确动作，值得走 session/configure
+    // （宿主的危险操作确认框由用户授权）。没选就沿用会话当前模型，绝不每轮弹框。
+    // 旧实现在这里完全丢掉 request.model，于是手机上选好的模型从来没生效过。
+    const explicitModel = String(params?.turnStart?.request?.model || "").trim();
+    if (explicitModel) {
+      const currentPair = sessionModelPair(conversationId) || currentSessionModel(conversationId);
+      const settings = turnSettingsFromRequest(params, currentPair?.providerId || "");
+      if (settings.providerId && settings.modelId) {
+        await ensureSendableModel(conversationId, settings);
+      }
+    }
     await invokeHost("agent/prompt", {
       sessionId: conversationId,
       content: text,

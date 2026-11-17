@@ -1,20 +1,22 @@
 # 公网入口中继（relay）
 
-手机 → 中继服务器 → SSH 反向隧道 → Windows 主机上的机器网关（8787）→ 各 harness 后端。
+手机 → 中继服务器 → SSH 反向隧道 → Windows 主机上的机器网关 → 各 harness 后端。
+当前本机网关端口为 **42873**（2026-11-17 从 8787 迁移）；新安装的默认值仍为 8787，以 `config.json` 的 `port` 为准。
 
 ```
 phone ──https──▶ tl.z736.cc.cd (47.98.97.102)
                     │  nginx :443  ──▶ 127.0.0.1:18786
                     │                     ▲
-                    │        ssh -R 127.0.0.1:18786:127.0.0.1:8787
+                    │        ssh -R 127.0.0.1:18786:127.0.0.1:42873
                     ▼                     │
              (备用) tl-cf.z736.cc.cd ── Cloudflare Tunnel ──▶ 127.0.0.1:18786
-                                          Windows 主机 8787 machine-gateway.cjs
+                                          Windows 主机 42873 machine-gateway.cjs
                                                      ├── 18788 codex
                                                      └── 8799  pidesk (--ipc-socket)
 ```
 
 中继只做 TLS 终结与端口转发，**不运行任何 Turnloom 后端**：Codex / PI 数据始终留在 Windows 主机。
+本机端口变动后，守护与隧道必须一起同步；公网域名、服务器 443/18786 和手机配对凭据无需改动。
 
 ## 为什么是两条通道
 

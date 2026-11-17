@@ -100,17 +100,25 @@ export function ModelEffortSheet({ open, onClose, catalog, selected, onSelect }:
           </button>
         ))}
       </div>
-      {current && efforts.length > 0 && (
+      {current && (
         <div className="tl-mp-effort" role="group" aria-label={EFFORT_LABEL}>
           <div className="tl-mp-effort-label">{EFFORT_LABEL}</div>
-          <div className="tl-mp-segment">
-            {efforts.map((level) => (
-              <button key={level} type="button" aria-pressed={level === selected.effort}
-                onClick={() => { haptic('selection'); onSelect(current.id, level); }}>
-                {effortLabel(level)}
-              </button>
-            ))}
-          </div>
+          {efforts.length > 1 ? (
+            <div className="tl-mp-segment">
+              {efforts.map((level) => (
+                <button key={level} type="button" aria-pressed={level === selected.effort}
+                  onClick={() => { haptic('selection'); onSelect(current.id, level); }}>
+                  {effortLabel(level)}
+                </button>
+              ))}
+            </div>
+          ) : (
+            <p className="tl-mp-effort-note">
+              {efforts.length === 1
+                ? `该模型仅有「${effortLabel(efforts[0])}」这一档强度`
+                : '该模型不提供可调思考强度'}
+            </p>
+          )}
         </div>
       )}
     </VaulSheet>

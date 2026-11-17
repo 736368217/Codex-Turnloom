@@ -771,17 +771,24 @@ button:focus-visible, a:focus-visible { outline: 2px solid var(--tl-blue); outli
 
 .tl-composer-tray {
   display: flex;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   gap: 6px;
   margin: 2px 2px 4px;
-  padding: 0;
+  padding: 0 0 2px;
+  overflow-x: auto;
+  overflow-y: hidden;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
 }
+
+.tl-composer-tray::-webkit-scrollbar { display: none; }
 
 .tl-composer-attachment {
   display: flex;
   align-items: center;
   gap: 6px;
-  max-width: 100%;
+  flex: 0 0 auto;
+  max-width: 168px;
   min-height: 34px;
   padding: 3px 4px 3px 3px;
   border-radius: 10px;
@@ -792,7 +799,7 @@ button:focus-visible, a:focus-visible { outline: 2px solid var(--tl-blue); outli
 }
 
 .tl-composer-attachment-name {
-  max-width: 132px;
+  max-width: 92px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -969,6 +976,12 @@ button:focus-visible, a:focus-visible { outline: 2px solid var(--tl-blue); outli
   line-height: 19px;
   color: var(--tl-label-secondary);
 }
+.tl-mp-effort-note {
+  margin: 2px 2px 0;
+  font-size: 13px;
+  line-height: 18px;
+  color: var(--tl-label-secondary);
+}
 .tl-mp-effort {
   position: sticky;
   bottom: 0;
@@ -1111,6 +1124,28 @@ button:focus-visible, a:focus-visible { outline: 2px solid var(--tl-blue); outli
 .tl-chat-bubble .tl-markdown th { font-weight: 600; }
 .tl-page-note { margin: 12px 20px; color: #63636a; font-size: 12px; line-height: 18px; overflow-wrap: anywhere; }
 .tl-page-note--error { color: #b42318; }
+.tl-conn-banner {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 8px 16px 0;
+  padding: 8px 12px;
+  border-radius: 12px;
+  background: #FFF4E5;
+  color: #8A5300;
+  font-size: 12px;
+  line-height: 16px;
+}
+.tl-conn-banner span { flex: 1; min-width: 0; }
+.tl-conn-banner button {
+  border: 0;
+  background: transparent;
+  color: #8A5300;
+  font-size: 12px;
+  font-weight: 700;
+  padding: 0 4px;
+  min-height: 32px;
+}
 .tl-list-actions { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; padding: 8px 16px 16px; }
 .tl-list-actions button { min-height: 44px; padding: 0 14px; border: 0; border-radius: 12px; background: white; color: #007aff; font-size: 13px; font-weight: 600; }
 .tl-list-actions button:disabled { opacity: .5; }

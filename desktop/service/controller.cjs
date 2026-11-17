@@ -106,25 +106,29 @@ class ServiceController extends EventEmitter {
     this.recoveryTimer = null;
   }
 
-  /**
-   * A healthy /api/health is NOT sufficient in gateway mode: the old dual
-   * dispatcher also answers it, but its discovery returns only one default
-   * harness. Never adopt that listener as the new machine gateway.
-   */
+  /** Verify gateway ownership before probing the potentially slow backend. */
   async verifiedHealth(options = {}) {
-    const result = await this.healthApi.check(this.config, options);
-    if (!result.ok || !gatewayMode(this.config)) return result;
-    const discovery = await this.healthApi.checkMachineGateway(this.config, { timeoutMs: options.timeoutMs || 2000 });
+    if (!gatewayMode(this.config)) return this.healthApi.check(this.config, options);
+    const timeoutMs = options.timeoutMs || 4000;
+    const discovery = await this.healthApi.checkMachineGateway(this.config, { timeoutMs });
+    const backend = await this.healthApi.check(this.config, { timeoutMs });
     if (!discovery.ok) {
       return {
-        ...result,
+        ...backend,
         ok: false,
-        status: result.status || 0,
-        error: discovery.error || "发现接口未通过一机一码校验",
+        error: discovery.error || "端口上的服务未通过一机一码发现校验",
         code: discovery.code,
       };
     }
-    return result;
+    // A verified gateway may be reused even when its default backend is slow.
+    // Keep that backend failure visible; it is not a conflicting listener and
+    // restarting the gateway cannot repair a separately watchdog-owned backend.
+    return {
+      ...backend,
+      ok: true,
+      gatewayVerified: true,
+      backendOk: backend.ok,
+    };
   }
 
   async probeRecovery() {
@@ -192,21 +196,15 @@ class ServiceController extends EventEmitter {
         return { ok: false, error: this.lastError };
       }
 
-      // A plain /api/health reply is not enough in one-machine mode; the old
-      // dual dispatcher also answers it but exposes only one harness. Require
-      // a verified /api/harnesses discovery before adopting any listener.
-      const existing = await this.healthApi.check(this.config, { timeoutMs: 2000 });
-      if (gatewayMode(this.config) && existing.ok) {
-        const discovery = await this.healthApi.checkMachineGateway(this.config, { timeoutMs: 2000 });
-        if (!discovery.ok) {
-          this.starting = false;
-          this.lastError = discovery.error || "端口上运行的是旧版服务，未通过一机一码发现校验。";
-          this.setState("error", this.lastError);
-          return { ok: false, error: this.lastError, code: discovery.code };
-        }
-      }
+      const existing = await this.verifiedHealth({ timeoutMs: 4000 });
       if (existing.ok) return await this.adoptExternal(existing);
-
+      if (gatewayMode(this.config) && existing.status >= 200 && existing.status < 300) {
+        // A healthy backend alone is not proof of the expected machine gateway.
+        this.starting = false;
+        this.lastError = existing.error || "端口上的服务未通过一机一码发现校验。";
+        this.setState("error", this.lastError);
+        return { ok: false, error: this.lastError, code: existing.code };
+      }
       const validationError = this.validateRuntime();
       if (validationError) {
         this.starting = false;
@@ -260,10 +258,9 @@ class ServiceController extends EventEmitter {
         return { ok: false, error: message };
       }
 
-      this.applyHealthy(healthy);
+      this.applyHealthyState(healthy);
       this.restartAttempt = 0;
       this.healthFailures = 0;
-      this.setState("running", "手机端可以访问");
       this.startHealthLoop();
       this.startMetricsLoop();
       this.starting = false;
@@ -279,13 +276,22 @@ class ServiceController extends EventEmitter {
 
   applyHealthy(result) {
     this.health = {
-      ok: true,
+      ok: result.backendOk !== false,
       lastCheckAt: Date.now(),
       latencyMs: result.latencyMs || 0,
       ipcConnected: this.health.ipcConnected || false,
       ipcCheckedAt: this.health.ipcCheckedAt || null,
-      info: healthSummary(result.data)
+      info: healthSummary(result.data) || this.health.info
     };
+  }
+
+  applyHealthyState(result) {
+    this.applyHealthy(result);
+    const backendSlow = result.backendOk === false;
+    const detail = backendSlow
+      ? "网关已连接，默认服务响应异常，正在重试…"
+      : (this.managed ? "手机端可以访问" : "服务已由守护运行，手机端可以访问");
+    this.setState(backendSlow ? "degraded" : "running", detail, { lastError: null });
   }
 
   async adoptExternal(result) {
@@ -295,10 +301,9 @@ class ServiceController extends EventEmitter {
     this.child = null;
     const started = this.pid ? await this.processControl.getProcessStart(this.pid) : 0;
     this.startedAt = Number(started) || Date.now();
-    this.applyHealthy(result);
+    this.applyHealthyState(result);
     this.restartAttempt = 0;
     this.healthFailures = 0;
-    this.setState("running", "服务已由守护运行，手机端可以访问", { lastError: null });
     this.startHealthLoop();
     this.startMetricsLoop();
     this.starting = false;
@@ -425,9 +430,17 @@ class ServiceController extends EventEmitter {
       this.health.info = healthSummary(result.data) || this.health.info;
       if (result.ok) {
         this.healthFailures = 0;
-        this.health.ok = true;
-        if (this.state === "degraded") {
-          this.setState("running", this.managed ? "手机端可以访问" : "服务已由守护运行，手机端可以访问");
+        if (result.backendOk === false) {
+          this.health.ok = false;
+          if (this.state !== "degraded") {
+            this.setState("degraded", "网关已连接，默认服务响应异常，正在重试…", { lastError: null });
+            this.logger.warn("service", `网关身份已验证，默认服务响应异常：${result.error || result.status}`);
+          }
+        } else {
+          this.health.ok = true;
+          if (this.state === "degraded") {
+            this.setState("running", this.managed ? "手机端可以访问" : "服务已由守护运行，手机端可以访问", { lastError: null });
+          }
         }
         return;
       }
@@ -495,9 +508,8 @@ class ServiceController extends EventEmitter {
         if (this.state === "running" || this.state === "degraded") {
           const refreshed = await this.verifiedHealth({ timeoutMs: 2500 });
           if (refreshed.ok) {
-            this.applyHealthy(refreshed);
+            this.applyHealthyState(refreshed);
             this.healthFailures = 0;
-            this.setState("running", this.managed ? "手机端可以访问" : "服务已由守护运行，手机端可以访问");
             return { ok: true, refreshed: true, external: !this.managed };
           }
           await this.stop({ silent: true });

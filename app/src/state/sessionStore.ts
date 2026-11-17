@@ -84,6 +84,7 @@ function readPersisted(): PersistedMachine | null {
     const harnesses = value.harnesses.filter((item): item is Harness =>
       Boolean(item && typeof item.id === 'string' && typeof item.name === 'string' && typeof item.token === 'string'));
     if (harnesses.length === 0) return null;
+
     const defaultHarnessId = harnesses.some((h) => h.id === value.defaultHarnessId)
       ? String(value.defaultHarnessId) : harnesses[0].id;
     return {
@@ -367,3 +368,9 @@ export function useVerifiedSession(): SessionState { return useSessionState(); }
 export const SESSION_STORAGE_KEYS = { machine: STORAGE_KEY, cachePrefix: CACHE_PREFIX } as const;
 
 export default sessionStore;
+
+/** 断连/未就绪时的“重试”入口：按已保存的机器重新校验，不需要用户重新扫码。 */
+export function retryPersistedSession(): void {
+  const machine = readPersisted();
+  if (machine) void revalidatePersisted(machine);
+}

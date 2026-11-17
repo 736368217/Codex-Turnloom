@@ -5029,6 +5029,54 @@ function normalizeTurnSettings({ model, effort } = {}, modelConfiguration = acti
   return { model: selectedModel.id, effort: selectedEffort };
 }
 
+/**
+ * 在模型目录里找用户请求的模型。
+ *
+ * 旧实现直接 `models.find(id === model) || 默认模型`：只要手机端记的 id 与目录差一个
+ * 字符（供应商改名、模型下架、大小写），就会被静默换成另一个模型，用户只会看到
+ * 「手机上选的是 DS，电脑端跑的是别的」。这里先精确匹配，再忽略大小写，
+ * 最后用 "/" 之后的模型名在唯一命中时兜底；都不中才算不认识。
+ */
+function catalogModelMatch(models, requested) {
+  const slug = String(requested || "").trim();
+  if (!slug) return null;
+  const exact = models.find((entry) => entry.id === slug);
+  if (exact) return exact;
+  const lowered = slug.toLowerCase();
+  const caseHit = models.find((entry) => String(entry.id).toLowerCase() === lowered);
+  if (caseHit) return caseHit;
+  const tail = slug.includes("/") ? slug.slice(slug.indexOf("/") + 1) : "";
+  if (tail) {
+    const tailHits = models.filter((entry) => {
+      const id = String(entry.id);
+      return id.slice(id.lastIndexOf("/") + 1) === tail;
+    });
+    if (tailHits.length === 1) return tailHits[0];
+  }
+  return null;
+}
+
+/**
+ * 解析一轮发送真正要用的 (model, effort)，并把「请求的 / 实际的」一起返回。
+ * 调用方据此决定是报错还是回传给手机端显示，绝不再静默替换。
+ */
+function resolveTurnSettings({ model, effort } = {}, modelConfiguration = activeModelConfiguration) {
+  const models = Array.isArray(modelConfiguration?.models) && modelConfiguration.models.length
+    ? modelConfiguration.models
+    : FALLBACK_CODEX_MODELS;
+  const requestedModel = String(model || "").trim();
+  const requestedEffort = String(effort || "").trim();
+  const matched = catalogModelMatch(models, requestedModel);
+  const settings = normalizeTurnSettings({ model: matched?.id || "", effort }, modelConfiguration);
+  return {
+    ...settings,
+    requestedModel,
+    requestedEffort,
+    modelKnown: !requestedModel || Boolean(matched),
+    modelRemapped: Boolean(matched) && matched.id !== requestedModel
+  };
+}
+
 /** 模型能力查询：catalog 里没写能力时按「未知」处理，不误拦用户的图片。 */
 function modelSupportsImages(modelId, modelConfiguration = activeModelConfiguration) {
   const models = Array.isArray(modelConfiguration?.models) && modelConfiguration.models.length
@@ -6348,7 +6396,21 @@ async function sendToCodex(text, threadId, images = [], { newThread = false, mod
   }
   const trimmed = String(text || "").trim();
   const normalizedImages = normalizeSendImages(images);
-  const turnSettings = normalizeTurnSettings({ model, effort }, modelConfiguration);
+  const resolved = resolveTurnSettings({ model, effort }, modelConfiguration);
+  if (resolved.requestedModel && !resolved.modelKnown) {
+    // 用错模型比发送失败更糟：用户以为在跑 DS，实际跑的是默认模型。
+    const err = new Error(
+      `所选模型「${resolved.requestedModel}」不在电脑端模型目录里（可能已下架或供应商被禁用）。请刷新模型列表后重新选择，本轮不会用其它模型代替发送。`
+    );
+    err.status = 409;
+    err.code = "MODEL_NOT_IN_CATALOG";
+    err.requestedModel = resolved.requestedModel;
+    throw err;
+  }
+  if (resolved.modelRemapped) {
+    logInfo(`[send] model "${resolved.requestedModel}" remapped to "${resolved.model}"`);
+  }
+  const turnSettings = { model: resolved.model, effort: resolved.effort };
   if (normalizedImages.length && !(await modelSupportsImagesForSend(turnSettings.model, modelConfiguration))) {
     const err = new Error("当前模型不支持图片。请在模型面板切换到带「支持图片」标记的模型后再发送，或移除图片只发文字。");
     err.status = 409;
@@ -6396,7 +6458,9 @@ async function sendToCodex(text, threadId, images = [], { newThread = false, mod
       threadId: result.threadId,
       images: normalizedImages.map(({ name, mimeType, size }) => ({ name, mimeType, size })),
       turnId: result.turnId,
-      fallbackReason: result.fallbackReason || null,
+      model: turnSettings.model,
+      effort: turnSettings.effort,
+      requestedModel: resolved.requestedModel || null,
       sent: true,
       sentAt: new Date().toISOString()
     };
@@ -6445,7 +6509,9 @@ async function sendToCodex(text, threadId, images = [], { newThread = false, mod
       threadId: targetThreadId,
       images: normalizedImages.map(({ name, mimeType, size }) => ({ name, mimeType, size })),
       turnId: result?.result?.result?.turnId || result?.result?.turnId || current.status.turnId || null,
-      sentAt: new Date().toISOString()
+      model: turnSettings.model,
+      effort: turnSettings.effort,
+      requestedModel: resolved.requestedModel || null,
     };
     void refreshCodexDesktopAfterSend(targetThreadId, getCodexIpcClient(), { turnId: response.turnId }).catch((error) => {
       logError(`[send-refresh] ${targetThreadId}: ${error?.message || error}`);
@@ -6521,7 +6587,9 @@ async function sendToCodex(text, threadId, images = [], { newThread = false, mod
       threadId: targetThreadId,
       images: normalizedImages.map(({ name, mimeType, size }) => ({ name, mimeType, size })),
       turnId: result?.result?.turn?.id || result?.result?.turnId || null,
-      sentAt: new Date().toISOString()
+      model: turnSettings.model,
+      effort: turnSettings.effort,
+      requestedModel: resolved.requestedModel || null,
     };
     void refreshCodexDesktopAfterSend(targetThreadId, getCodexIpcClient(), { turnId: response.turnId }).catch((error) => {
       logError(`[send-refresh] ${targetThreadId}: ${error?.message || error}`);
@@ -8851,6 +8919,8 @@ export {
   loadCodexModelConfiguration,
   modelConfigurationFromCatalog,
   normalizeTurnSettings,
+  resolveTurnSettings,
+  catalogModelMatch,
   modelSupportsImages,
   modelSupportsImagesForSend,
   parseCodexModelConfig,

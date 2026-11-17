@@ -49,7 +49,9 @@ export default function AppRoot() {
     document.addEventListener('visibilitychange', onVisible);
     return () => document.removeEventListener('visibilitychange', onVisible);
   }, []);
-  return session.status === 'ready'
+  // 已配对过就先进入工作台读缓存，后台再校验；只有从未配对才停在连接页。
+  const usable = session.harnesses.length > 0;
+  return usable
     ? <AppShell key={`${session.scope}-${session.generation}`} />
     : <ConnectScreen onRevalidate={retrySaved} />;
 }

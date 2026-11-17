@@ -219,7 +219,9 @@ check(
     JSON.stringify(firstPrompt && firstPrompt.args),
   );
 
-  // 普通发送即使带不同模型 slug，也不得弹 configure；会话沿用当前模型。
+  // 2026-11-17 契约修正：手机端显式换了模型（且能解析）就必须真的切换一次。
+  // 旧契约「发送时一律不 configure」把用户的模型选择彻底废掉了：手机上选 DS、
+  // 电脑端却跑会话原模型。现在只在这一种情况下弹一次确认框。
   calls.length = 0;
   await plugin.handleAction(
     "thread-follower-start-turn",
@@ -229,7 +231,10 @@ check(
     },
     2,
   );
-  check("普通发送绝不触发 session/configure", calls.every((c) => c.operation !== "session/configure"), JSON.stringify(opsOf()));
+  const switched = calls.filter((c) => c.operation === "session/configure");
+  check("显式换模型触发一次 session/configure", switched.length === 1, JSON.stringify(opsOf()));
+  check("换模型调用带 confirm:true", switched[0] && switched[0].confirm === true, JSON.stringify(switched[0]));
+  check("换模型这一轮照常发送", Boolean(calls.find((c) => c.operation === "agent/prompt")), JSON.stringify(opsOf()));
   check("普通发送仍调用 agent/prompt", Boolean(calls.find((c) => c.operation === "agent/prompt")), JSON.stringify(opsOf()));
 
   // 同一模型 / 桥刚重载 / 解析不出模型：全部保持发送，不弹确认框。
@@ -279,17 +284,17 @@ check(
   calls.length = 0;
   refuseConfigure = null;
   await plugin.applyModelIfChanged("sess-healthy", {
-    providerId: "P2",
-    modelId: "deepseek-v4.1-flash",
+    providerId: "P5",
+    modelId: "second-switch",
     thinkingLevel: "high",
   });
   const configure = calls.filter((c) => c.operation === "session/configure");
   check("显式切换走 session/configure", configure.length === 1, JSON.stringify(opsOf()));
-  check("显式切换以 [id, config] 调用", configure[0] && configure[0].args[0] === "sess-healthy" && configure[0].args[1].modelId === "deepseek-v4.1-flash", JSON.stringify(configure[0] && configure[0].args));
+  check("显式切换以 [id, config] 调用", configure[0] && configure[0].args[0] === "sess-healthy" && configure[0].args[1].modelId === "second-switch", JSON.stringify(configure[0] && configure[0].args));
   check("显式切换遵守 confirm:true", configure[0] && configure[0].confirm === true, JSON.stringify(configure[0]));
 
   calls.length = 0;
-  await plugin.applyModelIfChanged("sess-healthy", { providerId: "P2", modelId: "deepseek-v4.1-flash" });
+  await plugin.applyModelIfChanged("sess-healthy", { providerId: "P5", modelId: "second-switch" });
   check("同一模型不重复 configure", calls.every((c) => c.operation !== "session/configure"), JSON.stringify(opsOf()));
 
   calls.length = 0;

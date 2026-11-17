@@ -5,8 +5,10 @@ import android.content.Context;
 import android.content.Intent;
 import android.database.Cursor;
 import android.net.Uri;
+import android.os.Build;
 import android.os.Handler;
 import android.os.Looper;
+import android.provider.MediaStore;
 import android.provider.OpenableColumns;
 import android.util.Base64;
 
@@ -91,10 +93,26 @@ final class AttachmentPicker {
                     BridgeContract.ATTACH_PICKER_BUSY));
             return;
         }
-        Intent intent = new Intent(Intent.ACTION_OPEN_DOCUMENT);
-        intent.addCategory(Intent.CATEGORY_OPENABLE);
-        intent.setType("image".equals(kind) ? "image/*" : "*/*");
-        intent.putExtra(Intent.EXTRA_ALLOW_MULTIPLE, true);
+        // 「图片」走系统相册（Android 13+ 用系统照片选择器，旧版本用 GET_CONTENT image/*），
+        // 「附件」才走文档选择器。旧实现两个按钮都用 ACTION_OPEN_DOCUMENT，用户在真机上
+        // 看到的是同一个文件管理器，选图片要多点三层。
+        Intent intent;
+        if ("image".equals(kind) && Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            intent = new Intent(MediaStore.ACTION_PICK_IMAGES);
+            intent.setType("image/*");
+            intent.putExtra(MediaStore.EXTRA_PICK_IMAGES_MAX,
+                Math.min(BridgeContract.MAX_ATTACHMENT_FILES, 10));
+        } else if ("image".equals(kind)) {
+            intent = new Intent(Intent.ACTION_GET_CONTENT);
+            intent.addCategory(Intent.CATEGORY_OPENABLE);
+            intent.setType("image/*");
+            intent.putExtra(Intent.EXTRA_ALLOW_MULTIPLE, true);
+        } else {
+            intent = new Intent(Intent.ACTION_OPEN_DOCUMENT);
+            intent.addCategory(Intent.CATEGORY_OPENABLE);
+            intent.setType("*/*");
+            intent.putExtra(Intent.EXTRA_ALLOW_MULTIPLE, true);
+        }
         AttachmentPickSession.Request request = session.begin(requestId, kind);
         if (request == null) {
             deliverer.deliverAttachments(requestId, BridgeContract.attachmentErrorJson(
@@ -104,11 +122,24 @@ final class AttachmentPicker {
         try {
             launcher.launch(intent, request.code);
         } catch (Exception e) {
+            // 部分车机/精简 ROM 没有系统照片选择器：退回文档选择器，别让用户点不动。
+            if ("image".equals(kind) && !(e instanceof SecurityException)) {
+                Intent fallback = new Intent(Intent.ACTION_GET_CONTENT);
+                fallback.addCategory(Intent.CATEGORY_OPENABLE);
+                fallback.setType("image/*");
+                fallback.putExtra(Intent.EXTRA_ALLOW_MULTIPLE, true);
+                try {
+                    launcher.launch(fallback, request.code);
+                    return;
+                } catch (Exception ignored) {
+                    // 落到下面的统一错误回包
+                }
+            }
             // Never propagate activity/URI details to JS or logs.
             session.finish(request);
             deliverer.deliverAttachments(requestId, BridgeContract.attachmentErrorJson(
-                    e instanceof SecurityException ? "permission-denied"
-                            : BridgeContract.ATTACH_PICKER_UNAVAILABLE));
+                e instanceof SecurityException ? "permission-denied"
+                    : BridgeContract.ATTACH_PICKER_UNAVAILABLE));
         }
     }
 

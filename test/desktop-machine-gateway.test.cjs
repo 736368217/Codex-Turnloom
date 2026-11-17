@@ -740,3 +740,117 @@ test("end-to-end: real server gateway + desktop QR + phone-side discovery normal
     fs.rmSync(dir, { recursive: true, force: true });
   }
 });
+
+test("a verified gateway with a slow backend is reused without an occupied-port error", async () => {
+  const dir = tmpDir();
+  const calls = [];
+  let backendHealthy = false;
+  const controller = new ServiceController({
+    config: configWithMachine(dir),
+    logger: { info() {}, warn() {}, error() {} },
+    health: {
+      checkMachineGateway: async () => {
+        calls.push("discovery");
+        return { ok: true, machineId: "office-01", harnessCount: 2 };
+      },
+      check: async () => {
+        calls.push("backend");
+        return backendHealthy
+          ? { ok: true, status: 200, data: { ok: true, allowWrite: true } }
+          : { ok: false, status: 0, error: "请求超时", data: null };
+      },
+      checkPortAvailable: async () => { assert.fail("verified gateway must bypass port-conflict detection"); },
+      findPortOwner: async () => ({ pid: 16440, name: "node.exe" }),
+    },
+    processControl: { getProcessStart: async () => Date.now(), getProcessMetrics: async () => null },
+  });
+  try {
+    controller.spawnChild = () => { assert.fail("must reuse the watchdog-owned gateway"); };
+    const result = await controller.start();
+    assert.equal(result.adopted, true);
+    assert.equal(controller.pid, 16440);
+    assert.equal(controller.managed, false);
+    assert.equal(controller.state, "degraded");
+    assert.equal(controller.health.ok, false, "the slow backend must remain visible");
+    assert.equal(controller.lastError, null, "backend slowness is not a port conflict");
+    assert.deepEqual(calls.slice(0, 2), ["discovery", "backend"]);
+
+    let restarts = 0;
+    const restart = controller.restart.bind(controller);
+    controller.restart = async () => { restarts += 1; return restart(); };
+    for (let index = 0; index < 8; index += 1) await controller.probeHealth();
+    assert.equal(restarts, 0, "backend timeouts must not restart the gateway");
+    assert.equal(controller.state, "degraded");
+    assert.equal(controller.pid, 16440);
+    const refreshed = await restart();
+    assert.equal(refreshed.refreshed, true);
+    assert.equal(controller.state, "degraded", "manual refresh must not hide backend failure");
+
+    backendHealthy = true;
+    await controller.probeHealth();
+    assert.equal(controller.state, "running");
+    assert.equal(controller.health.ok, true);
+    assert.equal(controller.health.info.allowWrite, true);
+    assert.equal(controller.lastError, null);
+    assert.equal(controller.pid, 16440);
+  } finally {
+    await controller.dispose();
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("an occupied-port race reuses a recovered gateway even when its backend is still slow", async () => {
+  const dir = tmpDir();
+  let discoveryCalls = 0;
+  let portChecks = 0;
+  const controller = new ServiceController({
+    config: configWithMachine(dir),
+    logger: { info() {}, warn() {}, error() {} },
+    health: {
+      checkMachineGateway: async () => {
+        discoveryCalls += 1;
+        return discoveryCalls === 1
+          ? { ok: false, code: "not-machine-gateway", error: "listener is still starting" }
+          : { ok: true, machineId: "office-01", harnessCount: 2 };
+      },
+      check: async () => ({ ok: false, status: 0, error: "请求超时", data: null }),
+      checkPortAvailable: async () => { portChecks += 1; return { available: false }; },
+      findPortOwner: async () => ({ pid: 16440, name: "node.exe" }),
+    },
+    processControl: { getProcessStart: async () => Date.now(), getProcessMetrics: async () => null },
+  });
+  try {
+    controller.spawnChild = () => { assert.fail("must not spawn over an occupied listener"); };
+    const result = await controller.start();
+    assert.equal(portChecks, 1);
+    assert.equal(discoveryCalls, 2);
+    assert.equal(result.adopted, true);
+    assert.equal(controller.state, "degraded");
+    assert.equal(controller.lastError, null);
+    assert.equal(controller.pid, 16440);
+  } finally {
+    await controller.dispose();
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("gateway identity failure remains unhealthy even if the backend health endpoint succeeds", async () => {
+  const dir = tmpDir();
+  const controller = new ServiceController({
+    config: configWithMachine(dir),
+    logger: { info() {}, warn() {}, error() {} },
+    health: {
+      checkMachineGateway: async () => ({ ok: false, code: "discovery-mismatch", error: "wrong gateway" }),
+      check: async () => ({ ok: true, status: 200, data: { ok: true } }),
+    },
+  });
+  try {
+    const result = await controller.verifiedHealth();
+    assert.equal(result.ok, false);
+    assert.equal(result.code, "discovery-mismatch");
+    assert.equal(result.error, "wrong gateway");
+  } finally {
+    await controller.dispose();
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});

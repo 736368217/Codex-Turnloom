@@ -169,7 +169,11 @@ test('explicit per-thread model choice wins; thread model is only first-entry fa
   const overridden = h.contract.resolveTurnPreference(catalog, { model: 'real/sol', effort: 'ultra' }, 'real/terra');
   assert.deepEqual(overridden, { model: 'real/sol', effort: 'ultra' });
   assert.equal(h.contract.resolveTurnPreference(catalog, { model: 'real/terra', effort: 'ultra' }, 'real/sol').effort, 'high', 'invalid saved effort falls back to the model default');
-  assert.equal(h.contract.resolveTurnPreference(catalog, { model: 'does/not-exist', effort: 'nope' }, '').model, 'real/sol');
+  // 目录里没有的已选模型必须原样保留：静默换成目录里的第一个，会让手机显示的和
+  // 电脑端实际跑的模型不一致（真机事故）。未知模型由服务端明确拒绝，而不是替用户换一个。
+  const keptUnknown = h.contract.resolveTurnPreference(catalog, { model: 'does/not-exist', effort: 'nope' }, '');
+  assert.equal(keptUnknown.model, 'does/not-exist');
+  assert.equal(keptUnknown.effort, '', '目录里没有的模型不臆造思考强度');
 
   // The selected ID reaches the real POST body, not merely the local preference.
   assert.equal(await h.session.connectWithPairing(h.pairing), true);

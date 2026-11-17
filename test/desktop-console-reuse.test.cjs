@@ -226,7 +226,7 @@ test("runtime manager reports a watchdog-owned tunnel as healthy", async () => {
 
 test("desktop copy reuses healthy services and protects watchdog-owned processes", () => {
   const source = fs.readFileSync(path.join(__dirname, "..", "desktop", "service", "controller.cjs"), "utf8");
-  assert.match(source, /const existing = await this\.healthApi\.check/);
+  assert.match(source, /const existing = await this\.verifiedHealth/);
   assert.match(source, /if \(existing\.ok\) return await this\.adoptExternal/);
   assert.match(source, /const port = await this\.healthApi\.checkPortAvailable/);
   assert.match(source, /if \(this\.managed\) await this\.killChild\(\)/);
