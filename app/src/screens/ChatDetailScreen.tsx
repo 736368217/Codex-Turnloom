@@ -3,7 +3,7 @@ import { ChevronDown, ChevronRight, ChevronLeft, Brain, Terminal, FileDiff, Load
 import { ComposerFields, ChatPrimaryButton, useComposerFields, requestIdForIdentity } from '../components/ChatComposer';
 import MarkdownMessage from '../components/MarkdownMessage';
 import { COLORS } from '../theme/optionATokens';
-import { messageText, compactMessageText, isRunning, supportsImages,
+import { messageText, isRunning, supportsImages,
   buildSendPayload, sendRequestIdentity, type ThreadRuntimeStatus,
 } from '../lib/chatContract';
 import { composerSubmitDecision } from '../lib/composerSubmit';
@@ -86,6 +86,38 @@ function ApprovalCard({ message, context, threadId }: { message: ThreadMessage; 
   </div>;
 }
 
+/** 思考过程：浅底 + 左色条 + 明确标签，和正文气泡不是同一种东西。 */
+function ThoughtBlock({ text }: { text: string }) {
+  const [open, setOpen] = useState(false);
+  const long = text.length > 180;
+  const expanded = open || !long;
+  return (
+    <div className="tl-thought">
+      <button
+        type="button"
+        className="tl-thought-head"
+        aria-expanded={expanded}
+        onClick={() => { if (long) setOpen((value) => !value); }}
+      >
+        <Brain size={14} />
+        <span>思考过程</span>
+        {long && <span className="tl-thought-toggle">{open ? '收起' : '展开'}</span>}
+      </button>
+      <div className={`tl-thought-body${expanded ? ' tl-thought-body--open' : ''}`}>{text}</div>
+    </div>
+  );
+}
+
+/** 工具调用 / 输出：等宽字体 + 工具名标题，绝不混进正文气泡。 */
+function ToolBlock({ text, name, failed }: { text: string; name: string; failed?: boolean }) {
+  return (
+    <div className={`tl-tool${failed ? ' tl-tool--error' : ''}`}>
+      <div className="tl-tool-head"><Terminal size={14} /><span>{name || '工具调用'}</span></div>
+      <pre className="tl-tool-body tl-selectable">{text}</pre>
+    </div>
+  );
+}
+
 /** Chat screen: header-only back, compact bubbles, one authoritative primary action. */
 export default function ChatDetailScreen({ threadId, title }: { threadId: string; title: string }) {
   const data = useDataState();
@@ -123,8 +155,35 @@ export default function ChatDetailScreen({ threadId, title }: { threadId: string
     return () => { stopped = true; clearTimeout(timer); };
   }, [threadId, context?.scope, context?.generation]);
 
-  const thinking = useMemo(() => messages.filter((message) => ['thinking', 'reasoning'].includes(String(message.kind || ''))).map(messageText).filter(Boolean), [messages]);
-  const terminal = useMemo(() => messages.filter((message) => ['command', 'terminal'].includes(String(message.kind || ''))).map(messageText).filter(Boolean), [messages]);
+  // 打开会话先看最新消息：首次渲染贴底；之后只要用户还在底部附近，就跟新消息走。
+  const stickToBottom = useRef(true);
+  const scrolledOnce = useRef(false);
+  useEffect(() => {
+    scrolledOnce.current = false;
+    stickToBottom.current = true;
+  }, [threadId]);
+  useEffect(() => {
+    const body = bodyRef.current;
+    if (!body) return;
+    const onScroll = () => {
+      stickToBottom.current = body.scrollHeight - body.scrollTop - body.clientHeight < 120;
+    };
+    body.addEventListener('scroll', onScroll, { passive: true });
+    return () => body.removeEventListener('scroll', onScroll);
+  }, [threadId]);
+  useEffect(() => {
+    const body = bodyRef.current;
+    if (!body || !messages.length) return;
+    if (!scrolledOnce.current) {
+      scrolledOnce.current = true;
+      requestAnimationFrame(() => { if (body === bodyRef.current) body.scrollTop = body.scrollHeight; });
+      return;
+    }
+    if (stickToBottom.current) {
+      requestAnimationFrame(() => { if (body === bodyRef.current) body.scrollTop = body.scrollHeight; });
+    }
+  }, [messages, threadId]);
+
   const diffLines = useMemo(() => changes.flatMap((entry) => [
     String(entry.path || entry.type || '变更'),
     ...(typeof entry.additions === 'number' ? [`+ ${entry.additions} 行新增`] : []),
@@ -219,14 +278,34 @@ export default function ChatDetailScreen({ threadId, title }: { threadId: string
             </div>
           ) : messages.map((message: ThreadMessage, index: number) => {
             const isUser = message.role === 'user';
+            const kind = String(message.kind || '').toLowerCase();
             const text = messageText(message);
             const images = Array.isArray(message.images) ? message.images : [];
             if (message.role === 'interaction' && message.approvalKind) {
               return <div key={`approval:${threadId}:${String(message.requestId || message.id || index)}:${String(message.detailsHash || '')}`} className="tl-chat-row tl-approval-row"><ApprovalCard message={message} context={context} threadId={threadId} /></div>;
             }
             if (!text && !images.length) return null;
+            const rowKey = String(message.id || index);
+            // 思考与工具不是正文：用不同的容器和排版渲染，不再塞进普通气泡。
+            if (['thinking', 'reasoning', 'analysis'].includes(kind)) {
+              return <div key={rowKey} className="tl-chat-row tl-chat-row--meta"><ThoughtBlock text={text} /></div>;
+            }
+            if (message.role === 'tool' || ['tool_call', 'tool_output', 'command', 'terminal'].includes(kind)) {
+              return (
+                <div key={rowKey} className="tl-chat-row tl-chat-row--meta">
+                  <ToolBlock
+                    text={text}
+                    name={String(message.title || message.toolName || message.name || '工具调用')}
+                    failed={kind === 'error' || message.isError === true}
+                  />
+                </div>
+              );
+            }
+            if (kind === 'error' || message.role === 'notice' || message.role === 'system') {
+              return <div key={rowKey} className="tl-chat-row tl-chat-row--meta"><div className="tl-chat-notice">{text}</div></div>;
+            }
             return (
-              <div key={String(message.id || index)} className={`tl-chat-row${isUser ? ' tl-chat-row--user' : ''}`}>
+              <div key={rowKey} className={`tl-chat-row${isUser ? ' tl-chat-row--user' : ''}`}>
                 <div className={`tl-chat-bubble tl-selectable ${isUser ? 'tl-chat-bubble--user' : 'tl-chat-bubble--assistant'}`}>
                   {isUser ? text || '(空消息)' : <MarkdownMessage text={text || '(空消息)'} />}
                   {images.length > 0 && (
@@ -244,8 +323,6 @@ export default function ChatDetailScreen({ threadId, title }: { threadId: string
             );
           })}
         </div>
-        <CollapsibleLog title="推理过程" icon={<Brain size={16} color={COLORS.blue} />} lines={thinking.map(compactMessageText)} />
-        <CollapsibleLog title="命令记录" icon={<Terminal size={16} color={COLORS.labelSecondary} />} lines={terminal.map(compactMessageText)} />
         {diffLines.length > 0 && (
           <>
             <div style={{ fontSize: 12, lineHeight: '17px', color: COLORS.labelSecondary, padding: '4px 16px 6px', display: 'flex', alignItems: 'center', gap: 6 }}>

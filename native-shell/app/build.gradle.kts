@@ -1,4 +1,4 @@
-plugins {
+﻿plugins {
     id("com.android.application")
 }
 
@@ -10,8 +10,8 @@ android {
         applicationId = "com.codex.turnloom.app"
         minSdk = 26
         targetSdk = 35
-        versionCode = 86
-        versionName = "2.1.5"
+        versionCode = 87
+        versionName = "2.1.6"
         testInstrumentationRunner = "android.test.InstrumentationTestRunner"
     }
 

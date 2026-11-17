@@ -1167,3 +1167,81 @@ button:focus-visible, a:focus-visible { outline: 2px solid var(--tl-blue); outli
 .tl-approval-error { color: #b42318; font-size: 12px; line-height: 17px; overflow-wrap: anywhere; }
 .tl-approval-resolved { display: flex; align-items: center; gap: 6px; color: #1e7e34; font-size: 13px; font-weight: 600; }
 .tl-approval-id { display: block; min-width: 0; color: #636366; font: 11px/16px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; overflow-wrap: anywhere; user-select: text; }
+
+/* 思考 / 工具 / 提示：和正文气泡明确分开的三类块 */
+.tl-chat-row--meta { padding: 3px 0; }
+.tl-thought {
+  padding: 6px 10px 8px;
+  border-left: 3px solid #C7C7CC;
+  border-radius: 10px;
+  background: #F7F7FA;
+}
+.tl-thought-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  min-height: 32px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--tl-label-secondary);
+  font-size: 12px;
+  font-weight: 600;
+  text-align: left;
+}
+.tl-thought-toggle { margin-left: auto; font-weight: 500; color: var(--tl-blue); }
+.tl-thought-body {
+  display: -webkit-box;
+  -webkit-line-clamp: 4;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  font-size: 13px;
+  line-height: 19px;
+  color: var(--tl-label-secondary);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.tl-thought-body--open { display: block; overflow: visible; }
+.tl-tool {
+  border: 1px solid var(--tl-separator);
+  border-radius: 12px;
+  overflow: hidden;
+  background: var(--tl-fill-secondary);
+}
+.tl-tool-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 10px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--tl-label-secondary);
+  background: #E6E6EB;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.tl-tool-body {
+  margin: 0;
+  padding: 8px 10px;
+  max-height: 220px;
+  overflow: auto;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 12px;
+  line-height: 18px;
+  color: var(--tl-label-primary);
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+.tl-tool--error { border-color: #F3C2BE; }
+.tl-tool--error .tl-tool-head { color: #C1271F; background: #FDECEC; }
+.tl-chat-notice {
+  padding: 8px 10px;
+  border-radius: 10px;
+  background: #FFF4E5;
+  color: #8A5A00;
+  font-size: 13px;
+  line-height: 19px;
+  overflow-wrap: anywhere;
+}
