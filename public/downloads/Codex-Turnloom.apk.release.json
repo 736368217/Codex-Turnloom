@@ -1,25 +1,25 @@
 {
     "schema":  "turnloom-app-release/1",
-    "generatedAt":  "2026-11-17T20:54:12.4977201+08:00",
+    "generatedAt":  "2026-11-17T21:41:47.0610105+08:00",
     "packageName":  "com.codex.turnloom.app",
-    "versionName":  "2.1.5",
-    "versionCode":  86,
+    "versionName":  "2.1.6",
+    "versionCode":  87,
     "apkName":  "Codex-Turnloom.apk",
     "apkPath":  "D:\\pi11\\11\\Codex-Turnloom\\public\\downloads\\Codex-Turnloom.apk",
-    "sha256":  "74956e945a9751ecb06ce0d6c99a40571fee49c1c6ef16067d9d5f62ee6ecb76",
-    "sizeBytes":  1784661,
-    "notes":  "手机端模型选择现在真的生效；会话列表默认隐藏归档；断连保留缓存并提示；图片按钮直接打开相册；设置页更新卡片收紧间距。",
-    "artifactSha256":  "74956e945a9751ecb06ce0d6c99a40571fee49c1c6ef16067d9d5f62ee6ecb76",
-    "artifactSizeBytes":  1784661,
+    "sha256":  "3983c9bc36408a6127ee62ef1ff0545fc7e200050b68aef10e053ffd96798a93",
+    "sizeBytes":  1788757,
+    "notes":  "打开会话直接停在最新消息；思考/工具输出/错误提示改成独立区块，和正文分开。",
+    "artifactSha256":  "3983c9bc36408a6127ee62ef1ff0545fc7e200050b68aef10e053ffd96798a93",
+    "artifactSizeBytes":  1788757,
     "identity":  {
                      "applicationId":  "com.codex.turnloom.app",
-                     "versionName":  "2.1.5",
-                     "versionCode":  "86"
+                     "versionName":  "2.1.6",
+                     "versionCode":  "87"
                  },
     "apk":  {
                 "name":  "Codex-Turnloom.apk",
-                "bytes":  1784661,
-                "sha256":  "74956e945a9751ecb06ce0d6c99a40571fee49c1c6ef16067d9d5f62ee6ecb76"
+                "bytes":  1788757,
+                "sha256":  "3983c9bc36408a6127ee62ef1ff0545fc7e200050b68aef10e053ffd96798a93"
             },
     "buildSteps":  [
                        {
@@ -65,8 +65,8 @@
                        {
                            "name":  "aapt2-badging",
                            "status":  "ok",
-                           "detail":  "com.codex.turnloom.app/2.1.5/86"
+                           "detail":  "com.codex.turnloom.app/2.1.6/87"
                        }
                    ],
-    "sourceBuildManifest":  "D:\\pi-data\\data\\scratch\\8acb7d33-45f0-4751-9313-a9546fc993f8\\apk-215d\\build-manifest-2.1.5.json"
+    "sourceBuildManifest":  "D:\\pi-data\\data\\scratch\\8acb7d33-45f0-4751-9313-a9546fc993f8\\apk-216c\\build-manifest-2.1.6.json"
 }
