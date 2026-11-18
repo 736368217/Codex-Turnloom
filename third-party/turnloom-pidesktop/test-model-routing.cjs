@@ -95,7 +95,7 @@ if (source === before) throw new Error("could not redirect PIPE_PATH — refusin
 source = source.replace("const PI_DB = resolvePiDb();", `const PI_DB = ${JSON.stringify(dbPath)};`);
 if (!source.includes(JSON.stringify(dbPath))) throw new Error("could not redirect PI_DB");
 source +=
-  "\nmodule.exports = { handleAction, turnSettingsFromRequest, buildModelIndex, ensureSendableModel, modelPairUsable, sessionModelPair, fallbackModelPair, applyModelIfChanged, modelCapabilities, modelVisionFromRow };\n";
+  "\nmodule.exports = { handleAction, turnSettingsFromRequest, buildModelIndex, ensureSendableModel, modelPairUsable, modelPairSame, sessionModelPair, fallbackModelPair, applyModelIfChanged, modelCapabilities, modelVisionFromRow };\n";
 
 for (const name of ["codex-side.cjs", "bridge-config.cjs", "manifest.json"]) {
   fs.copyFileSync(path.join(path.dirname(SRC), name), path.join(outDir, name));
@@ -237,6 +237,40 @@ check(
   check("显式换模型不再触发 session/configure（原生弹窗来源）", calls.every((c) => c.operation !== "session/configure"), JSON.stringify(opsOf()));
   check("显式换模型这一轮照常发送", Boolean(calls.find((c) => c.operation === "agent/prompt")), JSON.stringify(opsOf()));
   check("普通发送仍调用 agent/prompt", Boolean(calls.find((c) => c.operation === "agent/prompt")), JSON.stringify(opsOf()));
+
+  // 同对判定必须容忍写法差异：目录写 `P1/x-model`，会话行里是裸 `x-model`。
+  check("modelPairSame：裸 id 与 前缀 id 视为同一模型", plugin.modelPairSame(
+    { providerId: "P1", modelId: "x-deepseek-v4.1-flash" },
+    { providerId: "P1", modelId: "77625 free/x-deepseek-v4.1-flash" },
+  ) === true);
+  check("modelPairSame：不同 provider 不算同一模型", plugin.modelPairSame(
+    { providerId: "P1", modelId: "deepseek-v4.1-flash" },
+    { providerId: "P2", modelId: "deepseek-v4.1-flash" },
+  ) === false);
+  check("modelPairSame：不同模型不算同一模型", plugin.modelPairSame(
+    { providerId: "P1", modelId: "deepseek-v4.1-flash" },
+    { providerId: "P1", modelId: "hy4flash-free" },
+  ) === false);
+  check("modelPairSame：缺字段一律 false（不猜）", plugin.modelPairSame({}, { providerId: "P1", modelId: "m" }) === false);
+
+  // 无人值守验收（NB 2026-11-18 P0）：连续 3 条普通发送 → session/configure 必须 0 次。
+  calls.length = 0;
+  for (let i = 0; i < 3; i += 1) {
+    await plugin.handleAction(
+      "thread-follower-start-turn",
+      {
+        conversationId: "sess-same",
+        turnStart: { request: { threadId: "sess-same", input: [{ type: "text", text: `plain-${i}` }], model: "77625 free/x-deepseek-v4.1-flash" } },
+      },
+      2,
+    );
+  }
+  check(
+    "连续 3 条普通发送：session/configure 0 次、agent/prompt 3 次",
+    calls.filter((c) => c.operation === "session/configure").length === 0 &&
+      calls.filter((c) => c.operation === "agent/prompt").length === 3,
+    JSON.stringify(opsOf()),
+  );
 
   // 同一模型 / 桥刚重载 / 解析不出模型：全部保持发送，不弹确认框。
   calls.length = 0;

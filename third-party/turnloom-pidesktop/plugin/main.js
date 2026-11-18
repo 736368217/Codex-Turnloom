@@ -1755,6 +1755,26 @@ function providerConfigModelIds(configJson) {
   }
 }
 
+/**
+ * 两个 (providerId, modelId) 是不是同一个模型。
+ *
+ * 必须容忍写法差异：目录 id 常写成 `wbfd/deepseek-v4.1-flash`，而会话行里存的是裸
+ * `deepseek-v4.1-flash`（供应商由 providerId 单独表达）。只做字符串全等比较的话，
+ * 同一模型会被判成"要切换"，进而去调宿主的 dangerous session/configure（原生弹窗）。
+ * 归一规则：provider 必须相等；modelId 全等、或最后一个 `/` 之后相同。
+ */
+function modelPairSame(a, b) {
+  const providerA = String(a?.providerId || "").trim();
+  const providerB = String(b?.providerId || "").trim();
+  const modelA = String(a?.modelId || "").trim();
+  const modelB = String(b?.modelId || "").trim();
+  if (!providerA || !providerB || !modelA || !modelB) return false;
+  if (providerA !== providerB) return false;
+  if (modelA === modelB) return true;
+  const tail = (value) => value.slice(value.lastIndexOf("/") + 1);
+  return tail(modelA) === tail(modelB);
+}
+
 /** 会话当前生效的模型对（直接读 pi.sqlite，不用可能过期的内存快照）。 */
 function sessionModelPair(sessionId) {
   const id = String(sessionId || "").trim();
@@ -1956,9 +1976,7 @@ async function applyModelIfChanged(sessionId, settings) {
   // session/configure —— 那是宿主的危险操作，会弹原生确认框；手机端没人能点，
   // 整次发送就挂在 60 秒超时上，最后只回一个 start-uncertain（实测 2026-11-18）。
   const current = sessionModelPair(sessionId) || currentSessionModel(sessionId);
-  const samePair = Boolean(current)
-    && current.providerId === settings.providerId
-    && current.modelId === settings.modelId;
+  const samePair = modelPairSame(current, settings);
   // 同一模型只换思考强度也必须真的下发一次，否则「强度改不动」永远是假的。
   const currentEffort = String(current?.thinkingLevel || "").trim();
   const sameEffort = !settings.thinkingLevel || !currentEffort || currentEffort === settings.thinkingLevel;
@@ -2468,6 +2486,7 @@ module.exports = {
   mergeModelRows,
   readPiSessions,
   modelPairUsable,
+  modelPairSame,
   providerConfigModelIds,
   fallbackModelPair,
 };
