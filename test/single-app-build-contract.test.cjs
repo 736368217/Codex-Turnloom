@@ -35,6 +35,8 @@ test("version and output filename come from the native build config", () => {
   assert.match(source, /\$versionName\s*=\s*\[regex\]::Match\(\$gradleText,\s*'versionName/);
   assert.match(source, /\$versionCodeText\s*=\s*\[regex\]::Match\(\$gradleText,\s*'versionCode/);
   assert.match(source, /\$apkName\s*=\s*"Codex-Turnloom-\$versionName-app\.apk"/);
+  // A debug build must not collide with the shipped name in dist-app/.
+  assert.match(source, /\$apkName = "Codex-Turnloom-\$versionName-app-debug\.apk"/);
   assert.doesNotMatch(source, /Codex-Turnloom-2\.0\.0-app\.apk/);
   assert.doesNotMatch(source, /version\s*=\s*'2\.0\.0-app'|versionCode\s*=\s*80/);
   assert.match(source, /Refusing to overwrite existing output/);
@@ -43,8 +45,11 @@ test("version and output filename come from the native build config", () => {
 
 test("scratch root is contained and reparse points are removed without recursing", () => {
   const source = fs.readFileSync(BUILD, "utf8");
-  assert.match(source, /PI_SCRATCH_DIR is required/);
-  assert.match(source, /StartsWith\(\$scratchFull \+ \[IO\.Path\]::DirectorySeparatorChar/);
+  // A scratch root is still mandatory, but it must not require a machine-local
+  // PI_SCRATCH_DIR: it falls back to <repo>/.scratch.
+  assert.match(source, /Get-EnvOrEmpty 'PI_SCRATCH_DIR'/);
+  assert.match(source, /Join-Path \$repoFull '\.scratch'/);
+  assert.match(source, /StartsWith\(\$allowedFull \+ \[IO\.Path\]::DirectorySeparatorChar/);
   assert.match(source, /ReparsePoint/);
   assert.match(source, /\[IO\.Directory\]::Delete\(\$child\.FullName, \$false\)/);
   assert.match(source, /node_modules/);
