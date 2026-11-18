@@ -488,6 +488,7 @@ try {
         $releaseTmp = "$releaseFile.tmp"
         $releaseManifest = [ordered]@{
             schema              = 'turnloom-app-release/1'; generatedAt = (Get-Date).ToString('o')
+            channel             = $(if ($BuildType -eq 'debug') { 'debug' } else { 'release' })
             packageName         = $configuredPackage; versionName = $versionName; versionCode = $versionCode
             apkName             = (Split-Path -Leaf $stagedFull); apkPath = $stagedFull
             sha256              = $hash; sizeBytes = $size; notes = $ReleaseNotes

@@ -127,6 +127,11 @@ test("release helper CLI verifies a staged fixture without writing it", () => {
   }
 });
 
+test("release sidecar declares the signing channel instead of implying it", () => {
+  const source = fs.readFileSync(BUILD, "utf8");
+  assert.match(source, /channel\s+=\s\$\(if \(\$BuildType -eq 'debug'\) \{ 'debug' \} else \{ 'release' \}\)/);
+});
+
 test('hidden launcher preserves spaced arguments and rejects a real nonzero child exit', { skip: process.platform !== 'win32' }, () => {
   const dir = fs.mkdtempSync(path.join(process.env.PI_SCRATCH_DIR || os.tmpdir(), 'launcher test '));
   const child = path.join(dir, 'child with spaces.cjs');

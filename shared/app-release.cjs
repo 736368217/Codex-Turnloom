@@ -8,6 +8,13 @@
  * package.json nor the frozen android/ build files are an authority. Every
  * read streams and hashes the staged bytes again so a swapped or truncated
  * artifact fails closed instead of advertising an unverifiable update.
+ *
+ * `channel` is the only opt-in that changes the accepted build steps: an
+ * explicit "debug" manifest may carry `assembleDebug` (AGP signs with the
+ * debug key) instead of `assembleRelease`. Every other required step, the real
+ * byte hash and the size check stay identical, and a manifest without the
+ * channel keeps release semantics, so a debug artifact can never slip through
+ * by accident.
  */
 
 const crypto = require("node:crypto");
@@ -22,6 +29,13 @@ const EMPTY_SHA256 = "0".repeat(64);
 const REQUIRED_BUILD_STEPS = [
   "vite-build",
   "assembleRelease",
+  "apksigner-sign",
+  "apksigner-verify",
+  "aapt2-badging"
+];
+const DEBUG_BUILD_STEPS = [
+  "vite-build",
+  "assembleDebug",
   "apksigner-sign",
   "apksigner-verify",
   "aapt2-badging"
@@ -62,6 +76,7 @@ function unavailable(reason, details = {}) {
     sizeBytes: 0,
     notes: "",
     apkUpdatedAt: "",
+    channel: "",
     signature: null,
     ...details
   };
@@ -77,10 +92,14 @@ function hashFile(apkPath) {
   });
 }
 
-function buildStepsComplete(value) {
+function buildStepsComplete(value, required = REQUIRED_BUILD_STEPS) {
   if (!Array.isArray(value)) return false;
   const names = new Set(value.map((row) => (isObject(row) ? String(row.name || "") : String(row || ""))));
-  return REQUIRED_BUILD_STEPS.every((name) => names.has(name));
+  return required.every((name) => names.has(name));
+}
+
+function manifestChannel(manifest) {
+  return cleanText(manifest.channel, 32).toLowerCase();
 }
 
 function manifestRecord(manifest, apkPath) {
@@ -94,7 +113,8 @@ function manifestRecord(manifest, apkPath) {
     sha256: cleanText(manifest.sha256 || apk.sha256, 64).toLowerCase(),
     sizeBytes: parsePositiveInteger(manifest.sizeBytes ?? apk.bytes),
     notes: typeof manifest.notes === "string" ? cleanText(manifest.notes, 2000) : "",
-    apkName: cleanText(manifest.apkName || apk.name || path.basename(String(manifest.apkPath || "")), 255)
+    apkName: cleanText(manifest.apkName || apk.name || path.basename(String(manifest.apkPath || "")), 255),
+    channel: manifestChannel(manifest)
   };
 }
 
@@ -106,8 +126,12 @@ function validateRelease(manifest, apkPath, stat) {
   if (!record.versionCode) return { error: "invalid versionCode", record };
   if (!/^[0-9a-f]{64}$/.test(record.sha256)) return { error: "invalid sha256", record };
   if (!record.sizeBytes) return { error: "invalid sizeBytes", record };
+  if (record.channel && record.channel !== "debug" && record.channel !== "release") {
+    return { error: "unsupported channel", record };
+  }
+  const required = record.channel === "debug" ? DEBUG_BUILD_STEPS : REQUIRED_BUILD_STEPS;
   if (record.sizeBytes !== stat.size) return { error: "size-mismatch", record };
-  if (!buildStepsComplete(manifest.buildSteps) && !buildStepsComplete(manifest.steps)) {
+  if (!buildStepsComplete(manifest.buildSteps, required) && !buildStepsComplete(manifest.steps, required)) {
     return { error: "incomplete build verification", record };
   }
   if (manifest.artifactSha256 && String(manifest.artifactSha256).toLowerCase() !== record.sha256) {
@@ -186,7 +210,8 @@ async function readAppRelease(apkPath, options = {}) {
     sizeBytes: record.sizeBytes,
     notes: record.notes || `${record.versionName} (${record.versionCode})`,
     apkUpdatedAt: new Date(stat.mtimeMs).toISOString(),
-    signature: statSignature(stat),
+    channel: record.channel || "release",
+    signature: { kind: record.channel === "debug" ? "debug" : "release", ...statSignature(stat) },
     ...base
   };
 }
@@ -260,6 +285,7 @@ module.exports = {
   APK_URL,
   DEFAULT_PACKAGE_NAME,
   REQUIRED_BUILD_STEPS,
+  DEBUG_BUILD_STEPS,
   manifestPathFor,
   defaultApkPath,
   readAppRelease,

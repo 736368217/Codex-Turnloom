@@ -23,6 +23,7 @@ const GATEWAY = require(path.join(ROOT, "server", "machine-gateway.cjs"));
 const TOKEN = "TEST-HARNESS-TOKEN";
 const APK_BYTES = Buffer.from("staged-apk-fixture-0123456789-ABCDEFGHIJKLMNOPQRSTUVWXYZ");
 const STEPS = RELEASE.REQUIRED_BUILD_STEPS.map((name) => ({ name, status: "ok", detail: "" }));
+const DEBUG_STEPS = RELEASE.DEBUG_BUILD_STEPS.map((name) => ({ name, status: "ok", detail: "" }));
 
 function makeFixture(versionName = "2.1.0", versionCode = 81) {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "turnloom-app-release-"));
@@ -189,6 +190,47 @@ test("staged manifest is authoritative and re-hashed on every read", async () =>
   }
 });
 
+test("only an explicit debug channel accepts an assembleDebug artifact", async () => {
+  const fixture = makeFixture();
+  try {
+    writeManifest(fixture, { buildSteps: DEBUG_STEPS });
+    const implicit = await RELEASE.readAppRelease(fixture.apk);
+    assert.equal(implicit.available, false);
+    assert.equal(implicit.reason, "invalid-metadata");
+    assert.equal(implicit.error, "incomplete build verification");
+
+    writeManifest(fixture, { channel: "debug", buildSteps: DEBUG_STEPS });
+    const debug = await RELEASE.readAppRelease(fixture.apk);
+    assert.equal(debug.available, true);
+    assert.equal(debug.versionCode, 81);
+    assert.equal(debug.channel, "debug");
+    assert.equal(debug.signature.kind, "debug");
+    assert.equal(debug.sha256, fixture.digest);
+    assert.equal(debug.sizeBytes, APK_BYTES.length);
+
+    writeManifest(fixture, { channel: "debug", buildSteps: DEBUG_STEPS.filter((step) => step.name !== "apksigner-verify") });
+    assert.equal((await RELEASE.readAppRelease(fixture.apk)).error, "incomplete build verification");
+
+    writeManifest(fixture, { channel: "beta", buildSteps: DEBUG_STEPS });
+    assert.equal((await RELEASE.readAppRelease(fixture.apk)).error, "unsupported channel");
+
+    writeManifest(fixture, { channel: "release", buildSteps: DEBUG_STEPS });
+    assert.equal((await RELEASE.readAppRelease(fixture.apk)).error, "incomplete build verification");
+
+    writeManifest(fixture, {});
+    const release = await RELEASE.readAppRelease(fixture.apk);
+    assert.equal(release.available, true);
+    assert.equal(release.channel, "release");
+    assert.equal(release.signature.kind, "release");
+
+    fs.writeFileSync(fixture.apk, Buffer.from(`${APK_BYTES.toString("utf8")}-swapped`));
+    writeManifest(fixture, { channel: "debug", buildSteps: DEBUG_STEPS });
+    assert.equal((await RELEASE.readAppRelease(fixture.apk)).reason, "size-mismatch");
+  } finally {
+    fs.rmSync(fixture.dir, { recursive: true, force: true });
+  }
+});
+
 test("direct backend authenticates release endpoints and serves exact APK ranges", async () => {
   const fixture = makeFixture();
   await withServer({ apk: fixture.apk }, async ({ port }) => {
@@ -256,6 +298,13 @@ test("direct backend authenticates release endpoints and serves exact APK ranges
     const stagedVersion = await jsonRequest(port, "/api/app/update");
     assert.equal(stagedVersion.json.versionCode, 80);
     assert.equal(stagedVersion.json.versionName, "2.0.0");
+
+    writeManifest(fixture, { channel: "debug", buildSteps: DEBUG_STEPS, versionCode: 91, versionName: "2.2.2" });
+    const debugUpdate = await jsonRequest(port, "/api/app/update");
+    assert.equal(debugUpdate.json.available, true);
+    assert.equal(debugUpdate.json.versionCode, 91);
+    assert.equal(debugUpdate.json.versionName, "2.2.2");
+    assert.equal(debugUpdate.json.sha256, fixture.digest);
   });
   fs.rmSync(fixture.dir, { recursive: true, force: true });
 });
