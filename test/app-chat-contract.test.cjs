@@ -399,7 +399,16 @@ test('long multiline messages remain compact at 393px and 320px', () => {
   assert.match(styles.CHAT_COMPACT_CSS, /justify-content:\s*flex-start/);
   assert.doesNotMatch(styles.CHAT_COMPACT_CSS, /space-between|space-around|space-evenly/);
   const css = read('app/src/theme/globals.css');
-  assert.match(css, /\.tl-chat-bubble\s*\{[^}]*line-height:\s*21px/s);
+  // 气泡排版的真源必须只有一个：globals.css 的类与 chatStyles 的内联值不能各说一个数。
+  // 不冻结具体像素（14/21 → 15/22 这种排版调整不该让门禁红），但必须挡住审计里
+  // “lineHeight: 20 被当成 20 倍字号、行高 280px”的老问题。
+  const bubbleBlock = /\.tl-chat-bubble\s*\{([^}]*)\}/s.exec(css)?.[1] || '';
+  const cssLineHeight = Number((/line-height:\s*(\d+)px/.exec(bubbleBlock) || [])[1] || 0);
+  const cssFontSize = Number((/font-size:\s*(\d+)px/.exec(bubbleBlock) || [])[1] || 0);
+  assert.ok(cssLineHeight >= 20 && cssLineHeight <= 24, `气泡行高必须是像素小倍数，当前 ${cssLineHeight}px（曾经被写成 20 倍字号）`);
+  assert.ok(cssFontSize >= 14 && cssFontSize <= 16, `气泡字号应在 14–16px，当前 ${cssFontSize}px`);
+  assert.equal(cssLineHeight, styles.CHAT_BUBBLE_LINE_HEIGHT,
+    'globals.css 与 chatStyles.CHAT_BUBBLE_LINE_HEIGHT 必须是同一个行高，否则内联样式与类互相覆盖');
   assert.match(css, /\.tl-chat-bubble \*[^}]*min-height:\s*0/s);
   assert.doesNotMatch(css, /\.tl-thumbbar\s*\{/);
   assert.match(css, /\.tl-composer-button\s*\{[^}]*min-width:\s*44px[^}]*min-height:\s*44px/s);
