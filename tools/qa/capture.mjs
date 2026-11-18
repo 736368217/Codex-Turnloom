@@ -136,6 +136,10 @@ function stopStack() {
 }
 
 const BRIDGE_SHIM = `(() => {
+  // QA_BRIDGE_SEND_FAIL=network|timeout answers /api/send at the native boundary.
+  // This is what Android delivers when the socket dies or the read timer fires;
+  // the server.js -> fixture path cannot produce it (server.js would return 502).
+  const QA_BRIDGE_SEND_FAIL = ${JSON.stringify(String(process.env.QA_BRIDGE_SEND_FAIL || "").trim())};
   const store = {
     get: (k) => { try { return localStorage.getItem('tlqa::' + k); } catch { return null; } },
     set: (k, v) => { try { localStorage.setItem('tlqa::' + k, v); return true; } catch { return false; } },
@@ -147,6 +151,11 @@ const BRIDGE_SHIM = `(() => {
     request(requestId, payloadJson) {
       let payload = {};
       try { payload = JSON.parse(payloadJson); } catch {}
+      if (QA_BRIDGE_SEND_FAIL && String(payload.url || '').endsWith('/api/send')) {
+        window.__TLQA.requests.push({ requestId, url: payload.url, method: payload.method, status: 0, error: QA_BRIDGE_SEND_FAIL });
+        setTimeout(() => window.__turnloomNativeHttpResult?.(requestId, JSON.stringify({ status: 0, body: '', error: QA_BRIDGE_SEND_FAIL })), 30);
+        return;
+      }
       const controller = new AbortController();
       inFlight.set(requestId, controller);
       const started = performance.now();
@@ -407,7 +416,30 @@ async function runViewport(browser, viewport, report) {
       await sleep(400);
       await shot(page, dir, "11-composer-typing", report);
       await clickSelector(page, "button[aria-label='发送']", { optional: true });
-      await sleep(1200);
+      if (process.env.QA_SEND_FAIL || process.env.QA_BRIDGE_SEND_FAIL) {
+        // 2.2.1: the failure must render as text the user can read, keep the
+        // draft, and never be replaced by a bare status code.
+        await page.waitFor(".tl-composer-error", { timeoutMs: 40_000 });
+        report.sendError = await page.eval(`(() => {
+          const el = document.querySelector('.tl-composer-error');
+          if (!el) return null;
+          const style = getComputedStyle(el);
+          const rect = el.getBoundingClientRect();
+          const input = document.querySelector('textarea.tl-composer-input');
+          return {
+            text: (el.textContent || '').trim(),
+            role: el.getAttribute('role') || '',
+            height: Math.round(rect.height),
+            lines: Math.round(rect.height / (parseFloat(style.lineHeight) || 18)),
+            horizontalOverflow: el.scrollWidth > el.clientWidth + 1,
+            overflowWrap: style.overflowWrap,
+            draftKept: Boolean(input && String(input.value || '').trim()),
+          };
+        })()`);
+        log(`send error: ${JSON.stringify(report.sendError)}`);
+        await shot(page, dir, "11b-send-error", report);
+      }
+      await sleep(process.env.QA_SEND_FAIL ? 800 : 1200);
       report.sends = await (await fetch(`http://127.0.0.1:${PORTS.fixture}/__qa/sends`)).json();
       log(`send bodies: ${JSON.stringify(report.sends)}`);
       await page.eval(`(() => { const el = document.querySelector('textarea.tl-composer-input'); if (!el) return; const setter = Object.getOwnPropertyDescriptor(el.constructor.prototype,'value').set; setter.call(el,''); el.dispatchEvent(new Event('input',{bubbles:true})); })()`);

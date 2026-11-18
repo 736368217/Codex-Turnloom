@@ -18,6 +18,14 @@ const PORT = Number(process.env.QA_FIXTURE_PORT || 7802);
 const HOST = "127.0.0.1";
 const HASH_OK = "a".repeat(64);
 const HASH_STALE = "b".repeat(64);
+/**
+ * QA_SEND_FAIL turns POST /threads/:id/messages into the 2.2.1 failure modes:
+ *   image-400  400 with a real Chinese host sentence + code
+ *   reset      drop the socket (transport failure; the app retries once)
+ *   timeout    never answer (the client's 30 s timer must win)
+ * Unset = the normal 200 fixture used by the visual/usability suite.
+ */
+const SEND_FAIL = String(process.env.QA_SEND_FAIL || "").trim();
 const now = Date.now();
 
 const WIDE_CODE = [
@@ -161,7 +169,15 @@ const server = http.createServer((req, res) => {
     if (msgMatch && req.method === "POST") {
       let payload = {};
       try { payload = JSON.parse(body || "{}"); } catch { payload = {}; }
-      sendsSeen.push({ threadId: decodeURIComponent(msgMatch[1]), model: payload.model ?? null, effort: payload.effort ?? null, message: String(payload.message || "").slice(0, 40), hasModelField: Object.prototype.hasOwnProperty.call(payload, "model") });
+      sendsSeen.push({ threadId: decodeURIComponent(msgMatch[1]), model: payload.model ?? null, effort: payload.effort ?? null, message: String(payload.text ?? payload.message ?? "").slice(0, 40), hasModelField: Object.prototype.hasOwnProperty.call(payload, "model") });
+      if (SEND_FAIL === "image-400") {
+        return json(res, 400, {
+          error: "图片尺寸超出电脑端限制（单边 16–4096px，且总像素 ≤12MP），请压缩或裁剪后再发送。",
+          code: "image_dimensions_out_of_range",
+        });
+      }
+      if (SEND_FAIL === "reset") { req.socket.destroy(); return; }
+      if (SEND_FAIL === "timeout") return; // leave the socket open; the app's timer decides
       return json(res, 200, { ok: true });
     }
     if (path === "/threads" && req.method === "POST") {

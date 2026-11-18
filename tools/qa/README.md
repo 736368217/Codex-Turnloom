@@ -12,6 +12,21 @@ node tools/qa/capture.mjs --only threads,chat --dump   # 只跑部分屏；--dum
 
 输出：每个视口一个目录（`<out>/390x844/01-connect.png` …），加上 `report.json`（每屏的横向溢出、越界元素、<44px 交互元素、TabBar/输入舱几何、请求日志、审批请求体）。
 
+## 2.2.1 发送链路：故障 E2E 与真实照片压缩
+
+```powershell
+node --test test/app-send-faults.test.cjs          # 400/超时/断连/重试/诊断上报（真实 HTTP 故障服务）
+node tools/qa/compress-check.mjs                    # 4032×3024 → 2048 长边 JPEG，headless Edge + 真 /api/send
+$env:QA_SEND_FAIL='image-400'; node tools/qa/capture.mjs --only chat,compose --viewports 390x844,360x800,320x568
+$env:QA_BRIDGE_SEND_FAIL='network'; node tools/qa/capture.mjs --only chat,compose --viewports 390x844
+$env:QA_BRIDGE_SEND_FAIL='timeout'; node tools/qa/capture.mjs --only chat,compose --viewports 390x844
+```
+
+- `send-fault-server.mjs`：`/api/send` 的确定性故障旋钮（`ok / image-400 / english-400 / chinese-400 / empty-400 / 413 / timeout / reset / reset-once / 401 / slow-ok`），并实现 `/api/diagnostics` 的 200/401/413 与最近 200 条截断。它也记录每次请求的 `clientRequestId`、图片名与字节数，供 `test/app-send-faults.test.cjs` 断言。
+- `compress-check.mjs`：把生产 `app/src/lib/imageUpload.ts` 用 app 自带的 esbuild 打成 IIFE，在 390×844@3 的 headless Edge 里跑真实 canvas 压缩，再把结果 POST 到故障服务；输出 `.scratch/qa/compress-report.json`（源图字节、长边、输出字节、请求体字节、发送状态）。
+- `capture.mjs` 的两个环境变量：`QA_SEND_FAIL` 让 fixture 后端回 400/reset/timeout；`QA_BRIDGE_SEND_FAIL=network|timeout` 在**原生桥边界**回答 status 0（这是 Android socket 断开/读超时的真实形状，`server.js` 到 fixture 的链路做不到——fixture 断开会变成 502）。两者都会截 `11b-send-error` 并记录文案、行数、横向溢出、`role`、草稿是否保留。
+- 截图落在 `docs/qa/visual/send/<场景>/<视口>/11b-send-error.png`；该目录被 `.gitignore` 忽略，只在 Thread/报告里引用。
+
 ## 组成
 
 | 文件 | 作用 |
