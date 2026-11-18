@@ -8316,10 +8316,14 @@ const server = http.createServer(async (req, res) => {
       }
       clearAuthFailures(req);
       const profile = req.turnloomProfile;
+      // 发现接口可以拿机器码（machineToken）来调，但返回的 harness token 必须是
+      // `/api/*` 真正认的那个。以前这里回落到 `requestedToken`，于是机器码被当成
+      // harness 令牌发回手机：发现成功、随后 /api/health 401，App 报「机器访问码
+      // 不正确或已更换」（2026-11-18 真机 D1）。
       const harness = {
         id: profile?.id || "default",
         name: profile?.label || MACHINE_NAME,
-        token: isHarnessToken ? ACCESS_TOKEN : profile?.token || requestedToken,
+        token: isHarnessToken ? ACCESS_TOKEN : profile?.token || ACCESS_TOKEN,
         kind: profile?.backend || BACKEND_KIND,
         defaultHarness: true,
         online: true,
