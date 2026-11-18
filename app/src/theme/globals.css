@@ -1542,15 +1542,32 @@ button:focus-visible, a:focus-visible { outline: 2px solid var(--tl-blue); outli
   min-width: 0; font-size: 13px; line-height: 18px; color: var(--tl-label-secondary);
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
+.tl-settings-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.tl-settings-title {
+  min-width: 0; font-size: 15px; line-height: 20px; color: var(--tl-label-primary);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.tl-settings-sub {
+  min-width: 0; font-size: 11px; line-height: 15px; color: var(--tl-label-secondary);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
 .tl-settings-row--danger { color: var(--tl-red); }
 .tl-settings-row--danger .tl-settings-icon { color: var(--tl-red); }
 
 /* Blank chat (new thread): the message area is the empty state, not a
    one-line note pinned under the header. */
 .tl-chat-list.tl-chat-list--blank {
-  display: flex; min-height: 100%; height: auto;
+  display: flex; height: 100%; min-height: 0;
   margin: 0; padding: 24px 28px 12px;
   border-radius: 0; background: transparent; box-shadow: none;
+}
+/* The body must be a flex column for the blank state to receive a real height;
+   percentage height alone does not resolve against the flex item. */
+.tl-detail-body.tl-detail-body--blank {
+  display: flex; flex-direction: column; overflow: hidden;
+}
+.tl-detail-body--blank > .tl-chat-list.tl-chat-list--blank {
+  flex: 1 1 auto; height: auto; min-height: 0;
 }
 .tl-chat-list--blank .tl-chat-blank {
   flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center;
