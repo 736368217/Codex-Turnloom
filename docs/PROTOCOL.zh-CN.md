@@ -287,6 +287,75 @@ codex-turnloom://pair/add?v=2&protocol=codex-turnloom&machine=office-pc&url=http
 4. 回归测试：`test/approval-safety.test.js`（函数级 fail-closed）、
    `test/http-approval-route.test.cjs`（真实进程 + 真实 `POST /api/approval` 的状态码与 `code`）。
 
+## 11. 手机诊断归档（`POST /api/diagnostics`）
+
+手机端把发送失败/超时/401/压缩失败的本地环形缓冲上报到这里；服务端只归档，不参与发送，
+上报失败也不得影响发送或把界面打成离线。
+
+```json
+{ "machine": "REPLACE_WITH_MACHINE", "appVersion": "2.2.1",
+  "records": [
+    { "at": "2026-11-18T21:20:00+08:00", "kind": "send", "status": 400,
+      "code": "image_dimensions_out_of_range", "path": "/api/send",
+      "message": "图片尺寸超出电脑端限制…", "detail": { "bytes": 812345, "edge": 4032 } }
+  ] }
+```
+
+- 鉴权同其他 `/api/*`（`x-access-token` 或会话 cookie）；未鉴权 `401 { code:"unauthorized" }`，**不是离线**。
+- `kind ∈ send | timeout | auth | compress | transport | other`，其它值归 `other`。
+- 白名单字段：`at`、`kind`、`status`、`code`、`path`、`method`、`message`、`threadId`、`appVersion`、`device`、`detail`；
+  其余字段丢弃。单条字符串 ≤300 字，单条序列化 ≤2 KiB，`path` 的 query 被剥掉。
+- 请求体硬上限 **256 KiB**（先于 JSON 解析），超出 → `413 { error, code:"payload_too_large" }`。
+- 单次最多保留最新 200 条；落盘 `%LOCALAPPDATA%\CodexPocket\logs\phone\<machine>-<YYYYMMDD>.jsonl`，
+  同一文件保留最近 1000 行。`machine` 只保留字母/数字/`._-`（含中文），非法字符折叠成 `-`。
+- 响应 `200 { ok:true, stored, dropped, file }`。
+
+## 12. 桌面端更新检查（`GET /api/desktop/update`）
+
+只读接口：只报告「当前跑什么」与「发布清单说什么」，**不下载、不替换、不重启**；升级必须由
+`scripts/update-turnloom.ps1` 人工执行。
+
+- `/api/health` 新增 `version`、`buildSha`、`startedAt`。`version` 优先读安装根目录的 `VERSION.json`
+  （打包脚本写入），其次 `package.json`；`buildSha` 取 `VERSION.json.buildSha|gitCommit`，**不**用文件清单摘要。
+- 更新源优先级：控制台配置 `updateSource.desktop` → 环境变量 `TURNLOOM_UPDATE_SOURCE` →
+  `<root>/public/downloads/desktop-release.json` → `<root>/desktop-release.json`。值可为本地路径或 `http(s)://`。
+- 清单字段：`version`（必填）、`sha256`、`sizeBytes`、`downloadUrl`（同源相对路径或绝对 URL）、`notes`、
+  `publishedAt`、可选 `upgradeScript`；由 `scripts/write-desktop-release.cjs` 从产物现算，不手写。
+- 远端清单里的相对 `downloadUrl` / `upgradeScript` 按**清单自身 origin** 解析（de 上的 `127.0.0.1` 不是发布机）。
+- 响应：
+
+```json
+{ "ok": true,
+  "current": { "version": "2.2.1", "buildSha": "abc1234", "startedAt": "…", "versionSource": "VERSION.json" },
+  "latest": { "available": true, "version": "2.2.1", "packageName": "turnloom-2.2.1-server.zip",
+              "sha256": "…", "sizeBytes": 384386, "downloadUrl": "https://host.example.com/downloads/x.zip",
+              "upgradeScript": "", "notes": "…", "publishedAt": "…", "generatedAt": "…" },
+  "updateSource": { "kind": "url", "label": "updateSource", "configured": true },
+  "updateAvailable": false, "upToDate": true }
+```
+
+- 清单缺失/坏 JSON/404/超 64 KiB → `latest:{ available:false, reason }`，HTTP 仍为 `200`
+  （控制台显示「更新源不可用」，不是检查失败）。
+- `updateAvailable` 仅在 `latest.version > current.version` 时为 `true`；`-rc` 视为低于同号正式版。
+
+## 13. 服务端请求日志
+
+每个 `/api/*` 请求一行 JSON，追加到 `%LOCALAPPDATA%\CodexPocket\logs\server-YYYYMMDD.log`
+（本地日期换文件，单文件 8 MiB、保留 4 代）：
+
+```
+{"ts":"…","source":"server","level":"warn","method":"POST","path":"/api/send",
+ "status":400,"ms":15,"harness":"default","threadId":"…","code":"image_dimensions_out_of_range",
+ "note":"images=1"}
+```
+
+- 只记 pathname：query（含访问码）、消息正文、附件字节永不写入；`harness` 是 profile id。
+- 5xx 额外带 `stack`（日志脱敏后截断）。
+- 客户端在响应前断开：`status:0`、`code:"client_aborted"`、`note` 以 `aborted` 结尾。
+- 机器网关 `server/machine-gateway.cjs` 写同一目录，`source:"gateway"`，`note` 记
+  `via=header|cookie|query|referer`；未匹配的 harness 记 `unauthorized`。
+- 回归：`test/server-logging.test.js`。
+
 ---
 
 相关文档：`docs/INSTALL.zh-CN.md`（三端安装与发布矩阵）、`deploy/machine.example.json`
