@@ -29,6 +29,7 @@ const {
   normalizeBaseUrl,
   normalizeHarnesses,
 } = require("../shared/machine-pairing.cjs");
+const requestLog = require("./request-log.cjs");
 
 const HERE = __dirname;
 const PROJECT_ROOT = path.resolve(HERE, "..");
@@ -380,6 +381,33 @@ function createGateway(config, options = {}) {
   }
 
   const server = http.createServer(async (req, res) => {
+    const startedAt = Date.now();
+    const pathname = String(req.url || "/").split("?")[0] || "/";
+    // The public entry point is exactly where a phone complaint starts, so every
+    // routed request lands in logs\server-YYYYMMDD.log next to the harness logs.
+    let harnessId = "";
+    let routeNote = "";
+    let logged = false;
+    const flush = (aborted) => {
+      if (logged) return;
+      logged = true;
+      try {
+        requestLog.writeRequestLog(logDir, requestLog.requestLogRecord({
+          source: "gateway",
+          level: aborted ? "warn" : undefined,
+          method: req.method || "GET",
+          pathname,
+          status: aborted && !res.headersSent ? 0 : res.statusCode,
+          durationMs: Date.now() - startedAt,
+          harness: harnessId,
+          threadId: requestLog.threadIdFromRequestPath(pathname),
+          code: aborted ? "client_aborted" : "",
+          note: aborted ? [routeNote, "aborted"].filter(Boolean).join(" ") : routeNote,
+        }));
+      } catch {}
+    };
+    res.once("finish", () => flush(false));
+    res.once("close", () => flush(!res.writableEnded));
     const blocked = blockedRemainingMs(req);
     if (blocked > 0) {
       sendJson(res, 429, { error: "Too many failed access-code attempts", retryAfterMs: blocked }, {
@@ -390,6 +418,7 @@ function createGateway(config, options = {}) {
     const auth = authorizationFromRequest(req);
 
     if (req.method === "GET" && auth.pathname === HARNESS_PATH) {
+      routeNote = "discovery";
       const discoveryTokens = [config.machineToken, ...(config.legacyMachineTokens || [])];
       if (!discoveryTokens.some((token) => tokensEqual(auth.token, token))) {
         if (auth.token) noteFailure(req);
@@ -408,7 +437,9 @@ function createGateway(config, options = {}) {
     // 免鉴权的更新公告：未配对/机器码已轮换的手机也要能查更新，否则「扫码坏了」
     // 就永远升不了级、修不了。只回版本号 / SHA / 下载路径，无会话与凭据。
     if (req.method === "GET" && auth.pathname === "/api/app/update-public") {
+      routeNote = "update-public";
       const harness = config.harnesses.find((item) => item.defaultHarness) || config.harnesses[0];
+      harnessId = harness ? harness.id : "";
       if (!harness) {
         sendJson(res, 503, { error: "no-harness" });
         return;
@@ -434,6 +465,7 @@ function createGateway(config, options = {}) {
       return;
     }
     if (req.method === "GET" && auth.pathname === "/__turnloom/health") {
+      routeNote = "health";
       sendJson(res, 200, {
         ok: true,
         protocol: PROTOCOL,
@@ -446,6 +478,7 @@ function createGateway(config, options = {}) {
 
     const harness = config.byToken.get(auth.token);
     if (!harness) {
+      routeNote = "unauthorized";
       if (auth.token) noteFailure(req);
       const isMachineToken = tokensEqual(auth.token, config.machineToken);
       sendJson(res, 401, {
@@ -456,6 +489,8 @@ function createGateway(config, options = {}) {
       return;
     }
     clearFailures(req);
+    harnessId = harness.id;
+    routeNote = `via=${auth.via}`;
     const routine = /^\/api\/(?:health|auth\/session)(?:\?|$)/i.test(req.url || "");
     if (!routine && !/\.(?:css|js|svg|png|ico|webp|woff2?|map)$/i.test(req.url || "")) {
       log(`${req.method} ${redactTokens(req.url, config)} -> ${harness.id} (${auth.via})`);

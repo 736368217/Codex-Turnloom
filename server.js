@@ -31,6 +31,7 @@ const require = createRequire(import.meta.url);
 const machinePairing = require("./shared/machine-pairing.cjs");
 const appRelease = require("./shared/app-release.cjs");
 const sendFiles = require("./shared/send-files.cjs");
+const requestLog = require("./server/request-log.cjs");
 
 const modulePath = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(modulePath);
@@ -191,6 +192,38 @@ function logFatalError(label, error) {
   console.error(message);
 }
 
+/** Host log directory; resolved per call so a test can point TURNLOOM_LOG_DIR at a temp dir. */
+function serverLogDir() {
+  return requestLog.resolveLogDir();
+}
+
+/**
+ * One JSON line per /api/* request, appended to
+ * `%LOCALAPPDATA%\CodexPocket\logs\server-YYYYMMDD.log`.
+ *
+ * The record never carries the query string or the message body: the phone's
+ * access code lives in the query/header and the conversation text is exactly
+ * what the operator does not want archived. `threadId`, `harness` and a stable
+ * `code` are enough to find the failing request again.
+ */
+function logApiRequest({ method, pathname, status, durationMs, profile, threadId, code, stack, note, aborted = false }) {
+  const level = aborted ? "warn" : status >= 500 ? "error" : status >= 400 ? "warn" : "info";
+  const record = requestLog.requestLogRecord({
+    source: "server",
+    level,
+    method,
+    pathname,
+    status,
+    durationMs,
+    harness: profile?.id || "",
+    threadId,
+    code,
+    stack,
+    note
+  });
+  requestLog.writeRequestLog(serverLogDir(), record);
+}
+
 function formatDuration(ms) {
   const totalSeconds = Math.max(0, Math.floor(ms / 1000));
   const days = Math.floor(totalSeconds / 86400);
@@ -254,6 +287,12 @@ const sqliteDriverState = { active: "unknown", lastNodeError: "", lastCliError: 
 function normalizeLogPath(pathname) {
   return String(pathname || "/").replace(/\/api\/threads\/[0-9a-fA-F-]{20,}\/messages$/, "/api/threads/:id/messages");
 }
+
+/**
+ * Which conversation is this request about? Read it from the URL only, so the
+ * log line can be written even when the request fails before the body parses.
+ */
+const threadIdFromRequestPath = requestLog.threadIdFromRequestPath;
 
 function shouldLogHttpEvent({ method, pathname, statusCode, level }) {
   if (level !== "warn" || statusCode !== 401) return true;
@@ -713,7 +752,50 @@ function rawDebugEventsLimit(value = 80) {
   return Math.max(1, Math.min(300, Math.floor(limit)));
 }
 
+/**
+ * Known host causes, translated once. Anything not listed keeps its original
+ * sentence: showing the host's own words is always better than `HTTP-400`, and
+ * a new English cause is a visible bug rather than a silent one.
+ */
+function localizeHostError(message) {
+  const text = String(message || "");
+  if (!text) return text;
+  if (/^read-only mode is enabled/i.test(text)) return "电脑端当前是只读模式，无法执行这个操作。请去掉 --readonly 后重启服务。";
+  if (/^this send request id was already used/i.test(text)) return "这次请求的 id 已被另一条内容占用，请重新发送。";
+  if (/^invalid send mode/i.test(text)) return "发送模式无效（仅支持 start / queue / steer）。";
+  if (/^no target thread selected/i.test(text)) return "没有可发送的会话，请先选择一个会话。";
+  if (/^thread not found/i.test(text)) return "这个会话已不存在，请返回列表刷新后再试。";
+  if (/^there is no active codex turn/i.test(text)) return "当前没有正在运行的回合，无法插入消息；请改发一条普通消息。";
+  if (/^codex changed turns while/i.test(text)) return "电脑端回合已变化，请重试或改用排队。";
+  if (/^codex is still running/i.test(text)) return "会话正在运行，请选择「排队」或「插入」后再发。";
+  if (/^unauthorized$/i.test(text)) return "访问码无效或会话已过期，请重新配对这台机器。";
+  if (/^request body too large/i.test(text)) return "发送内容超过电脑端上限，请减少图片或附件后再试。";
+  if (/^invalid json body/i.test(text)) return "请求格式无效（JSON 解析失败），请重试。";
+  if (/^threadid is required/i.test(text)) return "缺少会话 id（threadId），请刷新会话后重试。";
+  if (/^threadid and itemid are required/i.test(text)) return "缺少排队消息 id，请刷新队列后重试。";
+  return text;
+}
+
+/**
+ * Every error response carries a stable machine code next to the human
+ * sentence. A phone cannot classify a 4xx on its own, and the older contract
+ * forced clients to guess from an English string — which is how a readable
+ * "图片尺寸超限" became `HTTP-400`.
+ */
+function errorBodyWithCode(status, body) {
+  if (status < 400 || !body || typeof body !== "object" || Array.isArray(body)) return body;
+  const hasError = typeof body.error === "string" && body.error.trim();
+  const error = hasError ? localizeHostError(body.error) : body.error;
+  const code = typeof body.code === "string" && body.code ? body.code : hasError ? httpErrorCode(status, null) : "";
+  if (!hasError && !code) return body;
+  return { ...body, ...(hasError ? { error } : {}), ...(code ? { code } : {}) };
+}
+
 function sendJson(res, status, body, extraHeaders = {}) {
+  if (status >= 400) {
+    body = errorBodyWithCode(status, body);
+    if (body && typeof body === "object" && typeof body.code === "string") res.turnloomErrorCode = body.code;
+  }
   res.writeHead(status, { ...jsonHeaders, ...extraHeaders });
   res.end(JSON.stringify(body));
 }
@@ -741,7 +823,8 @@ function httpErrorCode(status, error) {
 /** One place for the HTTP error body so `error` stays human text and `code` stays machine-safe. */
 function sendHttpError(res, error) {
   const status = error?.status || 500;
-  sendJson(res, status, { error: error?.message || "Internal server error", code: httpErrorCode(status, error) });
+  if (status >= 500) res.turnloomErrorStack = String(error?.stack || "");
+  sendJson(res, status, { error: error?.message || "服务端处理失败，请重试。", code: httpErrorCode(status, error) });
 }
 
 function sendText(res, status, text) {
@@ -851,7 +934,7 @@ function clearAuthFailures(req) {
 }
 
 function sendRateLimited(res, remainingMs) {
-  sendJson(res, 429, { error: "Too many failed access-code attempts", retryAfterMs: remainingMs }, {
+  sendJson(res, 429, { error: "访问码尝试次数过多，请稍后再试。", retryAfterMs: remainingMs }, {
     "retry-after": String(Math.max(1, Math.ceil(remainingMs / 1000))),
     "cache-control": "no-store"
   });
@@ -877,7 +960,7 @@ function requireAuthorized(req, res, url) {
     return true;
   }
   if (requestToken(req, url)) noteAuthFailure(req);
-  sendJson(res, 401, { error: "Unauthorized", authRequired: true });
+  sendJson(res, 401, { error: "访问码无效或会话已过期，请重新配对这台机器。", authRequired: true });
   return false;
 }
 
@@ -885,7 +968,7 @@ function requireAuthorized(req, res, url) {
 function requireWriteEnabled(res) {
   if (ALLOW_WRITE) return true;
   sendJson(res, 403, {
-    error: "Read-only mode is enabled. Restart without --readonly to change anything.",
+    error: "电脑端当前是只读模式，无法修改。请去掉 --readonly 后重启服务。",
     readOnly: true
   });
   return false;
@@ -1724,6 +1807,19 @@ function safeResolveRolloutPath(rolloutPath, threadId = "") {
   }
 }
 
+/** Record non-secret routing facts only: never the message text or attachment bytes. */
+function noteBodyForRequestLog(req, body) {
+  const context = req?.turnloomLog;
+  if (!context || !body || typeof body !== "object" || Array.isArray(body)) return;
+  if (!context.threadId && typeof body.threadId === "string") context.threadId = body.threadId.slice(0, 64);
+  const images = Array.isArray(body.images) ? body.images.length : 0;
+  const files = Array.isArray(body.files) ? body.files.length : 0;
+  const parts = [];
+  if (images) parts.push(`images=${images}`);
+  if (files) parts.push(`files=${files}`);
+  if (parts.length) context.note = parts.join(" ");
+}
+
 async function readJsonBody(req, limit = 128 * 1024) {
   const chunks = [];
   let receivedBytes = 0;
@@ -1732,8 +1828,10 @@ async function readJsonBody(req, limit = 128 * 1024) {
     receivedBytes += buffer.length;
     // The limit is measured in UTF-8 bytes, not JavaScript string characters.
     if (receivedBytes > limit) {
-      const err = new Error("Request body too large");
+      const limitLabel = limit >= 1024 * 1024 ? `${Math.round(limit / 1024 / 1024)} MB` : `${Math.round(limit / 1024)} KB`;
+      const err = new Error(`发送内容超过电脑端上限（${limitLabel}），请减少图片或附件后再试。`);
       err.status = 413;
+      err.code = "payload_too_large";
       throw err;
     }
     chunks.push(buffer);
@@ -1742,10 +1840,13 @@ async function readJsonBody(req, limit = 128 * 1024) {
   // 并且每块都重算整串字节数，在上限很大时退化成 O(n²)。
   const body = Buffer.concat(chunks, receivedBytes).toString("utf8");
   try {
-    return body.trim() ? JSON.parse(body) : {};
+    const parsed = body.trim() ? JSON.parse(body) : {};
+    try { noteBodyForRequestLog(req, parsed); } catch {}
+    return parsed;
   } catch {
-    const err = new Error("Invalid JSON body");
+    const err = new Error("请求格式无效（JSON 解析失败），请重试。");
     err.status = 400;
+    err.code = "invalid_json";
     throw err;
   }
 }
@@ -6091,6 +6192,7 @@ function runIdempotentSend(requestId, fingerprint, execute, store = recentSendRe
     if (existing.fingerprint !== fingerprint) {
       const err = new Error("This send request ID was already used for a different message.");
       err.status = 409;
+      err.code = "send_idempotency_conflict";
       return Promise.reject(err);
     }
     return existing.promise;
@@ -6115,7 +6217,7 @@ async function sendWithFiles(body = {}, execute = sendToCodex, {
   // Validate images before staging; they retain their own model-image pipeline.
   const images = normalizeSendImages(body.images);
   return runIdempotentSend(body.clientRequestId, sendRequestFingerprint(body), async () => {
-    if (!ALLOW_WRITE) { const error = new Error("Read-only mode is enabled."); error.status = 403; throw error; }
+    if (!ALLOW_WRITE) { const error = new Error("Read-only mode is enabled."); error.status = 403; error.code = "read_only"; throw error; }
     const staged = await sendFiles.stageSendFiles(files, { dataRoot, sessionKey: body.threadId || body.clientRequestId });
     const message = sendFiles.messageWithSendFiles(body.message, staged);
     const result = await execute(message, body.threadId, images, {
@@ -6474,47 +6576,45 @@ async function drainNativeQueuedSend(threadId) {
 }
 
 
+/** A 400 that names its own cause: the phone shows `error`, the code makes it testable. */
+function sendImageError(code, message) {
+  const err = new Error(message);
+  err.status = 400;
+  err.code = code;
+  return err;
+}
+
 function normalizeSendImages(images) {
   if (!Array.isArray(images)) return [];
   if (images.length > MAX_SEND_IMAGES) {
-    const err = new Error(`Too many images. Maximum is ${MAX_SEND_IMAGES}.`);
-    err.status = 400;
-    throw err;
+    throw sendImageError("image_too_many", `图片数量超出上限（最多 ${MAX_SEND_IMAGES} 张），请先移除一些再发送。`);
   }
   return images.map((image, index) => {
     const mimeType = String(image?.mimeType || "").trim().toLowerCase();
     const data = String(image?.data || "").replace(/^data:[^;]+;base64,/, "");
     const name = String(image?.name || `image-${index + 1}`).slice(0, 120);
     if (!SUPPORTED_SEND_IMAGE_MIME_TYPES.has(mimeType)) {
-      const err = new Error("Unsupported image format. Use JPEG, PNG, or WebP.");
-      err.status = 400;
-      throw err;
+      throw sendImageError("image_unsupported_format", "不支持的图片格式：仅支持 JPEG、PNG、WebP。");
     }
     if (!data || data.length % 4 !== 0 || !/^[a-zA-Z0-9+/]+={0,2}$/.test(data)) {
-      const err = new Error("Invalid image data");
-      err.status = 400;
-      throw err;
+      throw sendImageError("image_invalid_data", `「${path.basename(name)}」图片数据无法解码，请重新选择这张图片。`);
     }
     const bytes = Buffer.from(data, "base64");
-    const validation = validateSendImageBytes(bytes, mimeType);
+    const validation = validateSendImageBytes(bytes, mimeType, name);
     if (bytes.byteLength > MAX_SEND_IMAGE_BYTES) {
-      const err = new Error(`Image is too large. Maximum is ${Math.round(MAX_SEND_IMAGE_BYTES / 1024 / 1024)} MB.`);
-      err.status = 400;
-      throw err;
+      throw sendImageError(
+        "image_too_large",
+        `「${path.basename(name)}」超过单张上限（${Math.round(MAX_SEND_IMAGE_BYTES / 1024 / 1024)} MB），请压缩后再发送。`
+      );
     }
     return { name, mimeType, data, size: bytes.byteLength, width: validation.width, height: validation.height };
   });
 }
 
-function invalidImage(message = "Invalid image data") {
-  const err = new Error(message);
-  err.status = 400;
-  return err;
-}
-
-function validateSendImageBytes(bytes, mimeType) {
+function validateSendImageBytes(bytes, mimeType, name = "图片") {
+  const label = path.basename(String(name || "图片"));
   if (!Buffer.isBuffer(bytes) || bytes.byteLength < MIN_SEND_IMAGE_BYTES) {
-    throw invalidImage("Invalid image: image data is too small.");
+    throw sendImageError("image_too_small", `「${label}」内容不完整或已损坏（小于 ${MIN_SEND_IMAGE_BYTES} 字节），请重新选择。`);
   }
   const dimensions =
     mimeType === "image/jpeg"
@@ -6525,7 +6625,7 @@ function validateSendImageBytes(bytes, mimeType) {
           ? webpDimensions(bytes)
           : null;
   if (!dimensions) {
-    throw invalidImage("Invalid image: file content does not match its image type.");
+    throw sendImageError("image_content_mismatch", `「${label}」的内容与文件类型不符，请换成 JPEG / PNG / WebP 后重试。`);
   }
   const { width, height } = dimensions;
   const pixels = width * height;
@@ -6538,8 +6638,10 @@ function validateSendImageBytes(bytes, mimeType) {
     height > MAX_SEND_IMAGE_EDGE ||
     pixels > MAX_SEND_IMAGE_PIXELS
   ) {
-    throw invalidImage(
-      `Invalid image: dimensions must be ${MIN_SEND_IMAGE_EDGE}-${MAX_SEND_IMAGE_EDGE}px per side and under ${Math.round(MAX_SEND_IMAGE_PIXELS / 1_000_000)}MP.`
+    const detail = Number.isSafeInteger(width) && Number.isSafeInteger(height) ? `当前 ${width}×${height}（${(pixels / 1_000_000).toFixed(1)}MP）。` : "";
+    throw sendImageError(
+      "image_dimensions_out_of_range",
+      `图片尺寸超出电脑端限制（单边 ${MIN_SEND_IMAGE_EDGE}–${MAX_SEND_IMAGE_EDGE}px，且总像素 ≤${Math.round(MAX_SEND_IMAGE_PIXELS / 1_000_000)}MP），${detail}请压缩或裁剪后再发送。`
     );
   }
   return dimensions;
@@ -6618,6 +6720,7 @@ async function sendToCodex(text, threadId, images = [], { newThread = false, mod
   if (!ALLOW_WRITE) {
     const err = new Error("Read-only mode is enabled. Restart without --readonly to send messages to Codex Desktop.");
     err.status = 403;
+    err.code = "read_only";
     throw err;
   }
   const trimmed = String(text || "").trim();
@@ -6661,22 +6764,26 @@ async function sendToCodex(text, threadId, images = [], { newThread = false, mod
   if (normalizedImages.length && !(await modelSupportsImagesForSend(turnSettings.model, modelConfiguration))) {
     const err = new Error("当前模型不支持图片。请在模型面板切换到带「支持图片」标记的模型后再发送，或移除图片只发文字。");
     err.status = 409;
+    err.code = "model_unsupported_images";
     throw err;
   }
   const sendMode = newThread ? "start" : String(mode || "start").toLowerCase();
   if (!["start", "queue", "steer"].includes(sendMode)) {
     const err = new Error("Invalid send mode. Use start, queue, or steer.");
     err.status = 400;
+    err.code = "invalid_send_mode";
     throw err;
   }
   if (!trimmed && !normalizedImages.length) {
     const err = new Error("消息内容为空，请输入文字后再发送。");
     err.status = 400;
+    err.code = "empty_message";
     throw err;
   }
   if (trimmed.length > 12000) {
     const err = new Error("消息过长，请拆分成多条发送（上限 12000 字）。");
     err.status = 400;
+    err.code = "message_too_long";
     throw err;
   }
   if (newThread) {
@@ -8252,8 +8359,11 @@ async function handleHttpBackendApi(req, res, url, profile = null) {
   } catch (error) {
     logError(`[http-backend] ${req.method} ${pathname}: ${error?.stack || error?.message || String(error)}`);
     const status = error?.status && ![401, 403].includes(error.status) ? error.status : 502;
+    // 本地校验（图片尺寸/数量/格式）在转发前抛错，不能把 `err.code` 丢成 `bad_request`：
+    // 手机端要能区分「图片超限」和「上游服务出错」。
     sendJson(res, status, {
       error: error?.message || "HTTP backend request failed",
+      code: httpErrorCode(status, error),
       backend: { kind: "http", url: backend.baseUrl, profile: profile?.id || null }
     });
     return true;
@@ -8264,18 +8374,47 @@ const server = http.createServer(async (req, res) => {
   const url = new URL(req.url || "/", `http://${req.headers.host || "localhost"}`);
   const requestStartedAt = performance.now();
   const requestMethod = req.method || "UNKNOWN";
-  res.once("finish", () => {
+  const requestPathname = url.pathname;
+  // Cheap routing facts for the request log; the body is only ever inspected
+  // for `threadId` and attachment counts, never for message text.
+  req.turnloomLog = { threadId: threadIdFromRequestPath(requestPathname), note: "" };
+  let requestLogged = false;
+  const flushRequestLog = (aborted) => {
+    if (requestLogged) return;
+    requestLogged = true;
     const durationMs = Math.round(performance.now() - requestStartedAt);
-    if (res.statusCode >= 400 || durationMs >= slowRequestThresholdMs(requestMethod, url.pathname)) {
-      const level = res.statusCode >= 500 ? "error" : res.statusCode >= 400 ? "warn" : "slow";
-      const message = `[http:${level}] ${requestMethod} ${url.pathname} ${res.statusCode} ${durationMs}ms`;
-      const logDecision = shouldLogHttpEvent({ method: requestMethod, pathname: url.pathname, statusCode: res.statusCode, level });
+    const statusCode = aborted && !res.headersSent ? 0 : res.statusCode;
+    const logContext = req.turnloomLog || {};
+    if (requestPathname.startsWith("/api/")) {
+      try {
+        logApiRequest({
+          method: requestMethod,
+          pathname: requestPathname,
+          status: statusCode,
+          durationMs,
+          profile: req.turnloomProfile || null,
+          threadId: logContext.threadId || "",
+          code: aborted ? "client_aborted" : res.turnloomErrorCode || "",
+          stack: res.turnloomErrorStack || "",
+          // A client that vanished before the response is the phone's "连接中断"
+          // case; keep that fact rather than logging a fake 200.
+          note: aborted ? [logContext.note, "aborted"].filter(Boolean).join(" ") : logContext.note || "",
+          aborted
+        });
+      } catch {}
+    }
+    if (aborted || statusCode >= 400 || durationMs >= slowRequestThresholdMs(requestMethod, requestPathname)) {
+      const level = aborted ? "warn" : statusCode >= 500 ? "error" : statusCode >= 400 ? "warn" : "slow";
+      const message = `[http:${level}] ${requestMethod} ${requestPathname} ${statusCode} ${durationMs}ms${aborted ? " aborted" : ""}`;
+      const logDecision = shouldLogHttpEvent({ method: requestMethod, pathname: requestPathname, statusCode, level });
       if (!logDecision) return;
       const suppressed = typeof logDecision === "object" && logDecision.suppressed ? ` (suppressed ${logDecision.suppressed} similar)` : "";
-      if (res.statusCode >= 500) logError(`${message}${suppressed}`);
+      if (statusCode >= 500) logError(`${message}${suppressed}`);
       else logInfo(`${message}${suppressed}`);
     }
-  });
+  };
+  res.once("finish", () => flushRequestLog(false));
+  res.once("close", () => flushRequestLog(!res.writableEnded));
   const requestProfile = profileForRequest(req, url);
   req.turnloomProfile = requestProfile;
   return requestContext.run(requestProfile, async () => {
@@ -8302,6 +8441,22 @@ const server = http.createServer(async (req, res) => {
       return;
     }
     req.turnloomProfile = profileForRequest(req, url);
+    // 手机端诊断上报落在本机：诊断描述的是这台机器与手机的链路，转发给
+    // `--backend http` 的上游既没有它的日志目录，也会把「查不到」变成「上报失败」。
+    if (req.method === "POST" && url.pathname === "/api/diagnostics") {
+      if (!requireAuthorized(req, res, url)) return;
+      const body = await readJsonBody(req, requestLog.DIAGNOSTICS_MAX_BYTES);
+      const sanitized = requestLog.sanitizeDiagnosticsRequest(body, { fallbackMachine: MACHINE_NAME });
+      const written = requestLog.writePhoneDiagnostics(serverLogDir(), sanitized);
+      sendJson(res, 200, {
+        ok: true,
+        stored: written.stored,
+        dropped: written.dropped,
+        file: written.file,
+        received: Array.isArray(body?.records) ? body.records.length : 0
+      });
+      return;
+    }
     // --backend http 必须在本地处理之前转发：否则配置了 backend:"http"
     // 仍然读写本机 Codex，属于静默的错误路由（handleHttpBackendApi 自己会鉴权）。
     if (await handleHttpBackendApi(req, res, url, req.turnloomProfile)) return;
@@ -9150,6 +9305,11 @@ export {
   findLiveApprovalRequest,
   respondToApproval,
   httpErrorCode,
+  errorBodyWithCode,
+  localizeHostError,
+  threadIdFromRequestPath,
+  normalizeSendImages,
+  validateSendImageBytes,
   setCodexIpcClientForApprovalTests,
   rememberStartedThreadsForTest,
   approvalDetailsHash,

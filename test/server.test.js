@@ -76,7 +76,10 @@ import {
   stripHiddenMessageLocalAssets,
   threadListMetadata,
   visibleThreadRows,
-  approvalRequestsFromEvents
+  approvalRequestsFromEvents,
+  normalizeSendImages,
+  errorBodyWithCode,
+  localizeHostError
 } from "../server.js";
 
 function rolloutLine(timestamp, ordinal, type, payload) {
@@ -1874,4 +1877,60 @@ test('approval event parsing preserves exact IDs, detail hashes, thread scope an
   assert.ok(pending.every(row => /^[a-f0-9]{64}$/.test(row.detailsHash) && row.content.includes('echo')));
   assert.deepEqual(approvalRequestsFromEvents(events, 'thread-b', now).map(row => row.requestId), ['req-other']);
   assert.equal(approvalRequestsFromEvents(events, 'thread-a', now + 11 * 60 * 1000).length, 0);
+});
+
+test('image sends fail with a readable Chinese reason and a stable code, never HTTP-400', () => {
+  // A real 4032×3024 phone photo has a valid PNG/JPEG header but 12.19MP, which
+  // is exactly the shape that used to reach the phone as `HTTP-400`.
+  const png = (width, height) => {
+    const buffer = Buffer.alloc(1024);
+    buffer.write('89504e470d0a1a0a', 0, 'hex');
+    buffer.writeUInt32BE(13, 8);
+    buffer.write('IHDR', 12, 'ascii');
+    buffer.writeUInt32BE(width, 16);
+    buffer.writeUInt32BE(height, 20);
+    buffer[24] = 8;
+    buffer[25] = 6;
+    return buffer.toString('base64');
+  };
+  const image = (width, height) => [{ name: 'IMG_20261118_184957.png', mimeType: 'image/png', data: png(width, height) }];
+
+  assert.throws(() => normalizeSendImages(image(4032, 3024)), (error) => {
+    assert.equal(error.status, 400);
+    assert.equal(error.code, 'image_dimensions_out_of_range');
+    assert.match(error.message, /图片尺寸超出电脑端限制/);
+    assert.match(error.message, /4032×3024/);
+    assert.equal(error.message.includes('HTTP-400'), false);
+    return true;
+  });
+  // The same photo after the app's 2048-edge compression is accepted.
+  assert.deepEqual(
+    normalizeSendImages(image(2048, 1536)).map(({ width, height }) => ({ width, height })),
+    [{ width: 2048, height: 1536 }]
+  );
+  assert.throws(() => normalizeSendImages([{ name: 'a.gif', mimeType: 'image/gif', data: png(64, 64) }]), { code: 'image_unsupported_format' });
+  assert.throws(() => normalizeSendImages([{ name: 'a.png', mimeType: 'image/png', data: '!!!!' }]), { code: 'image_invalid_data' });
+  assert.throws(() => normalizeSendImages(Array.from({ length: 5 }, (_, index) => ({ name: `a-${index}.png`, mimeType: 'image/png', data: png(64, 64) }))), { code: 'image_too_many' });
+});
+
+test('every error body gains a machine code and known English causes are localized', () => {
+  assert.deepEqual(errorBodyWithCode(400, { error: 'Invalid send mode. Use start, queue, or steer.' }), {
+    error: '发送模式无效（仅支持 start / queue / steer）。',
+    code: 'bad_request'
+  });
+  assert.deepEqual(errorBodyWithCode(401, { error: 'Unauthorized', authRequired: true }), {
+    error: '访问码无效或会话已过期，请重新配对这台机器。',
+    code: 'unauthorized',
+    authRequired: true
+  });
+  assert.deepEqual(errorBodyWithCode(413, { error: 'Request body too large' }), {
+    error: '发送内容超过电脑端上限，请减少图片或附件后再试。',
+    code: 'payload_too_large'
+  });
+  // A Chinese cause is already user-facing; only the code is added.
+  assert.deepEqual(errorBodyWithCode(409, { error: '当前模型不支持图片。' }), { error: '当前模型不支持图片。', code: 'conflict' });
+  // Non-error bodies are untouched.
+  assert.deepEqual(errorBodyWithCode(200, { ok: true }), { ok: true });
+  assert.equal(localizeHostError('Thread not found'), '这个会话已不存在，请返回列表刷新后再试。');
+  assert.equal(localizeHostError('something new'), 'something new');
 });

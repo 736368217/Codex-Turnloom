@@ -1,5 +1,13 @@
 # Changelog
 
+## 未发布 — 2.2.1 发送链路与诊断日志（2026-11-18）
+
+- **发图 400 现在说人话**：`/api/send` 的图片校验错误从英文改中文并带稳定 `code`（`image_too_many` / `image_unsupported_format` / `image_invalid_data` / `image_too_small` / `image_content_mismatch` / `image_dimensions_out_of_range` / `image_too_large`）。真实 4032×3024 照片回 `400 图片尺寸超出电脑端限制（单边 16–4096px，且总像素 ≤12MP），当前 4032×3024（12.2MP）…`，长边 2048 的同图在 `--backend http` 路径回 200。
+- **所有错误响应都带机器码**：`sendJson` 对所有 4xx/5xx 补 `code`；已知英文原因（只读、会话不存在、会话运行中、幂等冲突、请求体过大、未鉴权、限流、JSON 解析失败）集中在 `localizeHostError` 翻成中文；`--backend http` 的前置图片校验错误不再被抹成 `bad_request`。
+- **每个 `/api/*` 请求一行结构化日志**：`%LOCALAPPDATA%\CodexPocket\logs\server-YYYYMMDD.log`，JSON 字段 `ts/source/level/method/path/status/ms/harness/threadId/code`，5xx 带 `stack`；query、访问码、消息正文不落盘；客户端中途断开记 `status:0 / code:client_aborted`；8 MiB × 4 轮转，按本地日期换文件。机器网关 `server/machine-gateway.cjs` 写同一目录（`source:"gateway"`，记 harness 与鉴权来路）。
+- **手机端诊断归档**：新增 `POST /api/diagnostics`（白名单字段、单条 ≤300 字、请求体硬上限 256 KiB → 413 `payload_too_large`，单次最多保留最新 200 条），落 `logs\phone\<machine>-<YYYYMMDD>.jsonl`，同文件保留最近 1000 行；响应 `{ok,stored,dropped,file}`。
+- 回归：新增 `test/server-logging.test.js`（9 项：脱敏、轮转硬上限、诊断白名单/截断、真实 `node server.js` 请求行与落盘、`--backend http` 200/400、网关日志）；`test/server.test.js` 新增图片错误中文/机器码与错误体本地化 2 项。`node --test` 484 pass / 0 fail（2 skip）。
+
 ## 未发布 — 代码审计修复（20 项）
 
 > 来源：2026-11-09 只读代码审计。本分支只修缺陷，不合并、不改动既有工作区。
