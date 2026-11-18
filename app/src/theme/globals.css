@@ -1557,7 +1557,7 @@ button:focus-visible, a:focus-visible { outline: 2px solid var(--tl-blue); outli
 /* Blank chat (new thread): the message area is the empty state, not a
    one-line note pinned under the header. */
 .tl-chat-list.tl-chat-list--blank {
-  display: flex; height: 100%; min-height: 0;
+  display: flex; flex-direction: column; height: 100%; min-height: 0;
   margin: 0; padding: 24px 28px 12px;
   border-radius: 0; background: transparent; box-shadow: none;
 }
@@ -1575,7 +1575,8 @@ button:focus-visible, a:focus-visible { outline: 2px solid var(--tl-blue); outli
 }
 .tl-chat-list--blank .tl-chat-blank-orb {
   width: 56px; height: 56px; margin-bottom: 2px; border-radius: 28px;
-  display: grid; place-items: center; background: #EAF2FF; color: var(--tl-blue);
+  display: grid; place-items: center; align-content: center;
+  background: #EAF2FF; color: var(--tl-blue);
 }
 .tl-chat-list--blank .tl-chat-blank-title {
   font-size: 17px; line-height: 23px; font-weight: 600; text-align: center;
