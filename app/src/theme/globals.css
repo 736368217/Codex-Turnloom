@@ -1444,8 +1444,10 @@ button:focus-visible, a:focus-visible { outline: 2px solid var(--tl-blue); outli
 
 .tl-thread-list {
   flex: 1 0 auto; min-height: 0; display: flex; flex-direction: column;
-  padding-bottom: var(--tl-tabbar-h);
   background: var(--tl-surface);
+}
+.tl-thread-scroll::after {
+  content: ''; flex: 0 0 var(--tl-tabbar-h); background: var(--tl-surface);
 }
 .tl-thread-row {
   position: relative; display: flex; align-items: center; gap: 12px;
