@@ -399,9 +399,10 @@ test('long multiline messages remain compact at 393px and 320px', () => {
   assert.match(styles.CHAT_COMPACT_CSS, /justify-content:\s*flex-start/);
   assert.doesNotMatch(styles.CHAT_COMPACT_CSS, /space-between|space-around|space-evenly/);
   const css = read('app/src/theme/globals.css');
-  // 气泡排版的真源必须只有一个：globals.css 的类与 chatStyles 的内联值不能各说一个数。
-  // 不冻结具体像素（14/21 → 15/22 这种排版调整不该让门禁红），但必须挡住审计里
-  // “lineHeight: 20 被当成 20 倍字号、行高 280px”的老问题。
+  // 气泡行高的渲染真源是 globals.css；`chatStyles.CHAT_BUBBLE_LINE_HEIGHT` 是它的
+  // 常量副本（当前没有任何组件 import 它），两者必须同步，否则下一个人按常量改样式
+  // 就会得到和线上不一致的结果。不冻结具体像素（14/21 → 15/22 这种排版调整不该让
+  // 门禁红），但必须挡住审计里“lineHeight: 20 被当成 20 倍字号、行高 280px”的老问题。
   const bubbleBlock = /\.tl-chat-bubble\s*\{([^}]*)\}/s.exec(css)?.[1] || '';
   const cssLineHeight = Number((/line-height:\s*(\d+)px/.exec(bubbleBlock) || [])[1] || 0);
   const cssFontSize = Number((/font-size:\s*(\d+)px/.exec(bubbleBlock) || [])[1] || 0);
