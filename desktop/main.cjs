@@ -879,10 +879,21 @@ function registerIpc() {
       return { ok: false, status: result.status, error: result.error || result.data?.error || "无法连接本机服务，请先确认服务正在运行。" };
     }
     const payload = result.data || {};
+    // 清单里的 downloadUrl 是同源相对路径（/downloads/...）；renderer 只接受绝对
+    // http(s) 链接，这里统一补上本机服务地址，避免每个调用点各拼一次。
+    const absolute = (value) => {
+      const text = String(value || "");
+      if (!text) return "";
+      if (/^https?:\/\//i.test(text)) return text;
+      return text.startsWith("/") ? `${base}${text}` : "";
+    };
+    const latest = payload.latest && typeof payload.latest === "object"
+      ? { ...payload.latest, downloadUrl: absolute(payload.latest.downloadUrl), upgradeScript: absolute(payload.latest.upgradeScript) }
+      : null;
     return {
       ok: true,
       current: payload.current || null,
-      latest: payload.latest || null,
+      latest,
       updateAvailable: Boolean(payload.updateAvailable),
       upToDate: Boolean(payload.upToDate),
       source: payload.updateSource?.label || "",
