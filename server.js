@@ -8238,6 +8238,11 @@ async function handleHttpBackendApi(req, res, url, profile = null) {
     }
 
     if (req.method === "GET" && pathname === "/api/apk") return false;
+    // Pairing discovery must stay local even when the content backend is remote:
+    // the phone cannot learn the harness list from a server it has not paired with
+    // yet, and the HTTP backend has no such route — it answers 501 and the app
+    // shows "can't reach this machine" forever (QA defect D1, 2026-11-18).
+    if (req.method === "GET" && pathname === machinePairing.HARNESS_PATH) return false;
 
     sendJson(res, 501, {
       error: "This endpoint is not supported by the HTTP backend",
