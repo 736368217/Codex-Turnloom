@@ -29,6 +29,7 @@ const api = {
   addDevice: (input) => ipcRenderer.invoke("devices:add", input),
   removeDevice: (id) => ipcRenderer.invoke("devices:remove", id),
   probeDevices: () => ipcRenderer.invoke("devices:probe"),
+  checkUpdate: () => ipcRenderer.invoke("desktop:checkUpdate"),
   detectBridge: () => ipcRenderer.invoke("devices:detect"),
   exportLogs: () => ipcRenderer.invoke("logs:export"),
   openPath: (kind) => ipcRenderer.invoke("shell:openPath", kind),

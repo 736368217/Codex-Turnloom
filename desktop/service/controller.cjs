@@ -12,7 +12,11 @@ function healthSummary(data) {
     allowWrite: Boolean(data.allowWrite),
     authRequired: Boolean(data.authRequired),
     sqliteDriver: data.sqliteDriver || null,
-    appVersionName: data.appVersionName || ""
+    appVersionName: data.appVersionName || "",
+    // 桌面端自己跑的版本（VERSION.json / package.json），手机 App 版本是另一件事。
+    version: data.version || "",
+    buildSha: data.buildSha || "",
+    startedAt: data.startedAt || ""
   };
 }
 const { splitLines } = require("./logger.cjs");

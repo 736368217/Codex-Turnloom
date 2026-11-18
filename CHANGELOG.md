@@ -1,5 +1,12 @@
 # Changelog
 
+## 未发布 — 桌面端可检测更新（2026-11-18）
+
+- **`/api/health` 报告自身版本**：新增 `version`、`buildSha`、`startedAt`（`VERSION.json` 优先，其次 `package.json`；`buildSha` 只取打包写入的值，绝不从 `.git` 猜）。控制台的 `healthSummary()` 一并带上，首页不点按钮也能显示本机服务版本。
+- **只读更新检查**：新增 `GET /api/desktop/update`（需访问码）与控制台 IPC `checkUpdate`，返回 `current`、`latest`（版本/SHA256/大小/下载入口/说明）、`updateSource` 与 `updateAvailable`/`upToDate`；更新源默认 `public/downloads/desktop-release.json`，可用 `TURNLOOM_UPDATE_SOURCE`（路径或 http(s) URL）或配置项 `updateSource.desktop` 覆盖。**不下载、不替换、不重启**。
+- **清单由产物生成**：`node scripts/write-desktop-release.cjs --zip <staged.zip> --version 2.2.1 --url /downloads/<name>.zip` 现算 SHA256/大小后写 `desktop-release.json`；缺清单时接口返回 `latest.available:false, reason:"missing-manifest"`，控制台显示「更新源不可用」而不是检查失败。
+- 回归：新增 `test/desktop-release.test.cjs`（6 项：版本比较含 `-rc`、清单校验、`VERSION.json` 优先级、缺清单不抛错、payload 判定、真进程 `/api/health.version` + `/api/desktop/update`）。`npm run verify:ci` → 495 pass / 0 fail。
+
 ## 未发布 — 2.2.1 发送链路与诊断日志（2026-11-18）
 
 - **发图 400 现在说人话**：`/api/send` 的图片校验错误从英文改中文并带稳定 `code`（`image_too_many` / `image_unsupported_format` / `image_invalid_data` / `image_too_small` / `image_content_mismatch` / `image_dimensions_out_of_range` / `image_too_large`）。真实 4032×3024 照片回 `400 图片尺寸超出电脑端限制（单边 16–4096px，且总像素 ≤12MP），当前 4032×3024（12.2MP）…`，长边 2048 的同图在 `--backend http` 路径回 200。

@@ -31,6 +31,7 @@ const require = createRequire(import.meta.url);
 const machinePairing = require("./shared/machine-pairing.cjs");
 const appRelease = require("./shared/app-release.cjs");
 const sendFiles = require("./shared/send-files.cjs");
+const desktopRelease = require("./shared/desktop-release.cjs");
 const requestLog = require("./server/request-log.cjs");
 
 const modulePath = fileURLToPath(import.meta.url);
@@ -240,6 +241,44 @@ function formatDuration(ms) {
 
 const PROCESS_STARTED_AT_MS = Date.now();
 const PROCESS_STARTED_AT_ISO = new Date(PROCESS_STARTED_AT_MS).toISOString();
+
+/**
+ * What is actually running here, for `/api/health` and `/api/desktop/update`.
+ * Read once: a running process cannot change its own version, and a broken
+ * VERSION.json must not be re-read on every phone poll.
+ */
+let serverIdentityCache = null;
+function serverIdentity() {
+  if (!serverIdentityCache) {
+    serverIdentityCache = desktopRelease.currentServerIdentity({
+      projectRoot: __dirname,
+      env: process.env,
+      startedAt: PROCESS_STARTED_AT_ISO
+    });
+  }
+  return serverIdentityCache;
+}
+
+function healthVersionFields() {
+  const identity = serverIdentity();
+  return { version: identity.version, buildSha: identity.buildSha, startedAt: identity.startedAt };
+}
+
+/** `updateSource.desktop` from the console config, or TURNLOOM_UPDATE_SOURCE. */
+function configuredUpdateSource() {
+  const explicit = String(process.env.TURNLOOM_UPDATE_SOURCE || "").trim();
+  if (explicit) return explicit;
+  const configFile = process.env.TURNLOOM_CONFIG_PATH
+    || path.join(CODEX_POCKET_DATA_DIR, "CodexPocket", "config.json");
+  try {
+    const parsed = JSON.parse(readFileSync(configFile, "utf8").replace(/^\uFEFF/, ""));
+    const value = parsed?.updateSource;
+    if (typeof value === "string") return value;
+    if (value && typeof value === "object" && typeof value.desktop === "string") return value.desktop;
+  } catch {}
+  return "";
+}
+
 const SYSTEM_BOOT_AT_MS = PROCESS_STARTED_AT_MS - Math.round(os.uptime() * 1000);
 const SYSTEM_BOOT_AT_ISO = new Date(SYSTEM_BOOT_AT_MS).toISOString();
 const START_SOURCE = process.env.XPC_SERVICE_NAME ? `launchd:${process.env.XPC_SERVICE_NAME}` : "terminal";
@@ -8111,6 +8150,7 @@ async function handleHttpBackendApi(req, res, url, profile = null) {
         defaultModel: DEFAULT_CODEX_MODEL,
         defaultEffort: DEFAULT_CODEX_EFFORT,
         now: new Date().toISOString(),
+        ...healthVersionFields(),
         ...appRelease.legacyHealthFields(await currentAppRelease())
       });
       return true;
@@ -8457,6 +8497,18 @@ const server = http.createServer(async (req, res) => {
       });
       return;
     }
+    // 桌面端「检查更新」：只读版本清单，绝不替换本机文件。放在 http 后端转发
+    // 之前——更新源是本机/本仓库的事，与内容后端无关。
+    if (req.method === "GET" && url.pathname === "/api/desktop/update") {
+      if (!requireAuthorized(req, res, url)) return;
+      const latest = await desktopRelease.readDesktopRelease({
+        projectRoot: __dirname,
+        configured: configuredUpdateSource(),
+        env: process.env
+      });
+      sendJson(res, 200, desktopRelease.desktopUpdatePayload(serverIdentity(), latest));
+      return;
+    }
     // --backend http 必须在本地处理之前转发：否则配置了 backend:"http"
     // 仍然读写本机 Codex，属于静默的错误路由（handleHttpBackendApi 自己会鉴权）。
     if (await handleHttpBackendApi(req, res, url, req.turnloomProfile)) return;
@@ -8562,6 +8614,7 @@ const server = http.createServer(async (req, res) => {
         defaultModel: modelConfiguration.defaultModel,
         defaultEffort: modelConfiguration.defaultEffort,
         now: new Date().toISOString(),
+        ...healthVersionFields(),
         ...appRelease.legacyHealthFields(release)
       });
       return;
@@ -9310,6 +9363,7 @@ export {
   threadIdFromRequestPath,
   normalizeSendImages,
   validateSendImageBytes,
+  serverIdentity,
   setCodexIpcClientForApprovalTests,
   rememberStartedThreadsForTest,
   approvalDetailsHash,

@@ -867,6 +867,30 @@ function registerIpc() {
     }
   });
 
+  // 只读的「检查更新」：问本机服务的 /api/desktop/update，返回当前版本与清单。
+  // 不下载、不替换、不重启——真正的升级由运维执行 update-turnloom.ps1。
+  ipcMain.handle("desktop:checkUpdate", async () => {
+    const config = currentConfig();
+    if (!config) return { ok: false, error: "尚未完成初始设置，无法检查更新。" };
+    const token = effectiveAccessToken(config);
+    const base = `http://127.0.0.1:${Number(config.port) || 8787}`;
+    const result = await requestJson(`${base}/api/desktop/update`, { token, timeoutMs: 4000 });
+    if (!result.ok) {
+      return { ok: false, status: result.status, error: result.error || result.data?.error || "无法连接本机服务，请先确认服务正在运行。" };
+    }
+    const payload = result.data || {};
+    return {
+      ok: true,
+      current: payload.current || null,
+      latest: payload.latest || null,
+      updateAvailable: Boolean(payload.updateAvailable),
+      upToDate: Boolean(payload.upToDate),
+      source: payload.updateSource?.label || "",
+      sourceKind: payload.updateSource?.kind || "file",
+      checkedAt: new Date().toISOString(),
+    };
+  });
+
   ipcMain.handle("devices:probe", async () => {
     const config = currentConfig();
     if (!config) return { ok: false, devices: [] };
