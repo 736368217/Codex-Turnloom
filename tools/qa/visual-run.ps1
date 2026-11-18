@@ -5,6 +5,7 @@ param(
   [string]$Views = "390x844:2",
   [string]$Only = "",
   [string]$Extra = "",
+  [string]$Fail = "",
   [int]$FixturePort = 7812,
   [int]$PreviewPort = 4173
 )
@@ -33,6 +34,7 @@ $snapshot = Join-Path $logDir "dist-snapshot"
 if (Test-Path $snapshot) { Remove-Item -Recurse -Force $snapshot }
 Copy-Item (Join-Path $root "app\dist") $snapshot -Recurse
 
+if ($Fail) { $env:QA_VISUAL_FAIL = $Fail } else { Remove-Item Env:QA_VISUAL_FAIL -ErrorAction SilentlyContinue }
 $fixture = Start-Process -FilePath "node" -ArgumentList "tools/qa/visual-fixture.mjs" `
   -WorkingDirectory $root -WindowStyle Hidden -PassThru `
   -RedirectStandardOutput (Join-Path $logDir "visual-fixture.out.log") `

@@ -19,6 +19,8 @@ const PORT = Number(process.env.QA_VISUAL_PORT || 7812);
 const HOST = "127.0.0.1";
 const now = Date.now();
 const HASH_OK = "a".repeat(64);
+/** QA_VISUAL_FAIL=401 makes discovery + health fail like a rotated machine code. */
+const FAIL = String(process.env.QA_VISUAL_FAIL || "").trim();
 
 const WIDE_CODE = [
   "#!/usr/bin/env bash",
@@ -183,6 +185,9 @@ const server = http.createServer((req, res) => {
       "access-control-allow-methods": "GET, POST, OPTIONS",
     }); return res.end(); }
 
+    if (FAIL === "401" && (path === "/api/harnesses" || path === "/api/health")) {
+      return json(res, 401, { error: "unauthorized" });
+    }
     if (path === "/api/harnesses") {
       return json(res, 200, {
         ok: true, protocol: "codex-turnloom", version: 2,

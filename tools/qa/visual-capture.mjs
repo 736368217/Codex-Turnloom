@@ -257,6 +257,10 @@ const SCENARIOS = [
       { wait: 400 },
     ],
   },
+  {
+    name: "banner-401",
+    steps: [{ waitFor: ".tl-conn-banner" }, { wait: 900 }],
+  },
   { name: "monitors", steps: [{ click: TAB("监控") }, { wait: 700 }] },
   { name: "settings", steps: [{ click: TAB("设置") }, { wait: 700 }] },
   {

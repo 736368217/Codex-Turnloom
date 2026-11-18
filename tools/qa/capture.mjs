@@ -482,6 +482,30 @@ async function runViewport(browser, viewport, report) {
     await sleep(400);
   }
 
+  // --- 401: host rotated the access code (D2 regression) -------------------
+  if (selected("auth401")) {
+    // 把已保存的机器/服务令牌换成一个已失效的值，再冷启动：真实的 401 路径。
+    const rewritten = await page.eval(`(() => {
+      const key = 'tlqa::turnloom.machine.v2';
+      const raw = localStorage.getItem(key);
+      if (!raw) return 'no-session';
+      const value = JSON.parse(raw);
+      value.machineToken = 'revoked-token';
+      value.harnesses = (value.harnesses || []).map((h) => ({ ...h, token: 'revoked-token' }));
+      localStorage.setItem(key, JSON.stringify(value));
+      return 'rewritten';
+    })()`);
+    await page.navigate(`http://127.0.0.1:${PORTS.preview}/`);
+    await sleep(2500);
+    const banner = await page.eval(`(() => {
+      const node = document.querySelector('.tl-conn-banner');
+      return { text: (node?.innerText || '').replace(/\\s+/g, ' ').trim(), status: Boolean(node) };
+    })()`);
+    report.auth401 = { rewritten, ...banner };
+    log(`401 banner: ${JSON.stringify(banner)}`);
+    await shot(page, dir, "21-401-banner", report);
+  }
+
   // --- keyboard / viewport shrink ----------------------------------------
   if (selected("keyboard")) {
     await page.setViewport(width, Math.round(height * 0.55), 3, { safeArea: SAFE_AREA });

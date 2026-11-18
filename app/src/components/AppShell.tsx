@@ -64,11 +64,16 @@ export default function AppShell() {
       <div className="tl-app" style={{ background: COLORS.canvas }}>
         <div data-vaul-drawer-wrapper="" style={{ height: '100%', width: '100%', background: COLORS.canvas }}>
           {session.status !== 'ready' && (
-            <div className="tl-conn-banner" role="status">
+            <div className="tl-conn-banner" role={session.error ? 'alert' : 'status'}>
               <span>
-                {session.status === 'checking' || session.status === 'reconnecting'
-                  ? '正在重新连接电脑…（先显示上次缓存）'
-                  : '离线：显示上次缓存的内容'}
+                {/* session.error carries the server's own reason (401 → access
+                    code changed, 403/5xx → host error). Showing the generic
+                    "offline" line for a 401 told the user to check Wi-Fi when
+                    the real fix was re-pairing. */}
+                {session.error
+                  || (session.status === 'checking' || session.status === 'reconnecting'
+                    ? '正在重新连接电脑…（先显示上次缓存）'
+                    : '离线：显示上次缓存的内容')}
               </span>
               <button type="button" className="tl-press" onClick={() => { haptic('selection'); retryPersistedSession(); }}>重试</button>
             </div>
