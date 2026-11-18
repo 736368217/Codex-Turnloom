@@ -3,7 +3,7 @@ import { ChevronRight, MessageSquare, Loader2, Clock, AlertTriangle } from 'luci
 import type { ThreadSummary } from '../lib/turnloomApi';
 import { COLORS } from '../theme/optionATokens';
 import { haptic } from '../lib/nativeBridge';
-import { projectThread, type ThreadStatusProjection } from '../lib/threadProjection';
+import { projectThread, formatThreadWhen, type ThreadStatusProjection } from '../lib/threadProjection';
 import { openDetail } from '../state/tabStore';
 import { StatusPill, EmptyState, cardStyle } from './ui';
 
@@ -106,7 +106,13 @@ function ThreadRow({
           {String(thread.preview || thread.cwd || thread.id || '')}
         </span>
       </span>
-      <span style={{ flex: '0 0 auto' }}>{pill}</span>
+      <span style={{ flex: '0 0 auto', display: 'flex', alignItems: 'center', gap: 6 }}>
+        {/* 时间戳是会话列表里最常用的定位信息；没有它只能靠标题猜新旧。 */}
+        <span style={{ fontSize: 11, lineHeight: '14px', color: COLORS.labelSecondary, fontVariantNumeric: 'tabular-nums' }}>
+          {formatThreadWhen(thread)}
+        </span>
+        {pill}
+      </span>
       <ChevronRight size={16} color={COLORS.labelSecondary} />
     </button>
   );

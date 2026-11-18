@@ -1,9 +1,9 @@
 import { useEffect, useState, type ReactNode } from 'react';
-import { Activity, Clock, AlertTriangle, RefreshCw, Radio, Cpu } from 'lucide-react';
+import { Activity, Clock, AlertTriangle, RefreshCw, Radio, Cpu, ChevronRight, Square } from 'lucide-react';
 import { InsetGroup } from '../components/Segmented';
 import { StatusPill, TapRow } from '../components/ui';
 import { COLORS } from '../theme/optionATokens';
-import { useDataState, refreshAll } from '../state/dataStore';
+import { useDataState, refreshAll, interruptThread, dataStore } from '../state/dataStore';
 import { useSessionState, currentRequestContext } from '../state/sessionStore';
 import { openSheet } from '../state/sheetStore';
 import { haptic } from '../lib/nativeBridge';
@@ -23,7 +23,20 @@ export default function MonitorsScreen() {
   const session = useSessionState();
   const context = currentRequestContext();
   const [elapsed, setElapsed] = useState(0);
+  const [stopping, setStopping] = useState('');
+  const [stopError, setStopError] = useState('');
   const runningThreads = data.threads.filter(thread => projectThread(thread, data.statusByThread).status.thinking);
+
+  const stopThread = async (threadId: string): Promise<void> => {
+    if (!context || stopping) return;
+    setStopping(threadId);
+    setStopError('');
+    haptic('warning');
+    const ok = await interruptThread(context, threadId);
+    setStopping('');
+    if (!ok) setStopError(`${dataStore.getState().error || '停止请求未成功。'} 可点会话进入详情后重试。`);
+    else setStopError('');
+  };
 
   useEffect(() => {
     const base = data.lastSyncAt || Date.now();
@@ -60,13 +73,35 @@ export default function MonitorsScreen() {
       </InsetGroup>
       <InsetGroup title="运行中的会话">
         {runningThreads.map(thread => (
-          <TapRow key={thread.id} leading={<Radio size={17} color={COLORS.blue} />} trailing={<span style={{ fontSize: 12, color: COLORS.blue }}>查看 / 停止</span>}
-            onClick={() => { haptic('selection'); openDetail(thread.id, titleOfThread(thread)); }}>
-            <span className="tl-monitor-title">{titleOfThread(thread)}</span>
-          </TapRow>
+          <div key={thread.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '2px 8px 2px 0' }}>
+            <button
+              type="button"
+              className="tl-press tl-monitor-open"
+              aria-label={`查看 ${titleOfThread(thread)}`}
+              onClick={() => { haptic('selection'); openDetail(thread.id, titleOfThread(thread)); }}
+              style={{ flex: 1, minWidth: 0, minHeight: 52, display: 'flex', alignItems: 'center', gap: 10, padding: '8px 4px 8px 16px', border: 0, background: 'transparent', color: COLORS.labelPrimary, textAlign: 'left' }}
+            >
+              <Radio size={17} color={COLORS.blue} style={{ flex: '0 0 auto' }} />
+              <span className="tl-monitor-title" style={{ flex: 1, minWidth: 0 }}>{titleOfThread(thread)}</span>
+              <ChevronRight size={16} color={COLORS.labelSecondary} style={{ flex: '0 0 auto' }} />
+            </button>
+            {/* 这里点下去真的会停止：文案与动作一致，不再出现只能跳详情的假停止入口。 */}
+            <button
+              type="button"
+              className="tl-press tl-monitor-stop"
+              aria-label={`停止 ${titleOfThread(thread)}`}
+              disabled={Boolean(stopping)}
+              onClick={() => { void stopThread(thread.id); }}
+              style={{ flex: '0 0 auto', minWidth: 56, minHeight: 44, border: 0, borderRadius: 12, background: '#FFE4E2', color: COLORS.actionRed, fontSize: 13, fontWeight: 600, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 5, opacity: stopping && stopping !== thread.id ? .5 : 1 }}
+            >
+              {stopping === thread.id ? <RefreshCw size={13} className="tl-spin" /> : <Square size={12} fill="currentColor" />}
+              {stopping === thread.id ? '停止中' : '停止'}
+            </button>
+          </div>
         ))}
         {runningThreads.length === 0 && <p className="tl-page-note">当前已加载的会话中没有运行任务</p>}
       </InsetGroup>
+      {stopError && <p role="alert" className="tl-page-note tl-page-note--error">{stopError}</p>}
       <InsetGroup title="错误与告警">
         {data.errorCount > 0 ? (
           <TapRow leading={<AlertTriangle size={17} color={COLORS.red} />} trailing={<StatusPill tone="red" active>{data.errorCount}</StatusPill>} onClick={() => { haptic('warning'); openSheet('diagnostics'); }}>

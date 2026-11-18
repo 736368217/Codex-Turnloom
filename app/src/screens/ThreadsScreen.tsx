@@ -12,23 +12,19 @@ import { useTabState, setThreadsQuery } from '../state/tabStore';
 import { currentRequestContext } from '../state/sessionStore';
 import { openSheet } from '../state/sheetStore';
 import { haptic } from '../lib/nativeBridge';
-import { isArchivedThread, groupThreadsByProject } from '../lib/threadProjection';
+import { isArchivedThread, groupThreadsByProject, threadUpdatedAtMs } from '../lib/threadProjection';
 import { isLocallyArchived, setThreadArchived, subscribeThreadArchive } from '../lib/threadArchive';
 import { postThreadArchive } from '../lib/turnloomApi';
 
 
 type View = 'project' | 'time';
 
-function timeOf(thread: { updatedAt?: unknown; status?: unknown }): number {
-  const value = Number((thread as { updatedAt?: unknown }).updatedAt);
-  return Number.isFinite(value) && value > 0 ? value : 0;
-}
-
 export default function ThreadsScreen() {
   const data = useDataState();
   const { threadsQuery } = useTabState();
   const [showArchived, setShowArchived] = useState(false);
-  const [view, setView] = useState<View>('project');
+  // 首屏必须直接看到最近的会话：默认按时间排序；「按项目」分组默认展开。
+  const [view, setView] = useState<View>('time');
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
   const [pending, setPending] = useState<{ id: string; title: string; archived: boolean } | null>(null);
   const [archiveRevision, setArchiveRevision] = useState(0);
@@ -48,11 +44,13 @@ export default function ThreadsScreen() {
 
   const archivedCount = data.threads.filter(archivedOf).length;
   const groups = groupThreadsByProject(rows);
-  const byTime = useMemo(() => [...rows].sort((a, b) => timeOf(b) - timeOf(a)), [rows]);
+  const byTime = useMemo(() => [...rows].sort((a, b) => threadUpdatedAtMs(b) - threadUpdatedAtMs(a)), [rows]);
 
   const toggleGroup = (key: string) => {
     haptic('selection');
-    setCollapsed((prev) => ({ ...prev, [key]: !prev[key] }));
+    // 分组默认展开（undefined），点击折叠，再点展开。旧实现用 `!prev[key]`，
+    // undefined 会变成 true，用户要连点两次才看得到会话。
+    setCollapsed((prev) => ({ ...prev, [key]: prev[key] !== true }));
   };
 
   const doArchive = async (threadId: string, archived: boolean) => {
@@ -70,7 +68,7 @@ export default function ThreadsScreen() {
       <div className="tl-safe-top" style={{ padding: '12px 20px 0' }}>
         <div style={{ display: 'flex', alignItems: 'center' }}>
           <div className="tl-large-title">会话</div><div style={{ flex: 1 }} />
-          <button type="button" className="tl-press" aria-label="新建任务" onClick={() => { haptic('selection'); openSheet('newTask'); }} style={{ width: 40, height: 40, borderRadius: 20, border: 0, background: COLORS.blue, color: '#FFFFFF', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <button type="button" className="tl-press" aria-label="新建任务" onClick={() => { haptic('selection'); openSheet('newTask'); }} style={{ width: 44, height: 44, borderRadius: 22, border: 0, background: COLORS.blue, color: '#FFFFFF', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
             <Plus size={20} />
           </button>
         </div>
@@ -119,7 +117,7 @@ export default function ThreadsScreen() {
         />
       ) : (
         groups.map((group) => {
-          const collapsedNow = collapsed[group.key] !== false;
+          const collapsedNow = collapsed[group.key] === true;
           return (
             <div key={group.key} className="tl-group">
               <button type="button" className="tl-group-head tl-press" aria-expanded={!collapsedNow} onClick={() => toggleGroup(group.key)}>

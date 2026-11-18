@@ -30,11 +30,14 @@ export default function ConnectScreen({ onRevalidate }: { onRevalidate?: () => v
 
   /**
    * 连接页的更新检查：不依赖配对状态，也不需要有效机器码。
-   * 用上次记住的服务端地址走公开入口；地址为空时退回内置默认入口。
+   * 未配对时**不在挂载期间产生任何外联**（既没有记住的服务地址，也没有用户动作）；
+   * 只有用户显式点「检查应用更新（公开通道）」才用内置公开入口。
    */
-  async function checkUpdate(force = false) {
+  async function checkUpdate(manual = false) {
     if (updateCheck === 'checking') return;
-    const origin = session.serverUrl || serverUrl.trim() || DEFAULT_UPDATE_ORIGIN;
+    const remembered = session.serverUrl || serverUrl.trim();
+    const origin = manual ? (remembered || DEFAULT_UPDATE_ORIGIN) : remembered;
+    if (!origin) return;
     setUpdateCheck('checking');
     try {
       const result = await getPublicAppUpdate(origin);
@@ -49,7 +52,7 @@ export default function ConnectScreen({ onRevalidate }: { onRevalidate?: () => v
       } else if (assessed.state === 'current') {
         setUpdateCheck('current');
       } else {
-        setUpdateCheck(force ? 'error' : 'idle');
+        setUpdateCheck(manual ? 'error' : 'idle');
       }
     } catch {
       setUpdateCheck('error');
@@ -68,11 +71,12 @@ export default function ConnectScreen({ onRevalidate }: { onRevalidate?: () => v
     }
   }, [session.status, session.error]);
 
-  // 进入连接页就查一次更新：这是「连不上」时用户唯一的自救入口。
+  // 只有已记住服务地址时才在挂载时自检；否则第一次打开 App 一个请求都不发。
   useEffect(() => {
+    if (!session.serverUrl) return;
     void checkUpdate(false);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [session.serverUrl]);
 
   async function connect(pairing: MachinePairing) {
     lastPairing.current = pairing;
@@ -178,10 +182,10 @@ export default function ConnectScreen({ onRevalidate }: { onRevalidate?: () => v
             {updateCheck === 'available' && `发现新版本 ${updateVersion}，可先升级再连接。`}
             {updateCheck === 'current' && `当前已是最新版本 ${session.appVersion}。`}
             {updateCheck === 'error' && '暂时无法检查更新（连不上服务器时也可稍后重试）。'}
-            {updateCheck === 'idle' && '连不上电脑时，也可以在这里检查应用更新。'}
+            {updateCheck === 'idle' && '连不上电脑时，也可以主动检查公开更新通道（不会自动联网）。'}
           </p>
           <button type="button" className="tl-connect-manual tl-press" onClick={() => { void checkUpdate(true); }} disabled={updateCheck === 'checking'}>
-            <RefreshCw size={16} /> {updateCheck === 'checking' ? '检查中…' : '检查应用更新'}
+            <RefreshCw size={16} /> {updateCheck === 'checking' ? '检查中…' : '检查应用更新（公开通道）'}
           </button>
           {updateCheck === 'available' && (
             <button type="button" className="tl-connect-submit tl-press" onClick={() => { haptic('selection'); openSheet('update'); }}>

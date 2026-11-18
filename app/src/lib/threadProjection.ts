@@ -48,6 +48,39 @@ export function isArchivedThread(thread: unknown): boolean {
 }
 
 /**
+ * 会话的最后活动时间（毫秒）。
+ *
+ * 服务端两种后端返回的字段名不同：Codex 侧是 `updatedAt`，HTTP 后端
+ * （backends/http-backend.js）规范化后只给 `updatedAtMs`。只看 `updatedAt`
+ * 会让「按时间」排序退化成服务端顺序、列表也没有时间戳。
+ */
+export function threadUpdatedAtMs(thread: unknown): number {
+  const row = (thread || {}) as { updatedAt?: unknown; updatedAtMs?: unknown; createdAt?: unknown; createdAtMs?: unknown };
+  for (const value of [row.updatedAt, row.updatedAtMs, row.createdAt, row.createdAtMs]) {
+    const numeric = typeof value === 'string' && value.trim() && !/^\d+(\.\d+)?$/.test(value.trim())
+      ? Date.parse(value)
+      : Number(value);
+    if (Number.isFinite(numeric) && (numeric as number) > 0) return numeric as number;
+  }
+  return 0;
+}
+
+/** 列表行右侧的时间标签：今天显示时分，昨天显示「昨天」，更早显示月/日。 */
+export function formatThreadWhen(thread: unknown, nowMs = Date.now()): string {
+  const at = threadUpdatedAtMs(thread);
+  if (!at) return '';
+  const date = new Date(at);
+  const now = new Date(nowMs);
+  const pad = (value: number) => String(value).padStart(2, '0');
+  if (date.toDateString() === now.toDateString()) return `${pad(date.getHours())}:${pad(date.getMinutes())}`;
+  const yesterday = new Date(nowMs);
+  yesterday.setDate(yesterday.getDate() - 1);
+  if (date.toDateString() === yesterday.toDateString()) return '昨天';
+  if (date.getFullYear() === now.getFullYear()) return `${date.getMonth() + 1}/${date.getDate()}`;
+  return `${date.getFullYear()}/${date.getMonth() + 1}/${date.getDate()}`;
+}
+
+/**
  * 会话按项目分组。顺序按首次出现，保持服务端原有的排序；
  * 没有 project 的会话归到「未归类项目」，不要丢弃。
  */

@@ -190,9 +190,16 @@ export function resolveTurnPreference(
     }
     : undefined;
   const byId = (id: unknown): ModelCatalogEntry | undefined => models.find((entry) => entry.id === stringValue(id));
+  // 会话里的模型 ID 可能没有 provider 前缀（`deepseek-v4.1-flash`），目录里是
+  // `wbfd/deepseek-v4.1-flash`；不归一就会掉到目录默认模型，进而每轮都请求切换。
+  const threadEntry = matchModelEntry(
+    models,
+    threadModel,
+    modelProvider(stringValue(threadModel)) || modelProvider(stringValue(catalog?.defaultModel)),
+  );
   // A saved per-thread choice is an intentional override; threadModel is only
   // the first-entry fallback before the user has picked anything.
-  const selected = savedModel || savedOverride || byId(threadModel) || byId(catalog?.defaultModel) || models[0];
+  const selected = savedModel || savedOverride || threadEntry || byId(catalog?.defaultModel) || models[0];
   if (!selected) return { model: '', effort: '' };
   const savedEffort = selected.id === savedModelId ? stringValue(saved?.effort) : "";
   const healthDefaultEffort = stringValue(catalog?.defaultEffort);
@@ -207,6 +214,76 @@ export function resolveTurnPreference(
 }
 export function effortLabel(effort: string): string {
   return EFFORT_LABELS[effort] || effort;
+}
+
+/**
+ * 模型 ID 归一：目录里可能给 `wbfd/deepseek-v4.1-flash`，而会话里记的是
+ * `deepseek-v4.1-flash`（真机上两者同时出现过）。裸 ID 与带 provider 前缀的
+ * ID 指同一个模型，不能因为字符串不等就回退到别的模型——那会让每一轮发送
+ * 都变成一次「切换模型」，桥侧会走 dangerous 的 session/configure 并弹原生框。
+ */
+export function normalizeModelId(value: unknown): string {
+  return stringValue(value).replace(/^\/+|\/+$/g, '');
+}
+
+function modelSuffix(id: string): string {
+  const normalized = normalizeModelId(id);
+  const slash = normalized.lastIndexOf('/');
+  return (slash >= 0 ? normalized.slice(slash + 1) : normalized).toLowerCase();
+}
+
+function modelProvider(id: string): string {
+  const normalized = normalizeModelId(id);
+  const slash = normalized.indexOf('/');
+  return slash > 0 ? normalized.slice(0, slash) : '';
+}
+
+/**
+ * 精确 ID 优先；否则按「最后一个 `/` 之后」匹配。同尾段出现多个时，
+ * 优先与 `preferProvider`（会话自己的 provider，或目录默认模型）一致的；
+ * 仍然无法唯一确定就返回 undefined，绝不随便挑一个。
+ */
+export function matchModelEntry(
+  models: ModelCatalogEntry[],
+  rawId: unknown,
+  preferProvider = '',
+): ModelCatalogEntry | undefined {
+  const wanted = normalizeModelId(rawId);
+  if (!wanted || !models.length) return undefined;
+  const exact = models.find((entry) => entry.id === wanted);
+  if (exact) return exact;
+  const wantedSuffix = modelSuffix(wanted);
+  const candidates = models.filter((entry) => modelSuffix(entry.id) === wantedSuffix);
+  if (!candidates.length) return undefined;
+  if (candidates.length === 1) return candidates[0];
+  const provider = modelProvider(wanted) || preferProvider;
+  return provider ? candidates.find((entry) => modelProvider(entry.id) === provider) : undefined;
+}
+
+/**
+ * 一条普通消息该不该带 model/effort。
+ *
+ * 只有两种情况需要带：会话当前模型就是选中的模型（same-pair，`model` 省略，
+ * 只在用户显式改过强度时带 effort），或用户在模型面板里真的选了一个新模型。
+ * 「打开会话」本身不是一次切换——不带 model 时电脑端沿用会话自己的模型。
+ */
+export function sendModelFields(input: {
+  catalog?: ModelCatalog | null;
+  preference: TurnPreference;
+  threadModel?: unknown;
+  /** 用户是否在模型面板里为这个会话显式选过 */
+  explicit?: boolean;
+}): { model?: string; effort?: string } {
+  const preferred = normalizeModelId(input.preference.model);
+  if (!preferred) return {};
+  const rawThread = normalizeModelId(input.threadModel);
+  if (rawThread) {
+    const threadEntry = matchModelEntry(input.catalog?.models || [], rawThread, modelProvider(preferred));
+    const sameAsThread = preferred === rawThread || Boolean(threadEntry && threadEntry.id === preferred);
+    if (sameAsThread) return input.explicit && input.preference.effort ? { effort: input.preference.effort } : {};
+  }
+  if (!input.explicit) return {};
+  return { model: preferred, ...(input.preference.effort ? { effort: input.preference.effort } : {}) };
 }
 
 export function supportsImages(catalog: ModelCatalog | null | undefined, modelId: string): boolean | null {

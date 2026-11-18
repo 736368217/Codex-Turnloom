@@ -78,7 +78,7 @@ function ApprovalCard({ message, context, threadId }: { message: ThreadMessage; 
       {error && <div role="alert" className="tl-approval-error">{error}</div>}
       {!canApprove && <div className="tl-approval-error">{message.unavailable ? '请求已过期、变化或已处理，已禁用决定。' : decisions.length ? '缺少可核对的请求详情，已禁用决定。' : '电脑端未提供可用决定，操作已禁用。'}</div>}
       <div className="tl-approval-actions">
-        {decisions.map(decision => <button key={decision} type="button" className={decision === 'decline' ? 'tl-approval-reject' : 'tl-approval-approve'} disabled={!canApprove || busy} onClick={() => { void decide(decision); }}>
+        {decisions.map(decision => <button key={decision} type="button" className={decision === 'decline' ? 'tl-approval-reject' : 'tl-approval-approve'} style={{ minHeight: 44 }} disabled={!canApprove || busy} onClick={() => { void decide(decision); }}>
           {decision === 'decline' ? <X size={15} /> : <Check size={15} />} {approvalDecisionLabel(decision)}
         </button>)}
       </div>
@@ -98,6 +98,7 @@ function ThoughtBlock({ text }: { text: string }) {
         className="tl-thought-head"
         aria-expanded={expanded}
         onClick={() => { if (long) setOpen((value) => !value); }}
+        style={{ minHeight: 44 }}
       >
         <Brain size={14} />
         <span>思考过程</span>
@@ -209,7 +210,7 @@ export default function ChatDetailScreen({ threadId, title }: { threadId: string
       fields.setError('当前模型仅支持文字。请移除图片或改用支持图片的模型。'); return;
     }
     const payload = buildSendPayload({
-      message: text, clientRequestId: '', model: fields.preference.model, effort: fields.preference.effort, attachments,
+      message: text, clientRequestId: '', model: fields.send.model, effort: fields.send.effort, attachments,
     });
     const identity = sendRequestIdentity({ ...payload, threadId, newThread: false });
     payload.clientRequestId = requestIdForIdentity(identity);

@@ -1,9 +1,9 @@
-import { useEffect, useRef, useState, type FormEvent, type ReactNode } from 'react';
+import { useEffect, useRef, useState, type CSSProperties, type FormEvent, type ReactNode } from 'react';
 import { ArrowUp, Check, ChevronDown, Image as ImageIcon, Paperclip, Search, Square, X } from 'lucide-react';
 import VaulSheet from './VaulSheet';
 import { COLORS } from '../theme/optionATokens';
 import {
-  resolveTurnPreference, supportsImages, effortLabel, isRunning,
+  resolveTurnPreference, supportsImages, effortLabel, isRunning, sendModelFields,
   EFFORT_LABEL,
   type ModelCatalog, type ModelCatalogEntry, type SendAttachment,
 } from '../lib/chatContract';
@@ -147,6 +147,12 @@ export function useComposerFields(scope: string, threadId: string, threadModel?:
 
   const preference = resolveTurnPreference(catalog, composer.preference, threadModel);
   const imageSupport = supportsImages(catalog, preference.model);
+  // 普通发送不带 model：会话自己的模型就是它正在跑的模型，带上会让电脑端
+  // 每次都走一次「切换模型」（PI 侧是 dangerous 的 session/configure，会弹原生框）。
+  const send = sendModelFields({
+    catalog, preference, threadModel,
+    explicit: Boolean(composer.preference?.model),
+  });
 
   const select = (model: string, effort: string): void => {
     saveTurnPreference(scope, threadId, { model, effort });
@@ -182,7 +188,7 @@ export function useComposerFields(scope: string, threadId: string, threadModel?:
   };
 
   return {
-    composer, catalog, preference, imageSupport, sheetOpen, setSheetOpen,
+    composer, catalog, preference, send, imageSupport, sheetOpen, setSheetOpen,
     busy, setBusy, picking, error, setError, select, pick, scope, threadId,
     removeAttachment: (id: string) => { removeComposerAttachment(id, scope, threadId); setError(''); },
   };
@@ -221,6 +227,7 @@ export function ComposerFields({ fields, primary, enterKeyHint = 'send' }: {
         <AttachmentTray attachments={composer.attachments} onRemove={removeAttachment} />
         <div className="tl-composer-tools">
           <button type="button" className="tl-press tl-model-trigger" aria-label={`模型与思考强度：${stateLabel}`}
+            style={{ minHeight: 44 }}
             aria-haspopup="dialog" onClick={() => setSheetOpen(true)}>
             <span className="tl-model-trigger-name">{name}</span>
             {effort && <span className="tl-model-trigger-effort">{effort}</span>}
@@ -228,6 +235,7 @@ export function ComposerFields({ fields, primary, enterKeyHint = 'send' }: {
           </button>
           <button type="button" className="tl-press tl-composer-icon" aria-label="图片" title="图片"
             disabled={fields.picking}
+            style={{ width: 44, minWidth: 44, height: 44, minHeight: 44 }}
             onClick={() => {
               // Explain a known text-only model before opening the native picker.
               if (imageSupport === false) {
@@ -238,6 +246,7 @@ export function ComposerFields({ fields, primary, enterKeyHint = 'send' }: {
             }}><ImageIcon size={18} /></button>
           <button type="button" className="tl-press tl-composer-icon" aria-label="附件" title="附件"
             disabled={fields.picking}
+            style={{ width: 44, minWidth: 44, height: 44, minHeight: 44 }}
             onClick={() => { haptic('selection'); void pick('file'); }}><Paperclip size={18} /></button>
           <span className="tl-composer-spacer" />
           {primary}
@@ -248,6 +257,11 @@ export function ComposerFields({ fields, primary, enterKeyHint = 'send' }: {
         onSelect={(model, effortValue) => select(model, effortValue)} />
     </>
   );
+}
+
+function primaryStyle(): CSSProperties {
+  // 44×44 真实命中区（不是靠伪元素撑出来的），停止/发送/创建共用。
+  return { width: 44, minWidth: 44, height: 44, minHeight: 44, borderRadius: 22 };
 }
 
 /** One primary action: form submit sends; Stop is a separate explicit button. */
@@ -262,6 +276,7 @@ export function ChatPrimaryButton({ scope, threadId, fields, onStop }: {
   if (running) {
     return (
       <button type="button" aria-label="停止" title="停止" onClick={() => { void onStop?.(); }}
+        style={primaryStyle()}
         className="tl-press tl-composer-send tl-composer-send--stop" disabled={fields.busy || !onStop}>
         <Square size={14} fill="currentColor" />
       </button>
@@ -269,6 +284,7 @@ export function ChatPrimaryButton({ scope, threadId, fields, onStop }: {
   }
   return (
     <button type="submit" aria-label="发送" title="发送"
+      style={primaryStyle()}
       className="tl-press tl-composer-send" disabled={!hasInput || fields.busy}>
       <ArrowUp size={20} strokeWidth={2.4} />
     </button>

@@ -68,7 +68,7 @@ export default function NewTaskSheet() {
   return (
     <form className="tl-newtask" onSubmit={(event) => { void submit(event); }}>
       <ComposerFields fields={fields} primary={
-        <button type="submit" className="tl-press tl-composer-send" aria-label="创建任务" title="创建任务" disabled={!canSubmit}>
+        <button type="submit" className="tl-press tl-composer-send" aria-label="创建任务" title="创建任务" style={{ width: 44, minWidth: 44, height: 44, minHeight: 44, borderRadius: 22 }} disabled={!canSubmit}>
           <ArrowUp size={20} strokeWidth={2.4} />
         </button>
       } />

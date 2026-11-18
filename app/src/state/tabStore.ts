@@ -33,5 +33,6 @@ export function closeDetail(): void {
 }
 export function setThreadsQuery(threadsQuery: string): void { tabStore.setState({ threadsQuery }); }
 export function setThreadsFilter(threadsFilter: TabState['threadsFilter']): void { tabStore.setState({ threadsFilter }); }
+export function setThreadsView(threadsView: TabState['threadsView']): void { tabStore.setState({ threadsView }); }
 export function useTabState(): TabState { return useStore(tabStore); }
 export default tabStore;
