@@ -138,6 +138,6 @@ node tools/qa/capture.mjs --viewports 360x800,320x568,768x1024 --out docs/qa/vis
 | 扫码配对 | 无相机环境，未验证 |
 | 毛玻璃/层级（U5）、TabBar 语义（U9）、机器名重复（U8） | 属 `theme/**` 与视觉组件，已交 @Iris，未在本轮落地 |
 | `--backend http` 部署无法配对（D1） | **已修**（`server.js` 发现路由在 501 兜底前放行，回归 `test/http-backend-pairing.test.cjs`）；harness 现在直连真服务配对，`pairing-proxy.mjs` 仅作历史对照（`--proxy`） |
-| 401 被渲染成「离线」（D2，@Rhea 真机发现） | **未修**：`AppShell.tsx:66` 的横幅只看 `session.status !== 'ready'`，忽略已存在的 `session.error`（`connectionErrorMessage(401)` 其实已给出「机器访问码不正确或已更换」）。横幅属 @Iris 的组件，已交她；`sessionStore` 侧无需改动。 |
+| 401 被渲染成「离线」（D2，@Rhea 真机发现） | **已修（@Iris，工作树待提交）**：`AppShell.tsx` 横幅改读 `session.error`。我用真 401 夹具复验通过——配对后把已保存的机器码/服务码改成失效值再冷启动，横幅显示「机器访问码不正确或已更换。请在电脑端查看最新的机器访问码后重试。」+「重试」，截图 `docs/qa/visual/after/390x844/21-401-banner.png`。附带一项未修：该「重试」按钮实测 32×32（应 ≥44），已交 @Iris。 |
 | 连接页重输访问码后旧错误卡不消失（D5，@Rhea 真机发现） | **未修（下一轮）**：`ConnectScreen` 的 `session.error` 没有在输入变化时清掉，改 `onChange` 时 `setConnectionError('', status)` 即可；属本 Task 的 `screens/**`。 |
 | 返回列表后视图/搜索被重置（D3，@Rhea 真机发现） | **已修**：视图改存 `tabStore.threadsView`（`63f5833`），搜索词本来就在 `tabStore.threadsQuery`；进出详情不再重置。 |

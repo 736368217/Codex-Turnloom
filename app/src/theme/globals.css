@@ -1158,14 +1158,19 @@ button:focus-visible, a:focus-visible { outline: 2px solid var(--tl-blue); outli
   line-height: 16px;
 }
 .tl-conn-banner span { flex: 1; min-width: 0; }
+/* 32px was below the contract's 44px target; the banner grows to keep the
+   tappable area without stealing width from the message. */
 .tl-conn-banner button {
   border: 0;
   background: transparent;
   color: #8A5300;
   font-size: 12px;
   font-weight: 700;
-  padding: 0 4px;
-  min-height: 32px;
+  padding: 0 8px;
+  min-height: 44px;
+  min-width: 44px;
+  margin: -6px -4px -6px 0;
+  border-radius: 10px;
 }
 .tl-list-actions { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; padding: 8px 16px 16px; }
 .tl-list-actions button { min-height: 44px; padding: 0 14px; border: 0; border-radius: 12px; background: white; color: #007aff; font-size: 13px; font-weight: 600; }
