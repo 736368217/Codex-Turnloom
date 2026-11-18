@@ -112,6 +112,9 @@ export class HttpBackendClient {
       if (!response.ok) {
         const error = new Error(data?.error || `HTTP backend returned ${response.status}`);
         error.status = response.status;
+        // 上游已经给出机器码就原样带上去：否则经一跳 http backend 代理后，
+        // 「请求已处理」和「详情已变更」都会退化成同一个 409，手机端无法区分。
+        if (typeof data?.code === "string" && data.code) error.code = data.code;
         throw error;
       }
       return data;
@@ -215,6 +218,7 @@ export class HttpBackendClient {
     if (!threadId || !requestId || !APPROVAL_KINDS.has(approvalKind) || !/^[a-f0-9]{64}$/.test(detailsHash) || !APPROVAL_DECISIONS.has(decision)) {
       const error = new Error("Exact thread, request id, approval kind, displayed details, and decision are required");
       error.status = 400;
+      error.code = "approval_identity_required";
       throw error;
     }
     return this.request("/approval", { method: "POST", body: { threadId, requestId, approvalKind, detailsHash, decision, approved: decision !== "decline" } });

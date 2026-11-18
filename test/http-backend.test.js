@@ -78,6 +78,34 @@ test("HTTP backend rejects threads outside the adapter inventory", async () => {
   await assert.rejects(() => backend.getMessages("unknown"), (error) => error.status === 404);
 });
 
+test("HTTP backend preserves the upstream error code so a proxy hop cannot flatten 409 reasons", async () => {
+  const fetchImpl = async () => new Response(JSON.stringify({
+    error: "Approval is missing, changed, expired, already resolved, or does not match the displayed request",
+    code: "approval_request_unavailable"
+  }), { status: 409 });
+  const backend = new HttpBackendClient({ baseUrl: "http://backend.test", fetchImpl });
+  await assert.rejects(
+    () => backend.respondToApproval({ threadId: "a", requestId: "req-a", approvalKind: "command", detailsHash: "a".repeat(64), decision: "approve" }),
+    (error) => error.status === 409 && error.code === "approval_request_unavailable"
+  );
+
+  const noCode = new HttpBackendClient({ baseUrl: "http://backend.test", fetchImpl: async () => new Response(JSON.stringify({ error: "boom" }), { status: 500 }) });
+  await assert.rejects(() => noCode.listThreads(), (error) => error.status === 500 && error.code === undefined);
+});
+
+test("HTTP backend rejects an incomplete approval decision locally with the same code as the server", async () => {
+  const calls = [];
+  const backend = new HttpBackendClient({
+    baseUrl: "http://backend.test",
+    fetchImpl: async (url) => { calls.push(String(url)); return new Response(JSON.stringify({ ok: true }), { status: 200 }); }
+  });
+  await assert.rejects(
+    () => backend.respondToApproval({ threadId: "a", requestId: "req-a", approvalKind: "command", detailsHash: "not-a-hash", decision: "approve" }),
+    (error) => error.status === 400 && error.code === "approval_identity_required"
+  );
+  assert.deepEqual(calls, [], "an unsubmittable decision must never reach the backend");
+});
+
 test("HTTP backend extended operations use the documented routes", async () => {
   const calls = [];
   const fetchImpl = async (url, options) => {
