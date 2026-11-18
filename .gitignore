@@ -53,6 +53,10 @@ docs/OPERATIONS-CHANGELOG.md
 android/**/build/
 public/downloads/_archive/
 public/downloads/*.apk
+# Server upgrade bundles and their published manifests are deployment
+# artifacts: the manifest carries an internal address, the zip is a build.
+public/downloads/*.zip
+public/downloads/desktop-release.json
 
 # Internal acceptance reports, design drafts, real-data screenshots and
 # offline demos are never published.
