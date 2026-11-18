@@ -151,7 +151,10 @@ function resolveUpdateSource({ projectRoot = process.cwd(), configured = "" } = 
     if (/^https?:\/\//i.test(explicit)) {
       return { kind: "url", target: explicit, label: "updateSource", configured: true };
     }
-    return { kind: "file", target: path.resolve(root, explicit), label: explicit, configured: true };
+    // An absolute local path is the operator's business, not the phone's:
+    // report the file name instead of the machine layout.
+    const label = path.isAbsolute(explicit) ? path.basename(explicit) : explicit;
+    return { kind: "file", target: path.resolve(root, explicit), label, configured: true };
   }
   // Installed trees may keep the manifest beside the app rather than in
   // `public/downloads`; prefer whichever exists, and report the documented
