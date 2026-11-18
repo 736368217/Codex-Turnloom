@@ -277,6 +277,26 @@ try {
         Step 'stop' 'ok' ("$killed process(es), $stoppedSupervisors supervisor(s)")
     }
 
+    # A package that carries the phone APK replaces the one this host serves at
+    # /api/apk; keep the previous bytes so a bad APK is one rename away from gone.
+    $packageApk = Join-Path $work 'public\downloads\Codex-Turnloom.apk'
+    $packageSidecar = "$packageApk.release.json"
+    $stagedAppVersion = $null
+    if ((Test-Path -LiteralPath $packageApk -PathType Leaf) -and (Test-Path -LiteralPath $packageSidecar -PathType Leaf)) {
+        $sidecar = Get-Content -LiteralPath $packageSidecar -Raw -Encoding UTF8 | ConvertFrom-Json
+        $stagedAppVersion = [string]$sidecar.versionName
+        $downloads = Join-Path $TargetRoot 'public\downloads'
+        if (-not (Test-Path -LiteralPath $downloads)) { $null = New-Item -ItemType Directory -Path $downloads -Force }
+        $stamp2 = Get-Date -Format 'yyyyMMdd-HHmmss'
+        foreach ($name in @('Codex-Turnloom.apk', 'Codex-Turnloom.apk.release.json')) {
+            $existing = Join-Path $downloads $name
+            if (Test-Path -LiteralPath $existing -PathType Leaf) {
+                Copy-Item -LiteralPath $existing -Destination ("$existing.bak-$stamp2") -Force
+            }
+        }
+        Step 'apk-bundle' 'ok' ("staged {0} {1}" -f $stagedAppVersion, ([string]$sidecar.versionCode))
+    }
+
     $copied = Copy-Overlay -Source $work -Root $TargetRoot -Exclude @()
     Step 'copy' 'ok' ("$copied file(s)")
 
@@ -347,10 +367,20 @@ try {
     Step 'health' 'ok' ("version {0}" -f $served)
 
     try {
-        $update = Invoke-RestMethod -Uri "http://127.0.0.1:$port/api/app/update-public" -TimeoutSec 3 -ErrorAction Stop
+        $update = Invoke-RestMethod -Uri "http://127.0.0.1:$port/api/app/update" -Headers @{ 'x-access-token' = $accessCode } -TimeoutSec 5 -ErrorAction Stop
         $staged = [string]$update.versionName
-        if ($staged) { Step 'apk' 'ok' ("update-public {0}" -f $staged) }
-    } catch { Step 'apk' 'skipped' 'update-public not readable' }
+        if ($stagedAppVersion) {
+            if (-not $update.available -or $staged -ne $stagedAppVersion) {
+                throw ("the host advertises APK '{0}' (available={1}), expected '{2}'" -f $staged, $update.available, $stagedAppVersion)
+            }
+            Step 'apk-update' 'ok' ("/api/app/update {0} / {1}" -f $staged, ([string]$update.versionCode))
+        } elseif ($staged) {
+            Step 'apk-update' 'ok' ("/api/app/update {0}" -f $staged)
+        }
+    } catch {
+        if ($stagedAppVersion) { throw }
+        Step 'apk-update' 'skipped' 'update-public not readable'
+    }
 
     Say ("done: {0} now runs {1}" -f $TargetRoot, $newVersion)
     Say ("backup kept at {0}" -f $backup.Path)
