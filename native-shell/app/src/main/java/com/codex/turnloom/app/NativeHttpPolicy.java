@@ -25,7 +25,10 @@ import java.util.concurrent.ConcurrentHashMap;
 final class NativeHttpPolicy {
     private static final String PREFS = "turnloom_paired_origins_v1";
     private static final String KEY = "origins";
+    private static final String USER_AGENT_PREFIX = "Codex-Turnloom";
     private static final Set<String> authorizedOrigins = ConcurrentHashMap.newKeySet();
+    /** Installed versionName, resolved once; a stale literal here misleads server logs. */
+    private static volatile String userAgent = USER_AGENT_PREFIX;
     private static volatile boolean loaded = false;
 
     private NativeHttpPolicy() {
@@ -48,6 +51,15 @@ final class NativeHttpPolicy {
                 }
             } catch (Exception ignored) {
                 // Corrupt pairing state fails closed: no explicit LAN origin.
+            }
+            try {
+                android.content.pm.PackageInfo pi = context.getPackageManager()
+                        .getPackageInfo(context.getPackageName(), 0);
+                if (pi != null && pi.versionName != null && !pi.versionName.isEmpty()) {
+                    userAgent = USER_AGENT_PREFIX + "/" + pi.versionName;
+                }
+            } catch (Exception ignored) {
+                // The UA is diagnostic metadata only; never fail a request over it.
             }
             loaded = true;
         }
@@ -114,6 +126,11 @@ final class NativeHttpPolicy {
         }
     }
 
+    /** Cached User-Agent for bridge requests; diagnostics metadata, never authorization. */
+    static String userAgent() {
+        return userAgent;
+    }
+
     /** Apply validated request fields to a freshly opened, same-origin connection. */
     static void configure(HttpURLConnection conn, BridgeContract.HttpRequest req,
             String tokenHeader) {
@@ -123,7 +140,7 @@ final class NativeHttpPolicy {
         conn.setUseCaches(false);
         conn.setRequestProperty("Accept", "application/json");
         conn.setRequestProperty("Accept-Encoding", "identity");
-        conn.setRequestProperty("User-Agent", "Codex-Turnloom/2.1.0");
+        conn.setRequestProperty("User-Agent", userAgent);
         if (tokenHeader != null && !tokenHeader.isEmpty()) {
             conn.setRequestProperty("x-access-token", tokenHeader);
         }

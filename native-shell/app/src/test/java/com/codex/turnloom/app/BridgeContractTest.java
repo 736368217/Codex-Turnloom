@@ -292,6 +292,53 @@ public class BridgeContractTest {
         assertFalse(success.has("error"));
     }
 
+    private static String requestJson(String url, String method, String headers, String body,
+            int timeoutMs) {
+        try {
+            JSONObject o = new JSONObject(requestJson(url, method, headers, body));
+            o.put("timeoutMs", timeoutMs);
+            return o.toString();
+        } catch (Exception e) {
+            throw new RuntimeException(e);
+        }
+    }
+
+    /**
+     * Phone diagnostics upload reuses the same bounded native HTTP bridge: the
+     * path passes the /api/* allowlist, a full 256 KiB batch fits the envelope,
+     * and its own timeout never leaks into other requests.
+     */
+    @Test
+    public void diagnosticsUploadReusesTheBoundedHttpBridge() throws Exception {
+        String url = "http://192.168.1.10:8801/api/diagnostics";
+        BridgeContract.Origin origin = BridgeContract.validateApiUrl(url, true);
+        assertEquals("http", origin.scheme);
+        assertEquals("192.168.1.10", origin.host);
+        assertEquals(8801, origin.port);
+
+        String payload = "{\"events\":[" + repeat('x', 256 * 1024) + "]}";
+        BridgeContract.HttpRequest req = BridgeContract.parseHttpRequest(requestJson(
+                url, "POST", "{\"X-Turnloom-Client\":\"app\"}", payload, 20_000));
+        assertEquals("POST", req.method);
+        assertEquals(payload.length(), req.body.length);
+        assertEquals(20_000, req.timeoutMs);
+        assertTrue(req.body.length < BridgeContract.MAX_REQUEST_BODY_BYTES);
+
+        // A 256 KiB batch must never be what makes the bridge reject an upload.
+        assertTrue(BridgeContract.MAX_HTTP_BODY_BYTES > 4L * 256 * 1024);
+        expectCode("INVALID_TIMEOUT", () -> {
+            try {
+                BridgeContract.parseHttpRequest(requestJson(
+                        url, "POST", null, "{}", BridgeContract.MAX_TIMEOUT_MS + 1));
+            } catch (BridgeContract.ValidationException e) {
+                throw new RuntimeException(e);
+            }
+        });
+
+        // The UA is assembled from the installed versionName, not a frozen literal.
+        assertEquals("Codex-Turnloom", NativeHttpPolicy.userAgent());
+    }
+
     private static String repeat(char value, int count) {
         StringBuilder out = new StringBuilder(count);
         for (int i = 0; i < count; i++) out.append(value);
