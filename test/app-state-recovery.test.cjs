@@ -102,7 +102,9 @@ test('HTTP business failures keep connection online; only transport failure mark
     assert.equal(await h.data.sendMessage(ctx, 'one', { message: 'keep draft', clientRequestId: `failure-${status}` }), false);
     assert.equal(h.data.dataStore.getState().offline, status === 0);
     assert.equal(h.session.sessionStore.getState().online, status !== 0);
-    assert.match(h.data.dataStore.getState().error, status === 500 ? /服务出错/ : status === 403 ? /不允许写入/ : /连不上/);
+    // 2026-11-18: a transport failure keeps the offline flag, but a timeout is
+    // described as a timeout instead of "连不上电脑" (that sentence hid the cause).
+    assert.match(h.data.dataStore.getState().error, status === 500 ? /服务出错/ : status === 403 ? /不允许写入/ : /超时/);
   }
 });
 
