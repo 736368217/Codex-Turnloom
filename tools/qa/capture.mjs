@@ -410,7 +410,15 @@ async function runViewport(browser, viewport, report) {
     await sleep(400);
     report.newChat = await page.eval(`(() => {
       const input = document.querySelector('textarea.tl-composer-input');
-      return { focused: document.activeElement === input, composer: Boolean(input), text: (document.body.innerText || '').slice(0, 80) };
+      const main = document.querySelector('.tl-detail-body');
+      const blank = document.querySelector('.tl-chat-list--blank');
+      const orb = document.querySelector('.tl-chat-blank-orb');
+      const box = (el) => el ? { top: Math.round(el.getBoundingClientRect().top), height: Math.round(el.getBoundingClientRect().height) } : null;
+      return {
+        focused: document.activeElement === input, composer: Boolean(input),
+        text: (document.body.innerText || '').slice(0, 80),
+        main: box(main), blank: box(blank), orb: box(orb),
+      };
     })()`);
     await shot(page, dir, "11a-new-chat", report);
     await page.fill("textarea.tl-composer-input", "这是一条新会话的测试消息");

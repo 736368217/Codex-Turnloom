@@ -289,14 +289,14 @@ export default function ChatDetailScreen({ threadId, title, newThread = false }:
         </div>
       </header>
 
-      <main ref={bodyRef} className="tl-detail-body tl-no-scrollbar">
+      <main ref={bodyRef} className={`tl-detail-body tl-no-scrollbar${newThread ? ' tl-detail-body--blank' : ''}`}>
         {history?.hasOlder && <div style={{ padding: '8px 12px' }}>
           <button type="button" className="tl-connect-manual" disabled={history.loading || !history.olderCursor} onClick={() => { void loadHistory(); }}>
             {history.loading ? '正在加载历史…' : history.olderCursor ? '加载更早消息' : '电脑端暂未提供更早消息游标'}
           </button>
           {history.error && <div role="alert" className="tl-page-note tl-page-note--error">{history.error} 可再次点击重试。</div>}
         </div>}
-        <div className={`tl-chat-list${newThread ? ' tl-chat-list--blank' : ''}`} role="log" aria-label="消息流">
+        <div className={`tl-chat-list${newThread ? ' tl-chat-list--blank' : ''}`} role="log" aria-label="消息流" style={newThread ? { flexDirection: 'column' } : undefined}>
           {newThread ? (
             <div className="tl-chat-blank">
               <div className="tl-chat-blank-orb" aria-hidden="true"><Sparkles size={26} /></div>

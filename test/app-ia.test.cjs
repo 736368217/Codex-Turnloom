@@ -98,8 +98,8 @@ test('IA5: machine + diagnostics live in Settings, version appears once', () => 
   assert.match(settings, /上传诊断/);
   assert.match(settings, /openSheet\('diagnostics'\)/);
   // Version appears once, in the About card; there is no second subtitle copy.
-  assert.equal((settings.match(/APP_IDENTITY\.label/g) || []).length, 1);
-  assert.match(settings, /APP_IDENTITY\.label\} · \{session\.appVersion\} \(\{session\.appVersionCode\}\)/);
+  assert.doesNotMatch(settings, /APP_IDENTITY/);
+  assert.match(settings, /\{session\.appVersion\} \(\{session\.appVersionCode\}\)/);
   assert.match(settings, /tl-settings-row--danger/);
 });
 

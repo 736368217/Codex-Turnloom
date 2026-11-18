@@ -75,7 +75,7 @@ const TOOL_OUTPUT = [
 const threads = [
   { id: "qa-long", title: "长 Markdown、代码块与表格的排版回归", status: { state: "ended" }, updatedAtMs: now - 60_000, preview: "这一轮验证了 390×844 下的会话详情排版…" },
   { id: "qa-running", title: "正在运行：把视觉检定跑完", status: { state: "running", thinking: true, startedAtMs: now - 95_000 }, updatedAtMs: now - 5_000, preview: "工具调用中…" },
-  { id: "qa-approval", title: "等待审批：删除构建产物的命令", status: { state: "waiting", thinking: true, interactionRequired: true }, updatedAtMs: now - 120_000, preview: "需要确认 rm -rf 操作" },
+  { id: "qa-approval", title: "等待审批：删除构建产物的命令", status: { state: "waiting", thinking: false, interactionRequired: true }, updatedAtMs: now - 120_000, preview: "需要确认 rm -rf 操作" },
   { id: "qa-failed", title: "失败：桌面端服务未启动", status: { state: "ended", error: "desktop-ipc-unavailable" }, updatedAtMs: now - 3_600_000, preview: "连接电脑失败" },
   { id: "qa-mismatch", title: "审批详情缺失（按钮应禁用）", status: { state: "waiting", interactionRequired: true }, updatedAtMs: now - 7_200_000, preview: "请求详情不完整" },
   { id: "qa-long-title", title: "这是一个非常非常长的会话标题用来验证标题截断与换行是否会把右侧状态挤掉或者撑出横向滚动条", status: { state: "ended" }, updatedAtMs: now - 86_400_000, preview: "很长的标题" }
@@ -190,6 +190,9 @@ const server = http.createServer((req, res) => {
         id, title: text.slice(0, 48) || "新会话", preview: text.slice(0, 80),
         status: { state: "ended" }, updatedAt: Date.now(),
       });
+      // The real host echoes the first user message; the mock does too, so the
+      // post-send screenshot shows a real bubble instead of "暂无消息".
+      messagesByThread[id] = [{ id: `${id}-m1`, role: "user", content: text, createdAt: Date.now() }];
       return json(res, 200, { ok: true, threadId: id });
     }
     const interruptMatch = /^\/threads\/([^/]+)\/interrupt$/.exec(path);
@@ -222,7 +225,10 @@ const server = http.createServer((req, res) => {
       // Drop threads created by earlier viewports so each screenshot starts
       // from the same deterministic list.
       for (let index = threads.length - 1; index >= 0; index -= 1) {
-        if (String(threads[index].id || "").startsWith("qa-new-")) threads.splice(index, 1);
+        if (String(threads[index].id || "").startsWith("qa-new-")) {
+          delete messagesByThread[threads[index].id];
+          threads.splice(index, 1);
+        }
       }
       return json(res, 200, { ok: true });
     }

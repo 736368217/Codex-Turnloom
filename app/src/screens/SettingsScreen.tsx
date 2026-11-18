@@ -1,9 +1,9 @@
 import { useEffect, useRef, useState } from 'react';
 import { Toggle } from 'konsta/react';
-import { Wifi, Database, Activity, Trash2, RefreshCw, Download, X, ShieldCheck, CircleCheck, AlertTriangle, Info } from 'lucide-react';
+import { Wifi, Database, Activity, Trash2, RefreshCw, Download, X, ShieldCheck, CircleCheck, AlertTriangle, Info, FileUp } from 'lucide-react';
 import { InsetGroup } from '../components/Segmented';
 import { StatusPill } from '../components/ui';
-import { COLORS, APP_IDENTITY } from '../theme/optionATokens';
+import { COLORS } from '../theme/optionATokens';
 import { useSessionState, setOfflineCacheEnabled, currentRequestContext } from '../state/sessionStore';
 import { useDataState, clearOfflineCache, refreshAll } from '../state/dataStore';
 import { openSheet } from '../state/sheetStore';
@@ -164,11 +164,11 @@ export default function SettingsScreen() {
           <div className="tl-settings-card">
             <div className="tl-settings-row">
               <span className="tl-settings-icon"><Wifi size={16} color={online ? COLORS.green : COLORS.red} /></span>
-              <span style={{ flex: 1, minWidth: 0 }}>
-                <span style={{ display: 'block', fontSize: 15, fontWeight: 500 }}>
+              <span className="tl-settings-main">
+                <span className="tl-settings-title">
                   {session.machineName}{session.harnessName && session.harnessName !== session.machineName ? ` · ${session.harnessName}` : ''}
                 </span>
-                <span style={{ display: 'block', fontSize: 12, color: COLORS.labelSecondary, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{session.serverUrl}</span>
+                <span className="tl-settings-sub">{session.serverUrl}</span>
               </span>
               <span className="tl-settings-value"><StatusPill tone={online ? 'green' : 'red'} active>{online ? '已连接' : '离线'}</StatusPill></span>
             </div>
@@ -182,7 +182,7 @@ export default function SettingsScreen() {
               <span className="tl-settings-value">›</span>
             </button>
             <button type="button" className="tl-press tl-settings-row" onClick={() => { void uploadPhoneDiagnostics(); }}>
-              <span className="tl-settings-icon"><Activity size={16} /></span>
+              <span className="tl-settings-icon"><FileUp size={16} /></span>
               <span>上传诊断</span>
               <span className="tl-settings-value">{diagBusy ? '上传中…' : diagNotice || '最近 200 条'}</span>
             </button>
@@ -221,7 +221,7 @@ export default function SettingsScreen() {
             <div className="tl-settings-row">
               <span className="tl-settings-icon"><AlertTriangle size={16} /></span>
               <span>版本</span>
-              <span className="tl-settings-value">{APP_IDENTITY.label} · {session.appVersion} ({session.appVersionCode})</span>
+              <span className="tl-settings-value">{session.appVersion} ({session.appVersionCode})</span>
             </div>
           </div>
         </section>
