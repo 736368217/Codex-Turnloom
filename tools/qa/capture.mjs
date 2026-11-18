@@ -427,6 +427,11 @@ async function runViewport(browser, viewport, report) {
     report.newChatAfterSend = await page.eval(`(() => ({
       title: (document.querySelector('.tl-detail-scroll header div div')?.textContent || '').trim(),
       body: (document.querySelector('.tl-detail-body')?.innerText || '').replace(/\\s+/g, ' ').slice(0, 120),
+      rows: Array.from(document.querySelectorAll('.tl-chat-row')).map((el) => ({
+        cls: String(el.className || ''),
+        text: (el.innerText || '').replace(/\\s+/g, ' ').slice(0, 40),
+        bubble: (el.querySelector('.tl-chat-bubble')?.className || ''),
+      })),
     }))()`);
     await shot(page, dir, "11b-new-chat-sent", report);
     await page.eval("window.__turnloomBack && window.__turnloomBack()");
