@@ -12,6 +12,7 @@ const test = require("node:test");
 const assert = require("node:assert/strict");
 const { spawn } = require("node:child_process");
 const fs = require("node:fs");
+const http = require("node:http");
 const os = require("node:os");
 const path = require("node:path");
 const net = require("node:net");
@@ -210,4 +211,34 @@ test("/api/health exposes the running version and /api/desktop/update reports th
   // Unauthenticated calls never leak the manifest.
   const unauthorized = await fetch(`${server.baseUrl}/api/desktop/update`);
   assert.equal(unauthorized.status, 401);
+});
+
+test("an http(s) update source is fetched, bounded and reported when unavailable", async (t) => {
+  const routes = new Map();
+  const server = http.createServer((req, res) => {
+    const row = routes.get(String(req.url || ""));
+    if (!row) { res.writeHead(404).end("{}"); return; }
+    res.writeHead(row.status || 200, { "content-type": "application/json" });
+    res.end(row.body);
+  });
+  await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
+  t.after(() => new Promise((resolve) => server.close(resolve)));
+  const base = `http://127.0.0.1:${server.address().port}`;
+  routes.set("/releases/desktop-release.json", {
+    body: JSON.stringify({ version: "2.2.1", sha256: SHA, sizeBytes: 10, downloadUrl: "/downloads/x.zip" }),
+  });
+  routes.set("/releases/huge.json", { body: JSON.stringify({ version: "2.2.1", notes: "x".repeat(70 * 1024) }) });
+
+  const found = await release.readDesktopRelease({ configured: `${base}/releases/desktop-release.json` });
+  assert.equal(found.available, true);
+  assert.equal(found.version, "2.2.1");
+  assert.equal(found.sourceKind, "url");
+
+  const missing = await release.readDesktopRelease({ configured: `${base}/releases/none.json` });
+  assert.equal(missing.available, false);
+  assert.match(missing.reason, /404/);
+
+  const huge = await release.readDesktopRelease({ configured: `${base}/releases/huge.json` });
+  assert.equal(huge.available, false);
+  assert.match(huge.reason, /manifest-too-large/);
 });
