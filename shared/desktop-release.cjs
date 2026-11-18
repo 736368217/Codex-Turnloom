@@ -54,7 +54,10 @@ function readServerVersion({ projectRoot = process.cwd(), env = process.env, pac
     if (VERSION_PATTERN.test(version)) {
       return {
         version,
-        buildSha: cleanText(parsed?.buildSha || parsed?.sha, 64),
+        // The packaging script records the commit as `gitCommit`; `sha256` in
+        // that file is the file-manifest digest and must never be shown as a
+        // build id.
+        buildSha: cleanText(parsed?.buildSha || parsed?.gitCommit, 64).toLowerCase(),
         generatedAt: cleanText(parsed?.generatedAt, 40),
         source: "VERSION.json",
       };
@@ -143,13 +146,25 @@ function normalizeManifest(raw, { sourceLabel = MANIFEST_NAME } = {}) {
 
 function resolveUpdateSource({ projectRoot = process.cwd(), configured = "" } = {}) {
   const explicit = cleanText(configured, 600);
+  const root = path.resolve(String(projectRoot || process.cwd()));
   if (explicit) {
     if (/^https?:\/\//i.test(explicit)) {
       return { kind: "url", target: explicit, label: "updateSource", configured: true };
     }
-    return { kind: "file", target: path.resolve(String(projectRoot || process.cwd()), explicit), label: explicit, configured: true };
+    return { kind: "file", target: path.resolve(root, explicit), label: explicit, configured: true };
   }
-  return { kind: "file", target: defaultManifestPath(projectRoot), label: `public/downloads/${MANIFEST_NAME}`, configured: false };
+  // Installed trees may keep the manifest beside the app rather than in
+  // `public/downloads`; prefer whichever exists, and report the documented
+  // path when neither does.
+  const packaged = defaultManifestPath(root);
+  if (fs.existsSync(packaged)) {
+    return { kind: "file", target: packaged, label: `public/downloads/${MANIFEST_NAME}`, configured: false };
+  }
+  const besideApp = path.join(root, MANIFEST_NAME);
+  if (fs.existsSync(besideApp)) {
+    return { kind: "file", target: besideApp, label: MANIFEST_NAME, configured: false };
+  }
+  return { kind: "file", target: packaged, label: `public/downloads/${MANIFEST_NAME}`, configured: false };
 }
 
 async function readManifestFromUrl(url, { fetchImpl = globalThis.fetch, timeoutMs = 5000 } = {}) {
