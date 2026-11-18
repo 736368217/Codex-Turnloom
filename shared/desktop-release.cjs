@@ -177,6 +177,8 @@ async function readManifestFromUrl(url, { fetchImpl = globalThis.fetch, timeoutM
   try {
     const response = await fetchImpl(url, { signal: controller.signal, cache: "no-store", headers: { accept: "application/json" } });
     if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    const declared = Number(response.headers?.get?.("content-length"));
+    if (Number.isFinite(declared) && declared > MAX_MANIFEST_BYTES) throw new Error("manifest-too-large");
     const text = await response.text();
     if (Buffer.byteLength(text, "utf8") > MAX_MANIFEST_BYTES) throw new Error("manifest-too-large");
     return JSON.parse(stripBom(text));
@@ -192,6 +194,22 @@ function readManifestFromFile(file) {
 }
 
 /**
+ * A manifest fetched over HTTP may use a site-relative `/downloads/...` path.
+ * Resolve it against the manifest's own origin: the console runs on another
+ * machine, so `127.0.0.1` there is not the publisher.
+ */
+function resolveAgainst(sourceUrl, value) {
+  const text = String(value || "");
+  if (!text) return "";
+  if (/^https?:\/\//i.test(text)) return text;
+  try {
+    return new URL(text, sourceUrl).toString();
+  } catch {
+    return "";
+  }
+}
+
+/**
  * Resolve the release manifest. A missing or broken manifest is a normal,
  * reported state (`available:false`), never an exception: the console must be
  * able to say "更新源不可用" instead of crashing its health view.
@@ -203,6 +221,10 @@ async function readDesktopRelease({ projectRoot = process.cwd(), configured = ""
       ? await readManifestFromUrl(source.target, { fetchImpl })
       : readManifestFromFile(source.target);
     const record = normalizeManifest(raw, { sourceLabel: source.label });
+    if (source.kind === "url" && record.available) {
+      record.downloadUrl = resolveAgainst(source.target, record.downloadUrl);
+      record.upgradeScript = resolveAgainst(source.target, record.upgradeScript);
+    }
     return { ...record, sourceKind: source.kind, sourceLabel: source.label, configured: source.configured };
   } catch (error) {
     const reason = String(error?.message || error || "unreadable-manifest");

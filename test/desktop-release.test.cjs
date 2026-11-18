@@ -233,6 +233,9 @@ test("an http(s) update source is fetched, bounded and reported when unavailable
   assert.equal(found.available, true);
   assert.equal(found.version, "2.2.1");
   assert.equal(found.sourceKind, "url");
+  // A site-relative path is resolved against the manifest's own origin, not
+  // the console's 127.0.0.1 — the publisher is another machine.
+  assert.equal(found.downloadUrl, `${base}/downloads/x.zip`);
 
   const missing = await release.readDesktopRelease({ configured: `${base}/releases/none.json` });
   assert.equal(missing.available, false);
