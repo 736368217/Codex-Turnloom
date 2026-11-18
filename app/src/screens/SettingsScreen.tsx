@@ -84,7 +84,7 @@ export function UpdatePanel() {
             {state === 'checking' ? '检查中' : state === 'available' || state === 'downloading' || state === 'ready' ? '有更新' : state === 'error' ? '检查失败' : state === 'current' ? '无需更新' : state === 'cancelled' ? '已暂停' : state === 'unavailable' ? '暂无安装包' : '尚未检查'}
           </StatusPill>
         </div>
-        {message && <div style={{ fontSize: 13, lineHeight: 19, color: state === 'error' ? COLORS.red : COLORS.labelSecondary, marginTop: 6 }}>{message}</div>}
+        {message && <div style={{ fontSize: 13, lineHeight: '19px', color: state === 'error' ? COLORS.red : COLORS.labelSecondary, marginTop: 6 }}>{message}</div>}
         {state === 'downloading' && (
           <div style={{ marginTop: 8 }}>
             <div style={{ height: 7, borderRadius: 999, background: COLORS.fillSecondary, overflow: 'hidden' }}>

@@ -92,7 +92,7 @@ export default function HomeScreen() {
               </span>
               {update.state === 'available' && <StatusPill tone="blue">可更新</StatusPill>}
             </div>
-            <div style={{ padding: '0 16px 12px', fontSize: 12, lineHeight: 18, color: COLORS.labelSecondary }}>
+            <div style={{ padding: '0 16px 12px', fontSize: 12, lineHeight: '18px', color: COLORS.labelSecondary }}>
               {update.state === 'available'
                 ? (update.release?.notes || `当前 ${session.appVersion}，可升级到 ${update.release?.versionName}。`)
                 : '连不上电脑时也会通过上次的服务端地址检查；稍后可重试。'}
