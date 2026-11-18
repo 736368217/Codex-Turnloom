@@ -16,6 +16,9 @@ desktop/assets/runtime/
 coverage/
 tmp/
 temp/
+.scratch/
+dist-app/
+%SystemDrive%/
 *.tgz
 
 # Logs, temp & editor/OS noise
@@ -36,7 +39,7 @@ config.local.json
 *.jks
 *.keystore
 android/local.properties
-AGENTS.md
+bridge.json
 
 # Private working memory / deployment records (never public)
 docs/PROJECT_MEMORY.md
@@ -55,6 +58,7 @@ public/downloads/*.apk
 # offline demos are never published.
 docs/option-a/*
 !docs/option-a/SINGLE_APP_CONTRACT.md
+!docs/option-a/UI_SPEC.md
 public/option-a/report/
 docs/design/
 docs/assets/phone-*.png
@@ -69,3 +73,7 @@ android/app/src/main/assets/offline-demo.html
 mobile-app/src/services/offlineDemo.js
 mobile-app/src/services/demoBootstrap.ts
 dist-app/*.zip
+
+# Generated QA screenshots stay local; reports and audit text are tracked.
+docs/qa/visual/
+docs/qa/android/
