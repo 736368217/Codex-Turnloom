@@ -1,11 +1,10 @@
-import { Home, MessageSquare, Activity, Settings } from 'lucide-react';
+import { MessageSquare, Activity, Settings } from 'lucide-react';
 import type { ReactElement } from 'react';
 import { COLORS } from '../theme/optionATokens';
 import { haptic } from '../lib/nativeBridge';
 import { setActiveTab, TAB_LABELS, TAB_ORDER, type TabKey } from '../state/tabStore';
 
 const ICONS: Record<TabKey, ReactElement> = {
-  home: <Home size={22} strokeWidth={1.9} />,
   threads: <MessageSquare size={22} strokeWidth={1.9} />,
   monitors: <Activity size={22} strokeWidth={1.9} />,
   settings: <Settings size={22} strokeWidth={1.9} />,
