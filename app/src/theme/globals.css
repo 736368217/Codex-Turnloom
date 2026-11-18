@@ -1442,7 +1442,11 @@ button:focus-visible, a:focus-visible { outline: 2px solid var(--tl-blue); outli
 .tl-filter-chip.is-active { background: var(--tl-label-primary); color: #FFFFFF; }
 .tl-filter-chip:active { opacity: .72; }
 
-.tl-thread-list { flex: 1 0 auto; min-height: 0; display: flex; flex-direction: column; background: var(--tl-surface); }
+.tl-thread-list {
+  flex: 1 0 auto; min-height: 0; display: flex; flex-direction: column;
+  padding-bottom: var(--tl-tabbar-h);
+  background: var(--tl-surface);
+}
 .tl-thread-row {
   position: relative; display: flex; align-items: center; gap: 12px;
   width: 100%; min-height: 66px; padding: 12px 16px;
@@ -1502,7 +1506,7 @@ button:focus-visible, a:focus-visible { outline: 2px solid var(--tl-blue); outli
 
 .tl-settings-scroll {
   flex: 1; min-height: 0; overflow-y: auto; overflow-x: hidden;
-  padding: 0 16px calc(16px + env(safe-area-inset-bottom, 0px));
+  padding: 0 16px calc(var(--tl-tabbar-h) + 16px);
   background: var(--tl-canvas); -webkit-overflow-scrolling: touch;
 }
 .tl-settings-group { margin-top: 18px; }
