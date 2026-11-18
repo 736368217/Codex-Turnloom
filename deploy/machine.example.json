@@ -1,0 +1,48 @@
+{
+  "_comment": {
+    "purpose": "Codex-Turnloom 机器网关配置模板。复制到 deploy/machine.json（或安装后的 %LOCALAPPDATA%/CodexPocket/machine.json、/etc/codex-turnloom/machine.json）后使用；所有 REPLACE_WITH_* 必须替换。",
+    "machineId": "稳定机器标识（写入二维码的 mid 参数与发现响应的 machineId）；不要用敏感信息。",
+    "machineName": "手机端展示的机器名（写入二维码的 machine 参数）。",
+    "machineToken": "机器访问码，仅用于 GET /api/harnesses 发现；必须用 openssl rand -hex 24 等生成随机值，禁止使用占位值。",
+    "defaultHarness": "默认 harness 的 id，必须存在于 harnesses 数组中（对应发现响应的 defaultHarnessId）。",
+    "harnesses": "后端实例表：每项一个 harness。id 唯一；token 为该 harness 的路由凭据，手机端在 /api/* 请求里作为 x-access-token 使用；kind 为后端类型（如 codex）；port 是本机 127.0.0.1 监听端口，网关只对外暴露自己的单端口；entry 是后端入口脚本；codexHome 是该 harness 的数据目录；spawn 为 true 时由网关守护/拉起进程；extraArgs 是附加启动参数。",
+    "private_fields": "port / entry / codexHome / spawn / extraArgs 属于机器私有字段，绝不能出现在 /api/harnesses 响应里。",
+    "security": "token 必须互不相同且不得等于 machineToken（单 harness 兼容部署除外）；发现响应不得回显这些私有字段；配置文件权限 0600 / 仅当前用户可读。",
+    "note": "下划线开头的说明字段仅供人阅读，网关实现应忽略；本模板不含任何真实密钥。"
+  },
+  "machineId": "office-pc",
+  "machineName": "Office PC",
+  "machineToken": "REPLACE_WITH_RANDOM_MACHINE_TOKEN",
+  "defaultHarness": "codex",
+  "harnesses": [
+    {
+      "id": "codex",
+      "name": "Codex",
+      "token": "REPLACE_WITH_CODEX_HARNESS_TOKEN",
+      "kind": "codex",
+      "port": 18788,
+      "entry": "C:/path/to/Codex-Turnloom/server.js",
+      "codexHome": "C:/path/to/REPLACE_WITH_CODEX_HOME",
+      "spawn": true,
+      "extraArgs": [
+        "--port",
+        "18788"
+      ]
+    },
+    {
+      "id": "pidesk",
+      "name": "PI-Desktop",
+      "token": "REPLACE_WITH_PIDESK_HARNESS_TOKEN",
+      "kind": "codex",
+      "port": 8799,
+      "entry": "C:/path/to/Codex-Turnloom/server.js",
+      "codexHome": "C:/path/to/REPLACE_WITH_PIDESK_HOME",
+      "spawn": true,
+      "extraArgs": [
+        "--port",
+        "8799",
+        "--readonly"
+      ]
+    }
+  ]
+}

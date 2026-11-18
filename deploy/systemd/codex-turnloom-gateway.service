@@ -1,0 +1,52 @@
+# Codex-Turnloom Machine Gateway — systemd 单元模板
+#
+# 安装前置（模板中的 /opt/codex-turnloom 与 /etc/codex-turnloom/machine.json 均为占位路径，
+# 由 deploy/install-server.sh --prefix / --config 替换）：
+#   1. 创建系统用户：  sudo useradd --system --no-create-home --shell /usr/sbin/nologin codex-turnloom
+#   2. 部署源码：      把仓库内容放到 /opt/codex-turnloom（含 server/machine-gateway.cjs、
+#                      server.js、shared/machine-pairing.cjs）；WorkingDirectory 必须存在。
+#   3. 创建配置：      从 deploy/machine.example.json 复制为 /etc/codex-turnloom/machine.json，
+#                      替换全部 REPLACE_WITH_* 占位符（含随机生成的 machineToken），
+#                      权限 0600、属主 codex-turnloom：
+#                        sudo install -d -m 0750 /etc/codex-turnloom
+#                        sudo chmod 0600 /etc/codex-turnloom/machine.json
+#                        sudo chown codex-turnloom /etc/codex-turnloom/machine.json
+#   4. 安装与启动：     sudo sh deploy/install-server.sh --systemd
+#                      （等价于 systemctl daemon-reload && systemctl enable --now ...）
+#
+# 「例外」说明（ProtectSystem=strict 下整个文件系统默认只读）：
+#   * ReadWritePaths 是唯一允许写入的例外：网关日志目录与各 harness 的数据目录。
+#     若 harness 的 codexHome 不在下面列出的目录里，必须把该目录加入 ReadWritePaths
+#     （占位：REPLACE_WITH_HARNESS_DATA_DIR），否则后端无法写会话数据。
+#   * ReadOnlyPaths 明确把配置文件重新标成只读：即使它位于某个可写子树内也不会被改写；
+#     systemd 要求这里列出的路径已经存在。
+#   * /etc/codex-turnloom/machine.json 含 machineToken 与各 harness token，切勿放宽权限，
+#     也不要把 token 写进 Environment= 或命令行参数。
+#
+# 注意：Linux 上的系统用户无法访问某个交互登录用户的 Codex 数据目录；此单元面向
+# 「可选服务端 / 常驻中转」场景，Windows 侧的一机一码网关使用登录时无窗口计划任务。
+
+[Unit]
+Description=Codex-Turnloom Machine Gateway
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=codex-turnloom
+WorkingDirectory=/opt/codex-turnloom
+ExecStart=/usr/bin/node /opt/codex-turnloom/server/machine-gateway.cjs --host 0.0.0.0 --port 8787 --config /etc/codex-turnloom/machine.json
+Restart=always
+RestartSec=3
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+# 可写例外（占位路径，按实际安装前缀与数据目录替换；目录须由安装器提前创建）
+ReadWritePaths=/opt/codex-turnloom/logs /var/lib/codex-turnloom
+# 只读例外：密钥配置永远不可写
+ReadOnlyPaths=/etc/codex-turnloom/machine.json
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

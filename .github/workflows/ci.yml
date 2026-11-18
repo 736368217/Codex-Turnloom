@@ -1,0 +1,79 @@
+name: Verify
+
+on:
+  push:
+    branches:
+      - main
+    tags-ignore:
+      - '**'
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# A newer push to the same branch makes the previous run obsolete. This keeps
+# GitHub from completing and mailing a failure for code that is already stale.
+concurrency:
+  group: verify-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  server:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22.23.4
+          cache: npm
+      - run: npm ci
+      - name: Test suite (fail on cancelled subtests)
+        shell: pwsh
+        run: |
+          $log = Join-Path $env:RUNNER_TEMP "node-test.tap"
+          node --test *>&1 | Tee-Object -FilePath $log
+          $code = $LASTEXITCODE
+          $text = Get-Content $log -Raw
+          $failed = if ($text -match '(?m)^# fail (\d+)') { [int]$Matches[1] } else { 0 }
+          $cancelled = if ($text -match '(?m)^# cancelled (\d+)') { [int]$Matches[1] } else { 0 }
+          if ($code -ne 0 -or $failed -ne 0 -or $cancelled -ne 0) {
+            Write-Error "Node tests: exit=$code fail=$failed cancelled=$cancelled"
+            exit 1
+          }
+      - run: npm run check
+      - run: npm run desktop:check
+      - name: Parse Windows deployment scripts
+        shell: powershell
+        run: |
+          $parseErrors = @()
+          Get-ChildItem scripts -Filter *.ps1 | ForEach-Object {
+            $tokens = $null
+            $errors = $null
+            $null = [System.Management.Automation.Language.Parser]::ParseFile($_.FullName, [ref]$tokens, [ref]$errors)
+            $parseErrors += $errors
+          }
+          if ($parseErrors.Count) { $parseErrors | Format-List; exit 1 }
+
+  android:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+          cache: gradle
+      - uses: android-actions/setup-android@v3
+        with:
+          packages: 'platform-tools platforms;android-35 build-tools;35.0.0'
+          log-accepted-android-sdk-licenses: false
+      - run: chmod +x android/gradlew
+      - working-directory: android
+        run: ./gradlew testDebugUnitTest assembleDebug
+      - uses: actions/upload-artifact@v4
+        with:
+          name: codex-Turnloom-debug-apk
+          path: android/app/build/outputs/apk/debug/app-debug.apk

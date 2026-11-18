@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Option A / Cupertino Daylight Glass: light mode is hard-locked. -->
+    <color name="canvas">#F2F2F7</color>
+    <color name="surface">#FFFFFF</color>
+    <color name="fill_secondary">#EFEFF4</color>
+    <color name="separator">#E5E5EA</color>
+    <color name="label_primary">#1C1C1E</color>
+    <color name="label_secondary">#8E8E93</color>
+    <color name="blue">#007AFF</color>
+    <color name="brand_blue">#2563EB</color>
+</resources>

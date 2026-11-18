@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Android cannot express private-IP CIDRs here. The native BridgeContract
+     and NativeHttpPolicy restrict HTTP to explicitly paired private origins.
+     WebView blocks all remote subresources and remote navigation separately. -->
+<network-security-config>
+    <base-config cleartextTrafficPermitted="true">
+        <trust-anchors><certificates src="system" /></trust-anchors>
+    </base-config>
+</network-security-config>

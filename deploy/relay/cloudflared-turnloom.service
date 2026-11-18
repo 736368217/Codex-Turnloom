@@ -1,0 +1,17 @@
+[Unit]
+Description=Cloudflare Tunnel: Codex-Turnloom public entry
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+# The connector token lives in /etc/cloudflared/turnloom.env (0600), never in argv,
+# so it does not show up in `ps` or in `systemctl cat`.
+Type=simple
+EnvironmentFile=/etc/cloudflared/turnloom.env
+ExecStart=/usr/bin/cloudflared --no-autoupdate tunnel run --token ${TUNNEL_TOKEN}
+Restart=always
+RestartSec=5
+TimeoutStopSec=20
+
+[Install]
+WantedBy=multi-user.target

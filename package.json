@@ -1,0 +1,125 @@
+{
+  "name": "codex-turnloom",
+  "version": "1.17.31",
+  "private": true,
+  "main": "desktop/main.cjs",
+  "description": "Private, self-hosted mobile control desk for Codex Desktop.",
+  "author": "736368217",
+  "homepage": "https://github.com/736368217/Codex-Turnloom#readme",
+  "type": "module",
+  "bin": {
+    "codex-turnloom": "./server.js",
+    "codex-turnloom-install-service": "./scripts/install-service.js",
+    "codex-turnloom-uninstall-service": "./scripts/uninstall-service.js",
+    "codex-lan-companion": "./server.js",
+    "codex-lan-companion-install-service": "./scripts/install-service.js",
+    "codex-lan-companion-uninstall-service": "./scripts/uninstall-service.js"
+  },
+  "files": [
+    "server.js",
+    "backends",
+    "shared",
+    "server",
+    "scripts",
+    "public",
+    "docs/assets",
+    "README.md",
+    "CHANGELOG.md",
+    "SECURITY.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "check": "node --check server.js && node --check backends/http-backend.js && node --check public/app.js && node --check public/auth.js && node --check public/markdown.js && node --check public/threads.js && node --check public/history.js && node --check public/runtime.js && node --check public/conversation-cache.js",
+    "test": "node --test",
+    "verify:ci": "node scripts/verify-ci.mjs",
+    "start": "node server.js",
+    "start:readonly": "node server.js --readonly",
+    "device:qr": "node scripts/print-device-qr.js",
+    "windows:install": "powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts/install-windows.ps1",
+    "windows:uninstall": "powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts/uninstall-windows.ps1",
+    "android:test": "cd android && gradlew.bat testDebugUnitTest",
+    "android:build": "cd android && gradlew.bat assembleDebug && node ../scripts/stage-apk.js",
+    "service:install": "node scripts/install-service.js",
+    "service:uninstall": "node scripts/uninstall-service.js",
+    "desktop:dev": "electron .",
+    "desktop:start": "electron .",
+    "desktop:build": "electron-builder --win nsis",
+    "desktop:pack": "electron-builder --dir",
+    "desktop:check": "node --check desktop/main.cjs && node --check desktop/preload.cjs && node --check desktop/service/config.cjs && node --check desktop/service/controller.cjs && node --check desktop/service/tunnel.cjs && node --check desktop/service/runtime.cjs && node --check desktop/service/logger.cjs && node --check desktop/service/health.cjs && node --check desktop/service/pairing.cjs && node --check desktop/service/legacy.cjs && node --check desktop/renderer/app.js && node --check desktop/renderer/setup.js",
+    "desktop:install": "powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts/install-console.ps1",
+    "desktop:uninstall": "powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts/uninstall-console.ps1",
+    "app:dev": "npm run dev --prefix app",
+    "app:build": "npm run build --prefix app",
+    "app:typecheck": "npm run typecheck --prefix app",
+    "app:verify": "node scripts/verify-single-app.mjs",
+    "app:android": "powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts/build-single-app.ps1"
+  },
+  "keywords": [
+    "codex",
+    "codex-desktop",
+    "lan",
+    "remote",
+    "companion",
+    "mobile",
+    "browser",
+    "local-first"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/736368217/Codex-Turnloom.git"
+  },
+  "license": "MIT",
+  "engines": {
+    "node": ">=22.5"
+  },
+  "dependencies": {
+    "dompurify": "^3.4.14",
+    "marked": "^18.0.11",
+    "qrcode": "^1.5.4",
+    "qrcode-terminal": "^0.12.0"
+  },
+  "devDependencies": {
+    "app-builder-bin": "^4.2.0",
+    "electron": "^45.0.0",
+    "electron-builder": "^26.15.3",
+    "jsdom": "^30.0.1"
+  },
+  "build": {
+    "appId": "com.codex.turnloom.console",
+    "productName": "Codex-Turnloom Console",
+    "asar": false,
+    "electronDist": "node_modules/electron/dist",
+    "directories": {
+      "output": "dist-desktop",
+      "buildResources": "desktop/assets"
+    },
+    "files": [
+      "desktop/**/*",
+      "server.js",
+      "server/**/*",
+      "shared/**/*",
+      "public/**/*",
+      "scripts/**/*",
+      "deploy/**/*",
+      "installer/**/*",
+      "docs/PROTOCOL.zh-CN.md",
+      "docs/INSTALL.zh-CN.md",
+      "package.json"
+    ],
+    "win": {
+      "target": [
+        "nsis"
+      ],
+      "icon": "desktop/assets/app.ico",
+      "artifactName": "Codex-Turnloom-Console-${version}-${arch}.${ext}"
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "Codex-Turnloom 控制台"
+    }
+  }
+}

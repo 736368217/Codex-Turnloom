@@ -1,0 +1,13 @@
+{
+  "schemaVersion": 1,
+  "id": "cn.star.turnloom-bridge",
+  "name": "Turnloom 桥（PI-Desktop 版）",
+  "version": "1.0.0",
+  "description": "把 PI-Desktop 会话以 Codex 兼容格式镜像到本地门面目录，并在命名管道上扮演 Codex Desktop 的 IPC，使 Codex-Turnloom 无需改动即可浏览/继续 PI-Desktop 的会话。",
+  "main": "main.js",
+  "permissions": ["desktop.control"],
+  "engines": { "piDesktop": ">=0.9.0" },
+  "activationEvents": ["onStartup"],
+  "author": "user",
+  "license": "MIT"
+}

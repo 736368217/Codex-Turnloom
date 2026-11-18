@@ -1,0 +1,9179 @@
+#!/usr/bin/env node
+import { execFile, spawn } from "node:child_process";
+import { AsyncLocalStorage } from "node:async_hooks";
+import { createHash, randomBytes, randomUUID, timingSafeEqual } from "node:crypto";
+import {
+  createReadStream,
+  existsSync,
+  mkdirSync,
+  promises as fs,
+  readFileSync,
+  realpathSync,
+  renameSync,
+  statSync,
+  unlinkSync,
+  writeFileSync,
+  rmSync
+} from "node:fs";
+import http from "node:http";
+import net from "node:net";
+import os from "node:os";
+import path from "node:path";
+import readline from "node:readline";
+import { fileURLToPath } from "node:url";
+import { zstdDecompress } from "node:zlib";
+import qrcode from "qrcode-terminal";
+import { createHttpBackend } from "./backends/http-backend.js";
+import { startAppServerFirstTurn } from "./shared/codex-first-turn.js";
+import { createRequire } from "node:module";
+
+const require = createRequire(import.meta.url);
+const machinePairing = require("./shared/machine-pairing.cjs");
+const appRelease = require("./shared/app-release.cjs");
+const sendFiles = require("./shared/send-files.cjs");
+
+const modulePath = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(modulePath);
+const requestContext = new AsyncLocalStorage();
+
+function sameFilePath(left, right) {
+  if (!left || !right) return false;
+  const resolvedLeft = path.resolve(left);
+  const resolvedRight = path.resolve(right);
+  if (resolvedLeft === resolvedRight) return true;
+  try {
+    return path.resolve(realpathSync(resolvedLeft)) === path.resolve(realpathSync(resolvedRight));
+  } catch {
+    return false;
+  }
+}
+
+// All child processes go through these helpers. On Windows a service-started
+// Node process has no console of its own, so execFile/spawn default
+// (windowsHide: false) allocates a fresh conhost and flashes a black window.
+function execFileHidden(command, args, options = {}) {
+  return new Promise((resolve, reject) => {
+    execFile(command, args, { maxBuffer: 20 * 1024 * 1024, windowsHide: true, ...options }, (error, stdout, stderr) => {
+      if (error) {
+        error.stderr = stderr;
+        reject(error);
+        return;
+      }
+      resolve({ stdout, stderr });
+    });
+  });
+}
+
+function spawnHidden(command, args, options = {}) {
+  return spawn(command, args, { windowsHide: true, ...options });
+}
+
+function positiveMinutes(value, fallback) {
+  const number = Number(value);
+  if (!Number.isFinite(number) || number <= 0) return fallback;
+  return Math.min(number, 24 * 60);
+}
+
+const IS_MAIN = sameFilePath(process.argv[1], modulePath);
+
+function parseCliArgs(argv) {
+  const options = {};
+  for (let index = 0; index < argv.length; index += 1) {
+    const arg = argv[index];
+    const [flag, inlineValue] = arg.split("=", 2);
+    const nextValue = () => inlineValue ?? argv[++index];
+    if (flag === "--write") {
+      console.error("Ignoring deprecated --write; write mode is enabled by default. Use --readonly to disable writes.");
+      continue;
+    }
+    if (flag === "--dev-any-code") {
+      console.error("Unsupported option: --dev-any-code. This internal test flag is not valid for Codex-Turnloom.");
+      options.help = true;
+      options.invalid = true;
+      continue;
+    }
+    if (flag === "--help" || flag === "-h") options.help = true;
+    else if (flag === "--host") options.host = nextValue();
+    else if (flag === "--port") options.port = nextValue();
+    else if (flag === "--token") options.token = nextValue();
+    else if (flag === "--password") options.password = nextValue();
+    else if (flag === "--codex-home") options.codexHome = nextValue();
+    else if (flag === "--ipc-socket") options.ipcSocket = nextValue();
+    else if (flag === "--public-url") options.publicUrl = nextValue();
+    else if (flag === "--machine-id") options.machineId = nextValue();
+    else if (flag === "--machine-name") options.machineName = nextValue();
+    else if (flag === "--machine-token") options.machineToken = nextValue();
+    else if (flag === "--active-turn-stale-minutes") options.activeTurnStaleMinutes = nextValue();
+    else if (flag === "--status-max-age-minutes") options.statusMaxAgeMinutes = nextValue();
+    else if (flag === "--sqlite-driver") options.sqliteDriver = String(nextValue() || "").toLowerCase();
+    else if (flag === "--profiles") options.profiles = nextValue();
+    else if (flag === "--backend") options.backend = String(nextValue() || "").toLowerCase();
+    else if (flag === "--backend-url") options.backendUrl = nextValue();
+    else if (flag === "--backend-token") options.backendToken = nextValue();
+    else if (flag === "--readonly") options.readonly = true;
+    else if (flag === "--no-auth") options.noAuth = true;
+    else if (arg) {
+      console.error(`Unknown option: ${arg}`);
+      options.help = true;
+      options.invalid = true;
+    }
+  }
+  return options;
+}
+
+function printHelp() {
+  console.log(`Codex-Turnloom
+
+Usage:
+  codex-turnloom [options]
+
+Options:
+  --host <host>          Bind host. Default: 0.0.0.0
+  --port <port>          Bind port. Default: 8787
+  --password <password>  Friendly access code. Default: generated 6-digit code per launch
+  --token <token>        Alias for --password
+  --readonly             Disable sending messages to Codex Desktop
+  --public-url <url>     Public URL used for the device QR
+  --machine-id <id>      Stable machine identity for one-code discovery
+  --machine-name <name>  Human-readable machine name
+  --machine-token <str>  Machine pairing token; defaults to the access code
+  --codex-home <path>    Codex data directory. Default: ~/.codex
+  --ipc-socket <path>    Codex Desktop IPC socket override
+  --active-turn-stale-minutes <n>
+                         Treat an active turn with no rollout writes as ended after n
+                         minutes (default 10; also CODEX_LAN_ACTIVE_TURN_STALE_MINUTES).
+  --status-max-age-minutes <n>
+                         Trust adapter-provided thread status for at most n minutes
+                         (default 60; also CODEX_LAN_STATUS_MAX_AGE_MINUTES).
+  --sqlite-driver <auto|node|cli>
+                         SQLite driver preference. Default: auto (node:sqlite first).
+  --backend <codex|http> Backend reader. Default: codex (filesystem + IPC).
+  --backend-url <url>    HTTP backend base URL, used with --backend http.
+  --backend-token <str>  Token sent to the HTTP backend.
+  --profiles <path>      JSON profile list (per-device token; codex or http backend).
+  -h, --help             Show this help
+
+Examples:
+  codex-turnloom
+  codex-turnloom --readonly
+  codex-turnloom --port 8790 --password home-only
+`);
+}
+
+const cli = IS_MAIN ? parseCliArgs(process.argv.slice(2)) : {};
+if (IS_MAIN && cli.help) {
+  printHelp();
+  process.exit(cli.invalid ? 1 : 0);
+}
+
+function timestamp() {
+  return new Date().toISOString();
+}
+
+function logInfo(message = "") {
+  if (!message) console.log("");
+  else console.log(`[${timestamp()}] ${message}`);
+}
+
+function logError(message = "") {
+  if (!message) console.error("");
+  else console.error(`[${timestamp()}] ${message}`);
+}
+
+function logWarning(message = "") {
+  if (!message) console.warn("");
+  else console.warn(`[${timestamp()}] ${message}`);
+}
+
+function logFatalError(label, error) {
+  const message = error?.stack || error?.message || String(error);
+  logError(`[fatal] ${label}`);
+  console.error(message);
+}
+
+function formatDuration(ms) {
+  const totalSeconds = Math.max(0, Math.floor(ms / 1000));
+  const days = Math.floor(totalSeconds / 86400);
+  const hours = Math.floor((totalSeconds % 86400) / 3600);
+  const minutes = Math.floor((totalSeconds % 3600) / 60);
+  const seconds = totalSeconds % 60;
+  const parts = [];
+  if (days) parts.push(`${days}d`);
+  if (hours || parts.length) parts.push(`${hours}h`);
+  if (minutes || parts.length) parts.push(`${minutes}m`);
+  parts.push(`${seconds}s`);
+  return parts.join(" ");
+}
+
+const PROCESS_STARTED_AT_MS = Date.now();
+const PROCESS_STARTED_AT_ISO = new Date(PROCESS_STARTED_AT_MS).toISOString();
+const SYSTEM_BOOT_AT_MS = PROCESS_STARTED_AT_MS - Math.round(os.uptime() * 1000);
+const SYSTEM_BOOT_AT_ISO = new Date(SYSTEM_BOOT_AT_MS).toISOString();
+const START_SOURCE = process.env.XPC_SERVICE_NAME ? `launchd:${process.env.XPC_SERVICE_NAME}` : "terminal";
+const IS_INTERACTIVE_TTY = Boolean(process.stdin.isTTY && process.stdout.isTTY);
+const SLOW_REQUEST_MS = 1000;
+const SLOW_POLL_REQUEST_MS = 5000;
+const SLOW_SQL_MS = 750;
+const ACCOUNT_CACHE_MS = 60 * 1000;
+const ACCOUNT_STALE_CACHE_MS = 5 * 60 * 1000;
+const THREADS_CACHE_MS = 8000;
+const THREADS_STALE_CACHE_MS = 60 * 1000;
+const THREAD_ACCOUNT_CACHE_MS = 5 * 60 * 1000;
+const SESSION_ROLLOUT_PATH_CACHE_MS = 5000;
+const AUTH_WARN_LOG_INTERVAL_MS = 5 * 60 * 1000;
+const FALLBACK_CODEX_MODELS = [
+  { id: "gpt-5.6-sol", label: "GPT-5.6 Sol", efforts: ["low", "medium", "high", "xhigh", "max", "ultra"], defaultEffort: "medium" },
+  { id: "gpt-5.6-terra", label: "GPT-5.6 Terra", efforts: ["low", "medium", "high", "xhigh", "max", "ultra"], defaultEffort: "medium" },
+  { id: "gpt-5.6-luna", label: "GPT-5.6 Luna", efforts: ["low", "medium", "high", "xhigh", "max"], defaultEffort: "medium" },
+  { id: "gpt-5.5", label: "GPT-5.5", efforts: ["low", "medium", "high", "xhigh"], defaultEffort: "medium" }
+];
+const DEFAULT_CODEX_MODEL = "gpt-5.6-sol";
+const DEFAULT_CODEX_EFFORT = "medium";
+let activeModelConfiguration = {
+  models: FALLBACK_CODEX_MODELS,
+  defaultModel: DEFAULT_CODEX_MODEL,
+  defaultEffort: DEFAULT_CODEX_EFFORT,
+  source: "fallback"
+};
+let modelConfigurationCache = null;
+const authWarnLogState = new Map();
+let threadsCache = null;
+let sessionRolloutPathCache = null;
+let globalProjectStateCache = null;
+let accountInfoInFlight = null;
+let threadsInFlight = null;
+let threadsCacheGeneration = 0;
+let threadStatusColumnsCache = null;
+const threadStatusParseCache = new Map();
+const adapterStatusOverrides = new Map();
+const rolloutIssueLogState = new Map();
+let modelFallbackLogState = { key: "", at: 0, suppressed: 0 };
+let nodeSqliteModulePromise = null;
+const sqliteDriverState = { active: "unknown", lastNodeError: "", lastCliError: "", nodeQueries: 0, cliQueries: 0 };
+
+function normalizeLogPath(pathname) {
+  return String(pathname || "/").replace(/\/api\/threads\/[0-9a-fA-F-]{20,}\/messages$/, "/api/threads/:id/messages");
+}
+
+function shouldLogHttpEvent({ method, pathname, statusCode, level }) {
+  if (level !== "warn" || statusCode !== 401) return true;
+  const key = `${method} ${normalizeLogPath(pathname)} ${statusCode}`;
+  const now = Date.now();
+  const state = authWarnLogState.get(key);
+  if (!state || now - state.lastLoggedAt >= AUTH_WARN_LOG_INTERVAL_MS) {
+    const suppressed = state?.suppressed || 0;
+    authWarnLogState.set(key, { lastLoggedAt: now, suppressed: 0 });
+    return { suppressed };
+  }
+  state.suppressed += 1;
+  return false;
+}
+
+function slowRequestThresholdMs(method, pathname) {
+  const normalized = normalizeLogPath(pathname);
+  if (method === "GET" && (normalized === "/api/threads" || normalized === "/api/threads/:id/messages" || normalized === "/api/account")) {
+    return SLOW_POLL_REQUEST_MS;
+  }
+  return SLOW_REQUEST_MS;
+}
+
+function summarizeSql(sql) {
+  return String(sql || "").replace(/\s+/g, " ").trim().slice(0, 180);
+}
+
+function clearThreadsCache() {
+  threadsCache = null;
+  threadsInFlight = null;
+  accountInfoInFlight = null;
+  threadsCacheGeneration += 1;
+}
+
+function invalidateThreadCaches() {
+  threadsCache = null;
+  threadsInFlight = null;
+  threadsCacheGeneration += 1;
+  messageCache.clear();
+  threadStatusParseCache.clear();
+}
+
+if (IS_MAIN) {
+  process.on("uncaughtException", (error) => {
+    logFatalError("Uncaught exception", error);
+    process.exit(1);
+  });
+
+  process.on("unhandledRejection", (error) => {
+    logFatalError("Unhandled promise rejection", error);
+    process.exit(1);
+  });
+}
+
+const INITIAL_CODEX_HOME = cli.codexHome || process.env.CODEX_HOME || path.join(os.homedir(), ".codex");
+const CODEX_HOME_FIXED = Boolean(cli.codexHome || process.env.CODEX_LAN_FIXED_CODEX_HOME === "1");
+const HOST = cli.host || process.env.HOST || "0.0.0.0";
+const PORT = Number(cli.port || process.env.PORT || 8787);
+let AUTH_REQUIRED = !cli.noAuth && process.env.CODEX_LAN_NO_AUTH !== "1";
+let ACCESS_TOKEN =
+  cli.password ||
+  cli.token ||
+  process.env.CODEX_LAN_PASSWORD ||
+  process.env.CODEX_LAN_TOKEN ||
+  // 24 字符 base64url（144 bit）：旧的 6 位数字默认码在公网隧道下可在线枚举。
+  randomBytes(18).toString("base64url");
+const ALLOW_WRITE = !cli.readonly && process.env.CODEX_LAN_READONLY !== "1";
+const CODEX_IPC_SOCKET =
+  cli.ipcSocket ||
+  process.env.CODEX_IPC_SOCKET ||
+  (process.platform === "win32"
+    ? String.raw`\\.\pipe\codex-ipc`
+    : path.join(os.tmpdir(), "codex-ipc", typeof process.getuid === "function" ? `ipc-${process.getuid()}.sock` : "ipc.sock"));
+/** PI-Desktop 桥接管这个命名管道时，由宿主的 turn_queue 充当权威队列。 */
+const PI_NATIVE_QUEUE = process.env.CODEX_LAN_PI_NATIVE_QUEUE === "1" || CODEX_IPC_SOCKET.includes("pidesktop-codex-ipc");
+/** PI 数据根（可由 APPDATA 下 storage-location.json 重定向），用于校验队列附件路径。 */
+const PI_DATA_ROOT = (() => {
+  for (const name of ["PI-Desktop", "pi-desktop"]) {
+    try {
+      const parsed = JSON.parse(readFileSync(path.join(process.env.APPDATA || "", name, "storage-location.json"), "utf8"));
+      if (parsed?.roots?.data) return path.resolve(String(parsed.roots.data));
+    } catch {}
+  }
+  return path.join(os.homedir(), ".pi-desktop");
+})();
+function defaultCodexCli() {
+  const macAppCli = "/Applications/Codex.app/Contents/Resources/codex";
+  if (existsSync(macAppCli)) return macAppCli;
+  if (process.platform === "win32") {
+    const platformPackage = process.arch === "arm64" ? "codex-win32-arm64" : "codex-win32-x64";
+    const rustTarget = process.arch === "arm64" ? "aarch64-pc-windows-msvc" : "x86_64-pc-windows-msvc";
+    const npmCli = path.join(
+      os.homedir(),
+      "AppData",
+      "Roaming",
+      "npm",
+      "node_modules",
+      "@openai",
+      "codex",
+      "node_modules",
+      "@openai",
+      platformPackage,
+      "vendor",
+      rustTarget,
+      "bin",
+      "codex.exe"
+    );
+    if (existsSync(npmCli)) return npmCli;
+  }
+  return "codex";
+}
+
+const CODEX_CLI = process.env.CODEX_CLI || defaultCodexCli();
+const PUBLIC_URL = String(cli.publicUrl || process.env.CODEX_LAN_PUBLIC_URL || "").trim().replace(/\/+$/, "");
+const MACHINE_ID = String(cli.machineId || process.env.CODEX_LAN_MACHINE_ID || os.hostname() || "machine").trim().slice(0, 120) || "machine";
+const MACHINE_NAME = String(cli.machineName || process.env.CODEX_LAN_MACHINE_NAME || MACHINE_ID).trim().slice(0, 120) || MACHINE_ID;
+const MACHINE_TOKEN = String(cli.machineToken || process.env.CODEX_LAN_MACHINE_TOKEN || ACCESS_TOKEN).trim();
+const PUBLIC_DIR = path.join(__dirname, "public");
+const APK_PATH = process.env.CODEX_POCKET_APK_PATH
+  ? path.resolve(process.env.CODEX_POCKET_APK_PATH)
+  : appRelease.defaultApkPath(__dirname);
+
+/**
+ * Legacy exported helper: retained only for old tests and diagnostics. HTTP
+ * release metadata never calls it; the staged sidecar is authoritative.
+ */
+function readPackagedAppVersion() {
+  const fallback = { code: 0, name: "" };
+  let name = String(process.env.CODEX_POCKET_APP_VERSION_NAME || "").trim();
+  let code = Number(process.env.CODEX_POCKET_APP_VERSION_CODE) || 0;
+  if (!name) {
+    try {
+      name = String(JSON.parse(readFileSync(path.join(__dirname, "package.json"), "utf8")).version || "").trim();
+    } catch {}
+  }
+  if (!code) {
+    try {
+      const gradle = readFileSync(path.join(__dirname, "android", "app", "build.gradle.kts"), "utf8");
+      code = Number(/versionCode\s*=\s*(\d+)/.exec(gradle)?.[1]) || 0;
+    } catch {}
+  }
+  return name && code ? { code, name } : fallback;
+}
+
+async function currentAppRelease() {
+  return appRelease.readAppRelease(APK_PATH, { projectRoot: __dirname });
+}
+
+function apkUpdatedAtIso(release = null) {
+  return release?.apkUpdatedAt || "";
+}
+const GENERATED_IMAGES_DIR = path.join(os.homedir(), ".codex", "generated_images");
+const CODEX_POCKET_DATA_DIR =
+  process.env.LOCALAPPDATA || path.join(os.homedir(), process.platform === "win32" ? "AppData" : ".local", process.platform === "win32" ? "Local" : "share");
+const PENDING_SEND_QUEUE_FILE =
+  process.env.CODEX_LAN_PENDING_QUEUE_FILE || path.join(CODEX_POCKET_DATA_DIR, "CodexPocket", "pending-queues.json");
+const PENDING_SEND_QUEUE_SCHEMA_VERSION = 1;
+const MAX_SEND_IMAGES = 4;
+const MAX_SEND_IMAGE_BYTES = 5 * 1024 * 1024;
+const MAX_SEND_BODY_BYTES = 32 * 1024 * 1024;
+const MAX_LOCAL_IMAGE_BYTES = 10 * 1024 * 1024;
+const MAX_LOCAL_FILE_BYTES = 50 * 1024 * 1024;
+/** 手机端文本预览上限；超过就截断并标记 truncated。 */
+const MAX_HOST_TEXT_PREVIEW = 200 * 1024;
+/** 需要用户显式确认的宿主操作（服务端与桥各校验一次，纵深防御）。 */
+const DANGEROUS_HOST_OPERATIONS = new Set([
+  "session/delete",
+  "session/configure",
+  "plans/resolve",
+  "tool/resolvePermission",
+  "agent/askTool/resolve",
+  "agent/instructions/save",
+  "extensions/ui/respond"
+]);
+const DEFAULT_MESSAGE_LIMIT = 80;
+const MAX_MESSAGE_LIMIT = 1000;
+const TAIL_ROLLOUT_MIN_BYTES = 512 * 1024;
+const TAIL_ROLLOUT_MAX_BYTES = 4 * 1024 * 1024;
+const MIN_SEND_IMAGE_BYTES = 512;
+const MIN_SEND_IMAGE_EDGE = 16;
+const MAX_SEND_IMAGE_EDGE = 4096;
+const MAX_SEND_IMAGE_PIXELS = 12_000_000;
+const SUPPORTED_SEND_IMAGE_MIME_TYPES = new Set(["image/jpeg", "image/png", "image/webp"]);
+const ACTIVE_TURN_STALE_MS =
+  positiveMinutes(cli.activeTurnStaleMinutes ?? process.env.CODEX_LAN_ACTIVE_TURN_STALE_MINUTES, 10) * 60 * 1000;
+const STATUS_OVERRIDE_MAX_AGE_MS =
+  positiveMinutes(cli.statusMaxAgeMinutes ?? process.env.CODEX_LAN_STATUS_MAX_AGE_MINUTES, 60) * 60 * 1000;
+const THREADS_STATUS_CACHE_MS = 5_000;
+const THREADS_STATUS_PARALLELISM = 12;
+const MAX_THREADS_LIMIT = 500;
+const SQLITE_DRIVER_PREFERENCE = String(cli.sqliteDriver || process.env.CODEX_LAN_SQLITE_DRIVER || "auto").toLowerCase();
+const BACKEND_KIND = String(cli.backend || process.env.CODEX_LAN_BACKEND || "codex").toLowerCase();
+const BACKEND_URL = String(cli.backendUrl || process.env.CODEX_LAN_BACKEND_URL || "").trim();
+const BACKEND_TOKEN = String(cli.backendToken || process.env.CODEX_LAN_BACKEND_TOKEN || "");
+let HTTP_BACKEND = null;
+if (BACKEND_KIND === "http") {
+  if (!BACKEND_URL) {
+    if (IS_MAIN) {
+      console.error("--backend http requires --backend-url (or CODEX_LAN_BACKEND_URL)");
+      process.exit(1);
+    }
+  } else {
+    HTTP_BACKEND = createHttpBackend({ baseUrl: BACKEND_URL, token: BACKEND_TOKEN });
+  }
+} else if (BACKEND_KIND !== "codex" && IS_MAIN) {
+  console.error(`Unknown backend: ${BACKEND_KIND}. Supported backends: codex, http.`);
+  process.exit(1);
+}
+const ACTIVE_STATUS_CACHE_MS = 5000;
+const QUEUE_IDLE_SETTLE_MS = 3500;
+const QUEUE_CONFIRMATION_POLL_MS = 350;
+const QUEUE_CONFIRMATION_TIMEOUT_MS = 9000;
+const QUEUE_CONFIRMATION_RECHECK_MS = 2500;
+const THREAD_OWNER_OPEN_TIMEOUT_MS = 20_000;
+const SESSION_REPAIR_DIR_NAME = "session-repairs";
+const IPC_VERSION_BY_METHOD = {
+  "thread-owner-discovery": 1,
+  "thread-follower-start-turn": 2,
+  "thread-follower-steer-turn": 1,
+  "thread-follower-compact-thread": 1,
+  "thread-follower-interrupt-turn": 3,
+  "thread-follower-command-approval-decision": 1,
+  "thread-follower-file-approval-decision": 1,
+  "thread-follower-permissions-request-approval-response": 1
+};
+
+const CORE_SKILL_ORDER = [
+  "implement",
+  "to-spec",
+  "code-review",
+  "diagnosing-bugs",
+  "research",
+  "tdd",
+  "triage",
+  "wayfinder",
+  "codebase-design",
+  "domain-modeling"
+];
+
+const jsonHeaders = {
+  "content-type": "application/json; charset=utf-8",
+  "cache-control": "no-store"
+};
+
+const messageCache = new Map();
+const referencedFilesByThread = new Map();
+const recentNotices = [];
+let codexIpcClient = null;
+let accountCache = null;
+let threadAccountCache = null;
+let threadAccountRefreshInFlight = null;
+const sqliteQueues = new Map();
+const pendingSendQueues = new Map();
+const drainingSendQueues = new Set();
+const queuedSendDrainTimers = new Map();
+
+// Exact Codex Desktop approvals surfaced to the phone. Entries are removed only
+// after the host accepts a decision; the host remains authoritative afterwards.
+const pendingApprovalsByThread = new Map();
+const resolvedApprovalsByThread = new Map();
+const APPROVAL_TTL_MS = 10 * 60 * 1000;
+const APPROVAL_KINDS = new Set(["command", "file", "permission"]);
+const APPROVAL_DECISIONS = new Set([
+  "accept", "acceptForSession", "decline", "approve", "deny", "yes", "no",
+  "true", "false", "approve-for-session", "always", "session"
+]);
+const queueIdleObservations = new Map();
+const recentSendRequests = new Map();
+const threadStartOperations = new Map();
+
+// Conversations started from the phone through desktop-ipc exist on the Desktop but
+// have no rollout file and no row in the Desktop state database yet, so a plain
+// GET /api/threads could not see them — the freshly created chat vanished from the
+// list and the app's next refresh dragged the user back to an older thread.
+// Remember them here until the Desktop starts reporting them itself.
+const startedThreads = new Map();
+const STARTED_THREAD_TTL_MS = 30 * 60 * 1000;
+
+function startedThreadTitle(text) {
+  const firstLine = String(text || "").split("\n").find((line) => line.trim()) || "";
+  const compact = firstLine.replace(/\s+/g, " ").trim();
+  if (!compact) return "新对话";
+  return compact.length > 40 ? `${compact.slice(0, 40)}…` : compact;
+}
+
+function rememberStartedThread(entry) {
+  if (!entry?.id) return;
+  startedThreads.set(String(entry.id), { ...entry, id: String(entry.id), rememberedAtMs: Date.now() });
+}
+
+function recentStartedThreadRows() {
+  const now = Date.now();
+  for (const [id, row] of startedThreads) {
+    if (now - (row.rememberedAtMs || 0) > STARTED_THREAD_TTL_MS) startedThreads.delete(id);
+  }
+  return [...startedThreads.values()];
+}
+let codexHomeState = {
+  home: path.resolve(INITIAL_CODEX_HOME),
+  version: 1,
+  source: "startup",
+  fixed: CODEX_HOME_FIXED,
+  signature: "",
+  checkedAt: 0,
+  candidateCheckedAt: 0,
+  changedAt: new Date().toISOString()
+};
+
+const PROFILES_FILE = String(cli.profiles || process.env.CODEX_LAN_PROFILES || "").trim();
+let PROFILES = [];
+if (PROFILES_FILE) {
+  try {
+    const rawProfiles = JSON.parse(readFileSync(path.resolve(PROFILES_FILE), "utf8").replace(/^\uFEFF/, ""));
+    const rows = Array.isArray(rawProfiles) ? rawProfiles : Array.isArray(rawProfiles?.profiles) ? rawProfiles.profiles : [];
+    PROFILES = rows.map((row, index) => {
+      const token = String(row?.token || "").trim();
+      if (!token) throw new Error(`profile ${index + 1} is missing a token`);
+      const backend = String(row.backend || "codex").toLowerCase();
+      if (!["codex", "http"].includes(backend)) throw new Error(`profile ${row.id || index + 1} has an unknown backend: ${backend}`);
+      return {
+        id: String(row.id || `profile-${index + 1}`),
+        label: String(row.label || row.id || `Profile ${index + 1}`),
+        token,
+        backend,
+        home: row.home ? path.resolve(String(row.home)) : null,
+        backendUrl: String(row.backendUrl || row.url || "").trim(),
+        backendToken: String(row.backendToken || row.backend_token || "")
+      };
+    });
+  } catch (error) {
+    if (IS_MAIN) {
+      console.error(`Cannot load profiles from ${PROFILES_FILE}: ${error?.message || error}`);
+      process.exit(1);
+    }
+  }
+}
+const PROFILE_MODE = PROFILES.length > 0;
+if (PROFILE_MODE) {
+  const tokens = new Set();
+  for (const profile of PROFILES) {
+    if (tokens.has(profile.token)) {
+      if (IS_MAIN) {
+        console.error(`Duplicate profile token for ${profile.id}`);
+        process.exit(1);
+      }
+    }
+    tokens.add(profile.token);
+    if (profile.backend === "http") {
+      if (!profile.backendUrl) {
+        if (IS_MAIN) {
+          console.error(`Profile ${profile.id} needs backendUrl`);
+          process.exit(1);
+        }
+      } else {
+        profile.client = createHttpBackend({ baseUrl: profile.backendUrl, token: profile.backendToken });
+      }
+    }
+  }
+  const codexProfiles = PROFILES.filter((profile) => profile.backend === "codex");
+  if (codexProfiles[0]?.home && !cli.codexHome) {
+    codexHomeState = { ...codexHomeState, home: codexProfiles[0].home, fixed: true, source: "profile" };
+  }
+  if (!cli.password && !cli.token && !process.env.CODEX_LAN_PASSWORD && !process.env.CODEX_LAN_TOKEN) {
+    ACCESS_TOKEN = PROFILES[0].token;
+  }
+}
+
+const SESSION_COOKIE_NAME = "turnloom_session";
+const SESSION_TTL_MS = 8 * 60 * 60 * 1000;
+const authSessions = new Map();
+
+function cookieValue(req, name) {
+  const header = String(req.headers.cookie || "");
+  for (const part of header.split(";")) {
+    const [key, ...rest] = part.trim().split("=");
+    if (key === name) {
+      try {
+        return decodeURIComponent(rest.join("="));
+      } catch {
+        return rest.join("=");
+      }
+    }
+  }
+  return "";
+}
+
+function findAuthProfileByToken(token) {
+  const value = String(token || "");
+  if (!value) return null;
+  if (PROFILE_MODE) return PROFILES.find((profile) => tokensEqual(value, profile.token)) || null;
+  return tokensEqual(value, ACCESS_TOKEN)
+    ? { id: null, label: "Codex", backend: BACKEND_KIND, token: value }
+    : null;
+}
+
+function sessionForRequest(req) {
+  const sessionId = cookieValue(req, SESSION_COOKIE_NAME);
+  if (!sessionId) return null;
+  const session = authSessions.get(sessionId);
+  if (!session) return null;
+  if (session.expiresAtMs <= Date.now()) {
+    authSessions.delete(sessionId);
+    return null;
+  }
+  if (PROFILE_MODE && session.profileId && !PROFILES.some((profile) => profile.id === session.profileId)) {
+    authSessions.delete(sessionId);
+    return null;
+  }
+  return session;
+}
+
+function issueAuthSession(profile) {
+  const sessionId = randomUUID();
+  const now = Date.now();
+  const session = {
+    sessionId,
+    profileId: profile?.id || null,
+    createdAtMs: now,
+    expiresAtMs: now + SESSION_TTL_MS
+  };
+  authSessions.set(sessionId, session);
+  return session;
+}
+
+function authSessionCookie(req, session) {
+  const secure = req.socket?.encrypted || String(req.headers["x-forwarded-proto"] || "").toLowerCase() === "https";
+  const maxAge = Math.max(1, Math.floor((session.expiresAtMs - Date.now()) / 1000));
+  return `${SESSION_COOKIE_NAME}=${encodeURIComponent(session.sessionId)}; HttpOnly; SameSite=Lax; Path=/; Max-Age=${maxAge}${secure ? "; Secure" : ""}`;
+}
+
+function clearAuthSessionCookie(req) {
+  const secure = req.socket?.encrypted || String(req.headers["x-forwarded-proto"] || "").toLowerCase() === "https";
+  return `${SESSION_COOKIE_NAME}=; HttpOnly; SameSite=Lax; Path=/; Max-Age=0${secure ? "; Secure" : ""}`;
+}
+
+function profileForRequest(req, url) {
+  if (!PROFILE_MODE) return null;
+  if (!AUTH_REQUIRED) return PROFILES[0] || null;
+  const profile = findAuthProfileByToken(requestToken(req, url));
+  if (profile) return profile;
+  const session = sessionForRequest(req);
+  return session ? PROFILES.find((entry) => entry.id === session.profileId) || null : null;
+}
+
+function currentRequestProfile() {
+  return requestContext.getStore() || null;
+}
+
+function activeCodexHome() {
+  const profile = currentRequestProfile();
+  return profile?.backend === "codex" && profile.home ? path.resolve(profile.home) : codexHomeState.home;
+}
+
+function rawDebugEventsLimit(value = 80) {
+  const limit = Number(value);
+  if (!Number.isFinite(limit)) return 80;
+  return Math.max(1, Math.min(300, Math.floor(limit)));
+}
+
+function sendJson(res, status, body, extraHeaders = {}) {
+  res.writeHead(status, { ...jsonHeaders, ...extraHeaders });
+  res.end(JSON.stringify(body));
+}
+
+function sendText(res, status, text) {
+  res.writeHead(status, { "content-type": "text/plain; charset=utf-8" });
+  res.end(text);
+}
+
+function normalizeThreadsLimit(value) {
+  if (value === null || value === undefined || value === "") return 0;
+  const limit = Number(value);
+  if (!Number.isFinite(limit) || limit <= 0) return 0;
+  return Math.min(Math.floor(limit), MAX_THREADS_LIMIT);
+}
+
+function threadsPage(threads, { limit = 0, cursor = "" } = {}) {
+  const list = Array.isArray(threads) ? threads : [];
+  const pageLimit = normalizeThreadsLimit(limit);
+  if (!pageLimit) return { threads: list, total: list.length, nextCursor: null };
+  const parsedCursor = Number.parseInt(String(cursor || "0"), 10);
+  const offset = Number.isFinite(parsedCursor) && parsedCursor > 0 ? parsedCursor : 0;
+  const page = list.slice(offset, offset + pageLimit);
+  const nextOffset = offset + page.length;
+  return {
+    threads: page,
+    total: list.length,
+    nextCursor: nextOffset < list.length ? String(nextOffset) : null
+  };
+}
+
+function weakEtagFor(value) {
+  return `W/"${createHash("sha1").update(String(value)).digest("base64url").slice(0, 27)}"`;
+}
+
+function ifNoneMatchMatches(header, etag) {
+  if (!header) return false;
+  return String(header)
+    .split(",")
+    .map((value) => value.trim())
+    .some((value) => value === "*" || value === etag || value === etag.slice(2) || `W/${value}` === etag);
+}
+
+function requestToken(req, url) {
+  const header = req.headers["x-access-token"] || req.headers.authorization;
+  if (Array.isArray(header)) return header[0] || "";
+  if (typeof header === "string" && header.toLowerCase().startsWith("bearer ")) return header.slice(7);
+  if (typeof header === "string") return header;
+  return url.searchParams.get("token") || "";
+}
+
+/**
+ * 恒时比较访问码：先各自 sha256 成定长再 timingSafeEqual，
+ * 避免逐字符比较用响应时间泄漏前缀（默认 6 位数字码在线可枚举）。
+ */
+function tokensEqual(candidate, expected) {
+  const left = createHash("sha256").update(String(candidate ?? "")).digest();
+  const right = createHash("sha256").update(String(expected ?? "")).digest();
+  return timingSafeEqual(left, right);
+}
+
+/**
+ * 访问码尝试限速：同一来源在窗口内失败到阈值后指数退避（30s 起，上限 30 分钟），
+ * 成功即清零。只统计「带显式令牌却被拒」的请求——手机端轮询靠 cookie 会话，
+ * 会话过期会持续 401，不能把正常用户锁在门外。
+ */
+const AUTH_FAILURE_WINDOW_MS = 10 * 60 * 1000;
+const AUTH_MAX_FAILURES = 10;
+const AUTH_MAX_TRACKED_SOURCES = 2048;
+const authFailureState = new Map();
+
+function authSourceKey(req) {
+  const forwarded = String(req.headers["x-forwarded-for"] || "").split(",")[0].trim();
+  return forwarded || req.socket?.remoteAddress || "unknown";
+}
+
+function authBlockRemainingMs(req) {
+  const key = authSourceKey(req);
+  const state = authFailureState.get(key);
+  if (!state?.blockedUntilMs) return 0;
+  const remaining = state.blockedUntilMs - Date.now();
+  if (remaining <= 0) {
+    authFailureState.delete(key);
+    return 0;
+  }
+  return remaining;
+}
+
+function noteAuthFailure(req) {
+  const key = authSourceKey(req);
+  const now = Date.now();
+  const state = authFailureState.get(key);
+  if (!state || now - state.firstAtMs > AUTH_FAILURE_WINDOW_MS) {
+    if (authFailureState.size >= AUTH_MAX_TRACKED_SOURCES) {
+      authFailureState.delete(authFailureState.keys().next().value);
+    }
+    authFailureState.set(key, { failures: 1, firstAtMs: now, blockedUntilMs: 0 });
+    return;
+  }
+  state.failures += 1;
+  if (state.failures >= AUTH_MAX_FAILURES) {
+    const backoff = Math.min(30 * 60 * 1000, 30_000 * 2 ** (state.failures - AUTH_MAX_FAILURES));
+    state.blockedUntilMs = now + backoff;
+  }
+}
+
+function clearAuthFailures(req) {
+  authFailureState.delete(authSourceKey(req));
+}
+
+function sendRateLimited(res, remainingMs) {
+  sendJson(res, 429, { error: "Too many failed access-code attempts", retryAfterMs: remainingMs }, {
+    "retry-after": String(Math.max(1, Math.ceil(remainingMs / 1000))),
+    "cache-control": "no-store"
+  });
+}
+
+function isAuthorized(req, url) {
+  if (!AUTH_REQUIRED) return true;
+  const token = requestToken(req, url);
+  if (PROFILE_MODE ? PROFILES.some((profile) => tokensEqual(token, profile.token)) : tokensEqual(token, ACCESS_TOKEN)) {
+    return true;
+  }
+  return Boolean(sessionForRequest(req));
+}
+
+function requireAuthorized(req, res, url) {
+  const blockedFor = authBlockRemainingMs(req);
+  if (blockedFor > 0) {
+    sendRateLimited(res, blockedFor);
+    return false;
+  }
+  if (isAuthorized(req, url)) {
+    clearAuthFailures(req);
+    return true;
+  }
+  if (requestToken(req, url)) noteAuthFailure(req);
+  sendJson(res, 401, { error: "Unauthorized", authRequired: true });
+  return false;
+}
+
+/** 只读模式的统一闸门：写操作一律 403，而不是只在发送/置顶几个入口挡一下。 */
+function requireWriteEnabled(res) {
+  if (ALLOW_WRITE) return true;
+  sendJson(res, 403, {
+    error: "Read-only mode is enabled. Restart without --readonly to change anything.",
+    readOnly: true
+  });
+  return false;
+}
+
+/**
+ * /api/host/file|file-image|files 会把路径直接交给宿主 fs/read，本服务必须先自己收口：
+ * 只允许已知项目根之内的真实路径，其余一律拒绝（旧实现等于把任意绝对路径交给宿主）。
+ */
+async function allowedHostFilePath(rawPath) {
+  const requested = String(rawPath || "").trim();
+  if (!requested || requested.includes("\0") || !path.isAbsolute(requested)) return "";
+  let canonical;
+  try {
+    canonical = await fs.realpath(path.resolve(requested));
+  } catch {
+    return "";
+  }
+  const canonicalKey = canonical.toLowerCase();
+  let roots;
+  try {
+    roots = await readProjectRoots();
+  } catch {
+    roots = new Map();
+  }
+  for (const candidates of roots.values()) {
+    for (const entry of Array.isArray(candidates) ? candidates : []) {
+      const root = String(entry?.root || "").replace(/[\\/]+$/, "");
+      if (!root) continue;
+      const rootKey = root.toLowerCase();
+      if (canonicalKey === rootKey) return canonical;
+      if (canonicalKey.startsWith(`${rootKey}${path.sep}`) || canonicalKey.startsWith(`${rootKey}/`)) return canonical;
+    }
+  }
+  return "";
+}
+
+function loginUrlFor(baseUrl) {
+  if (!AUTH_REQUIRED) return baseUrl;
+  const url = new URL(baseUrl);
+  // Keep the access code out of HTTP request logs and browser referrers.
+  url.hash = `login=${encodeURIComponent(ACCESS_TOKEN)}`;
+  return url.toString();
+}
+
+function loginUrlForProfile(baseUrl, profile) {
+  if (!AUTH_REQUIRED) return baseUrl;
+  const url = new URL("/login", baseUrl);
+  url.searchParams.set("token", profile?.token || ACCESS_TOKEN);
+  if (profile) url.searchParams.set("device", profile.id);
+  return url.toString();
+}
+
+const staticSecurityHeaders = {
+  "content-security-policy": "default-src 'self'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'; img-src 'self' data: blob:; object-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; connect-src 'self'",
+  "referrer-policy": "strict-origin-when-cross-origin",
+  "x-content-type-options": "nosniff",
+  "x-frame-options": "DENY"
+};
+
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function isSqliteLocked(error) {
+  return String(error?.message || error || "").toLowerCase().includes("database is locked");
+}
+
+function isSqliteResourceTransient(error) {
+  const message = String(error?.message || error || "").toLowerCase();
+  return /\b(eagain|emfile|enfile)\b/.test(message);
+}
+
+function codexPaths(home = activeCodexHome()) {
+  const root = path.resolve(home || INITIAL_CODEX_HOME);
+  return {
+    home: root,
+    stateDb: path.join(root, "state_5.sqlite"),
+    logsDb: path.join(root, "logs_2.sqlite"),
+    goalsDb: path.join(root, "goals_1.sqlite"),
+    sessionIndex: path.join(root, "session_index.jsonl"),
+    sessionsDir: path.join(root, "sessions"),
+    archivedSessionsDir: path.join(root, "archived_sessions"),
+    authFile: path.join(root, "auth.json")
+  };
+}
+
+async function findPluginManifests(dir, depth = 0) {
+  if (depth > 6) return [];
+  let entries = [];
+  try {
+    entries = await fs.readdir(dir, { withFileTypes: true });
+  } catch {
+    return [];
+  }
+  const manifests = [];
+  for (const entry of entries) {
+    const entryPath = path.join(dir, entry.name);
+    if (entry.isDirectory()) {
+      if (entry.name === ".codex-plugin") {
+        const manifestPath = path.join(entryPath, "plugin.json");
+        if (existsSync(manifestPath)) manifests.push(manifestPath);
+      } else {
+        manifests.push(...(await findPluginManifests(entryPath, depth + 1)));
+      }
+    }
+  }
+  return manifests;
+}
+
+async function findSkillFiles(dir, depth = 0) {
+  if (depth > 8) return [];
+  let entries = [];
+  try {
+    entries = await fs.readdir(dir, { withFileTypes: true });
+  } catch {
+    return [];
+  }
+  const files = [];
+  for (const entry of entries) {
+    const entryPath = path.join(dir, entry.name);
+    if (entry.isFile() && entry.name === "SKILL.md") {
+      files.push(entryPath);
+    } else if (entry.isDirectory() && entry.name !== "node_modules" && entry.name !== ".git") {
+      files.push(...(await findSkillFiles(entryPath, depth + 1)));
+    }
+  }
+  return files;
+}
+
+function pluginMarketplaceFromManifest(manifestPath, cacheRoot) {
+  const relative = path.relative(cacheRoot, manifestPath);
+  const [marketplace] = relative.split(path.sep);
+  return marketplace && !marketplace.startsWith("..") ? marketplace : "";
+}
+
+function compactPluginDescription(value) {
+  const firstLine = String(value || "")
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .find(Boolean);
+  if (!firstLine) return "";
+  return firstLine.length > 180 ? `${firstLine.slice(0, 177)}...` : firstLine;
+}
+
+function parseSkillMetadata(raw, fallbackName) {
+  const text = String(raw || "");
+  const frontmatter = text.match(/^---\s*\r?\n([\s\S]*?)\r?\n---/);
+  const meta = {};
+  if (frontmatter) {
+    for (const line of frontmatter[1].split(/\r?\n/)) {
+      const match = line.match(/^([A-Za-z0-9_-]+):\s*(.*)$/);
+      if (!match) continue;
+      const value = match[2].trim().replace(/^["']|["']$/g, "");
+      meta[match[1]] = value;
+    }
+  }
+  const body = frontmatter ? text.slice(frontmatter[0].length) : text;
+  const description =
+    meta.description ||
+    body
+      .split(/\r?\n/)
+      .map((line) => line.trim())
+      .find((line) => line && !line.startsWith("#")) ||
+    "";
+  return {
+    name: String(meta.name || fallbackName || "").trim(),
+    description: compactPluginDescription(description)
+  };
+}
+
+function skillSourceInfo(skillPath, home) {
+  const skillsRoot = path.join(home, "skills");
+  const pluginCacheRoot = path.join(home, "plugins", "cache");
+  const relativeLocal = path.relative(skillsRoot, skillPath);
+  if (relativeLocal && !relativeLocal.startsWith("..") && !path.isAbsolute(relativeLocal)) {
+    const [scope] = relativeLocal.split(path.sep);
+    return {
+      key: scope === ".system" ? "system" : "local",
+      label: scope === ".system" ? "System" : "Local"
+    };
+  }
+  const relativePlugin = path.relative(pluginCacheRoot, skillPath);
+  if (relativePlugin && !relativePlugin.startsWith("..") && !path.isAbsolute(relativePlugin)) {
+    const [marketplace, pluginName] = relativePlugin.split(path.sep);
+    return {
+      key: `plugin:${marketplace}:${pluginName}`,
+      label: [marketplace, pluginName].filter(Boolean).join("/")
+    };
+  }
+  return { key: "unknown", label: "Unknown" };
+}
+
+function mimeTypeForAsset(filePath) {
+  const ext = path.extname(filePath).toLowerCase();
+  if (ext === ".svg") return "image/svg+xml";
+  if (ext === ".png") return "image/png";
+  if (ext === ".jpg" || ext === ".jpeg") return "image/jpeg";
+  if (ext === ".webp") return "image/webp";
+  if (ext === ".gif") return "image/gif";
+  if (ext === ".bmp") return "image/bmp";
+  if (ext === ".tif" || ext === ".tiff") return "image/tiff";
+  return "";
+}
+
+async function readPluginIconDataUrl(manifest, manifestPath) {
+  const pluginInterface = manifest.interface && typeof manifest.interface === "object" ? manifest.interface : {};
+  const iconValue = String(
+    manifest.composerIcon ||
+      manifest.icon ||
+      manifest.logo ||
+      pluginInterface.composerIcon ||
+      pluginInterface.icon ||
+      pluginInterface.logo ||
+      ""
+  ).trim();
+  if (!iconValue || /^https?:\/\//i.test(iconValue) || iconValue.startsWith("data:")) return "";
+  const pluginRoot = path.dirname(path.dirname(manifestPath));
+  const iconPath = path.resolve(pluginRoot, iconValue);
+  if (!iconPath.startsWith(pluginRoot + path.sep)) return "";
+  const mimeType = mimeTypeForAsset(iconPath);
+  if (!mimeType) return "";
+  try {
+    const stat = await fs.stat(iconPath);
+    if (!stat.isFile() || stat.size <= 0 || stat.size > 200 * 1024) return "";
+    const data = await fs.readFile(iconPath);
+    return `data:${mimeType};base64,${data.toString("base64")}`;
+  } catch {
+    return "";
+  }
+}
+
+async function getPlugins() {
+  const homeState = await refreshCodexHomeContext({ source: "plugins" });
+  const cacheRoot = path.join(homeState.home, "plugins", "cache");
+  const manifests = await findPluginManifests(cacheRoot);
+  const byUri = new Map();
+  for (const manifestPath of manifests) {
+    try {
+      const raw = await fs.readFile(manifestPath, "utf8");
+      const manifest = JSON.parse(raw);
+      const name = String(manifest.name || "").trim();
+      const marketplace = pluginMarketplaceFromManifest(manifestPath, cacheRoot);
+      if (!name || !marketplace) continue;
+      const pluginInterface = manifest.interface && typeof manifest.interface === "object" ? manifest.interface : {};
+      const displayName = String(pluginInterface.displayName || manifest.displayName || manifest.display_name || manifest.title || name).trim();
+      const description = compactPluginDescription(
+        pluginInterface.shortDescription ||
+          pluginInterface.short_description ||
+          manifest.shortDescription ||
+          manifest.short_description ||
+          manifest.description ||
+          pluginInterface.longDescription ||
+          ""
+      );
+      const uri = `plugin://${name}@${marketplace}`;
+      const iconDataUrl = await readPluginIconDataUrl(manifest, manifestPath);
+      byUri.set(uri, {
+        name,
+        displayName,
+        description,
+        marketplace,
+        uri,
+        iconDataUrl
+      });
+    } catch {
+      // Ignore stale or partially installed plugin cache entries.
+    }
+  }
+  const plugins = [...byUri.values()].sort((a, b) => a.displayName.localeCompare(b.displayName, undefined, { sensitivity: "base" }));
+  return {
+    plugins,
+    codexHome: homeState.home,
+    codexHomeVersion: homeState.version
+  };
+}
+
+async function getSkills() {
+  const homeState = await refreshCodexHomeContext({ source: "skills" });
+  const roots = [path.join(homeState.home, "skills"), path.join(homeState.home, "plugins", "cache")];
+  const files = [];
+  for (const root of roots) files.push(...(await findSkillFiles(root)));
+  const byUri = new Map();
+  for (const skillPath of files) {
+    try {
+      const raw = await fs.readFile(skillPath, "utf8");
+      const fallbackName = path.basename(path.dirname(skillPath));
+      const metadata = parseSkillMetadata(raw, fallbackName);
+      if (!metadata.name) continue;
+      const source = skillSourceInfo(skillPath, homeState.home);
+      const uri = `skill://${encodeURIComponent(metadata.name)}@${encodeURIComponent(source.key)}`;
+      byUri.set(uri, {
+        name: metadata.name,
+        displayName: metadata.name,
+        description: metadata.description,
+        source: source.label,
+        priority: source.key === "system" ? 0 : source.key === "local" ? 100 : 200,
+        uri
+      });
+    } catch {
+      // Ignore stale or partially installed skill entries.
+    }
+  }
+  const skills = [
+    {
+      name: "compact-context",
+      displayName: "压缩上下文",
+      description: "调用 Codex Desktop 的上下文压缩操作",
+      source: "内置操作",
+      priority: -10,
+      kind: "builtin",
+      action: "compact",
+      uri: "builtin://compact-context"
+    },
+    {
+      name: "plan",
+      displayName: "计划",
+      description: "让 Codex 先整理执行计划",
+      source: "内置操作",
+      priority: -9,
+      kind: "builtin",
+      action: "plan",
+      uri: "builtin://plan"
+    },
+    {
+      name: "goal",
+      displayName: "目标",
+      description: "查看或编辑当前 Codex 目标",
+      source: "内置操作",
+      priority: -8,
+      kind: "builtin",
+      action: "goal",
+      uri: "builtin://goal"
+    },
+    ...[...byUri.values()].sort((a, b) => {
+      const aName = String(a.name || "").toLowerCase();
+      const bName = String(b.name || "").toLowerCase();
+      const aCore = CORE_SKILL_ORDER.indexOf(aName);
+      const bCore = CORE_SKILL_ORDER.indexOf(bName);
+      const aRank = aCore >= 0 ? aCore + 1 : a.priority === 0 ? 50 : a.priority ?? 200;
+      const bRank = bCore >= 0 ? bCore + 1 : b.priority === 0 ? 50 : b.priority ?? 200;
+      return aRank - bRank || a.displayName.localeCompare(b.displayName, undefined, { sensitivity: "base" });
+    })
+  ];
+  return {
+    skills,
+    codexHome: homeState.home,
+    codexHomeVersion: homeState.version
+  };
+}
+
+function clearHomeScopedCaches() {
+  accountCache = null;
+  accountInfoInFlight = null;
+  threadAccountCache = null;
+  threadAccountRefreshInFlight = null;
+  threadsCache = null;
+  threadsInFlight = null;
+  threadsCacheGeneration += 1;
+  messageCache.clear();
+  threadStatusParseCache.clear();
+  threadStatusColumnsCache = null;
+  adapterStatusOverrides.clear();
+  referencedFilesByThread.clear();
+  pendingApprovalsByThread.clear();
+  resolvedApprovalsByThread.clear();
+  recentNotices.splice(0, recentNotices.length);
+  codexIpcClient?.clearHomeScopedState?.();
+}
+
+function setCodexIpcClientForApprovalTests(client) {
+  const previous = codexIpcClient;
+  codexIpcClient = client;
+  pendingApprovalsByThread.clear();
+  resolvedApprovalsByThread.clear();
+  return () => {
+    codexIpcClient = previous;
+    pendingApprovalsByThread.clear();
+    resolvedApprovalsByThread.clear();
+  };
+}
+
+function rememberStartedThreadsForTest(rows) {
+  startedThreads.clear();
+  for (const row of rows || []) {
+    if (row?.id) startedThreads.set(String(row.id), { ...row, id: String(row.id), rememberedAtMs: Date.now() });
+  }
+  return () => startedThreads.clear();
+}
+
+function normalizeCandidateHome(value) {
+  const text = String(value || "").trim();
+  if (!text) return "";
+  const expanded = text.startsWith("~/") ? path.join(os.homedir(), text.slice(2)) : text;
+  const normalized = path.resolve(expanded);
+  const parts = normalized.split(path.sep);
+  const codexIndex = parts.lastIndexOf(".codex");
+  if (codexIndex >= 0) return parts.slice(0, codexIndex + 1).join(path.sep) || path.sep;
+  if (["state_5.sqlite", "session_index.jsonl", "auth.json"].includes(path.basename(normalized))) return path.dirname(normalized);
+  return normalized;
+}
+
+function isLikelyCodexHome(home) {
+  if (!home || !existsSync(home)) return false;
+  const paths = codexPaths(home);
+  return existsSync(paths.stateDb) || existsSync(paths.sessionIndex) || existsSync(paths.authFile) || existsSync(path.join(paths.home, "sessions"));
+}
+
+function applyCodexHomeCandidate(candidate, source = "unknown") {
+  if (codexHomeState.fixed) return false;
+  const home = normalizeCandidateHome(candidate);
+  if (!isLikelyCodexHome(home)) return false;
+  if (home === codexHomeState.home) return false;
+  codexHomeState = {
+    ...codexHomeState,
+    home,
+    version: codexHomeState.version + 1,
+    source,
+    signature: "",
+    checkedAt: 0,
+    changedAt: new Date().toISOString()
+  };
+  clearHomeScopedCaches();
+  logInfo(`Codex home changed: ${home} (${source})`);
+  return true;
+}
+
+function extractCodexHomeCandidates(value, depth = 0, seen = new Set(), keyHint = "") {
+  if (value == null || depth > 8) return [];
+  if (typeof value === "string") {
+    const hint = String(keyHint || "").toLowerCase();
+    const looksLikeHomeKey = /codex[_-]?home|codexhome|data[_-]?dir|data[_-]?directory/.test(hint);
+    const looksLikeCodexPath = value.includes(`${path.sep}.codex`) || value.includes("/.codex") || value.includes("\\.codex");
+    if (looksLikeHomeKey || looksLikeCodexPath || ["state_5.sqlite", "session_index.jsonl", "auth.json"].some((name) => value.includes(name))) {
+      return [normalizeCandidateHome(value)];
+    }
+    return [];
+  }
+  if (typeof value !== "object" || seen.has(value)) return [];
+  seen.add(value);
+  const candidates = [];
+  if (Array.isArray(value)) {
+    for (const item of value) candidates.push(...extractCodexHomeCandidates(item, depth + 1, seen, keyHint));
+    return candidates;
+  }
+  for (const [key, child] of Object.entries(value)) {
+    candidates.push(...extractCodexHomeCandidates(child, depth + 1, seen, key));
+  }
+  return candidates;
+}
+
+function maybeUpdateCodexHomeFromMessage(message) {
+  for (const candidate of extractCodexHomeCandidates(message)) {
+    if (applyCodexHomeCandidate(candidate, "desktop-ipc")) return true;
+  }
+  return false;
+}
+
+async function fileSignature(filePath) {
+  try {
+    const stat = await fs.stat(filePath);
+    return `${filePath}:${stat.size}:${Math.round(stat.mtimeMs)}`;
+  } catch {
+    return `${filePath}:missing`;
+  }
+}
+
+async function fileMtimeMs(filePath) {
+  try {
+    return (await fs.stat(filePath)).mtimeMs;
+  } catch {
+    return 0;
+  }
+}
+
+async function discoverCodexHomeCandidates() {
+  const candidates = new Set([
+    INITIAL_CODEX_HOME,
+    process.env.CODEX_HOME,
+    path.join(os.homedir(), ".codex"),
+    ...(process.env.CODEX_LAN_CODEX_HOME_CANDIDATES || "").split(path.delimiter)
+  ]);
+  try {
+    for (const entry of await fs.readdir(os.homedir(), { withFileTypes: true })) {
+      if (entry.isDirectory() && entry.name.startsWith(".codex")) {
+        candidates.add(path.join(os.homedir(), entry.name));
+      }
+    }
+  } catch {
+    // Candidate discovery is best-effort; IPC is the preferred signal.
+  }
+  const appSupport = path.join(os.homedir(), "Library", "Application Support");
+  try {
+    for (const entry of await fs.readdir(appSupport, { withFileTypes: true })) {
+      if (entry.isDirectory() && entry.name.toLowerCase().includes("codex")) {
+        candidates.add(path.join(appSupport, entry.name));
+      }
+    }
+  } catch {
+    // Ignore unavailable platform-specific directories.
+  }
+  return [...candidates].map(normalizeCandidateHome).filter((candidate) => candidate && isLikelyCodexHome(candidate));
+}
+
+async function maybeDiscoverNewCodexHome(now) {
+  if (codexHomeState.fixed || now - codexHomeState.candidateCheckedAt < 10000) return false;
+  codexHomeState = { ...codexHomeState, candidateCheckedAt: now };
+  const currentAuthMtime = await fileMtimeMs(codexPaths().authFile);
+  let best = null;
+  for (const candidate of await discoverCodexHomeCandidates()) {
+    if (candidate === codexHomeState.home) continue;
+    const authMtime = await fileMtimeMs(codexPaths(candidate).authFile);
+    if (authMtime > currentAuthMtime && (!best || authMtime > best.authMtime)) {
+      best = { home: candidate, authMtime };
+    }
+  }
+  return best ? applyCodexHomeCandidate(best.home, "poll-discovery") : false;
+}
+
+async function codexHomeSignature(home = codexHomeState.home) {
+  const paths = codexPaths(home);
+  return fileSignature(paths.authFile);
+}
+
+async function refreshCodexHomeContext({ force = false, source = "poll" } = {}) {
+  const requestProfile = currentRequestProfile();
+  if (requestProfile?.backend === "codex" && requestProfile.home) {
+    return {
+      home: path.resolve(requestProfile.home),
+      version: 1,
+      source: "profile",
+      fixed: true,
+      signature: "",
+      checkedAt: Date.now(),
+      candidateCheckedAt: Date.now(),
+      changedAt: new Date(0).toISOString()
+    };
+  }
+  maybeUpdateCodexHomeFromMessage(codexIpcClient?.events?.at(-1)?.message);
+  const now = Date.now();
+  await maybeDiscoverNewCodexHome(now);
+  if (!force && now - codexHomeState.checkedAt < 2000) return codexHomeState;
+  const signature = await codexHomeSignature();
+  if (codexHomeState.signature && signature !== codexHomeState.signature) {
+    codexHomeState = {
+      ...codexHomeState,
+      version: codexHomeState.version + 1,
+      source,
+      signature,
+      checkedAt: now,
+      changedAt: new Date().toISOString()
+    };
+    clearHomeScopedCaches();
+  } else {
+    codexHomeState = {
+      ...codexHomeState,
+      signature,
+      checkedAt: now
+    };
+  }
+  return codexHomeState;
+}
+
+async function loadNodeSqliteModule() {
+  if (!nodeSqliteModulePromise) {
+    nodeSqliteModulePromise = import("node:sqlite")
+      .then((module) => (module?.DatabaseSync ? module : null))
+      .catch((error) => {
+        sqliteDriverState.lastNodeError = error?.message || String(error);
+        return null;
+      });
+  }
+  return nodeSqliteModulePromise;
+}
+
+function querySqlJsonWithNode(DatabaseSync, sql, dbPath, { write = false } = {}) {
+  const database = new DatabaseSync(dbPath, { readOnly: !write });
+  try {
+    database.exec("PRAGMA busy_timeout = 5000");
+    return database.prepare(sql).all();
+  } finally {
+    database.close();
+  }
+}
+
+async function runSqlJsonAttempt(sql, dbPath = codexPaths().stateDb, options = {}) {
+  if (SQLITE_DRIVER_PREFERENCE !== "cli") {
+    const module = await loadNodeSqliteModule();
+    if (module?.DatabaseSync) {
+      try {
+        const rows = querySqlJsonWithNode(module.DatabaseSync, sql, dbPath, options);
+        sqliteDriverState.active = "node:sqlite";
+        sqliteDriverState.nodeQueries += 1;
+        return rows;
+      } catch (error) {
+        sqliteDriverState.lastNodeError = error?.message || String(error);
+        if (SQLITE_DRIVER_PREFERENCE === "node") throw error;
+      }
+    } else if (SQLITE_DRIVER_PREFERENCE === "node") {
+      throw new Error(`node:sqlite is unavailable: ${sqliteDriverState.lastNodeError || "unknown error"}`);
+    }
+  }
+  try {
+    const { stdout } = await execFileHidden("sqlite3", ["-json", "-cmd", ".timeout 5000", dbPath, sql]);
+    sqliteDriverState.active = "sqlite3-cli";
+    sqliteDriverState.cliQueries += 1;
+    return stdout.trim() ? JSON.parse(stdout) : [];
+  } catch (error) {
+    sqliteDriverState.lastCliError = String(error?.stderr || error?.message || error);
+    throw new Error(error?.stderr || error?.message || String(error));
+  }
+}
+
+function sqliteDriverInfo() {
+  return {
+    preference: SQLITE_DRIVER_PREFERENCE,
+    active: sqliteDriverState.active,
+    nodeSqliteError: sqliteDriverState.lastNodeError || null,
+    cliError: sqliteDriverState.lastCliError || null,
+    nodeQueries: sqliteDriverState.nodeQueries,
+    cliQueries: sqliteDriverState.cliQueries
+  };
+}
+
+async function runSqlJsonFromDb(dbPath, sql, options = {}) {
+  const work = async () => {
+    let lastError;
+    for (let attempt = 0; attempt < 5; attempt += 1) {
+      try {
+        return await runSqlJsonAttempt(sql, dbPath, options);
+      } catch (error) {
+        lastError = error;
+        if (!isSqliteLocked(error) && !isSqliteResourceTransient(error)) throw error;
+        await sleep(150 * (attempt + 1) + (isSqliteResourceTransient(error) ? 100 : 0));
+      }
+    }
+    throw lastError;
+  };
+  const queueKey = path.resolve(dbPath);
+  const queue = sqliteQueues.get(queueKey) || Promise.resolve();
+  const next = queue.then(work, work);
+  sqliteQueues.set(queueKey, next.catch(() => {}));
+  return next;
+}
+
+async function runSqlJson(sql) {
+  const { stateDb } = codexPaths((await refreshCodexHomeContext()).home);
+  return runSqlJsonFromDb(stateDb, sql);
+}
+
+/**
+ * 写库必须走可写连接：node:sqlite 的 readOnly 连接会直接拒绝 BEGIN/INSERT/UPDATE，
+ * 置顶写入此前因此静默回退到 sqlite3 CLI（换台没有该命令的机器就变成 500）。
+ */
+async function runSqlWrite(sql) {
+  const { stateDb } = codexPaths((await refreshCodexHomeContext()).home);
+  return runSqlJsonFromDb(stateDb, sql, { write: true });
+}
+
+const STATUS_STATES = new Set(["running", "waiting", "ended"]);
+
+function normalizeStatusState(value) {
+  const state = String(value || "").trim().toLowerCase();
+  return STATUS_STATES.has(state) ? state : "";
+}
+
+async function threadStatusColumns(dbPath) {
+  const now = Date.now();
+  if (threadStatusColumnsCache?.dbPath === dbPath && now - threadStatusColumnsCache.checkedAt < 30_000) {
+    return threadStatusColumnsCache.columns;
+  }
+  let columns = new Set();
+  try {
+    const rows = await runSqlJsonFromDb(dbPath, "PRAGMA table_info(threads);");
+    columns = new Set(rows.map((row) => String(row?.name || "").toLowerCase()).filter(Boolean));
+  } catch {
+    // A missing or unreadable state database is handled by the caller.
+  }
+  threadStatusColumnsCache = { dbPath, columns, checkedAt: now };
+  return columns;
+}
+
+function threadStatusSelectSql(columns) {
+  const has = (name) => Boolean(columns?.has?.(name));
+  return [
+    has("status_state") ? "threads.status_state AS statusState" : "NULL AS statusState",
+    has("status_turn_id") ? "threads.status_turn_id AS statusTurnId" : "NULL AS statusTurnId",
+    has("status_started_ms") ? "threads.status_started_ms AS statusStartedMs" : "NULL AS statusStartedMs",
+    has("status_updated_ms") ? "threads.status_updated_ms AS statusUpdatedMs" : "NULL AS statusUpdatedMs"
+  ].join(", ");
+}
+
+function statusFieldsFromOverride(record, staleTurn = false) {
+  const thinking = record.state === "running" || record.state === "waiting";
+  const status = {
+    state: record.state,
+    thinking,
+    interactionRequired: record.state === "waiting",
+    turnId: record.turnId || null,
+    startedAtMs: Number.isFinite(record.startedAtMs) ? record.startedAtMs : null,
+    statusSource: record.source
+  };
+  // Present only when the transcript contradicts the database row, so the plain
+  // contract stays byte-identical for every healthy thread.
+  if (staleTurn) status.staleTurn = true;
+  return status;
+}
+
+// The Desktop state database refreshes status_updated_ms on a timer even after the
+// process behind a turn is gone, so its own max-age guard never fires and a row can
+// claim "running" for hours. Only a database row needs corroboration; a live adapter
+// refreshes a short TTL and is trusted as-is.
+function overrideNeedsRolloutCorroboration(override) {
+  if (!override || override.source !== "db") return false;
+  return override.state === "running" || override.state === "waiting";
+}
+
+function overrideLacksCorroboration(override, parsedStatus) {
+  if (!overrideNeedsRolloutCorroboration(override)) return false;
+  if (!parsedStatus) return true;
+  return !(parsedStatus.thinking || parsedStatus.interactionRequired);
+}
+
+function adapterStatusOverrideFor(threadId, now = Date.now()) {
+  const key = String(threadId || "").trim();
+  if (!key) return null;
+  const entry = adapterStatusOverrides.get(key);
+  if (!entry) return null;
+  if (entry.expiresAtMs <= now) {
+    adapterStatusOverrides.delete(key);
+    return null;
+  }
+  return entry;
+}
+
+function statusOverrideFromRow(row, now = Date.now()) {
+  const state = normalizeStatusState(row?.statusState);
+  if (!state) return null;
+  const updatedAtMs = Number(row?.statusUpdatedMs);
+  if (!Number.isFinite(updatedAtMs) || updatedAtMs <= 0) return null;
+  if (now - updatedAtMs > STATUS_OVERRIDE_MAX_AGE_MS) return null;
+  // Reject absurd future timestamps from a clock-skewed adapter, but allow a
+  // few minutes so a small skew does not make a fresh status disappear.
+  if (updatedAtMs - now > 5 * 60 * 1000) return null;
+  const startedAtMs = Number(row?.statusStartedMs);
+  return {
+    threadId: String(row?.id || ""),
+    state,
+    turnId: row?.statusTurnId ? String(row.statusTurnId) : null,
+    startedAtMs: Number.isFinite(startedAtMs) && startedAtMs > 0 ? startedAtMs : null,
+    updatedAtMs,
+    expiresAtMs: updatedAtMs + STATUS_OVERRIDE_MAX_AGE_MS,
+    source: "db"
+  };
+}
+
+function statusOverrideForThread(threadId, row = null, now = Date.now()) {
+  return adapterStatusOverrideFor(threadId, now) || statusOverrideFromRow(row, now);
+}
+
+function setAdapterStatusOverride(threadId, { state, turnId = null, startedAtMs = null, ttlMs = null } = {}) {
+  const id = String(threadId || "").trim();
+  const normalized = normalizeStatusState(state);
+  if (!id) {
+    const error = new Error("threadId is required");
+    error.status = 400;
+    throw error;
+  }
+  if (!normalized) {
+    const error = new Error("state must be one of running, waiting, ended");
+    error.status = 400;
+    throw error;
+  }
+  const now = Date.now();
+  const requestedTtl = Number(ttlMs);
+  const effectiveTtl = Number.isFinite(requestedTtl) && requestedTtl > 0
+    ? Math.min(Math.max(Math.floor(requestedTtl), 1000), 24 * 60 * 60 * 1000)
+    : STATUS_OVERRIDE_MAX_AGE_MS;
+  const started = Number(startedAtMs);
+  const record = {
+    threadId: id,
+    state: normalized,
+    turnId: turnId ? String(turnId) : null,
+    startedAtMs: Number.isFinite(started) && started > 0 ? started : null,
+    updatedAtMs: now,
+    expiresAtMs: now + effectiveTtl,
+    source: "adapter"
+  };
+  adapterStatusOverrides.set(id, record);
+  clearThreadsCache();
+  return record;
+}
+
+function clearAdapterStatusOverride(threadId) {
+  const id = String(threadId || "").trim();
+  if (!id) return false;
+  const removed = adapterStatusOverrides.delete(id);
+  if (removed) clearThreadsCache();
+  return removed;
+}
+
+function activeAdapterStatusOverrides(now = Date.now()) {
+  const entries = [];
+  for (const [threadId, record] of adapterStatusOverrides) {
+    if (record.expiresAtMs <= now) {
+      adapterStatusOverrides.delete(threadId);
+      continue;
+    }
+    entries.push({ ...record });
+  }
+  return entries.sort((left, right) => right.updatedAtMs - left.updatedAtMs);
+}
+
+function logRolloutIssue(threadId, reason) {
+  const id = String(threadId || "").trim() || "(unknown)";
+  const message = String(reason || "unknown error");
+  const key = `${id}|${message}`;
+  const now = Date.now();
+  const lastLoggedAt = rolloutIssueLogState.get(key) || 0;
+  if (now - lastLoggedAt < 5 * 60 * 1000) return;
+  if (rolloutIssueLogState.size > 500) {
+    for (const [oldKey, oldAt] of rolloutIssueLogState) {
+      if (now - oldAt > 10 * 60 * 1000) rolloutIssueLogState.delete(oldKey);
+    }
+  }
+  rolloutIssueLogState.set(key, now);
+  logWarning(`[threads] thread ${id} skipped: ${message}`);
+}
+
+function safeResolveRolloutPath(rolloutPath, threadId = "") {
+  try {
+    return resolveRolloutPath(rolloutPath);
+  } catch (error) {
+    logRolloutIssue(threadId, error?.message || String(error));
+    return null;
+  }
+}
+
+async function readJsonBody(req, limit = 128 * 1024) {
+  const chunks = [];
+  let receivedBytes = 0;
+  for await (const chunk of req) {
+    const buffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
+    receivedBytes += buffer.length;
+    // The limit is measured in UTF-8 bytes, not JavaScript string characters.
+    if (receivedBytes > limit) {
+      const err = new Error("Request body too large");
+      err.status = 413;
+      throw err;
+    }
+    chunks.push(buffer);
+  }
+  // 必须整体解码：逐块 body += chunk 会把跨块的 UTF-8 汉字/emoji 撕成替换字符，
+  // 并且每块都重算整串字节数，在上限很大时退化成 O(n²)。
+  const body = Buffer.concat(chunks, receivedBytes).toString("utf8");
+  try {
+    return body.trim() ? JSON.parse(body) : {};
+  } catch {
+    const err = new Error("Invalid JSON body");
+    err.status = 400;
+    throw err;
+  }
+}
+
+class DesktopCodexIpcClient {
+  constructor() {
+    this.socket = null;
+    this.buffer = Buffer.alloc(0);
+    this.pending = new Map();
+    this.ready = null;
+    this.clientId = null;
+    this.events = [];
+    this.desktopConversationRows = new Map();
+    this.followingByConversation = new Map();
+    this.connectionFailure = null;
+    this.retryConnectionAt = 0;
+  }
+
+  async ensureReady() {
+    if (this.ready) return this.ready;
+    if (Date.now() < this.retryConnectionAt) throw this.connectionFailure;
+    const operation = Promise.resolve().then(() => this.connect());
+    this.ready = operation;
+    try {
+      const response = await operation;
+      this.connectionFailure = null;
+      this.retryConnectionAt = 0;
+      return response;
+    } catch (error) {
+      if (this.ready === operation) {
+        this.reset(error);
+      }
+      this.connectionFailure = error;
+      this.retryConnectionAt = Date.now() + 2000;
+      throw error;
+    }
+  }
+
+  async connect() {
+    if (process.platform !== "win32" && !existsSync(CODEX_IPC_SOCKET)) {
+      throw new Error(`Codex desktop IPC socket not found: ${CODEX_IPC_SOCKET}`);
+    }
+    this.buffer = Buffer.alloc(0);
+    this.pending.clear();
+    this.clientId = null;
+
+    await new Promise((resolve, reject) => {
+      const socket = net.createConnection(CODEX_IPC_SOCKET);
+      const timer = setTimeout(() => fail(new Error("Codex desktop IPC connect timed out")), 8000);
+      const fail = (error) => {
+        clearTimeout(timer);
+        socket.destroy();
+        reject(error);
+      };
+      socket.once("connect", () => {
+        clearTimeout(timer);
+        socket.off("error", fail);
+        resolve();
+      });
+      socket.once("error", fail);
+      this.socket = socket;
+    });
+
+    this.socket.on("data", (chunk) => this.handleData(chunk));
+    this.socket.on("error", (error) => this.reset(error));
+    this.socket.on("close", () => this.reset(new Error("Codex desktop IPC connection closed")));
+
+    const response = await this.request("initialize", { clientType: "webcontrolui" }, { includeVersion: false });
+    if (response.resultType !== "success") {
+      throw new Error(response.error || "Codex desktop IPC initialize failed");
+    }
+    this.clientId = response.result?.clientId || null;
+    return response;
+  }
+
+  reset(error) {
+    const socket = this.socket;
+    if (socket) {
+      socket.removeAllListeners();
+      socket.destroy();
+    }
+    for (const { reject, timer } of this.pending.values()) {
+      clearTimeout(timer);
+      if (error) reject(error);
+    }
+    this.pending.clear();
+    this.ready = null;
+    this.socket = null;
+    this.buffer = Buffer.alloc(0);
+    this.clientId = null;
+  }
+
+  close() {
+    const socket = this.socket;
+    if (socket) {
+      socket.removeAllListeners();
+      try {
+        socket.end();
+      } catch {
+        // Ignore shutdown errors.
+      }
+      try {
+        socket.destroy();
+      } catch {
+        // Ignore shutdown errors.
+      }
+    }
+    this.reset();
+  }
+
+  encode(message) {
+    const payload = Buffer.from(JSON.stringify(message), "utf8");
+    const header = Buffer.alloc(4);
+    header.writeUInt32LE(payload.length, 0);
+    return Buffer.concat([header, payload]);
+  }
+
+  handleData(chunk) {
+    this.buffer = Buffer.concat([this.buffer, chunk]);
+    while (this.buffer.length >= 4) {
+      const length = this.buffer.readUInt32LE(0);
+      if (this.buffer.length < 4 + length) return;
+      const payload = this.buffer.subarray(4, 4 + length).toString("utf8");
+      this.buffer = this.buffer.subarray(4 + length);
+      try {
+        this.handleMessage(JSON.parse(payload));
+      } catch {
+        // Ignore malformed frames from experimental desktop IPC.
+      }
+    }
+  }
+
+  handleMessage(message) {
+    if (message.type !== "response" || !message.requestId) {
+      this.captureEvent(message);
+      return;
+    }
+    const pending = this.pending.get(message.requestId);
+    if (!pending) {
+      this.captureEvent(message);
+      return;
+    }
+    this.pending.delete(message.requestId);
+    clearTimeout(pending.timer);
+    this.captureEvent({
+      ...message,
+      direction: "incoming-response",
+      method: message.method || pending.method,
+      params: pending.params
+    });
+    if (message.resultType === "error") {
+      const error = new Error(message.error || `${message.method || pending.method || "IPC request"} failed`);
+      error.ipcMessage = message;
+      error.ipcMethod = pending.method;
+      error.ipcParams = pending.params;
+      pending.reject(error);
+      return;
+    }
+    pending.resolve(message);
+  }
+
+  captureEvent(message) {
+    if (!message || typeof message !== "object") return;
+    maybeUpdateCodexHomeFromMessage(message);
+    this.rememberDesktopConversation(message);
+    this.rememberConversationFollowing(message);
+    this.events.push({
+      timestamp: new Date().toISOString(),
+      message
+    });
+    if (this.events.length > 120) this.events.splice(0, this.events.length - 120);
+  }
+
+  clearHomeScopedState() {
+    this.events = [];
+    this.desktopConversationRows.clear();
+    this.followingByConversation.clear();
+  }
+
+  rememberConversationFollowing(message) {
+    const type = String(message?.type || message?.method || "").toLowerCase();
+    if (!type.includes("following")) return;
+    const id = this.conversationIdFromMessage(message);
+    if (!id) return;
+    const payload = message?.payload || message?.params || message;
+    const following = payload?.following ?? payload?.isFollowing ?? payload?.value;
+    if (typeof following === "boolean") this.followingByConversation.set(String(id), following);
+  }
+
+  isFollowingConversation(threadId) {
+    return this.followingByConversation.get(String(threadId || "")) === true;
+  }
+
+  followingConversationState(threadId) {
+    return this.followingByConversation.get(String(threadId || ""));
+  }
+
+  conversationIdFromMessage(message) {
+    return (
+      message?.conversationId ||
+      message?.conversation_id ||
+      message?.threadId ||
+      message?.thread_id ||
+      message?.params?.conversationId ||
+      message?.params?.conversation_id ||
+      message?.params?.threadId ||
+      message?.params?.thread_id ||
+      message?.params?.conversationState?.id ||
+      ""
+    );
+  }
+
+  rememberDesktopConversation(message) {
+    const id = this.conversationIdFromMessage(message);
+    if (!id) return;
+    const timestampMs = Date.now();
+    const key = String(id);
+    const existing = this.desktopConversationRows.get(key) || {};
+    const title = firstString(message?.params?.conversationState?.title, message?.params?.title, message?.title, existing.title);
+    this.desktopConversationRows.set(key, {
+      id: key,
+      title: title || existing.title || "Desktop conversation",
+      rolloutPath: null,
+      createdAtMs: existing.createdAtMs || timestampMs,
+      updatedAtMs: Math.max(existing.updatedAtMs || 0, timestampMs),
+      archived: false,
+      preview: existing.preview || "",
+      cwd: existing.cwd || "",
+      model: existing.model || "",
+      source: "desktop-ipc"
+    });
+    if (this.desktopConversationRows.size > 80) {
+      const oldest = [...this.desktopConversationRows.values()].sort((a, b) => (a.updatedAtMs || 0) - (b.updatedAtMs || 0))[0];
+      if (oldest?.id) this.desktopConversationRows.delete(oldest.id);
+    }
+  }
+
+  rawEvents(limit = 80) {
+    return this.events.slice(-rawDebugEventsLimit(limit)).map((event, index) => ({
+      index,
+      timestamp: event.timestamp,
+      type: event.message?.type || "",
+      method: event.message?.method || "",
+      resultType: event.message?.resultType || "",
+      requestId: event.message?.requestId || "",
+      conversationId:
+        event.message?.conversationId ||
+        event.message?.conversation_id ||
+        event.message?.threadId ||
+        event.message?.thread_id ||
+        event.message?.params?.conversationId ||
+        event.message?.params?.conversation_id ||
+        event.message?.params?.threadId ||
+        event.message?.params?.thread_id ||
+        "",
+      summary: compact(redactLargePayloads(event.message), 3000)
+    }));
+  }
+
+  getRecentConversationIds(maxAgeMs = 15 * 60 * 1000) {
+    const cutoff = Date.now() - maxAgeMs;
+    const ids = new Set();
+    for (const event of this.events) {
+      if (Date.parse(event.timestamp) < cutoff) continue;
+      const id = this.conversationIdFromMessage(event.message);
+      if (id) ids.add(String(id));
+    }
+    return ids;
+  }
+
+  getDesktopConversationIds() {
+    return new Set(this.getDesktopConversationRows().map((row) => row.id));
+  }
+
+  getDesktopConversationRows() {
+    return [...this.desktopConversationRows.values()].sort((a, b) => (b.updatedAtMs || 0) - (a.updatedAtMs || 0));
+  }
+
+  getRecentConversationRows(maxAgeMs = 15 * 60 * 1000) {
+    const cutoff = Date.now() - maxAgeMs;
+    const rowsById = new Map();
+    for (const event of this.events) {
+      const timestampMs = Date.parse(event.timestamp);
+      if (timestampMs < cutoff) continue;
+      const id = this.conversationIdFromMessage(event.message);
+      if (!id) continue;
+      const existing = rowsById.get(String(id)) || {};
+      const title = firstString(
+        event.message?.params?.conversationState?.title,
+        event.message?.params?.title,
+        event.message?.title,
+        existing.title
+      );
+      rowsById.set(String(id), {
+        id: String(id),
+        title: title || "Desktop conversation",
+        rolloutPath: null,
+        createdAtMs: existing.createdAtMs || timestampMs,
+        updatedAtMs: Math.max(existing.updatedAtMs || 0, timestampMs),
+        archived: false,
+        preview: existing.preview || "",
+        cwd: existing.cwd || "",
+        model: existing.model || "",
+        source: "desktop-ipc"
+      });
+    }
+    return [...rowsById.values()].sort((a, b) => (b.updatedAtMs || 0) - (a.updatedAtMs || 0));
+  }
+
+  hasConversationEvent(threadId, sinceMs = 0) {
+    const selectedThreadId = String(threadId || "");
+    if (!selectedThreadId) return false;
+    return this.events.some((event) => {
+      if (sinceMs && Date.parse(event.timestamp) < sinceMs) return false;
+      const id =
+        event.message?.conversationId ||
+        event.message?.conversation_id ||
+        event.message?.threadId ||
+        event.message?.thread_id ||
+        event.message?.params?.conversationId ||
+        event.message?.params?.conversation_id ||
+        event.message?.params?.threadId ||
+        event.message?.params?.thread_id ||
+        "";
+      return String(id) === selectedThreadId;
+    });
+  }
+
+  async waitForConversationEvent(threadId, { sinceMs = 0, timeoutMs = 5000 } = {}) {
+    const startedAt = Date.now();
+    while (Date.now() - startedAt < timeoutMs) {
+      if (this.hasConversationEvent(threadId, sinceMs)) return true;
+      await sleep(150);
+    }
+    return false;
+  }
+
+  getRecentInteractionMessages(threadId) {
+    const selectedThreadId = String(threadId || "");
+    const cutoff = Date.now() - 10 * 60 * 1000;
+    const pendingById = new Map(approvalRequestsFromEvents(this.events, selectedThreadId).map(request => [request.requestId, request]));
+    const locallyResolved = resolvedApprovalsByThread.get(selectedThreadId);
+    return this.events.flatMap((event, index) => {
+        if (Date.parse(event.timestamp) < cutoff) return [];
+        const payload = event.message?.payload || event.message?.params || event.message;
+        const messageThreadId = approvalThreadId(event.message);
+        if (selectedThreadId && (!messageThreadId || String(messageThreadId) !== selectedThreadId)) return [];
+        const meta = {
+          source: "desktop-ipc",
+          threadId: selectedThreadId,
+          turnId: event.message?.turnId || event.message?.params?.turnId || null
+        };
+        const payloads = interactionPayloadsFromIpcMessage(event.message);
+        if (!payloads.length && isInteractionPayload(payload)) payloads.push(payload);
+        return payloads
+          .map((interactionPayload, payloadIndex) => {
+            const interaction = messageFromInteractionEvent(event.timestamp, interactionPayload, meta);
+            const pendingApproval = interaction?.requestId ? pendingById.get(String(interaction.requestId)) : null;
+            const locallyResolvedAt = interaction?.requestId ? locallyResolved?.get(String(interaction.requestId)) : null;
+            const canApprove = Boolean(pendingApproval && pendingApproval.approvalKind === interaction.approvalKind && pendingApproval.detailsHash === interaction.detailsHash && !locallyResolvedAt);
+            if (locallyResolvedAt && Date.now() - locallyResolvedAt >= APPROVAL_TTL_MS) locallyResolved.delete(String(interaction.requestId));
+            if (!hasDisplayableMessageContent(interaction)) return null;
+            return {
+              ...interaction,
+              canApprove,
+              ...(interaction.approvalKind && interaction.requestId && !canApprove ? { unavailable: true } : {}),
+              lineNumber: 1000000 + index * 20 + payloadIndex,
+              requiresDesktopAction: true
+            };
+          })
+          .filter(Boolean);
+      })
+  }
+
+  getRecentNoticeMessages(threadId) {
+    const selectedThreadId = String(threadId || "");
+    return this.events
+      .map((event, index) => {
+        const payload = event.message?.payload || event.message?.params || event.message;
+        const messageThreadId =
+          event.message?.conversationId ||
+          event.message?.conversation_id ||
+          event.message?.threadId ||
+          event.message?.thread_id ||
+          event.message?.params?.conversationId ||
+          event.message?.params?.conversation_id ||
+          event.message?.params?.threadId ||
+          event.message?.params?.thread_id ||
+          "";
+        if (selectedThreadId && (!messageThreadId || String(messageThreadId) !== selectedThreadId)) return null;
+        const notice = messageFromNoticeEvent(event.timestamp, payload, {
+          source: "desktop-ipc",
+          turnId: event.message?.turnId || event.message?.params?.turnId || null
+        });
+        if (!hasDisplayableMessageContent(notice)) return null;
+        return {
+          ...notice,
+          lineNumber: 1500000 + index
+        };
+      })
+      .filter(Boolean);
+  }
+
+  request(method, params = {}, { includeVersion = true, timeoutMs = 12000, targetClientId = null } = {}) {
+    return new Promise((resolve, reject) => {
+      if (!this.socket?.writable) {
+        reject(new Error("Codex desktop IPC is not connected"));
+        return;
+      }
+      const requestId = randomUUID();
+      const message = {
+        type: "request",
+        requestId,
+        sourceClientId: this.clientId || undefined,
+        method,
+        params
+      };
+      const routedHostId = params?.hostId && params.hostId !== "local" ? String(params.hostId) : null;
+      if (routedHostId) {
+        message.hostId = routedHostId;
+      }
+      if (targetClientId) {
+        message.targetClientId = String(targetClientId);
+      }
+      if (includeVersion) {
+        message.version = ipcVersionForRequest(method, params, routedHostId);
+      }
+      const timer = setTimeout(() => {
+        this.pending.delete(requestId);
+        this.captureEvent({
+          type: "response",
+          direction: "timeout",
+          requestId,
+          method,
+          params,
+          resultType: "error",
+          error: `${method} timed out`
+        });
+        reject(new Error(`${method} timed out`));
+        // A writable pipe can still be unresponsive after Desktop suspends.
+        // Reconnect on the next request; never replay a timed-out send.
+        this.reset(new Error("Codex desktop IPC connection timed out"));
+      }, timeoutMs);
+      this.pending.set(requestId, { resolve, reject, timer, method, params });
+      this.captureEvent({
+        ...message,
+        direction: "outgoing-request"
+      });
+      this.socket.write(this.encode(message));
+    });
+  }
+
+  async startTurn(threadId, text, images = [], turnSettings = {}, options = {}) {
+    await this.ensureReady();
+    const { method, params } = desktopStartTurnRequest(threadId, text, images, turnSettings);
+    return this.request(method, params, { timeoutMs: 60_000, ...options });
+  }
+
+  async findThreadOwner(threadId, hostId = "local") {
+    await this.ensureReady();
+    try {
+      const response = await this.request(
+        "thread-owner-discovery",
+        { hostId, conversationId: threadId },
+        { timeoutMs: 2000 }
+      );
+      return response?.handledByClientId || response?.result?.handledByClientId || null;
+    } catch (error) {
+      if (isNoOpenOwnerError(error)) return null;
+      throw error;
+    }
+  }
+
+  async waitForThreadOwner(threadId, { hostId = "local", timeoutMs = 6000 } = {}) {
+    const deadline = Date.now() + timeoutMs;
+    while (Date.now() < deadline) {
+      const ownerClientId = await this.findThreadOwner(threadId, hostId);
+      if (ownerClientId) return ownerClientId;
+      await sleep(150);
+    }
+    return null;
+  }
+
+  async steerTurn(threadId, text, images = [], { cwd = process.cwd() } = {}) {
+    await this.ensureReady();
+    const clientUserMessageId = randomUUID();
+    return this.request("thread-follower-steer-turn", {
+      conversationId: threadId,
+      hostId: "local",
+      input: desktopTurnInput(text, images),
+      restoreMessage: desktopSteerRestoreMessage(text, cwd, clientUserMessageId),
+      serviceTier: null,
+      attachments: [],
+      clientUserMessageId,
+      additionalContext: null
+    }, { timeoutMs: 60_000 });
+  }
+
+  async interruptTurn(threadId, expectedTurnId = null, options = {}) {
+    await this.ensureReady();
+    const { method, params } = desktopInterruptTurnRequest(threadId, expectedTurnId);
+    return this.request(method, params, options);
+  }
+
+  async getThreadGoal(threadId) {
+    await this.ensureReady();
+    const response = await this.request("thread/goal/get", { threadId }, { timeoutMs: 5000 });
+    return response?.result?.goal ?? response?.goal ?? null;
+  }
+
+  async setThreadGoal(threadId, { objective, status = null } = {}) {
+    await this.ensureReady();
+    const response = await this.request("thread/goal/set", {
+      threadId,
+      objective: objective == null ? null : String(objective),
+      status: status || null
+    }, { timeoutMs: 8000 });
+    return response?.result?.goal ?? response?.goal ?? null;
+  }
+
+  async clearThreadGoal(threadId) {
+    await this.ensureReady();
+    const response = await this.request("thread/goal/clear", { threadId }, { timeoutMs: 8000 });
+    return response?.result ?? response;
+  }
+
+  async compactThread(threadId) {
+    await this.ensureReady();
+    return this.request("thread-follower-compact-thread", { conversationId: threadId }, { timeoutMs: 15000 });
+  }
+
+  async forkThread(threadId, { lastTurnId = null, beforeTurnId = null } = {}) {
+    await this.ensureReady();
+    const params = { threadId: String(threadId || "") };
+    if (lastTurnId) params.lastTurnId = String(lastTurnId);
+    if (beforeTurnId) params.beforeTurnId = String(beforeTurnId);
+    return this.request("thread/fork", params, { timeoutMs: 15000 });
+  }
+
+  async refreshRecentConversations(hostId = "local") {
+    await this.ensureReady();
+    return this.request("refresh-recent-conversations-for-host", { hostId }, { timeoutMs: 8000 });
+  }
+
+  async setActiveConversation(threadId, active = true, hostId = "local") {
+    await this.ensureReady();
+    return this.request(
+      "set-active-conversation",
+      {
+        hostId,
+        conversationId: threadId,
+        active
+      },
+      { timeoutMs: 8000 }
+    );
+  }
+
+  async startConversation(text, images = [], turnSettings = {}, project = null) {
+    await this.ensureReady();
+    const { model, effort } = preparedTurnSettings(turnSettings);
+    // The host files a session into a project by its root path, so the project
+    // root doubles as the working directory for the new conversation.
+    const cwd = project?.root || process.cwd();
+    const input = [];
+    if (text) input.push({ type: "text", text, text_elements: [] });
+    for (const image of images) {
+      input.push({
+        type: "image",
+        url: `data:${image.mimeType};base64,${image.data}`
+      });
+    }
+    return this.request(
+      "start-conversation",
+      {
+        hostId: "local",
+        input,
+        attachments: [],
+        cwd,
+        workspaceRoots: [cwd],
+        ...(project ? { projectPath: project.root, projectId: project.id, projectName: project.name } : {}),
+        model,
+        effort,
+        collaborationMode: null,
+        threadSource: "user",
+        approvalsReviewer: "user"
+      },
+      { timeoutMs: 60000 }
+    );
+  }
+}
+
+function getCodexIpcClient() {
+  if (!codexIpcClient) codexIpcClient = new DesktopCodexIpcClient();
+  return codexIpcClient;
+}
+
+function keepIpcWarm() {
+  if (!ALLOW_WRITE) return;
+  getCodexIpcClient()
+    .ensureReady()
+    .catch(() => {
+      // The health endpoint should not fail just because Codex Desktop is closed.
+    });
+}
+
+function sqlString(value) {
+  return String(value).replaceAll("'", "''");
+}
+
+function decodeJwtPayload(token) {
+  if (!token || typeof token !== "string") return null;
+  const payload = token.split(".")[1];
+  if (!payload) return null;
+  try {
+    return JSON.parse(Buffer.from(payload, "base64url").toString("utf8"));
+  } catch {
+    return null;
+  }
+}
+
+function displayPlanName(plan) {
+  const normalized = String(plan || "").trim().toLowerCase();
+  if (!normalized) return "";
+  const names = {
+    free: "Free",
+    plus: "Plus",
+    pro: "Pro",
+    team: "Team",
+    enterprise: "Enterprise"
+  };
+  return names[normalized] || normalized.charAt(0).toUpperCase() + normalized.slice(1);
+}
+
+async function readAuthProfile() {
+  const { authFile } = codexPaths((await refreshCodexHomeContext()).home);
+  if (!existsSync(authFile)) return {};
+  let raw = "";
+  try {
+    raw = await fs.readFile(authFile, "utf8");
+  } catch {
+    return {};
+  }
+  return authProfileFromRaw(raw);
+}
+
+// Codex Desktop rewrites auth.json on login. A read that lands mid-write — or a
+// truncated/empty file — must not turn the whole conversation list into a 500.
+function authProfileFromRaw(raw) {
+  let auth = null;
+  try {
+    auth = JSON.parse(String(raw || ""));
+  } catch {
+    auth = null;
+  }
+  if (!auth || typeof auth !== "object" || Array.isArray(auth)) return {};
+  const idClaims = decodeJwtPayload(auth.tokens?.id_token) || {};
+  const accessClaims = decodeJwtPayload(auth.tokens?.access_token) || {};
+  const planClaim =
+    idClaims["https://api.openai.com/auth.chatgpt_plan_type"] ||
+    accessClaims["https://api.openai.com/auth.chatgpt_plan_type"];
+  return {
+    name: idClaims.name || accessClaims.name || "",
+    email: idClaims.email || accessClaims.email || "",
+    sub: idClaims.sub || accessClaims.sub || "",
+    authMode: auth.auth_mode || "",
+    tokenPlan: planClaim || ""
+  };
+}
+
+function normalizeEmail(value) {
+  return String(value || "").trim().toLowerCase();
+}
+
+function extractTelemetryAccount(body) {
+  const text = String(body || "");
+  const email = text.match(/\buser\.email="([^"]+)"/)?.[1] || "";
+  const accountId = text.match(/\buser\.account_id="([^"]+)"/)?.[1] || "";
+  if (!email && !accountId) return null;
+  return {
+    email: normalizeEmail(email),
+    accountId: String(accountId || "").trim()
+  };
+}
+
+function accountFilterFromMap(latestByThread, currentEmail) {
+  const knownEmails = new Set([...latestByThread.values()].map((account) => account.email).filter(Boolean));
+  if (!knownEmails.size) return null;
+
+  const allowedThreadIds = new Set(
+    [...latestByThread.entries()].filter(([, account]) => account.email === currentEmail).map(([threadId]) => threadId)
+  );
+  return {
+    currentEmail,
+    knownEmails,
+    allowedThreadIds,
+    mappedThreadIds: new Set(latestByThread.keys()),
+    active: knownEmails.has(currentEmail) || allowedThreadIds.size > 0
+  };
+}
+
+async function refreshThreadAccountMap(homeState, logsDb, threadIds) {
+  const existing =
+    threadAccountCache?.home === homeState.home && threadAccountCache?.version === homeState.version
+      ? threadAccountCache
+      : null;
+  const requested = [...new Set(threadIds.map((id) => String(id || "").trim()).filter(Boolean))];
+  const valuesSql = requested.map((id) => `('${sqlString(id)}')`).join(",");
+  // Probe each thread through the indexed thread_id timeline; scanning all telemetry bodies is prohibitively slow on large logs databases.
+  const rows = requested.length
+    ? await runSqlJsonFromDb(
+        logsDb,
+        `
+          WITH requested(thread_id) AS (VALUES ${valuesSql})
+          SELECT requested.thread_id AS threadId,
+                 (
+                   SELECT logs.feedback_log_body
+                   FROM logs
+                   WHERE logs.thread_id = requested.thread_id
+                     AND logs.target = 'codex_otel.log_only'
+                   ORDER BY logs.ts DESC, logs.ts_nanos DESC, logs.id DESC
+                   LIMIT 1
+                 ) AS body
+          FROM requested;
+        `
+      )
+    : [];
+  const latestByThread = new Map(existing?.latestByThread || []);
+  const checkedThreadIds = new Set(existing?.checkedThreadIds || []);
+  for (const row of rows) {
+    const threadId = String(row.threadId || "").trim();
+    if (!threadId) continue;
+    checkedThreadIds.add(threadId);
+    const account = extractTelemetryAccount(row.body);
+    if (account?.email) latestByThread.set(threadId, account);
+  }
+
+  threadAccountCache = {
+    home: homeState.home,
+    version: homeState.version,
+    latestByThread,
+    checkedThreadIds,
+    cachedAt: Date.now()
+  };
+  return threadAccountCache;
+}
+
+async function readThreadAccountFilter(threadIds = []) {
+  const homeState = await refreshCodexHomeContext();
+  const profile = await readAuthProfile();
+  const currentEmail = normalizeEmail(profile.email);
+  if (!currentEmail) return null;
+
+  const { logsDb } = codexPaths(homeState.home);
+  if (!existsSync(logsDb)) return null;
+
+  const now = Date.now();
+  const cached =
+    threadAccountCache?.home === homeState.home && threadAccountCache?.version === homeState.version
+      ? threadAccountCache
+      : null;
+  const requested = [...new Set(threadIds.map((id) => String(id || "").trim()).filter(Boolean))];
+  const missing = requested.filter((id) => !cached?.checkedThreadIds?.has(id));
+  if (cached && !missing.length && now - cached.cachedAt < THREAD_ACCOUNT_CACHE_MS) {
+    return accountFilterFromMap(cached.latestByThread, currentEmail);
+  }
+
+  if (threadAccountRefreshInFlight) {
+    await threadAccountRefreshInFlight;
+    return readThreadAccountFilter(requested);
+  }
+  threadAccountRefreshInFlight = refreshThreadAccountMap(homeState, logsDb, missing.length ? missing : requested).finally(() => {
+    threadAccountRefreshInFlight = null;
+  });
+  const refreshed = await threadAccountRefreshInFlight;
+  return accountFilterFromMap(refreshed.latestByThread, currentEmail);
+}
+
+async function filterRowsForCurrentAccount(rows, idSelector = (row) => row.id, preserveIds = []) {
+  const rowIds = rows.map((row) => idSelector(row));
+  const filter = await readThreadAccountFilter(rowIds);
+  if (!filter?.active) return { rows, accountFiltered: false, accountEmail: filter?.currentEmail || "" };
+  const desktopVisibleIds = codexIpcClient?.getDesktopConversationIds?.() || codexIpcClient?.getRecentConversationIds?.() || new Set();
+  const preserved = new Set(preserveIds.map((id) => String(id || "").trim()).filter(Boolean));
+  return {
+    rows: rows.filter((row) => {
+      const id = String(idSelector(row) || "");
+      return filter.allowedThreadIds.has(id) || desktopVisibleIds.has(id) || preserved.has(id) || !filter.mappedThreadIds.has(id);
+    }),
+    accountFiltered: true,
+    accountEmail: filter.currentEmail
+  };
+}
+
+function normalizeRateLimitWindow(limit) {
+  if (!limit || typeof limit !== "object") return null;
+  const resetsAtSeconds = Number(limit.resets_at);
+  const usedPercent = Number(limit.used_percent);
+  const windowMinutes = Number(limit.window_minutes);
+  return {
+    usedPercent: Number.isFinite(usedPercent) ? usedPercent : null,
+    windowMinutes: Number.isFinite(windowMinutes) ? windowMinutes : null,
+    resetsAtMs: Number.isFinite(resetsAtSeconds) ? resetsAtSeconds * 1000 : null
+  };
+}
+
+function normalizeRateLimits(rateLimits, updatedAt) {
+  if (!rateLimits || typeof rateLimits !== "object") return null;
+  const normalized = {
+    planType: rateLimits.plan_type || "",
+    primary: normalizeRateLimitWindow(rateLimits.primary),
+    secondary: normalizeRateLimitWindow(rateLimits.secondary),
+    credits:
+      rateLimits.credits && typeof rateLimits.credits === "object"
+        ? {
+            hasCredits: Boolean(rateLimits.credits.has_credits),
+            unlimited: Boolean(rateLimits.credits.unlimited),
+            balance: Number.isFinite(Number(rateLimits.credits.balance)) ? Number(rateLimits.credits.balance) : null
+          }
+        : null,
+    updatedAt: updatedAt || null
+  };
+  const hasUsefulUsage =
+    Boolean(normalized.planType) ||
+    Boolean(normalized.primary) ||
+    Boolean(normalized.secondary) ||
+    Boolean(normalized.credits?.hasCredits) ||
+    Boolean(normalized.credits?.unlimited);
+  return hasUsefulUsage ? normalized : null;
+}
+
+async function latestRolloutPaths(limit = 8) {
+  const { stateDb } = codexPaths((await refreshCodexHomeContext()).home);
+  const rows = [];
+  const seen = new Set();
+  if (existsSync(stateDb)) {
+    const stateRows = await runSqlJson(`
+      SELECT id, rollout_path AS rolloutPath, updated_at_ms AS updatedAtMs
+      FROM threads
+      WHERE rollout_path IS NOT NULL
+      ORDER BY updated_at_ms DESC, updated_at DESC
+      LIMIT 200;
+    `);
+    const filtered = await filterRowsForCurrentAccount(stateRows);
+    for (const row of filtered.rows) {
+      const id = String(row.id || "");
+      if (id) seen.add(id);
+      rows.push(row);
+    }
+  }
+  const indexFiltered = await filterRowsForCurrentAccount(await readSessionIndexRows());
+  for (const row of indexFiltered.rows) {
+    const id = String(row.id || "");
+    if (!row.rolloutPath || seen.has(id)) continue;
+    seen.add(id);
+    rows.push(row);
+  }
+  return rows
+    .sort((a, b) => (Number(b.updatedAtMs) || 0) - (Number(a.updatedAtMs) || 0))
+    .slice(0, Number(limit) || 8)
+    .map((row) => {
+      try {
+        return resolveRolloutPath(row.rolloutPath);
+      } catch {
+        return null;
+      }
+    })
+    .filter(Boolean);
+}
+
+async function readLatestRateLimits() {
+  const rolloutPaths = await latestRolloutPaths();
+  for (const rolloutPath of rolloutPaths) {
+    const resolvedFile = resolveRolloutFile(rolloutPath);
+    if (!resolvedFile || !existsSync(resolvedFile.path)) continue;
+    const content = resolvedFile.path.endsWith(".zst")
+      ? (await readZstdRolloutLines(resolvedFile.path)).join("\n")
+      : await fs.readFile(resolvedFile.path, "utf8");
+    const lines = content.split(/\r?\n/);
+    for (let index = lines.length - 1; index >= 0; index -= 1) {
+      const line = lines[index]?.trim();
+      if (!line) continue;
+      try {
+        const entry = JSON.parse(line);
+        const rateLimits = entry.type === "event_msg" && entry.payload?.type === "token_count" ? entry.payload.rate_limits : null;
+        if (rateLimits) {
+          const normalized = normalizeRateLimits(rateLimits, entry.timestamp);
+          if (normalized) return normalized;
+        }
+      } catch {
+        // Skip malformed historical lines.
+      }
+    }
+  }
+  return null;
+}
+
+async function readSessionIndexTitleMap() {
+  const { sessionIndex } = codexPaths((await refreshCodexHomeContext()).home);
+  if (!existsSync(sessionIndex)) return new Map();
+  const content = await fs.readFile(sessionIndex, "utf8");
+  const titles = new Map();
+  for (const line of content.split(/\r?\n/)) {
+    if (!line.trim()) continue;
+    try {
+      const row = JSON.parse(line);
+      const id = String(row.id || "");
+      const title = String(row.thread_name || row.title || "").trim();
+      if (id && title) titles.set(id, title);
+    } catch {
+      // Ignore malformed historical index lines.
+    }
+  }
+  return titles;
+}
+
+async function findSessionRolloutPathsInDir(dir, home, depth = 0) {
+  if (depth > 8) return [];
+  let entries = [];
+  try {
+    entries = await fs.readdir(dir, { withFileTypes: true });
+  } catch {
+    return [];
+  }
+  const matches = [];
+  for (const entry of entries) {
+    const entryPath = path.join(dir, entry.name);
+    if (entry.isDirectory()) {
+      matches.push(...(await findSessionRolloutPathsInDir(entryPath, home, depth + 1)));
+      continue;
+    }
+    if (!entry.isFile() || !entry.name.endsWith(".jsonl")) continue;
+    const id = sessionIdFromRolloutName(entry.name);
+    if (!id) continue;
+    let mtimeMs = 0;
+    try {
+      mtimeMs = (await fs.stat(entryPath)).mtimeMs;
+    } catch {
+      // Keep the path even if stat races with Codex writing/removing a file.
+    }
+    matches.push({ id, rolloutPath: path.relative(home, entryPath), mtimeMs });
+  }
+  return matches;
+}
+
+async function readSessionRolloutPathMap() {
+  const homeState = await refreshCodexHomeContext();
+  const { home, sessionsDir, archivedSessionsDir } = codexPaths(homeState.home);
+  const cacheKey = `${homeState.home}:${homeState.version}`;
+  const now = Date.now();
+  if (sessionRolloutPathCache?.key === cacheKey && now - sessionRolloutPathCache.cachedAt < SESSION_ROLLOUT_PATH_CACHE_MS) {
+    return sessionRolloutPathCache.value;
+  }
+  const rolloutRows = [
+    ...(await findSessionRolloutPathsInDir(sessionsDir, home)),
+    ...(await findSessionRolloutPathsInDir(archivedSessionsDir, home))
+  ];
+  const paths = new Map();
+  for (const row of rolloutRows) {
+    const existing = paths.get(row.id);
+    if (!existing || row.mtimeMs >= existing.mtimeMs) paths.set(row.id, row);
+  }
+  const value = new Map([...paths.entries()].map(([id, row]) => [id, row.rolloutPath]));
+  sessionRolloutPathCache = { key: cacheKey, cachedAt: now, value };
+  return value;
+}
+
+// The Desktop migration can leave state_5.sqlite pointing at the old CODEX_HOME.
+// Prefer the rollout discovered under the active home when the session id matches.
+function rolloutPathForCurrentHome(row, rolloutPaths) {
+  const id = String(row?.id || "");
+  return (id && rolloutPaths?.get(id)) || row?.rolloutPath || null;
+}
+
+async function readSessionIndexRows() {
+  const { sessionIndex } = codexPaths((await refreshCodexHomeContext()).home);
+  if (!existsSync(sessionIndex)) return [];
+  const content = await fs.readFile(sessionIndex, "utf8");
+  const rolloutPaths = await readSessionRolloutPathMap();
+  const rowsById = new Map();
+  for (const line of content.split(/\r?\n/)) {
+    if (!line.trim()) continue;
+    try {
+      const row = JSON.parse(line);
+      const id = String(row.id || "").trim();
+      if (!id) continue;
+      const title = String(row.thread_name || row.title || "").trim();
+      rowsById.set(id, {
+        id,
+        title: title || "Untitled",
+        rolloutPath: rolloutPaths.get(id) || null,
+        createdAtMs: null,
+        updatedAtMs: Date.parse(row.updated_at),
+        archived: false,
+        preview: "",
+        cwd: "",
+        model: "",
+        source: "session-index"
+      });
+    } catch {
+      // Ignore malformed historical index lines.
+    }
+  }
+  return [...rowsById.values()].sort((a, b) => (Number(b.updatedAtMs) || 0) - (Number(a.updatedAtMs) || 0));
+}
+
+function displayThreadTitle(row, sessionIndexTitles) {
+  const indexedTitle = sessionIndexTitles?.get(String(row.id || ""));
+  return indexedTitle || row.title || "Untitled";
+}
+
+async function readSessionRolloutPathsForThread(threadId) {
+  const id = String(threadId || "").trim();
+  if (!id) return [];
+  const homeState = await refreshCodexHomeContext();
+  const { home, sessionsDir, archivedSessionsDir } = codexPaths(homeState.home);
+  const rows = [
+    ...(await findSessionRolloutPathsInDir(sessionsDir, home)),
+    ...(await findSessionRolloutPathsInDir(archivedSessionsDir, home))
+  ]
+    .filter((row) => row.id === id)
+    .sort((a, b) => a.mtimeMs - b.mtimeMs);
+  const fallback = rows.length ? [] : [safeResolveRolloutPath((await findThreadRowFallback(id))?.rolloutPath, id)].filter(Boolean);
+  return [...new Set([...rows.map((row) => safeResolveRolloutPath(row.rolloutPath, id)), ...fallback].filter(Boolean))];
+}
+
+async function findThreadRowFallback(id) {
+  const rows = await runSqlJson(`
+    SELECT id, rollout_path AS rolloutPath
+    FROM threads
+    WHERE id = '${sqlString(id)}'
+    LIMIT 1;
+  `);
+  return rows[0] || null;
+}
+
+function sessionIdFromRolloutName(name) {
+  return String(name || "").match(
+    /([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})(?:_[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})?\.jsonl$/
+  )?.[1] || "";
+}
+
+function isSubagentThread(row) {
+  if (row?.hasSpawnParent || row?.spawnParentId || row?.parentThreadId) return true;
+  const threadSource = String(row?.threadSource || row?.thread_source || "").toLowerCase();
+  if (threadSource === "subagent" || threadSource === "agent_created_thread") return true;
+  if (String(row?.agentPath || row?.agent_path || "").trim()) return true;
+  const source = row?.source;
+  if (!source || typeof source !== "string" || !source.trim().startsWith("{")) return false;
+  try {
+    return Boolean(JSON.parse(source)?.subagent);
+  } catch {
+    return false;
+  }
+}
+
+function visibleThreadRows(rows) {
+  return rows.filter((row) => !isSubagentThread(row));
+}
+
+function normalizedProjectPath(cwd) {
+  let value = String(cwd || "").trim();
+  if (!value) return "";
+  value = value.replace(/^\\\\\?\\UNC\\/i, "\\\\").replace(/^\\\\\?\\/, "");
+  return path.win32.normalize(value);
+}
+
+function projectRootMetadata(rows = []) {
+  const byPath = new Map();
+  for (const row of rows) {
+    const root = normalizedProjectPath(row?.projectRoot);
+    const projectId = String(row?.projectId || "").trim();
+    const projectName = String(row?.projectName || "").trim();
+    if (!root || !projectId || !projectName) continue;
+    const key = root.toLowerCase();
+    const candidates = byPath.get(key) || [];
+    candidates.push({ key: `project:${projectId}`, id: projectId, name: projectName, native: true, root });
+    byPath.set(key, candidates);
+  }
+  return byPath;
+}
+
+function projectForRoot(cwd, projectRootsByPath) {
+  if (!projectRootsByPath) return null;
+  const normalizedCwd = normalizedProjectPath(cwd);
+  if (!normalizedCwd) return null;
+  const cwdKey = normalizedCwd.toLowerCase();
+  let bestRootLength = -1;
+  let bestCandidates = null;
+  for (const [rootKey, candidates] of projectRootsByPath.entries()) {
+    if (!rootKey || !Array.isArray(candidates) || !candidates.length) continue;
+    const isExact = cwdKey === rootKey;
+    const isChild = cwdKey.startsWith(`${rootKey}\\`);
+    if (!isExact && !isChild) continue;
+    if (rootKey.length > bestRootLength) {
+      bestRootLength = rootKey.length;
+      bestCandidates = candidates;
+    }
+  }
+  const uniqueCandidates = [];
+  const candidateIds = new Set();
+  for (const candidate of bestCandidates || []) {
+    const candidateId = String(candidate?.id || "").trim();
+    if (!candidateId || candidateIds.has(candidateId)) continue;
+    candidateIds.add(candidateId);
+    uniqueCandidates.push(candidate);
+  }
+  if (uniqueCandidates.length !== 1) return null;
+  // A migrated Desktop profile can retain one workspace root in multiple
+  // projects. Ambiguous roots remain ungrouped because choosing by position or
+  // project name would silently put conversations into the wrong project.
+  return uniqueCandidates[0];
+}
+
+function threadListMetadata(row, projectRootsByPath = null, globalProjects = null) {
+  const projectId = String(row?.projectId || row?.project_id || "").trim();
+  const projectName = String(row?.projectName || row?.project_name || "").trim();
+  const sectionName = String(row?.sectionName || row?.section_name || "").trim();
+  const pinned = Number(row?.isPinned ?? row?.is_pinned) === 1 || sectionName.toLowerCase() === "pinned";
+  if (projectId) {
+    return {
+      pinned,
+      project: projectName ? { key: `project:${projectId}`, id: projectId, name: projectName, native: true } : null
+    };
+  }
+  const assigned = globalProjects?.byThread?.get(String(row?.id || ""));
+  if (assigned) return { pinned, project: assigned };
+  // Desktop groups sessions by the unique project root when the older
+  // threads table has no project_id. Only use an unambiguous root match;
+  // shared or conflicting roots remain in the ungrouped section.
+  return { pinned, project: projectForRoot(row?.cwd, projectRootsByPath) };
+}
+
+async function readProjectRoots() {
+  try {
+    return projectRootMetadata(await runSqlJson(`
+      SELECT projects.id AS projectId, projects.name AS projectName, project_roots.path AS projectRoot
+      FROM project_roots
+      INNER JOIN projects ON projects.id = project_roots.project_id
+      ORDER BY projects.position ASC, project_roots.position ASC;
+    `));
+  } catch {
+    return new Map();
+  }
+}
+
+async function readGlobalProjectState() {
+  const home = (await refreshCodexHomeContext()).home;
+  const filePath = path.join(home, ".codex-global-state.json");
+  try {
+    const stat = await fs.stat(filePath);
+    if (globalProjectStateCache?.path === filePath && globalProjectStateCache.mtimeMs === stat.mtimeMs) return globalProjectStateCache.value;
+    const raw = JSON.parse(await fs.readFile(filePath, "utf8"));
+    const state = raw?.["electron-persisted-atom-state"] || raw || {};
+    const projects = state["local-projects"] || {};
+    const assignments = state["thread-project-assignments"] || {};
+    const byThread = new Map();
+    for (const [threadId, assignment] of Object.entries(assignments)) {
+      if (assignment?.projectKind !== "local" || !assignment.projectId) continue;
+      const project = projects[assignment.projectId];
+      if (!project?.name) continue;
+      byThread.set(threadId, { key: `project:${assignment.projectId}`, id: assignment.projectId, name: String(project.name), native: true });
+    }
+    const value = { byThread };
+    globalProjectStateCache = { path: filePath, mtimeMs: stat.mtimeMs, value };
+    return value;
+  } catch {
+    return { byThread: new Map() };
+  }
+}
+
+/**
+ * Projects the phone can file a new conversation into.
+ *
+ * The bridge mirrors PI-Desktop's projects into the facade state db, so the
+ * projects table is the single source of truth here — no second schema. Each
+ * entry keeps the first root path, because that is what the host needs as
+ * `projectPath` when it creates a session.
+ */
+async function readProjectList() {
+  try {
+    const rows = await runSqlJson(`
+      SELECT projects.id AS id, projects.name AS name, projects.position AS position,
+             (SELECT project_roots.path FROM project_roots
+               WHERE project_roots.project_id = projects.id
+               ORDER BY project_roots.position ASC LIMIT 1) AS root,
+             (SELECT COUNT(*) FROM threads
+               WHERE threads.project_id = projects.id AND COALESCE(threads.archived, 0) = 0) AS threadCount
+      FROM projects
+      ORDER BY projects.position ASC, projects.name ASC;
+    `);
+    return rows
+      .map((row) => ({
+        id: String(row.id || "").trim(),
+        name: String(row.name || "").trim(),
+        root: normalizedProjectPath(row.root),
+        threadCount: Number(row.threadCount) || 0
+      }))
+      .filter((p) => p.id && p.name);
+  } catch {
+    return [];
+  }
+}
+
+/** Resolve a client-supplied project reference against the known list only. */
+function pickKnownProject(projects, { projectId, projectPath }) {
+  const id = String(projectId || "").trim();
+  if (id) return projects.find((p) => p.id === id) || null;
+  const wanted = normalizedProjectPath(projectPath).toLowerCase();
+  if (!wanted) return null;
+  return projects.find((p) => p.root && p.root.toLowerCase() === wanted) || null;
+}
+
+async function parseThreadListStatus(rolloutPath, nowMs) {
+  let stat = null;
+  try {
+    stat = await fs.stat(rolloutPath);
+  } catch {
+    return null;
+  }
+  const cached = threadStatusParseCache.get(rolloutPath);
+  if (
+    cached &&
+    cached.size === stat.size &&
+    cached.mtimeMs === stat.mtimeMs &&
+    nowMs - cached.cachedAtMs < THREADS_STATUS_CACHE_MS
+  ) {
+    return cached.status;
+  }
+  const parsed = await parseRollout(rolloutPath, { limit: 1, preferTail: true });
+  const status = {
+    state: parsed.status?.thinking ? "running" : parsed.status?.interactionRequired ? "waiting" : "ended",
+    thinking: Boolean(parsed.status?.thinking),
+    interactionRequired: Boolean(parsed.status?.interactionRequired),
+    turnId: parsed.status?.turnId || null,
+    startedAtMs: parsed.status?.startedAtMs || null
+  };
+  if (parsed.status?.staleTurn) status.staleTurn = true;
+  threadStatusParseCache.set(rolloutPath, {
+    size: stat.size,
+    mtimeMs: stat.mtimeMs,
+    cachedAtMs: nowMs,
+    status
+  });
+  if (threadStatusParseCache.size > 500) {
+    const cutoff = nowMs - 5 * 60 * 1000;
+    for (const [filePath, entry] of threadStatusParseCache) {
+      if (entry.cachedAtMs < cutoff) threadStatusParseCache.delete(filePath);
+    }
+  }
+  return status;
+}
+/** Safe wrapper: resolve the logical rollout path, then fall back to its .zst sibling. */
+function safeResolveRolloutFile(rolloutPath, threadId = "") {
+  try {
+    return resolveRolloutFile(rolloutPath);
+  } catch (error) {
+    logRolloutIssue(threadId, error?.message || String(error));
+    return null;
+  }
+}
+
+async function threadListStatus(row) {
+  const now = Date.now();
+  const override = statusOverrideForThread(row?.id, row, now);
+  const resolved = safeResolveRolloutFile(row?.rolloutPath, row?.id);
+  let parsed = null;
+  if (resolved) {
+    try {
+      parsed = await parseThreadListStatus(resolved.path, now);
+    } catch (error) {
+      logRolloutIssue(row?.id, error?.message || String(error));
+    }
+  }
+  if (override) {
+    // A database row keeps its "running" flag fresh forever, so cross-check it with
+    // the transcript and disclose when nothing corroborates it. The state is kept so
+    // the phone never double-sends into a turn that may still be alive.
+    return statusFieldsFromOverride(override, overrideLacksCorroboration(override, parsed));
+  }
+  return parsed || { state: "unknown", thinking: false, interactionRequired: false };
+}
+
+async function mapWithConcurrency(items, limit, mapper) {
+  const results = new Array(items.length);
+  let nextIndex = 0;
+  const workerCount = Math.max(1, Math.min(Math.floor(limit) || 1, items.length));
+  const workers = Array.from({ length: workerCount }, async () => {
+    while (true) {
+      const index = nextIndex;
+      nextIndex += 1;
+      if (index >= items.length) return;
+      results[index] = await mapper(items[index], index);
+    }
+  });
+  await Promise.all(workers);
+  return results;
+}
+
+// Status costs one rollout parse per row, so it is computed for a window rather than
+// for every conversation. A row that is (or claims to be) running must always be
+// inside that window: otherwise the phone shows 状态未知 for exactly the turns the
+// user is waiting on once a device has more saved conversations than the window.
+function threadStatusCandidates(rows, limit = 120) {
+  const picked = [];
+  const seen = new Set();
+  const push = (row) => {
+    const id = String(row?.id || "");
+    if (!id || seen.has(id)) return;
+    seen.add(id);
+    picked.push(row);
+  };
+  rows.slice(0, limit).forEach(push);
+  rows.forEach((row) => {
+    const state = String(row?.statusState || "");
+    if (state === "running" || state === "waiting" || Number(row?.statusStartedMs) > 0) push(row);
+  });
+  return picked;
+}
+
+async function buildThreadDiagnostics() {
+  const homeState = await refreshCodexHomeContext({ force: true, source: "diagnostics" });
+  const { home, stateDb } = codexPaths(homeState.home);
+  const statusColumns = existsSync(stateDb) ? await threadStatusColumns(stateDb) : new Set();
+  let rows = [];
+  let stateDbError = null;
+  if (existsSync(stateDb)) {
+    try {
+      rows = await runSqlJsonFromDb(
+        stateDb,
+        `SELECT id, title, rollout_path AS rolloutPath, archived, updated_at_ms AS updatedAtMs
+         FROM threads
+         ORDER BY updated_at_ms DESC
+         LIMIT 1000;`
+      );
+    } catch (error) {
+      stateDbError = error?.message || String(error);
+    }
+  } else {
+    stateDbError = "state_5.sqlite is missing";
+  }
+
+  const missing = [];
+  const outsideHome = [];
+  for (const row of rows) {
+    const id = String(row.id || "");
+    const rolloutPath = row.rolloutPath ? String(row.rolloutPath) : "";
+    if (!rolloutPath) {
+      missing.push({ id, reason: "empty" });
+      continue;
+    }
+    try {
+      // A .zst sibling means the transcript is present, just compressed — reporting it
+      // as "not-found" made the diagnostics lie about hundreds of healthy sessions.
+      const resolvedFile = resolveRolloutFile(rolloutPath);
+      if (!resolvedFile || !existsSync(resolvedFile.path)) {
+        missing.push({ id, rolloutPath, resolvedPath: resolvedFile?.path || null, reason: "not-found" });
+      }
+    } catch (error) {
+      outsideHome.push({ id, rolloutPath, reason: error?.message || String(error) });
+    }
+  }
+  const overrides = activeAdapterStatusOverrides();
+  const cachedAt = threadsCache?.cachedAt || 0;
+  return {
+    ok: true,
+    backend: { kind: BACKEND_KIND },
+    codexHome: home,
+    codexHomeVersion: homeState.version,
+    threads: {
+      total: rows.length,
+      archived: rows.filter((row) => isArchivedThread(row)).length,
+      statusColumns: [...statusColumns].filter((name) => name.startsWith("status_")).sort()
+    },
+    rolloutIssues: {
+      missingCount: missing.length,
+      outsideHomeCount: outsideHome.length,
+      missing: missing.slice(0, 100),
+      outsideHome: outsideHome.slice(0, 100),
+      truncated: missing.length > 100 || outsideHome.length > 100
+    },
+    adapterStatus: {
+      count: overrides.length,
+      overrides
+    },
+    sqlite: sqliteDriverInfo(),
+    caches: {
+      threadsCachedAt: cachedAt ? new Date(cachedAt).toISOString() : null,
+      threadsCacheAgeMs: cachedAt ? Date.now() - cachedAt : null,
+      messageEntries: messageCache.size,
+      statusEntries: threadStatusParseCache.size
+    },
+    settings: {
+      activeTurnStaleMinutes: ACTIVE_TURN_STALE_MS / 60_000,
+      statusMaxAgeMinutes: STATUS_OVERRIDE_MAX_AGE_MS / 60_000,
+      threadsStatusCacheMs: THREADS_STATUS_CACHE_MS,
+      threadsStatusParallelism: THREADS_STATUS_PARALLELISM
+    },
+    stateDbError
+  };
+}
+
+function isArchivedThread(row) {
+  return row?.archived === true || Number(row?.archived) === 1;
+}
+
+async function getAccountInfo() {
+  const home = activeCodexHome();
+  const now = Date.now();
+  if (accountCache?.home === home && now - accountCache.cachedAt < ACCOUNT_CACHE_MS) return accountCache.value;
+  if (accountInfoInFlight?.home === home) return accountInfoInFlight.promise;
+
+  const promise = (async () => {
+    try {
+      const profile = await readAuthProfile();
+      const usage = await readLatestRateLimits();
+      const plan = usage?.planType || profile.tokenPlan || "";
+      const value = {
+        user: {
+          name: profile.name,
+          email: profile.email,
+          label: profile.name || profile.email || "Codex"
+        },
+        plan: {
+          type: String(plan || "").toLowerCase(),
+          label: displayPlanName(plan)
+        },
+        usage
+      };
+      accountCache = { home, cachedAt: Date.now(), value };
+      return value;
+    } catch (error) {
+      if (accountCache?.home === home && Date.now() - accountCache.cachedAt < ACCOUNT_STALE_CACHE_MS) {
+        logError(`[cache:stale] GET /api/account using cached account after refresh failed: ${error?.message || error}`);
+        return accountCache.value;
+      }
+      throw error;
+    } finally {
+      if (accountInfoInFlight?.promise === promise) accountInfoInFlight = null;
+    }
+  })();
+  accountInfoInFlight = { home, promise };
+  return promise;
+}
+
+async function getThreads({ preserveIds = [] } = {}) {
+  const preserveKey = [...new Set(preserveIds.map((id) => String(id || "").trim()).filter(Boolean))].sort().join(",");
+  const cacheKey = `${activeCodexHome()}|${preserveKey}`;
+  const now = Date.now();
+  if (threadsCache?.key === cacheKey && now - threadsCache.cachedAt < THREADS_CACHE_MS) return threadsCache.value;
+  if (threadsInFlight?.key === cacheKey) return threadsInFlight.promise;
+
+  const promise = loadThreadsUncached({ preserveIds, preserveKey: cacheKey });
+  threadsInFlight = { key: cacheKey, promise };
+  try {
+    return await promise;
+  } finally {
+    if (threadsInFlight?.promise === promise) threadsInFlight = null;
+  }
+}
+
+async function loadThreadsUncached({ preserveIds = [], preserveKey = "" } = {}) {
+  const cacheGeneration = threadsCacheGeneration;
+  const { stateDb, sessionIndex } = codexPaths((await refreshCodexHomeContext()).home);
+  const statusColumns = existsSync(stateDb) ? await threadStatusColumns(stateDb) : new Set();
+  const currentRolloutPaths = await readSessionRolloutPathMap();
+  const projectRootsByPath = await readProjectRoots();
+  const globalProjects = await readGlobalProjectState();
+  const appendRecentIpcRows = (rows, excludedIds = new Set()) => {
+    const seen = new Set(rows.map((row) => String(row.id || "")));
+    const recentRows = codexIpcClient?.getDesktopConversationRows?.() || codexIpcClient?.getRecentConversationRows?.() || [];
+    return [
+      ...rows,
+      ...recentRows.filter((row) => {
+        const id = String(row.id || "");
+        return !isArchivedThread(row) && !excludedIds.has(id) && !seen.has(id) && row.rolloutPath;
+      }).map((row) => ({ ...row, rolloutPath: rolloutPathForCurrentHome(row, currentRolloutPaths) }))
+    ].sort((a, b) => {
+      const updatedA = Number(a.updatedAtMs) || 0;
+      const updatedB = Number(b.updatedAtMs) || 0;
+      return updatedB - updatedA;
+    });
+  };
+  try {
+    let value;
+    if (existsSync(stateDb)) {
+      const sessionIndexTitles = await readSessionIndexTitleMap();
+      const rows = await runSqlJson(`
+        SELECT threads.id, threads.title, threads.rollout_path AS rolloutPath,
+               threads.created_at_ms AS createdAtMs, threads.updated_at_ms AS updatedAtMs,
+               threads.archived, threads.preview, threads.cwd, threads.model, threads.source,
+               threads.thread_source AS threadSource, threads.agent_path AS agentPath,
+               EXISTS (SELECT 1 FROM thread_spawn_edges tse WHERE tse.child_thread_id = threads.id) AS hasSpawnParent,
+               threads.is_pinned AS isPinned, threads.thread_section_id AS threadSectionId,
+               thread_sections.name AS sectionName, threads.section_position AS sectionPosition,
+               threads.project_id AS projectId, projects.name AS projectName,
+               ${threadStatusSelectSql(statusColumns)}
+        FROM threads
+        LEFT JOIN thread_sections ON thread_sections.id = threads.thread_section_id
+        LEFT JOIN projects ON projects.id = threads.project_id
+        ORDER BY threads.updated_at_ms DESC, threads.updated_at DESC
+        LIMIT 500;
+      `);
+      const filtered = await filterRowsForCurrentAccount(rows, (row) => row.id, preserveIds);
+      const visibleRows = visibleThreadRows(filtered.rows, preserveIds);
+      const stateRows = visibleRows.filter((row) => !isArchivedThread(row)).map((row) => ({
+        id: row.id,
+        title: displayThreadTitle(row, sessionIndexTitles),
+        rolloutPath: rolloutPathForCurrentHome(row, currentRolloutPaths),
+        createdAtMs: row.createdAtMs,
+        updatedAtMs: row.updatedAtMs,
+        archived: Boolean(row.archived),
+        preview: row.preview || "",
+        cwd: row.cwd || "",
+        model: row.model || "",
+        statusState: row.statusState || "",
+        statusTurnId: row.statusTurnId || null,
+        statusStartedMs: row.statusStartedMs ?? null,
+        statusUpdatedMs: row.statusUpdatedMs ?? null,
+         ...threadListMetadata(row, projectRootsByPath, globalProjects)
+      }));
+      // With a live Desktop state database, it is authoritative for sidebar
+      // membership. Session-index and IPC rows may be stale or lack archived /
+      // spawned-agent metadata, so they are intentionally not appended here.
+      // They remain available to detail reads through findThread().
+      value = stateRows;
+    } else {
+      const rows = await readSessionIndexRows();
+      const filtered = await filterRowsForCurrentAccount(rows, (row) => row.id, preserveIds);
+      value = appendRecentIpcRows(visibleThreadRows(filtered.rows, preserveIds)).map((row) => ({
+        ...row,
+        ...threadListMetadata(row, projectRootsByPath, globalProjects)
+      }));
+    }
+    // A conversation this server just started is real even though the Desktop state
+    // database and the session index do not list it yet (no rollout file, no row).
+    {
+      const seen = new Set(value.map((row) => String(row.id || "")));
+      const extra = recentStartedThreadRows().filter((row) => !seen.has(row.id));
+      if (extra.length) {
+        value = [...extra.map((row) => ({ ...row, ...threadListMetadata(row, projectRootsByPath, globalProjects) })), ...value].sort(
+          (a, b) => (Number(b.updatedAtMs) || 0) - (Number(a.updatedAtMs) || 0)
+        );
+      }
+    }
+    const statusRows = await mapWithConcurrency(threadStatusCandidates(value), THREADS_STATUS_PARALLELISM, async (row) => ({
+      id: row.id,
+      status: await threadListStatus(row)
+    }));
+    const statusById = new Map(statusRows.map((row) => [String(row.id || ""), row.status]));
+    value = value.map((row) => ({
+      ...row,
+      status: statusById.get(String(row.id || "")) || { state: "unknown", thinking: false, interactionRequired: false }
+    }));
+    {
+      // 把 PI-Desktop 侧真实的归档状态合并进来：手机端默认隐藏的「已归档」必须
+      // 和桌面侧栏看到的一致，而不是手机自己另存一份。
+      const archivedIds = await readSidebarArchivedIds();
+      if (archivedIds.size) {
+        value = value.map((row) => (archivedIds.has(String(row.id || "")) ? { ...row, archived: true } : row));
+      }
+    }
+    if (cacheGeneration === threadsCacheGeneration) {
+      threadsCache = { key: preserveKey, cachedAt: Date.now(), value };
+    }
+    return value;
+  } catch (error) {
+    if (threadsCache?.key === preserveKey && Date.now() - threadsCache.cachedAt < THREADS_STALE_CACHE_MS) {
+      logError(`[cache:stale] GET /api/threads using cached threads after refresh failed: ${error?.message || error}`);
+      return threadsCache.value;
+    }
+    throw error;
+  }
+}
+
+async function findThread(id) {
+  const recentIpcThread =
+    (codexIpcClient?.getDesktopConversationRows?.() || codexIpcClient?.getRecentConversationRows?.() || []).find((row) => row.id === String(id)) ||
+    null;
+  const sessionIndexTitles = await readSessionIndexTitleMap();
+  const currentRolloutPaths = await readSessionRolloutPathMap();
+  const { stateDb } = codexPaths((await refreshCodexHomeContext()).home);
+  const statusColumns = existsSync(stateDb) ? await threadStatusColumns(stateDb) : new Set();
+  const rows = await runSqlJson(`
+    SELECT id, title, rollout_path AS rolloutPath, updated_at_ms AS updatedAtMs, cwd,
+           ${threadStatusSelectSql(statusColumns)}
+    FROM threads
+    WHERE id = '${sqlString(id)}'
+    LIMIT 1;
+  `);
+  if (!rows[0]) {
+    const indexedThread = (await readSessionIndexRows()).find((row) => row.id === String(id));
+    if (indexedThread) return indexedThread;
+    // A conversation this server started itself is authoritative over "not found".
+    return recentIpcThread || startedThreads.get(String(id)) || null;
+  }
+  const resolvedRolloutPath = rolloutPathForCurrentHome(rows[0], currentRolloutPaths);
+  let rolloutUpdatedAtMs = Number(rows[0].updatedAtMs) || 0;
+  if (resolvedRolloutPath) {
+    try {
+      rolloutUpdatedAtMs = Math.max(rolloutUpdatedAtMs, Number((await fs.stat(resolvedRolloutPath)).mtimeMs) || 0);
+    } catch {
+      // Keep the Desktop database timestamp when the rollout is unavailable.
+    }
+  }
+  return {
+    ...rows[0],
+    rolloutPath: resolvedRolloutPath,
+    updatedAtMs: rolloutUpdatedAtMs,
+    cwd: rows[0].cwd || "",
+    title: displayThreadTitle(rows[0], sessionIndexTitles)
+  };
+}
+
+/**
+ * Codex 会把旧会话压缩成 <name>.jsonl.zst，并把 threads.rollout_path 里的
+ * 日期目录一并扁平化到 sessions/ 下。两个变化合起来让 Turnloom 只认 .jsonl：
+ * 301 个会话里只有 7 个还有明文文件，257 个只剩 .zst，于是"查看对话"必然失败。
+ * 这里统一成"给一个逻辑路径，返回真正能读的文件"，并回报是否压缩。
+ */
+function resolveRolloutFile(rolloutPath) {
+  const resolved = resolveRolloutPath(rolloutPath);
+  if (!resolved) return null;
+  if (existsSync(resolved)) return { path: resolved, compressed: false };
+  const zst = `${resolved}.zst`;
+  if (!resolved.endsWith(".zst") && existsSync(zst)) return { path: zst, compressed: true };
+  return { path: resolved, compressed: false };
+}
+
+function resolveRolloutPath(rolloutPath) {
+  if (!rolloutPath) return null;
+  const { home } = codexPaths();
+  const rawPath = String(rolloutPath);
+  const portablePath =
+    process.platform === "win32" && rawPath.startsWith("\\\\?\\UNC\\")
+      ? `\\${rawPath.slice(8)}`
+      : process.platform === "win32" && rawPath.startsWith("\\\\?\\")
+        ? rawPath.slice(4)
+        : rawPath;
+  const absolute = path.isAbsolute(portablePath) ? portablePath : path.join(home, portablePath);
+  const normalized = path.resolve(absolute);
+  const normalizedHome = path.resolve(home);
+  const relative = path.relative(normalizedHome, normalized);
+  if (relative === ".." || relative.startsWith(`..${path.sep}`) || path.isAbsolute(relative)) {
+    // A junction/symlinked home (for example <user home>\.codex -> <Codex data dir>) makes a
+    // rollout that really lives inside the home look external. Resolve both sides before
+    // rejecting, so migrated profiles keep working instead of failing the whole thread list.
+    let realHome = null;
+    let realTarget = null;
+    try {
+      realHome = realpathSync(normalizedHome);
+      realTarget = realpathSync(normalized);
+    } catch {
+      // Leave both null and fall through to the rejection below.
+    }
+    if (realHome && realTarget) {
+      const realRelative = path.relative(realHome, realTarget);
+      if (realRelative !== ".." && !realRelative.startsWith(`..${path.sep}`) && !path.isAbsolute(realRelative)) {
+        return realTarget;
+      }
+    }
+    throw new Error("Rollout path is outside CODEX_HOME");
+  }
+  return normalized;
+  return normalized;
+}
+
+function textFromContent(content) {
+  if (typeof content === "string") return content;
+  if (!Array.isArray(content)) return "";
+  return content
+    .map((part) => {
+      if (!part || typeof part !== "object") return "";
+      return part.text || part.input_text || part.output_text || "";
+    })
+    .filter(Boolean)
+    .join("\n");
+}
+
+function imagesFromContent(content) {
+  if (!Array.isArray(content)) return [];
+  return Array.from(new Set(content.flatMap((part) => {
+      const source = part?.source || {};
+      if (part?.type === "input_image" && typeof part.image_url === "string" && part.image_url.startsWith("data:image/")) {
+        return [part.image_url];
+      }
+      if (part?.type === "image" && source.type === "base64" && source.data && source.media_type) {
+        return [`data:${source.media_type};base64,${source.data}`];
+      }
+      return imageUrlsFromValue(part);
+    })));
+}
+
+function stripCodexDirectives(text) {
+  return String(text || "")
+    .split(/\r?\n/)
+    .filter((line) => !line.trim().match(/^::[a-zA-Z][\w-]*\{/))
+    .join("\n")
+    .trim();
+}
+
+function compact(value, limit = 6000) {
+  const text = typeof value === "string" ? value : JSON.stringify(value, null, 2);
+  if (text.length <= limit) return text;
+  return `${text.slice(0, limit)}\n\n... truncated ${text.length - limit} chars`;
+}
+
+function parseMaybeJsonObject(value) {
+  if (!value || typeof value !== "string") return null;
+  try {
+    const parsed = JSON.parse(value);
+    return parsed && typeof parsed === "object" && !Array.isArray(parsed) ? parsed : null;
+  } catch {
+    return null;
+  }
+}
+
+function parseMaybeJsonValue(value) {
+  if (!value || typeof value !== "string") return null;
+  try {
+    return JSON.parse(value);
+  } catch {
+    return null;
+  }
+}
+
+function imageUrlsFromValue(value, images = [], depth = 0, seen = new Set()) {
+  if (images.length >= 8 || value == null || depth > 8) return images;
+  if (typeof value === "string") {
+    if (value.startsWith("data:image/")) images.push(value);
+    return images;
+  }
+  if (typeof value !== "object" || seen.has(value)) return images;
+  seen.add(value);
+  if (Array.isArray(value)) {
+    for (const item of value) imageUrlsFromValue(item, images, depth + 1, seen);
+    return images;
+  }
+  const imageUrl = value.image_url || value.imageUrl;
+  if (typeof imageUrl === "string" && imageUrl.startsWith("data:image/")) images.push(imageUrl);
+  const source = value.source || {};
+  if (source.type === "base64" && source.media_type && source.data) {
+    images.push(`data:${source.media_type};base64,${source.data}`);
+  }
+  for (const item of Object.values(value)) imageUrlsFromValue(item, images, depth + 1, seen);
+  return images;
+}
+
+function imagesFromToolOutput(output) {
+  const parsed = parseMaybeJsonValue(output);
+  return Array.from(new Set(imageUrlsFromValue(parsed ?? output)));
+}
+
+function compactToolOutput(output, images = []) {
+  if (images.length) return `[image output: ${images.length} image${images.length === 1 ? "" : "s"}]`;
+  const contentText = textFromContent(output);
+  if (contentText) return compact(contentText);
+  const parsed = parseMaybeJsonValue(output);
+  if (parsed) return compact(redactLargePayloads(parsed), images.length ? 1800 : 6000);
+  return compact(output || "");
+}
+
+function localPathCandidates(value) {
+  const text = String(value || "");
+  const matches = text.match(/(?:\\\\\?\\[A-Za-z]:\\|[A-Za-z]:[\\/])[^<>"'`\r\n)\]]+|\/(?:Users|home|tmp|var|mnt|workspace)\/[^<>"'`\r\n)\]]+/g) || [];
+  return Array.from(
+    new Set(
+      matches
+        .map((item) => item.replace(/\\\\/g, "\\").trim().replace(/^[({[]+/, "").replace(/[)\]}>.,;。，；、]+$/, ""))
+        .map((item) => item.replace(/:(\d+)(?::\d+)?$/, ""))
+        .filter((item) => path.isAbsolute(item) && !/^https?:\/\//i.test(item))
+    )
+  );
+}
+
+function localPathCandidateVariants(candidate) {
+  const value = String(candidate || "").trim();
+  const variants = [value];
+  const words = value.split(/\s+/);
+  while (words.length > 1) {
+    words.pop();
+    variants.push(words.join(" "));
+  }
+  return Array.from(new Set(variants.map((item) => item.replace(/[)\]}>.,;。，；、]+$/, "").replace(/:(\d+)(?::\d+)?$/, ""))));
+}
+
+async function inspectLocalFileCandidate(candidate) {
+  for (const variant of localPathCandidateVariants(candidate)) {
+    if (!path.isAbsolute(variant) || variant.includes("\0")) continue;
+    try {
+      const canonicalPath = await fs.realpath(path.resolve(variant));
+      const stat = await fs.stat(canonicalPath);
+      if (!stat.isFile() || stat.size <= 0 || stat.size > MAX_LOCAL_FILE_BYTES) continue;
+      const mimeType = mimeTypeForAsset(canonicalPath) || "application/octet-stream";
+      return {
+        name: path.basename(canonicalPath),
+        path: canonicalPath,
+        size: stat.size,
+        mimeType,
+        inline: mimeType.startsWith("image/")
+      };
+    } catch {
+      // Try a shorter candidate when prose followed the path on the same line.
+    }
+  }
+  return null;
+}
+
+function canExposeLocalFilesForMessage(message) {
+  const role = String(message?.role || "").trim().toLowerCase();
+  return role !== "system" && role !== "developer";
+}
+
+function stripHiddenMessageLocalAssets(message) {
+  if (canExposeLocalFilesForMessage(message)) return message;
+  const { files: _files, localImages: _localImages, ...safeMessage } = message || {};
+  return safeMessage;
+}
+
+async function decorateMessageFiles(messages, threadId, thread = {}) {
+  const authorized = new Map();
+  const decorated = [];
+  for (const message of messages || []) {
+    if (!canExposeLocalFilesForMessage(message)) {
+      decorated.push(stripHiddenMessageLocalAssets(message));
+      continue;
+    }
+    const candidates = new Set();
+    const add = (value) => localPathCandidates(value).forEach((item) => candidates.add(item));
+    add(message.content);
+    for (const item of message.localImages || []) add(item);
+    for (const item of message.files || []) add(item.path);
+    const messageFiles = new Map();
+    for (const candidate of candidates) {
+      const file = await inspectLocalFileCandidate(candidate);
+      if (!file) continue;
+      authorized.set(file.path, file);
+      messageFiles.set(file.path, file);
+    }
+    decorated.push(messageFiles.size ? { ...message, files: [...messageFiles.values()] } : message);
+  }
+  referencedFilesByThread.set(String(threadId), authorized);
+  return decorated;
+}
+
+const INTERACTION_TYPE_PATTERNS = [
+  "approval",
+  "permission",
+  "permissions",
+  "elicitation",
+  "request_user_input",
+  "user_input_request",
+  "terminal_interaction",
+  "dynamic_tool_call_request",
+  "command_approval",
+  "file_approval"
+];
+
+function firstString(...values) {
+  for (const value of values) {
+    if (typeof value === "string" && value.trim()) return value.trim();
+    if (Array.isArray(value) && value.length) {
+      const joined = value
+        .map((part) => (typeof part === "string" ? part : ""))
+        .filter(Boolean)
+        .join(" ");
+      if (joined.trim()) return joined.trim();
+    }
+  }
+  return "";
+}
+
+function redactLargePayloads(value, depth = 0) {
+  if (depth > 5) return "[nested payload]";
+  if (typeof value === "string") {
+    if (value.length > 240 && /^[A-Za-z0-9+/]+={0,2}$/.test(value)) return `[base64 data ${value.length} chars]`;
+    if (value.length > 1200) return `${value.slice(0, 1200)}...`;
+    return value;
+  }
+  if (Array.isArray(value)) return value.slice(0, 20).map((item) => redactLargePayloads(item, depth + 1));
+  if (!value || typeof value !== "object") return value;
+  return Object.fromEntries(
+    Object.entries(value).map(([key, item]) => {
+      const normalizedKey = key.toLowerCase();
+      if (normalizedKey.includes("image") || normalizedKey.includes("base64") || normalizedKey === "data") {
+        if (typeof item === "string") return [key, `[omitted ${item.length} chars]`];
+        return [key, "[omitted binary payload]"];
+      }
+      return [key, redactLargePayloads(item, depth + 1)];
+    })
+  );
+}
+
+function isInteractionPayload(payload) {
+  if (isApprovalDecisionPayload(payload)) return false;
+  const toolArguments = parseMaybeJsonObject(payload?.arguments);
+  const params = payload?.params || payload?.payload || {};
+  if (
+    toolArguments?.sandbox_permissions === "require_escalated" ||
+    params?.sandbox_permissions === "require_escalated" ||
+    params?.sandboxPermissions === "require_escalated" ||
+    payload?.sandbox_permissions === "require_escalated" ||
+    payload?.sandboxPermissions === "require_escalated"
+  ) {
+    return true;
+  }
+  const text = [
+    payload?.type,
+    payload?.method,
+    payload?.name,
+    payload?.event,
+    payload?.kind,
+    payload?.payload?.type,
+    payload?.params?.type
+  ]
+    .filter(Boolean)
+    .join(" ")
+    .toLowerCase();
+  return INTERACTION_TYPE_PATTERNS.some((pattern) => text.includes(pattern));
+}
+
+function isApprovalDecisionPayload(payload) {
+  const method = String(payload?.method || payload?.name || payload?.type || "").toLowerCase();
+  const params = payload?.params || payload?.payload || {};
+  return (
+    payload?.direction === "outgoing-request" ||
+    method.includes("approval-decision") ||
+    method.includes("approval_decision") ||
+    method.includes("approval-response") ||
+    method.includes("approval_response") ||
+    ((params?.decision || params?.response) && method.includes("approval"))
+  );
+}
+
+function interactionTitle(payload) {
+  const toolArguments = parseMaybeJsonObject(payload?.arguments);
+  if (toolArguments?.sandbox_permissions === "require_escalated") return "Command approval requested";
+  const type = String(payload?.type || payload?.method || payload?.name || payload?.kind || "").toLowerCase();
+  if (type.includes("command") || type.includes("exec")) return "Command approval requested";
+  if (type.includes("apply_patch")) return "Patch approval requested";
+  if (type.includes("file")) return "File approval requested";
+  if (type.includes("permission")) return "Permission requested";
+  if (type.includes("elicitation")) return "Additional information requested";
+  if (type.includes("user_input")) return "User input requested";
+  if (type.includes("terminal")) return "Terminal interaction requested";
+  if (type.includes("tool")) return "Tool interaction requested";
+  return "Codex interaction requested";
+}
+
+function approvalKindFromPayload(payload) {
+  const toolArguments = parseMaybeJsonObject(payload?.arguments);
+  const params = payload?.params || payload?.payload || {};
+  const type = String(payload?.type || payload?.method || payload?.name || payload?.kind || "").toLowerCase();
+  if (
+    toolArguments?.sandbox_permissions === "require_escalated" ||
+    params?.sandbox_permissions === "require_escalated" ||
+    params?.sandboxPermissions === "require_escalated" ||
+    payload?.sandbox_permissions === "require_escalated" ||
+    payload?.sandboxPermissions === "require_escalated"
+  ) {
+    return "command";
+  }
+  if (type.includes("apply_patch") || type.includes("filechange") || type.includes("file_change") || type.includes("file")) return "file";
+  if (type.includes("permission")) return "permission";
+  if (type.includes("command") || type.includes("exec") || type.includes("terminal")) return "command";
+  return "";
+}
+
+function approvalDetailText(...values) {
+  for (const value of values) {
+    if (typeof value === "string" && value.trim()) return value;
+    if (value && typeof value === "object" && Object.keys(value).length) return JSON.stringify(value, null, 2);
+  }
+  return "";
+}
+
+function interactionReviewableDetails(payload) {
+  const toolArguments = parseMaybeJsonObject(payload?.arguments);
+  const params = payload?.params || payload?.payload || toolArguments || {};
+  const request = payload?.request || params?.request || {};
+  const toolCall = payload?.tool_call || params?.tool_call || params?.toolCall || {};
+  const commands = [
+    payload?.command, params?.command, toolArguments?.cmd, toolArguments?.command,
+    request?.command, payload?.cmd, params?.cmd, payload?.program, params?.program,
+    payload?.execve, params?.execve, toolCall?.command
+  ];
+  return {
+    command: firstString(...commands.filter(value => typeof value === "string" || (Array.isArray(value) && value.every(part => typeof part === "string")))),
+    changes: approvalDetailText(payload?.changes, params?.changes, request?.changes, payload?.diff, params?.diff, payload?.patch, params?.patch),
+    permissions: approvalDetailText(payload?.permissions, params?.permissions, request?.permissions, payload?.requestedPermissions, params?.requestedPermissions)
+  };
+}
+
+function interactionContent(payload) {
+  const toolArguments = parseMaybeJsonObject(payload?.arguments);
+  const params = payload?.params || payload?.payload || toolArguments || {};
+  const request = payload?.request || params?.request || {};
+  const toolCall = payload?.tool_call || params?.tool_call || params?.toolCall || {};
+  const details = interactionReviewableDetails(payload);
+  const command = details.command || firstString(toolCall?.name);
+  const pathValue = firstString(
+    payload?.path,
+    params?.path,
+    request?.path,
+    payload?.file_path,
+    params?.file_path,
+    request?.file_path,
+    payload?.grant_root,
+    params?.grant_root
+  );
+  const prompt = firstString(
+    payload?.message,
+    params?.message,
+    request?.message,
+    payload?.prompt,
+    params?.prompt,
+    payload?.question,
+    params?.question,
+    request?.question,
+    payload?.reason,
+    params?.reason,
+    toolArguments?.justification,
+    params?.justification,
+    request?.reason
+  );
+  const choices = Array.isArray(payload?.available_decisions)
+    ? payload.available_decisions
+    : Array.isArray(params?.available_decisions)
+      ? params.available_decisions
+      : Array.isArray(payload?.options)
+    ? payload.options
+    : Array.isArray(params?.options)
+      ? params.options
+      : Array.isArray(request?.options)
+        ? request.options
+        : [];
+  const { changes, permissions } = details;
+  const lines = [
+    prompt ? `Prompt: ${prompt}` : "",
+    command ? `Command: ${command}` : "",
+    pathValue ? `Path: ${pathValue}` : "",
+    changes ? `Changes: ${changes}` : "",
+    permissions ? `Permissions: ${permissions}` : "",
+    firstString(toolArguments?.workdir, params?.workdir, params?.cwd) ? `Workdir: ${firstString(toolArguments?.workdir, params?.workdir, params?.cwd)}` : "",
+    choices.length ? `Options: ${choices.map((option) => firstString(option?.label, option?.title, option?.id, option)).filter(Boolean).join(", ")}` : ""
+  ].filter(Boolean);
+  if (lines.length) return lines.join("\n\n");
+  return compact(redactLargePayloads(payload), 2400);
+}
+
+function interactionRequestId(payload) {
+  const params = payload?.params || payload?.payload || {};
+  const request = payload?.request || params?.request || {};
+  return (
+    payload?.request_id ||
+    payload?.requestId ||
+    payload?.approvalRequestId ||
+    payload?.approval_id ||
+    payload?.approvalId ||
+    params?.request_id ||
+    params?.requestId ||
+    params?.approvalRequestId ||
+    params?.approval_id ||
+    params?.approvalId ||
+    request?.request_id ||
+    request?.requestId ||
+    request?.approvalRequestId ||
+    request?.approval_id ||
+    request?.approvalId ||
+    payload?.id ||
+    payload?.call_id ||
+    payload?.callId ||
+    params?.id ||
+    request?.id ||
+    null
+  );
+}
+
+function collectInteractionPayloads(value, depth = 0, seen = new Set(), results = []) {
+  if (!value || typeof value !== "object" || depth > 12 || seen.has(value)) return results;
+  seen.add(value);
+  if (isInteractionPayload(value) && interactionRequestId(value)) results.push(value);
+  if (Array.isArray(value)) {
+    for (const item of value) collectInteractionPayloads(item, depth + 1, seen, results);
+    return results;
+  }
+  for (const child of Object.values(value)) collectInteractionPayloads(child, depth + 1, seen, results);
+  return results;
+}
+
+function interactionPayloadsFromIpcMessage(message) {
+  const payloads = collectInteractionPayloads(message);
+  const seen = new Set();
+  const unique = payloads.filter((payload) => {
+    const key = `${interactionRequestId(payload) || ""}:${payload?.method || payload?.type || payload?.name || ""}`;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+  const bestPriority = Math.min(...unique.map(interactionPayloadPriority));
+  return unique
+    .filter((payload) => interactionPayloadPriority(payload) === bestPriority || bestPriority > 1)
+    .sort((a, b) => interactionPayloadPriority(a) - interactionPayloadPriority(b));
+}
+
+function interactionPayloadPriority(payload) {
+  const method = String(payload?.method || payload?.type || payload?.name || payload?.kind || "").toLowerCase();
+  if (method.includes("requestapproval")) return 0;
+  if (method.includes("approval") || method.includes("permission")) return 1;
+  return 2;
+}
+
+function approvalDetailsHash(content) {
+  return createHash("sha256").update(String(content || ""), "utf8").digest("hex");
+}
+
+function interactionHasReviewableDetails(payload, kind, content) {
+  if (String(content || "").length > 64 * 1024) return false;
+  const details = interactionReviewableDetails(payload);
+  return Boolean(kind === "command" ? details.command : kind === "file" ? details.changes : kind === "permission" ? details.permissions : "");
+}
+
+function messageFromInteractionEvent(timestamp, payload, meta = {}) {
+  if (!isInteractionPayload(payload)) return null;
+  const approvalKind = approvalKindFromPayload(payload);
+  const requestId = interactionRequestId(payload);
+  const content = interactionContent(payload);
+  const reviewable = Boolean(approvalKind && requestId && interactionHasReviewableDetails(payload, approvalKind, content));
+  return {
+    role: "interaction",
+    kind: payload?.type || payload?.method || payload?.name || "interaction",
+    timestamp,
+    ...meta,
+    title: interactionTitle(payload),
+    requestId,
+    approvalKind,
+    availableDecisions: approvalAvailableDecisions(payload),
+    detailsHash: meta.source === "desktop-ipc" && reviewable ? approvalDetailsHash(content) : null,
+    canApprove: Boolean(meta.source === "desktop-ipc" && reviewable),
+    content,
+    requiresDesktopAction: true
+  };
+}
+
+function normalizeApprovalCommandForKey(command) {
+  const text = String(command || "").trim();
+  const shellMatch = text.match(/^\/bin\/(?:zsh|bash|sh)\s+-lc\s+["']([\s\S]+)["']$/);
+  if (!shellMatch) return text.replace(/\s+/g, " ");
+  return shellMatch[1].replace(/\\"/g, "\"").replace(/\\'/g, "'").replace(/\s+/g, " ").trim();
+}
+
+function interactionContentField(content, label) {
+  const match = String(content || "").match(new RegExp(`(?:^|\\n)${label}:\\s*([^\\n]+)`, "i"));
+  return match?.[1]?.trim() || "";
+}
+
+function interactionDedupeKey(message) {
+  if (message?.role !== "interaction") return "";
+  if (message?.requestId) return `approval:${message.approvalKind || ""}:${message.requestId}`;
+  const prompt = interactionContentField(message.content, "Prompt");
+  const command = normalizeApprovalCommandForKey(interactionContentField(message.content, "Command"));
+  const workdir = interactionContentField(message.content, "Workdir");
+  const pathValue = interactionContentField(message.content, "Path");
+  const content = String(message.content || "").replace(/\s+/g, " ").trim();
+  return [message.approvalKind || "", prompt || content, command, pathValue, workdir].join("\n");
+}
+
+function preferredInteractionMessage(existing, candidate) {
+  const existingIsLive = existing?.source === "desktop-ipc";
+  const candidateIsLive = candidate?.source === "desktop-ipc";
+  const display = String(candidate?.content || "").length < String(existing?.content || "").length ? candidate : existing;
+  const live = candidateIsLive ? candidate : existingIsLive ? existing : null;
+  if (!live) return display;
+  return {
+    ...display,
+    content: live.detailsHash ? live.content : display.content,
+    source: live.source,
+    threadId: live.threadId || display.threadId,
+    requestId: live.requestId || display.requestId,
+    approvalKind: live.approvalKind || display.approvalKind,
+    availableDecisions: live.availableDecisions || display.availableDecisions || [],
+    detailsHash: live.detailsHash || null,
+    canApprove: Boolean(live.detailsHash && live.canApprove),
+    requiresDesktopAction: Boolean(live.requiresDesktopAction || display.requiresDesktopAction),
+    lineNumber: Math.min(existing.lineNumber || candidate.lineNumber || 0, candidate.lineNumber || existing.lineNumber || 0),
+    timestamp: display.timestamp || live.timestamp
+  };
+}
+
+function dedupeInteractionMessages(messages) {
+  const byKey = new Map();
+  const result = [];
+  for (const message of messages) {
+    const key = interactionDedupeKey(message);
+    if (!key) {
+      result.push(message);
+      continue;
+    }
+    const existingIndex = byKey.get(key);
+    if (existingIndex === undefined) {
+      byKey.set(key, result.length);
+      result.push(message);
+      continue;
+    }
+    result[existingIndex] = preferredInteractionMessage(result[existingIndex], message);
+  }
+  return result;
+}
+
+function messageSortCompare(a, b) {
+  if (a.timestamp && b.timestamp) return String(a.timestamp).localeCompare(String(b.timestamp));
+  return (a.lineNumber || 0) - (b.lineNumber || 0);
+}
+
+function normalizeMessageLimit(value) {
+  const limit = Number(value);
+  if (!Number.isFinite(limit) || limit <= 0) return DEFAULT_MESSAGE_LIMIT;
+  return Math.min(MAX_MESSAGE_LIMIT, Math.max(20, Math.floor(limit)));
+}
+
+function isImportantNoticeMessage(message) {
+  if (message?.kind === "error") return true;
+  const text = [message?.kind, message?.title, message?.content].filter(Boolean).join(" ").toLowerCase();
+  return /\b(error|failed?|limit|quota|rate_limit|usage_limit|plan_limit)\b/.test(text);
+}
+
+function shouldAlwaysReturnMessage(message, status = {}) {
+  if (!message) return false;
+  if (message.requiresDesktopAction) return true;
+  if (message.role === "interaction") return Boolean(status.interactionRequired && message.source === "desktop-ipc" && message.canApprove);
+  if (message.role === "notice") return isImportantNoticeMessage(message);
+  return false;
+}
+
+function isLowPriorityHiddenByDefaultMessage(message) {
+  if (!message) return false;
+  if (message.role === "tool") return true;
+  if (message.role === "notice" && !isImportantNoticeMessage(message)) return true;
+  return false;
+}
+
+function clientMessageKey(message) {
+  return [
+    message?.id,
+    message?.requestId,
+    message?.turnId,
+    message?.lineNumber,
+    message?.role,
+    message?.timestamp,
+    String(message?.content || "").slice(0, 120)
+  ]
+    .filter((value) => value !== undefined && value !== null && value !== "")
+    .join(":");
+}
+
+function limitMessagesForClient(messages, status = {}, limit = DEFAULT_MESSAGE_LIMIT, beforeKey = "") {
+  const normalizedLimit = normalizeMessageLimit(limit);
+  const sorted = Array.isArray(messages) ? messages.slice().sort(messageSortCompare) : [];
+  const recentLowPriorityKeys = new Set(sorted.slice(-10).filter(isLowPriorityHiddenByDefaultMessage).map(clientMessageKey));
+  const visiblePriorityMessages = sorted.filter((message) => !isLowPriorityHiddenByDefaultMessage(message) || recentLowPriorityKeys.has(clientMessageKey(message)));
+  const hiddenMessages = Math.max(0, sorted.length - visiblePriorityMessages.length);
+  const beforeIndex = beforeKey ? visiblePriorityMessages.findIndex((message) => clientMessageKey(message) === beforeKey) : -1;
+  const end = beforeIndex >= 0 ? beforeIndex : visiblePriorityMessages.length;
+  if (end <= normalizedLimit && !beforeKey) {
+    return {
+      messages: visiblePriorityMessages,
+      totalMessages: sorted.length,
+      truncated: false,
+      hasOlderMessages: false,
+      limit: normalizedLimit,
+      omittedMessages: 0,
+      hiddenMessages
+    };
+  }
+  const start = Math.max(0, end - normalizedLimit);
+  const tail = visiblePriorityMessages.slice(start, end);
+  const includedKeys = new Set(tail.map(clientMessageKey));
+  const pinned = visiblePriorityMessages.filter((message) => shouldAlwaysReturnMessage(message, status) && !includedKeys.has(clientMessageKey(message)));
+  const limited = [...pinned, ...tail].sort(messageSortCompare);
+  return {
+    messages: limited,
+    totalMessages: sorted.length,
+    truncated: start > 0,
+    hasOlderMessages: start > 0,
+    limit: normalizedLimit,
+    omittedMessages: Math.max(0, start),
+    olderCursor: start > 0 && tail.length ? clientMessageKey(tail[0]) : null,
+    hiddenMessages
+  };
+}
+
+function includePartialHistoryAvailability(limited, partial = false) {
+  const hasOlderMessages = Boolean(partial || limited.hasOlderMessages);
+  return {
+    ...limited,
+    hasOlderMessages,
+    truncated: hasOlderMessages
+  };
+}
+
+const NOTICE_TYPE_PATTERNS = [
+  "notice",
+  "notification",
+  "toast",
+  "banner",
+  "alert",
+  "warning",
+  "error",
+  "limit",
+  "quota",
+  "rate_limit",
+  "usage_limit",
+  "plan_limit"
+];
+
+function isNoticePayload(payload) {
+  const output = String(payload?.output || "");
+  if (payload?.type === "function_call_output" && /Rejected\(|rejected by user|require_escalated/i.test(output)) return true;
+  const text = [
+    payload?.type,
+    payload?.method,
+    payload?.name,
+    payload?.event,
+    payload?.kind,
+    payload?.code,
+    payload?.errorCode,
+    payload?.payload?.type,
+    payload?.payload?.code,
+    payload?.params?.type,
+    payload?.params?.code
+  ]
+    .filter(Boolean)
+    .join(" ")
+    .toLowerCase();
+  return NOTICE_TYPE_PATTERNS.some((pattern) => text.includes(pattern));
+}
+
+function noticeSeverity(payload, fallback = "info") {
+  if (payload?.type === "function_call_output" && /Rejected\(|rejected by user/i.test(String(payload?.output || ""))) return "warning";
+  const text = [
+    fallback,
+    payload?.level,
+    payload?.severity,
+    payload?.type,
+    payload?.kind,
+    payload?.code,
+    payload?.errorCode,
+    payload?.resultType,
+    payload?.params?.level,
+    payload?.payload?.level
+  ]
+    .filter(Boolean)
+    .join(" ")
+    .toLowerCase();
+  if (text.includes("error") || text.includes("fail") || text.includes("limit") || text.includes("quota")) return "error";
+  if (text.includes("warn")) return "warning";
+  return fallback || "info";
+}
+
+function noticeTitle(payload, severity = "info") {
+  if (payload?.type === "function_call_output" && /Rejected\(|rejected by user/i.test(String(payload?.output || ""))) return "Approval dismissed";
+  const text = [
+    payload?.title,
+    payload?.params?.title,
+    payload?.payload?.title,
+    payload?.code,
+    payload?.errorCode,
+    payload?.type,
+    payload?.kind
+  ]
+    .filter(Boolean)
+    .join(" ")
+    .toLowerCase();
+  if (text.includes("limit") || text.includes("quota") || text.includes("rate")) return "Usage limit";
+  if (severity === "error") return "Error";
+  if (severity === "warning") return "Warning";
+  return "Notice";
+}
+
+function noticeContent(payload) {
+  if (payload?.type === "function_call_output" && payload?.output) return String(payload.output);
+  const params = payload?.params || payload?.payload || {};
+  const content = firstString(
+    payload?.message,
+    payload?.error,
+    payload?.description,
+    payload?.body,
+    payload?.text,
+    payload?.title,
+    params?.message,
+    params?.error,
+    params?.description,
+    params?.body,
+    params?.text,
+    params?.title
+  );
+  if (content) return content;
+  return compact(redactLargePayloads(payload), 1800);
+}
+
+function messageFromNoticeEvent(timestamp, payload, meta = {}) {
+  if (!isNoticePayload(payload)) return null;
+  const severity = noticeSeverity(payload);
+  return {
+    role: "notice",
+    kind: severity,
+    timestamp,
+    ...meta,
+    title: noticeTitle(payload, severity),
+    content: noticeContent(payload)
+  };
+}
+
+function contextCompactionMessage(timestamp, payload, meta = {}) {
+  const item = payload?.item || payload?.payload?.item;
+  const isItem = payload?.type === "item_completed" && item?.type === "ContextCompaction";
+  const isNotification = payload?.type === "thread/compacted" || payload?.type === "context_compacted";
+  if (!isItem && !isNotification) return null;
+  return {
+    role: "notice",
+    kind: "context_compaction",
+    timestamp,
+    ...meta,
+    title: "上下文已压缩",
+    content: "Codex 已压缩此前的上下文，后续任务将继续使用新的上下文摘要。"
+  };
+}
+
+function planMessage(timestamp, payload, meta = {}) {
+  const type = String(payload?.type || "").toLowerCase();
+  const plan = Array.isArray(payload?.plan) ? payload.plan : Array.isArray(payload?.item?.plan) ? payload.item.plan : null;
+  if (!plan && type !== "plan" && type !== "plan_update" && type !== "turn_plan_updated") return null;
+  const steps = (plan || []).map((entry) => {
+    const step = String(entry?.step || entry?.text || entry || "").trim();
+    if (!step) return "";
+    const status = String(entry?.status || "pending");
+    return `${status === "completed" ? "[x]" : status === "inProgress" ? "[>]" : "[ ]"} ${step}`;
+  }).filter(Boolean);
+  const content = steps.join("\n") || String(payload?.text || payload?.explanation || "").trim();
+  if (!content) return null;
+  return {
+    role: "notice",
+    kind: "plan",
+    timestamp,
+    ...meta,
+    title: "计划",
+    content
+  };
+}
+
+function recordNotice(threadId, { severity = "info", title = "", content = "", source = "server" } = {}) {
+  if (!threadId || !content) return null;
+  const notice = {
+    id: randomUUID(),
+    threadId: String(threadId),
+    timestamp: new Date().toISOString(),
+    role: "notice",
+    kind: severity,
+    title: title || noticeTitle({ type: severity }, severity),
+    content: String(content).trim(),
+    source,
+    lineNumber: 2000000 + recentNotices.length
+  };
+  recentNotices.push(notice);
+  if (recentNotices.length > 120) recentNotices.splice(0, recentNotices.length - 120);
+  return notice;
+}
+
+function getRecentNoticeMessages(threadId) {
+  const selectedThreadId = String(threadId || "");
+  return recentNotices
+    .filter((notice) => notice.threadId === selectedThreadId)
+    .map((notice, index) => ({ ...notice, lineNumber: notice.lineNumber || 2000000 + index }));
+}
+
+function messageFromEvent(timestamp, payload, meta = {}) {
+  if (payload?.type === "user_message") {
+    const images = [
+      ...imageUrlsFromValue(payload.images),
+      ...imagesFromContent(payload.content),
+      ...imageUrlsFromValue(payload.input),
+      ...imageUrlsFromValue(payload.input_images)
+    ];
+    return {
+      role: "user",
+      kind: "message",
+      timestamp,
+      ...meta,
+      content: stripCodexDirectives(payload.message),
+      images: Array.from(new Set(images)),
+      localImages: Array.isArray(payload.local_images) ? payload.local_images : []
+    };
+  }
+  if (payload?.type === "agent_message") {
+    return {
+      role: "assistant",
+      kind: "message",
+      timestamp,
+      ...meta,
+      phase: payload.phase || "",
+      content: stripCodexDirectives(payload.message)
+    };
+  }
+  return null;
+}
+
+function messageFromResponseItem(timestamp, payload) {
+  if (payload?.type === "function_call" || payload?.type === "custom_tool_call") {
+    return {
+      role: "tool",
+      kind: "tool_call",
+      timestamp,
+      title: payload.name || "tool_call",
+      content: compact(payload.arguments || payload.input || "")
+    };
+  }
+  if (payload?.type === "function_call_output" || payload?.type === "custom_tool_call_output") {
+    const images = imagesFromToolOutput(payload.output);
+    return {
+      role: "tool",
+      kind: "tool_output",
+      timestamp,
+      title: payload.call_id || "tool_output",
+      content: compactToolOutput(payload.output || "", images),
+      images
+    };
+  }
+  if (payload?.type === "message") {
+    return {
+      role: payload.role || "assistant",
+      kind: "message",
+      timestamp,
+      content: stripCodexDirectives(textFromContent(payload.content)),
+      images: imagesFromContent(payload.content)
+    };
+  }
+  return null;
+}
+
+function hasDisplayableMessageContent(message) {
+  return Boolean(message?.content || message?.images?.length || message?.localImages?.length);
+}
+
+function isTurnEndEvent(payload) {
+  return payload?.type === "task_complete" || payload?.type === "turn_aborted";
+}
+
+function repairInvalidCustomToolCallIdsInText(text) {
+  const source = String(text || "");
+  const newline = source.includes("\r\n") ? "\r\n" : "\n";
+  const hadTrailingNewline = source.endsWith("\n");
+  const replacements = [];
+  const lines = source.split(/\r?\n/);
+  if (hadTrailingNewline) lines.pop();
+  const repairedLines = lines.map((line, index) => {
+    if (!line.includes('"type":"custom_tool_call"') || !line.includes('"id":"fc_')) return line;
+    try {
+      const entry = JSON.parse(line);
+      const payload = entry?.type === "response_item" ? entry.payload : null;
+      if (payload?.type !== "custom_tool_call" || typeof payload.id !== "string" || !payload.id.startsWith("fc_")) return line;
+      const previousId = payload.id;
+      payload.id = `ctc_${previousId.slice(3)}`;
+      replacements.push({ lineNumber: index + 1, previousId, repairedId: payload.id, callId: payload.call_id || null });
+      return JSON.stringify(entry);
+    } catch {
+      return line;
+    }
+  });
+  return {
+    text: `${repairedLines.join(newline)}${hadTrailingNewline ? newline : ""}`,
+    replacements
+  };
+}
+
+async function repairInvalidCustomToolCallIds(threadId) {
+  const thread = await findThread(threadId);
+  const filePath = safeResolveRolloutPath(thread?.rolloutPath, threadId);
+  if (!filePath || !existsSync(filePath)) return { repaired: 0, filePath: null, backupPath: null };
+
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    const before = await fs.stat(filePath);
+    const source = await fs.readFile(filePath, "utf8");
+    const result = repairInvalidCustomToolCallIdsInText(source);
+    if (!result.replacements.length) return { repaired: 0, filePath, backupPath: null };
+    const afterRead = await fs.stat(filePath);
+    if (afterRead.size !== before.size || afterRead.mtimeMs !== before.mtimeMs) {
+      if (attempt === 0) continue;
+      const err = new Error("Conversation history changed while it was being checked. Wait for the current task to finish, then try again.");
+      err.status = 409;
+      throw err;
+    }
+
+    const repairDir = path.join(codexHomeState.home, ".codex-lan-companion", SESSION_REPAIR_DIR_NAME);
+    await fs.mkdir(repairDir, { recursive: true });
+    const stamp = new Date().toISOString().replace(/[:.]/g, "-");
+    const backupPath = path.join(repairDir, `${threadId}-${stamp}.jsonl.bak`);
+    const temporaryPath = `${filePath}.ccpocket-${randomUUID()}.tmp`;
+    await fs.copyFile(filePath, backupPath);
+    try {
+      await fs.writeFile(temporaryPath, result.text, "utf8");
+      const beforeReplace = await fs.stat(filePath);
+      if (beforeReplace.size !== before.size || beforeReplace.mtimeMs !== before.mtimeMs) {
+        const err = new Error("Conversation history changed before the repair could be applied. Try again after the current task finishes.");
+        err.status = 409;
+        throw err;
+      }
+      try {
+        await fs.rename(temporaryPath, filePath);
+      } catch (error) {
+        if (process.platform !== "win32" || !["EPERM", "EBUSY", "EACCES"].includes(error?.code)) throw error;
+        const handle = await fs.open(filePath, "r+");
+        try {
+          const data = Buffer.from(result.text, "utf8");
+          await handle.write(data, 0, data.length, 0);
+          await handle.truncate(data.length);
+          await handle.sync();
+        } finally {
+          await handle.close();
+        }
+      }
+    } finally {
+      await fs.rm(temporaryPath, { force: true }).catch(() => {});
+    }
+    messageCache.delete(filePath);
+    clearThreadsCache();
+    return { repaired: result.replacements.length, filePath, backupPath, replacements: result.replacements };
+  }
+  return { repaired: 0, filePath, backupPath: null };
+}
+
+function createRolloutParseState(stat, nowMs) {
+  return {
+    eventMessages: [],
+    fallbackMessages: [],
+    toolMessages: [],
+    interactionMessages: [],
+    noticeMessages: [],
+    meta: {},
+    lineNumber: 0,
+    activeTurn: null,
+    openTurns: new Map(),
+    lastEntryAtMs: Number.isFinite(stat.mtimeMs) ? stat.mtimeMs : nowMs,
+    latestCompletedAtMs: 0,
+    assistantMessagesByTurn: new Map()
+  };
+}
+
+function observeTurnFromPayload(payload, timestamp, state) {
+  const turnId = payload?.turn_id || payload?.turnId || payload?.internal_chat_message_metadata_passthrough?.turn_id || null;
+  if (!turnId || state.activeTurn) return;
+  if (state.openTurns.has(turnId)) {
+    state.activeTurn = state.openTurns.get(turnId);
+    return;
+  }
+  const itemStartedAtMs = Number(payload?.started_at_ms);
+  const createTimeMs = Number(payload?.internal_chat_message_metadata_passthrough?.create_time) * 1000;
+  const startedAtMs = Number.isFinite(itemStartedAtMs)
+    ? itemStartedAtMs
+    : Number.isFinite(createTimeMs)
+      ? createTimeMs
+      : Date.parse(timestamp);
+  const turn = { turnId, startedAtMs };
+  state.openTurns.set(turnId, turn);
+  state.activeTurn = turn;
+}
+
+function parseRolloutLine(line, state) {
+  state.lineNumber += 1;
+  if (!line.trim()) return;
+  try {
+    const entry = JSON.parse(line);
+    const entryAtMs = Date.parse(entry.timestamp);
+    if (Number.isFinite(entryAtMs)) state.lastEntryAtMs = entryAtMs;
+    if (entry.type === "session_meta") {
+      state.meta = { ...state.meta, ...(entry.payload || {}) };
+      return;
+    }
+    if (entry.type === "event_msg") {
+      if (entry.payload?.type === "task_started") {
+        const turn = {
+          turnId: entry.payload.turn_id || null,
+          startedAtMs: Number(entry.payload.started_at) ? Number(entry.payload.started_at) * 1000 : Date.parse(entry.timestamp)
+        };
+        state.activeTurn = turn;
+        if (turn.turnId) state.openTurns.set(turn.turnId, turn);
+        return;
+      }
+      if (isTurnEndEvent(entry.payload)) {
+        const turnId = entry.payload.turn_id || state.activeTurn?.turnId || null;
+        const durationMs = Number(entry.payload.duration_ms);
+        const completedAtMs = Number(entry.payload.completed_at) ? Number(entry.payload.completed_at) * 1000 : Date.parse(entry.timestamp);
+        if (Number.isFinite(completedAtMs)) state.latestCompletedAtMs = Math.max(state.latestCompletedAtMs || 0, completedAtMs);
+        if (turnId && state.assistantMessagesByTurn.has(turnId)) {
+          const message = state.assistantMessagesByTurn.get(turnId);
+          if (Number.isFinite(durationMs)) message.durationMs = durationMs;
+          if (Number.isFinite(completedAtMs)) message.completedAtMs = completedAtMs;
+        }
+        if (turnId) state.openTurns.delete(turnId);
+        if (turnId && state.activeTurn?.turnId === turnId) state.activeTurn = null;
+        if (entry.payload?.error) {
+          state.noticeMessages.push({
+            role: "notice",
+            kind: "error",
+            timestamp: entry.timestamp,
+            turnId,
+            title: "Task failed",
+            content: firstString(entry.payload.error?.message, entry.payload.error?.error?.message) || compact(entry.payload.error, 1800),
+            lineNumber: state.lineNumber
+          });
+        }
+        return;
+      }
+      observeTurnFromPayload(entry.payload, entry.timestamp, state);
+      const messageMeta = {
+        turnId: state.activeTurn?.turnId || null,
+        turnStartedAtMs: state.activeTurn?.startedAtMs || null
+      };
+      const compaction = contextCompactionMessage(entry.timestamp, entry.payload, messageMeta);
+      if (hasDisplayableMessageContent(compaction)) {
+        state.noticeMessages.push({ ...compaction, lineNumber: state.lineNumber });
+        return;
+      }
+      const plan = planMessage(entry.timestamp, entry.payload, messageMeta);
+      if (hasDisplayableMessageContent(plan)) {
+        state.noticeMessages.push({ ...plan, lineNumber: state.lineNumber });
+        return;
+      }
+      const interaction = messageFromInteractionEvent(entry.timestamp, entry.payload, messageMeta);
+      if (hasDisplayableMessageContent(interaction)) {
+        state.interactionMessages.push({ ...interaction, lineNumber: state.lineNumber });
+        return;
+      }
+      const notice = messageFromNoticeEvent(entry.timestamp, entry.payload, messageMeta);
+      if (hasDisplayableMessageContent(notice)) {
+        state.noticeMessages.push({ ...notice, lineNumber: state.lineNumber });
+        return;
+      }
+      const msg = messageFromEvent(entry.timestamp, entry.payload, messageMeta);
+      if (hasDisplayableMessageContent(msg)) {
+        const message = { ...msg, lineNumber: state.lineNumber };
+        state.eventMessages.push(message);
+        if (message.role === "assistant" && message.turnId) state.assistantMessagesByTurn.set(message.turnId, message);
+      }
+      return;
+    }
+    if (entry.type === "response_item") {
+      observeTurnFromPayload(entry.payload, entry.timestamp, state);
+      const messageMeta = {
+        turnId: state.activeTurn?.turnId || null,
+        turnStartedAtMs: state.activeTurn?.startedAtMs || null
+      };
+      const compaction = contextCompactionMessage(entry.timestamp, entry.payload, messageMeta);
+      if (hasDisplayableMessageContent(compaction)) {
+        state.noticeMessages.push({ ...compaction, lineNumber: state.lineNumber });
+        return;
+      }
+      const plan = planMessage(entry.timestamp, entry.payload, messageMeta);
+      if (hasDisplayableMessageContent(plan)) {
+        state.noticeMessages.push({ ...plan, lineNumber: state.lineNumber });
+        return;
+      }
+      const interaction = messageFromInteractionEvent(entry.timestamp, entry.payload, messageMeta);
+      if (hasDisplayableMessageContent(interaction)) {
+        state.interactionMessages.push({ ...interaction, lineNumber: state.lineNumber });
+        return;
+      }
+      const notice = messageFromNoticeEvent(entry.timestamp, entry.payload);
+      if (hasDisplayableMessageContent(notice)) {
+        state.noticeMessages.push({ ...notice, lineNumber: state.lineNumber });
+        return;
+      }
+      const msg = messageFromResponseItem(entry.timestamp, entry.payload);
+      if (!hasDisplayableMessageContent(msg)) return;
+      if (msg.role === "tool") state.toolMessages.push({ ...msg, lineNumber: state.lineNumber });
+      else state.fallbackMessages.push({ ...msg, lineNumber: state.lineNumber });
+    }
+  } catch {
+    state.fallbackMessages.push({
+      role: "system",
+      kind: "parse_error",
+      timestamp: null,
+      lineNumber: state.lineNumber,
+      content: `Could not parse JSONL line ${state.lineNumber}`
+    });
+  }
+}
+
+function rolloutResultFromState({ filePath, stat, nowMs, state, partial = false }) {
+  const chatMessages = state.eventMessages.length ? state.eventMessages : state.fallbackMessages;
+  if (partial) {
+    const recentOpenTurn = [...state.openTurns.values()].at(-1) || null;
+    // A tool call can run for minutes without appending to the rollout. The
+    // explicit end event, rather than a short quiet period, closes the turn.
+    state.activeTurn = recentOpenTurn;
+  }
+  const activeTurnLastUpdatedAtMs = state.activeTurn
+    ? Math.max(state.activeTurn.startedAtMs || 0, state.lastEntryAtMs || 0, Number.isFinite(stat.mtimeMs) ? stat.mtimeMs : 0)
+    : null;
+  const activeTurnStale = Boolean(state.activeTurn && nowMs - activeTurnLastUpdatedAtMs > ACTIVE_TURN_STALE_MS);
+  const visibleActiveTurn = activeTurnStale ? null : state.activeTurn;
+  for (const message of state.interactionMessages) {
+    message.requiresDesktopAction = Boolean(visibleActiveTurn && (!message.turnId || message.turnId === visibleActiveTurn.turnId));
+  }
+  const pendingInteractions = state.interactionMessages.filter((message) => message.requiresDesktopAction);
+  const activeTurnWaitMs = visibleActiveTurn?.startedAtMs ? nowMs - visibleActiveTurn.startedAtMs : 0;
+  return {
+    meta: state.meta,
+    file: filePath,
+    size: stat.size,
+    mtimeMs: stat.mtimeMs,
+    partial,
+    status: {
+      thinking: Boolean(visibleActiveTurn),
+      turnId: visibleActiveTurn?.turnId || null,
+      startedAtMs: visibleActiveTurn?.startedAtMs || null,
+      interactionRequired: pendingInteractions.length > 0,
+      possibleDesktopAttention: Boolean(visibleActiveTurn && pendingInteractions.length === 0 && activeTurnWaitMs > 45_000),
+      latestCompletedAtMs: state.latestCompletedAtMs || 0,
+      staleTurn: activeTurnStale,
+      staleTurnId: activeTurnStale ? state.activeTurn?.turnId || null : null,
+      staleTurnLastUpdatedAtMs: activeTurnStale ? activeTurnLastUpdatedAtMs : null
+    },
+    messages: dedupeInteractionMessages([...chatMessages, ...pendingInteractions, ...state.noticeMessages, ...state.toolMessages]).sort(messageSortCompare)
+  };
+}
+
+async function readRolloutTailLines(filePath, stat, limit) {
+  const bytes = Math.min(TAIL_ROLLOUT_MAX_BYTES, Math.max(TAIL_ROLLOUT_MIN_BYTES, normalizeMessageLimit(limit) * 24 * 1024));
+  const start = Math.max(0, stat.size - bytes);
+  const handle = await fs.open(filePath, "r");
+  try {
+    const buffer = Buffer.alloc(stat.size - start);
+    const { bytesRead } = await handle.read(buffer, 0, buffer.length, start);
+    let text = buffer.subarray(0, bytesRead).toString("utf8");
+    if (start > 0) {
+      const firstNewline = text.indexOf("\n");
+      text = firstNewline >= 0 ? text.slice(firstNewline + 1) : "";
+    }
+    return text.split(/\r?\n/).filter((line) => line.trim());
+  } finally {
+    await handle.close();
+  }
+}
+
+async function parseRolloutTail(filePath, stat, limit, nowMs) {
+  const state = createRolloutParseState(stat, nowMs);
+  const lines = await readRolloutTailLines(filePath, stat, limit);
+  for (const line of lines) parseRolloutLine(line, state);
+  return rolloutResultFromState({ filePath, stat, nowMs, state, partial: true });
+}
+
+async function parseRollout(filePath, { limit = DEFAULT_MESSAGE_LIMIT, preferTail = false } = {}) {
+  const stat = await fs.stat(filePath);
+  const signature = `${stat.size}:${stat.mtimeMs}:${preferTail ? normalizeMessageLimit(limit) : "full"}`;
+  const cached = messageCache.get(filePath);
+  const nowMs = Date.now();
+  const cachedAgeMs = nowMs - (cached?.cachedAtMs || 0);
+  if (cached?.signature === signature && (!cached.result?.status?.thinking || cachedAgeMs < ACTIVE_STATUS_CACHE_MS)) return cached.result;
+
+  // Never take the byte-offset tail path for a compressed transcript: seeking into a
+  // .jsonl.zst reads raw deflate bytes, which is why every line failed to parse.
+  if (!filePath.endsWith(".zst") && preferTail && stat.size > TAIL_ROLLOUT_MAX_BYTES) {
+    const result = await parseRolloutTail(filePath, stat, limit, nowMs);
+    messageCache.set(filePath, { signature, result, cachedAtMs: nowMs });
+    return result;
+  }
+
+  const state = createRolloutParseState(stat, nowMs);
+  // Codex compresses older sessions to <name>.jsonl.zst. Decompress once and feed the
+  // same line parser, so a compressed transcript behaves exactly like a plain one.
+  const lines = filePath.endsWith(".zst") ? await readZstdRolloutLines(filePath) : null;
+  if (lines) {
+    for (const line of lines) parseRolloutLine(line, state);
+  } else {
+    const stream = createReadStream(filePath, { encoding: "utf8" });
+    const rl = readline.createInterface({ input: stream, crlfDelay: Infinity });
+    for await (const line of rl) {
+      parseRolloutLine(line, state);
+    }
+  }
+
+  const result = rolloutResultFromState({ filePath, stat, nowMs, state, partial: false });
+
+  messageCache.set(filePath, { signature, result, cachedAtMs: nowMs });
+  return result;
+}
+
+async function readZstdRolloutLines(filePath) {
+  const compressed = await fs.readFile(filePath);
+  const raw = await new Promise((resolve, reject) => {
+    zstdDecompress(compressed, (error, out) => (error ? reject(error) : resolve(out)));
+  });
+  return raw.toString("utf8").split(/\r?\n/).filter((line) => line.trim());
+}
+
+async function getMessages(id, { limit = DEFAULT_MESSAGE_LIMIT, fullHistory = false, before = "" } = {}) {
+  keepIpcWarm();
+  const thread = await findThread(id);
+  if (!thread) {
+    const err = new Error("Thread not found");
+    err.status = 404;
+    throw err;
+  }
+  const statusOverride = statusOverrideForThread(id, thread);
+  const ipcInteractions = codexIpcClient?.getRecentInteractionMessages(id) || [];
+  const ipcNotices = codexIpcClient?.getRecentNoticeMessages(id) || [];
+  const goal = await getThreadGoalSafe(id);
+  const serverNotices = getRecentNoticeMessages(id);
+  const liveMessages = [...ipcInteractions, ...ipcNotices, ...serverNotices];
+  const rawRolloutPaths = await readSessionRolloutPathsForThread(id);
+  // A compressed sibling (.jsonl.zst) counts as an available transcript; Codex moves
+  // older sessions there, and treating it as "missing" is what made 详情 fail.
+  const rolloutFiles = [];
+  for (const candidate of rawRolloutPaths) {
+    const resolved = safeResolveRolloutFile(candidate, id);
+    if (resolved && existsSync(resolved.path)) rolloutFiles.push(resolved.path);
+  }
+  const primaryFile = safeResolveRolloutFile(thread.rolloutPath, id);
+  if (!rolloutFiles.length && primaryFile && existsSync(primaryFile.path)) rolloutFiles.push(primaryFile.path);
+  const rolloutPath = rolloutFiles.at(-1) || null;
+  if (!rolloutPath) {
+    const messages = await decorateMessageFiles(dedupeInteractionMessages(liveMessages).sort(messageSortCompare), id, thread);
+    const baseStatus = {
+      thinking: false,
+      turnId: null,
+      startedAtMs: null,
+      interactionRequired: ipcInteractions.some((message) => message.requiresDesktopAction),
+      possibleDesktopAttention: false
+    };
+    const status = statusOverride
+      ? { ...baseStatus, ...statusFieldsFromOverride(statusOverride, overrideLacksCorroboration(statusOverride, null)) }
+      : baseStatus;
+    const limited = limitMessagesForClient(messages, status, limit, before);
+    return await finalizeMessagesResponse(id, {
+      thread,
+      goal,
+      meta: {},
+      file: null,
+      size: 0,
+      mtimeMs: 0,
+      status,
+      ...limited
+    });
+  }
+  const parsedResults = await Promise.all(
+    rolloutFiles.map((filePath) => parseRollout(filePath, { limit, preferTail: !fullHistory }))
+  );
+  const parsed = parsedResults.reduce(
+    (merged, current) => ({
+      ...merged,
+      ...current,
+      status: current.status || merged.status,
+      messages: [...merged.messages, ...(current.messages || [])]
+    }),
+    { messages: [], status: { thinking: false, turnId: null, startedAtMs: null } }
+  );
+  parsed.messages = Array.from(new Map(parsed.messages.map((message) => [clientMessageKey(message), message])).values()).sort(messageSortCompare);
+  const parsedStatus = statusOverride
+    ? { ...parsed.status, ...statusFieldsFromOverride(statusOverride, overrideLacksCorroboration(statusOverride, parsed.status)) }
+    : parsed.status;
+  if (!liveMessages.length) {
+    const messages = await decorateMessageFiles(parsed.messages, id, thread);
+    const limited = limitMessagesForClient(messages, parsedStatus, limit, before);
+    return await finalizeMessagesResponse(id, { thread, goal, ...parsed, status: parsedStatus, ...limited });
+  }
+  const status = {
+    ...parsedStatus,
+    interactionRequired: parsedStatus?.interactionRequired || ipcInteractions.some((message) => message.requiresDesktopAction)
+  };
+  const messages = await decorateMessageFiles(dedupeInteractionMessages([...parsed.messages, ...liveMessages]).sort(messageSortCompare), id, thread);
+  const limited = limitMessagesForClient(messages, status, limit, before);
+  return await finalizeMessagesResponse(id, {
+    thread,
+    goal,
+    ...parsed,
+    status,
+    ...includePartialHistoryAvailability(limited, parsed.partial)
+  });
+}
+
+async function threadChangeSignature(id) {
+  const thread = await findThread(id);
+  if (!thread) return "";
+  const statusOverride = statusOverrideForThread(id, thread);
+  const paths = await readSessionRolloutPathsForThread(id);
+  const files = [];
+  for (const filePath of paths) {
+    try {
+      const stat = await fs.stat(filePath);
+      files.push(`${filePath}:${stat.size}:${stat.mtimeMs}`);
+    } catch {
+      files.push(`${filePath}:missing`);
+    }
+  }
+  const queue = await queuedSendStatus(id);
+  return JSON.stringify({
+    updatedAtMs: thread.updatedAtMs || 0,
+    files,
+    statusOverride: statusOverride ? `${statusOverride.state}:${statusOverride.updatedAtMs}` : "",
+    queueLength: queue.queueLength,
+    queuePositions: queue.queuedMessages.map((item) => `${item.id}:${item.deliveryState}:${item.position ?? ""}:${item.priority ?? ""}`),
+    deliveryStates: queue.queuedMessages.map((item) => `${item.id}:${item.deliveryState}`)
+  });
+}
+
+async function waitForThreadChange(id, cursor, timeoutMs = 25_000) {
+  const deadline = Date.now() + Math.min(30_000, Math.max(250, Number(timeoutMs) || 25_000));
+  let current = await threadChangeSignature(id);
+  while (current === cursor && Date.now() < deadline) {
+    await sleep(Math.min(750, Math.max(50, deadline - Date.now())));
+    current = await threadChangeSignature(id);
+  }
+  return { cursor: current, changed: current !== cursor };
+}
+
+async function getThreadGoalSafe(threadId) {
+  const id = String(threadId || "").trim();
+  try {
+    const ipcGoal = sanitizeThreadGoal(await getCodexIpcClient().getThreadGoal(id));
+    if (ipcGoal) return ipcGoal;
+  } catch (error) {
+    logInfo(`[goal:read] IPC unavailable for ${id}; reading Desktop goal store.`);
+  }
+  try {
+    const { goalsDb } = codexPaths((await refreshCodexHomeContext()).home);
+    if (!existsSync(goalsDb)) return null;
+    const rows = await runSqlJsonFromDb(goalsDb, `
+      SELECT thread_id AS threadId, objective, status,
+             created_at_ms AS createdAt, updated_at_ms AS updatedAt
+      FROM thread_goals
+      WHERE thread_id = '${sqlString(id)}'
+      LIMIT 1;
+    `);
+    return sanitizeThreadGoal(rows[0] || null);
+  } catch (error) {
+    logError(`[goal:read] ${id}: ${error?.message || error}`);
+    return null;
+  }
+}
+
+function sanitizeThreadGoal(goal) {
+  if (!goal || typeof goal !== "object" || !String(goal.objective || "").trim()) return null;
+  const statusMap = {
+    usage_limited: "usageLimited",
+    budget_limited: "budgetLimited"
+  };
+  const rawStatus = String(goal.status || "active");
+  return {
+    threadId: String(goal.threadId || ""),
+    objective: String(goal.objective).trim(),
+    status: statusMap[rawStatus] || rawStatus,
+    createdAt: Number.isFinite(Number(goal.createdAt)) ? Number(goal.createdAt) : null,
+    updatedAt: Number.isFinite(Number(goal.updatedAt)) ? Number(goal.updatedAt) : null
+  };
+}
+
+async function setThreadGoal(threadId, body = {}) {
+  const objective = body.objective == null ? null : String(body.objective).trim();
+  if (objective !== null && objective.length > 4000) {
+    const error = new Error("Goal objective is too long");
+    error.status = 413;
+    throw error;
+  }
+  const status = body.status == null || body.status === "" ? null : String(body.status);
+  const allowedStatuses = new Set(["active", "paused", "blocked", "usageLimited", "budgetLimited", "complete"]);
+  if (status && !allowedStatuses.has(status)) {
+    const error = new Error("Invalid goal status");
+    error.status = 400;
+    throw error;
+  }
+  if (!(await findThread(threadId))) {
+    const error = new Error("Thread not found");
+    error.status = 404;
+    throw error;
+  }
+  return sanitizeThreadGoal(await getCodexIpcClient().setThreadGoal(String(threadId), { objective: objective || null, status }));
+}
+
+async function clearThreadGoal(threadId) {
+  if (!(await findThread(threadId))) {
+    const error = new Error("Thread not found");
+    error.status = 404;
+    throw error;
+  }
+  await getCodexIpcClient().clearThreadGoal(String(threadId));
+  return { goal: null, cleared: true };
+}
+
+async function compactThread(threadId) {
+  if (!(await findThread(threadId))) {
+    const error = new Error("Thread not found");
+    error.status = 404;
+    throw error;
+  }
+  await getCodexIpcClient().compactThread(String(threadId));
+  return { ok: true, threadId: String(threadId) };
+}
+
+function desktopTurnInput(text, images = []) {
+  const input = [];
+  if (text) input.push({ type: "text", text, text_elements: [] });
+  for (const image of images) {
+    input.push({
+      type: "image",
+      url: `data:${image.mimeType};base64,${image.data}`
+    });
+  }
+  return input;
+}
+
+function parseTomlString(value) {
+  const trimmed = String(value || "").trim();
+  if (trimmed.startsWith('"')) {
+    const match = trimmed.match(/^("(?:\\.|[^"\\])*")/);
+    if (!match) return "";
+    try {
+      return JSON.parse(match[1]);
+    } catch {
+      return "";
+    }
+  }
+  if (trimmed.startsWith("'")) {
+    const closingQuote = trimmed.indexOf("'", 1);
+    return closingQuote > 0 ? trimmed.slice(1, closingQuote) : "";
+  }
+  return "";
+}
+
+function parseCodexModelConfig(source) {
+  const values = {};
+  let inTopLevel = true;
+  for (const rawLine of String(source || "").split(/\r?\n/)) {
+    const line = rawLine.trim();
+    if (!line || line.startsWith("#")) continue;
+    if (line.startsWith("[")) {
+      inTopLevel = false;
+      continue;
+    }
+    if (!inTopLevel) continue;
+    const match = line.match(/^([A-Za-z0-9_-]+)\s*=\s*(.+)$/);
+    if (!match) continue;
+    const value = parseTomlString(match[2]);
+    if (value) values[match[1]] = value;
+  }
+  return {
+    model: values.model || "",
+    modelCatalogJson: values.model_catalog_json || "",
+    modelReasoningEffort: values.model_reasoning_effort || ""
+  };
+}
+
+function fallbackModelConfiguration(config = {}) {
+  const defaultModel = FALLBACK_CODEX_MODELS.some((entry) => entry.id === config.model)
+    ? config.model
+    : DEFAULT_CODEX_MODEL;
+  const selectedModel = FALLBACK_CODEX_MODELS.find((entry) => entry.id === defaultModel) || FALLBACK_CODEX_MODELS[0];
+  const requestedEffort = String(config.modelReasoningEffort || "").trim();
+  return {
+    models: FALLBACK_CODEX_MODELS,
+    defaultModel: selectedModel.id,
+    defaultEffort: selectedModel.efforts.includes(requestedEffort) ? requestedEffort : selectedModel.defaultEffort,
+    source: "fallback"
+  };
+}
+
+function modelConfigurationFromCatalog(catalog, config = {}) {
+  const models = Array.isArray(catalog?.models)
+    ? catalog.models
+        .filter((entry) => entry?.visibility === "list" && entry?.supported_in_api !== false)
+        .filter((entry) => String(entry?.slug || "").trim() && entry.slug !== "codex-auto-review")
+        .map((entry) => {
+          const efforts = [...new Set(
+            (Array.isArray(entry.supported_reasoning_levels) ? entry.supported_reasoning_levels : [])
+              .map((level) => String(level?.effort || "").trim())
+              .filter(Boolean)
+          )];
+          const defaultEffort = efforts.includes(String(entry.default_reasoning_level || "").trim())
+            ? String(entry.default_reasoning_level).trim()
+            : efforts.includes(DEFAULT_CODEX_EFFORT)
+              ? DEFAULT_CODEX_EFFORT
+              : efforts[0] || "";
+          const supportsImages = entry.supports_images === true ||
+            (Array.isArray(entry.input_modalities) && entry.input_modalities.some((item) => String(item).toLowerCase() === "image"));
+          return {
+            id: String(entry.slug).trim(),
+            label: String(entry.display_name || entry.slug).trim(),
+            efforts,
+            defaultEffort,
+            supportsImages,
+            priority: Number.isFinite(Number(entry.priority)) ? Number(entry.priority) : Number.MAX_SAFE_INTEGER
+          };
+        })
+        .sort((left, right) => left.priority - right.priority || left.id.localeCompare(right.id))
+        .map(({ priority, ...entry }) => entry)
+    : [];
+  if (!models.length) return fallbackModelConfiguration(config);
+
+  const configuredModel = String(config.model || "").trim();
+  const selectedModel = models.find((entry) => entry.id === configuredModel) || models[0];
+  const configuredEffort = String(config.modelReasoningEffort || "").trim();
+  return {
+    models,
+    defaultModel: selectedModel.id,
+    defaultEffort: selectedModel.efforts.includes(configuredEffort) ? configuredEffort : selectedModel.defaultEffort,
+    source: "catalog"
+  };
+}
+
+async function newestModelCatalogPath(home) {
+  const directory = path.join(home, "model-catalogs");
+  const entries = await fs.readdir(directory, { withFileTypes: true });
+  const candidates = await Promise.all(
+    entries
+      .filter((entry) => entry.isFile() && entry.name.toLowerCase().endsWith(".json"))
+      .map(async (entry) => {
+        const filePath = path.join(directory, entry.name);
+        return { filePath, stat: await fs.stat(filePath) };
+      })
+  );
+  candidates.sort((left, right) => right.stat.mtimeMs - left.stat.mtimeMs);
+  return candidates[0]?.filePath || "";
+}
+
+function logModelFallback(error) {
+  const key = String(error?.message || error || "unknown error");
+  const now = Date.now();
+  if (modelFallbackLogState.key === key && now - modelFallbackLogState.at < 10 * 60 * 1000) {
+    modelFallbackLogState.suppressed += 1;
+    return;
+  }
+  const suppressed = modelFallbackLogState.suppressed;
+  logError(`[models] Using fallback model list: ${key}${suppressed ? ` (suppressed ${suppressed} similar)` : ""}`);
+  modelFallbackLogState = { key, at: now, suppressed: 0 };
+}
+
+async function loadCodexModelConfiguration(home = codexHomeState.home) {
+  const resolvedHome = path.resolve(home);
+  const configPath = path.join(resolvedHome, "config.toml");
+  try {
+    const configStat = await fs.stat(configPath);
+    if (
+      modelConfigurationCache?.home === resolvedHome &&
+      modelConfigurationCache.configMtimeMs === configStat.mtimeMs &&
+      modelConfigurationCache.configSize === configStat.size
+    ) {
+      const catalogStat = await fs.stat(modelConfigurationCache.catalogPath);
+      if (
+        modelConfigurationCache.catalogMtimeMs === catalogStat.mtimeMs &&
+        modelConfigurationCache.catalogSize === catalogStat.size
+      ) {
+        activeModelConfiguration = modelConfigurationCache.configuration;
+        return activeModelConfiguration;
+      }
+    }
+
+    const config = parseCodexModelConfig(await fs.readFile(configPath, "utf8"));
+    const catalogPath = config.modelCatalogJson
+      ? path.resolve(resolvedHome, config.modelCatalogJson)
+      : await newestModelCatalogPath(resolvedHome);
+    if (!catalogPath) throw new Error("No Codex model catalog found");
+    const [catalogStat, catalogText] = await Promise.all([fs.stat(catalogPath), fs.readFile(catalogPath, "utf8")]);
+    const configuration = modelConfigurationFromCatalog(JSON.parse(catalogText), config);
+    activeModelConfiguration = { ...configuration, source: catalogPath };
+    modelConfigurationCache = {
+      home: resolvedHome,
+      configMtimeMs: configStat.mtimeMs,
+      configSize: configStat.size,
+      catalogPath,
+      catalogMtimeMs: catalogStat.mtimeMs,
+      catalogSize: catalogStat.size,
+      configuration: activeModelConfiguration
+    };
+    return activeModelConfiguration;
+  } catch (error) {
+    const configuration = fallbackModelConfiguration();
+    activeModelConfiguration = configuration;
+    modelConfigurationCache = null;
+    logModelFallback(error);
+    return configuration;
+  }
+}
+
+
+/**
+ * 手机端只该默认看到「这台电脑上真正在用的模型」。
+ * 门面 state_5.sqlite 的 threads.model 就是每次会话实际记录的模型 slug；
+ * 供应商自动发现的 240 个模型不该全部平铺给用户（2026-11-05 用户反馈）。
+ * 读不到就返回空数组，前端退回全量列表，绝不假装知道用户用过什么。
+ */
+async function usedModelIds(home) {
+  try {
+    const dbPath = path.join(path.resolve(home), "state_5.sqlite");
+    const sql = `SELECT model AS id, COUNT(*) AS n FROM threads
+                 WHERE model IS NOT NULL AND trim(model) <> ''
+                 GROUP BY model ORDER BY n DESC LIMIT 40`;
+    const rows = await runSqlJsonAttempt(sql, dbPath);
+    if (!Array.isArray(rows)) return [];
+    return rows.map((row) => String(row?.id || "").trim()).filter(Boolean);
+  } catch {
+    return [];
+  }
+}
+function normalizeTurnSettings({ model, effort } = {}, modelConfiguration = activeModelConfiguration) {
+  const models = Array.isArray(modelConfiguration?.models) && modelConfiguration.models.length
+    ? modelConfiguration.models
+    : FALLBACK_CODEX_MODELS;
+  const configuredDefaultModel = String(modelConfiguration?.defaultModel || DEFAULT_CODEX_MODEL);
+  const configuredDefaultEffort = String(modelConfiguration?.defaultEffort || DEFAULT_CODEX_EFFORT);
+  const selectedModel = models.find((entry) => entry.id === String(model || "").trim()) ||
+    models.find((entry) => entry.id === configuredDefaultModel) || models[0];
+  const selectedEffort = selectedModel.efforts.includes(String(effort || "").trim())
+    ? String(effort).trim()
+    : selectedModel.efforts.includes(configuredDefaultEffort)
+      ? configuredDefaultEffort
+      : selectedModel.defaultEffort || selectedModel.efforts[0] || "";
+  return { model: selectedModel.id, effort: selectedEffort };
+}
+
+/**
+ * 在模型目录里找用户请求的模型。
+ *
+ * 旧实现直接 `models.find(id === model) || 默认模型`：只要手机端记的 id 与目录差一个
+ * 字符（供应商改名、模型下架、大小写），就会被静默换成另一个模型，用户只会看到
+ * 「手机上选的是 DS，电脑端跑的是别的」。这里先精确匹配，再忽略大小写，
+ * 最后用 "/" 之后的模型名在唯一命中时兜底；都不中才算不认识。
+ */
+function catalogModelMatch(models, requested) {
+  const slug = String(requested || "").trim();
+  if (!slug) return null;
+  const exact = models.find((entry) => entry.id === slug);
+  if (exact) return exact;
+  const lowered = slug.toLowerCase();
+  const caseHit = models.find((entry) => String(entry.id).toLowerCase() === lowered);
+  if (caseHit) return caseHit;
+  const tail = slug.includes("/") ? slug.slice(slug.indexOf("/") + 1) : "";
+  if (tail) {
+    const tailHits = models.filter((entry) => {
+      const id = String(entry.id);
+      return id.slice(id.lastIndexOf("/") + 1) === tail;
+    });
+    if (tailHits.length === 1) return tailHits[0];
+  }
+  return null;
+}
+
+/**
+ * 解析一轮发送真正要用的 (model, effort)，并把「请求的 / 实际的」一起返回。
+ * 调用方据此决定是报错还是回传给手机端显示，绝不再静默替换。
+ */
+function resolveTurnSettings({ model, effort } = {}, modelConfiguration = activeModelConfiguration) {
+  const models = Array.isArray(modelConfiguration?.models) && modelConfiguration.models.length
+    ? modelConfiguration.models
+    : FALLBACK_CODEX_MODELS;
+  const requestedModel = String(model || "").trim();
+  const requestedEffort = String(effort || "").trim();
+  const matched = catalogModelMatch(models, requestedModel);
+  const settings = normalizeTurnSettings({ model: matched?.id || "", effort }, modelConfiguration);
+  return {
+    ...settings,
+    requestedModel,
+    requestedEffort,
+    modelKnown: !requestedModel || Boolean(matched),
+    modelRemapped: Boolean(matched) && matched.id !== requestedModel
+  };
+}
+
+/**
+ * 通过桥的 host/invoke 白名单调用宿主能力。
+ *
+ * 为什么走这条路而不是等桥自己改：桥是 PI-Desktop 里的插件，改完要重启宿主才生效；
+ * 而 host/invoke 是桥**当前版本就已经暴露**的通用通道（session/configure 属于
+ * 它的 dangerous 白名单，要求调用方显式 confirm）。服务端在这里直接下发模型切换，
+ * 手机端不需要有人坐在电脑前点确认框。
+ */
+async function requestHostOperation(operation, args, { confirm = false, timeoutMs = 20000 } = {}) {
+  const client = getCodexIpcClient();
+  await client.ensureReady();
+  const response = await client.request(
+    "turnloom/host/invoke",
+    { operation, args, confirm },
+    { timeoutMs }
+  );
+  const payload = response?.result ?? response ?? {};
+  if (payload?.ok === false) throw new Error(payload?.error || `host ${operation} failed`);
+  return payload?.result ?? payload;
+}
+
+/** PI 会话当前真正生效的 (provider, model, 思考强度)，直接从 pi.sqlite 读。 */
+async function piSessionTurnSettings(threadId) {
+  const id = String(threadId || "").trim();
+  if (!id) return null;
+  try {
+    const rows = await runSqlJsonFromDb(
+      path.join(PI_DATA_ROOT, "pi.sqlite"),
+      `SELECT s.provider_id AS providerId, s.model_id AS modelId, s.thinking_level AS thinkingLevel,
+              p.name AS providerName
+         FROM sessions s LEFT JOIN providers p ON p.id = s.provider_id
+        WHERE s.id = '${sqlString(id)}' LIMIT 1;`
+    );
+    return Array.isArray(rows) && rows[0] ? rows[0] : null;
+  } catch {
+    return null;
+  }
+}
+
+/** 模型目录里的 slug 是「供应商名/模型 id」，宿主只认 (providerId, modelId)。 */
+async function piProviderByCatalogSlug(slug) {
+  const name = String(slug || "").split("/")[0].trim();
+  if (!name) return null;
+  try {
+    const rows = await runSqlJsonFromDb(
+      path.join(PI_DATA_ROOT, "pi.sqlite"),
+      `SELECT id, name FROM providers WHERE name = '${sqlString(name)}' LIMIT 1;`
+    );
+    return Array.isArray(rows) && rows[0] ? rows[0] : null;
+  } catch {
+    return null;
+  }
+}
+
+function modelSwitchError(requested, actual, reason) {
+  const err = new Error(
+    `模型切换未生效：请求「${requested}」，电脑端当前仍是「${actual}」。${reason || ""}`
+  );
+  err.status = 409;
+  err.code = "MODEL_SWITCH_NOT_APPLIED";
+  return err;
+}
+
+/**
+ * 把这次发送要用的模型真正下发到 PI 会话，并用数据库回读证明它落地了。
+ * 只在「客户端显式指定了模型」时调用；同模型同强度直接返回，不打扰宿主。
+ */
+async function applyPiThreadModel(threadId, resolved) {
+  const slug = String(resolved?.model || "").trim();
+  const modelId = slug.includes("/") ? slug.slice(slug.indexOf("/") + 1) : slug;
+  const provider = await piProviderByCatalogSlug(slug);
+  if (!provider || !modelId) {
+    throw modelSwitchError(slug, (await piSessionTurnSettings(threadId))?.modelId || "未知",
+      "目录里的这个模型没有对应的 PI 供应商，请刷新模型列表。");
+  }
+  const current = await piSessionTurnSettings(threadId);
+  const sameModel = Boolean(current) && current.providerId === provider.id && current.modelId === modelId;
+  const wantedEffort = String(resolved?.effort || "").trim();
+  const sameEffort = !wantedEffort || !current?.thinkingLevel || current.thinkingLevel === wantedEffort;
+  if (sameModel && sameEffort) {
+    return { changed: false, verified: true, model: slug, effort: wantedEffort };
+  }
+  // 直接改会话行，而不是走 session/configure：后者在宿主里属于 dangerous，
+  // 会挂起等桌面确认（实测 25 秒超时，日志里连 desktop.invoke 都没发出），
+  // 手机端不可能有人去点。改行 + prompt 已被实测证明宿主就是按这一行选模型
+  // （同一轮 turns.provider_id/model_id 与写入值一致）。
+  const sql = `UPDATE sessions
+                  SET provider_id = '${sqlString(provider.id)}',
+                      model_id = '${sqlString(modelId)}'
+                      ${wantedEffort ? `, thinking_level = '${sqlString(wantedEffort)}'` : ""}
+                WHERE id = '${sqlString(String(threadId))}';`;
+  try {
+    await runSqlJsonFromDb(path.join(PI_DATA_ROOT, "pi.sqlite"), sql, { write: true });
+  } catch (error) {
+    throw modelSwitchError(slug, current?.modelId || "未知", `写会话模型失败：${error?.message || error}`);
+  }
+  const after = await piSessionTurnSettings(threadId);
+  if (!after || after.providerId !== provider.id || after.modelId !== modelId) {
+    throw modelSwitchError(slug, after?.modelId || "未知", "写入后回读仍不是目标模型。");
+  }
+  logInfo(`[model] session ${threadId} -> ${provider.name}/${modelId}${wantedEffort ? ` (${wantedEffort})` : ""}`);
+  return { changed: true, verified: true, model: slug, effort: after.thinkingLevel || wantedEffort };
+}
+
+/**
+ * PI-Desktop 的「归档」不在数据库里，而是渲染层状态：sidebar-preferences.json 的
+ * sessionMeta[id].archived。手机端要跟桌面看到同一份事实，就必须读这个文件，
+ * 而不是自己另发明一套归档。
+ */
+const SIDEBAR_PREFS_PATH = () => path.join(PI_DATA_ROOT, "sidebar-preferences.json");
+let sidebarArchiveCache = { at: 0, mtimeMs: 0, ids: new Set() };
+
+function parseSidebarArchivedIds(raw) {
+  const parsed = JSON.parse(raw);
+  const meta = parsed?.sessionMeta && typeof parsed.sessionMeta === "object" ? parsed.sessionMeta : {};
+  return new Set(Object.keys(meta).filter((id) => meta[id]?.archived === true));
+}
+
+async function readSidebarArchivedIds() {
+  const file = SIDEBAR_PREFS_PATH();
+  try {
+    const stat = await fs.stat(file);
+    if (sidebarArchiveCache.mtimeMs === stat.mtimeMs && Date.now() - sidebarArchiveCache.at < 10_000) {
+      return sidebarArchiveCache.ids;
+    }
+    const ids = parseSidebarArchivedIds(await fs.readFile(file, "utf8"));
+    sidebarArchiveCache = { at: Date.now(), mtimeMs: stat.mtimeMs, ids };
+    return ids;
+  } catch {
+    return sidebarArchiveCache.ids;
+  }
+}
+
+/** 写回 PI-Desktop 的归档状态：只改 sessionMeta[id].archived，其余字段逐字保留。 */
+async function writeSidebarArchived(threadId, archived) {
+  const id = String(threadId || "").trim();
+  if (!id) {
+    const err = new Error("缺少会话 id");
+    err.status = 400;
+    throw err;
+  }
+  const file = SIDEBAR_PREFS_PATH();
+  let raw = "{}";
+  try {
+    raw = await fs.readFile(file, "utf8");
+  } catch {
+    /* 文件不存在时从空对象开始，和宿主第一次写盘一致 */
+  }
+  const parsed = JSON.parse(raw || "{}");
+  const meta = parsed?.sessionMeta && typeof parsed.sessionMeta === "object" ? parsed.sessionMeta : {};
+  meta[id] = { ...(meta[id] || {}), archived: Boolean(archived) };
+  const next = { ...parsed, sessionMeta: meta };
+  const tmp = `${file}.turnloom-tmp`;
+  try {
+    await fs.writeFile(tmp, `${JSON.stringify(next, null, 2)}\n`, "utf8");
+    await fs.rename(tmp, file);
+  } catch (error) {
+    try { await fs.unlink(tmp); } catch { /* 清不掉临时文件不影响主流程 */ }
+    const err = new Error(`写入 PI-Desktop 归档状态失败：${error?.message || error}`);
+    err.status = 500;
+    throw err;
+  }
+  sidebarArchiveCache = { at: 0, mtimeMs: 0, ids: new Set() };
+  return Boolean(archived);
+}
+
+/** 模型能力查询：catalog 里没写能力时按「未知」处理，不误拦用户的图片。 */
+function modelSupportsImages(modelId, modelConfiguration = activeModelConfiguration) {
+  const models = Array.isArray(modelConfiguration?.models) && modelConfiguration.models.length
+    ? modelConfiguration.models
+    : FALLBACK_CODEX_MODELS;
+  const selected = models.find((entry) => entry.id === String(modelId || "").trim());
+  if (!selected || selected.supportsImages === undefined) return true;
+  return selected.supportsImages === true;
+}
+
+/**
+ * 直接读 PI 自己的供应商配置与模型能力表判断多模态能力。
+ *
+ * 为什么不能只看模型目录：目录由桥接插件生成，旧桥会把所有模型都写成
+ * ["text","image"]，于是纯文本模型也能带图发出去。
+ * 为什么也不能只看 models.capabilities_json：真机上它常是过时的 ["text"]，
+ * 而供应商 config_json 里已经声明了 supportsImages:true（用户实际配置）。
+ * 优先级：供应商显式声明 > 模型能力表。60 秒缓存，避免每次发送都查库。
+ */
+let piModelCapabilityCache = { at: 0, map: new Map() };
+
+function piRowSupportsImages(row) {
+  let declared = null;
+  try {
+    const config = JSON.parse(String(row?.provider_config_json || "{}"));
+    const list = Array.isArray(config?.models) ? config.models : [];
+    const modelId = String(row?.model_id || "");
+    const hit = list.find((item) => String(item?.id || item?.modelId || "") === modelId);
+    if (hit && typeof hit.supportsImages === "boolean") declared = hit.supportsImages;
+  } catch {
+    /* 配置坏了就退回能力表 */
+  }
+  if (declared !== null) return declared;
+  return /"(vision|image|images)"/i.test(String(row?.capabilities_json || ""));
+}
+
+async function piModelCapabilityMap() {
+  if (piModelCapabilityCache.map.size && Date.now() - piModelCapabilityCache.at < 60_000) {
+    return piModelCapabilityCache.map;
+  }
+  const map = new Map();
+  try {
+    const rows = await runSqlJsonFromDb(
+      path.join(PI_DATA_ROOT, "pi.sqlite"),
+      `SELECT p.name AS provider_name, m.model_id AS model_id,
+              m.capabilities_json AS capabilities_json, p.config_json AS provider_config_json
+         FROM models m INNER JOIN providers p ON p.id = m.provider_id
+        WHERE p.enabled = 1;`
+    );
+    for (const row of Array.isArray(rows) ? rows : []) {
+      map.set(`${row?.provider_name}/${row?.model_id}`, piRowSupportsImages(row));
+    }
+  } catch (error) {
+    // 不要把「读不到能力表」伪装成成功：留一条可检索的诊断，但仍然退回目录判断，
+    // 避免因为一次数据库抖动把用户的图片挡在门外。
+    logError(`[image-capability] PI capability lookup failed: ${error?.message || error}`);
+  }
+  piModelCapabilityCache = { at: Date.now(), map };
+  return map;
+}
+
+async function modelSupportsImagesForSend(modelId, modelConfiguration = activeModelConfiguration) {
+  const slug = String(modelId || "").trim();
+  const fromPi = (await piModelCapabilityMap()).get(slug);
+  if (fromPi !== undefined) return fromPi;
+  return modelSupportsImages(slug, modelConfiguration);
+}
+
+
+function preparedTurnSettings({ model, effort } = {}) {
+  const requestedModel = String(model || "").trim();
+  const requestedEffort = String(effort || "").trim();
+  if (requestedModel && requestedEffort) return { model: requestedModel, effort: requestedEffort };
+  return normalizeTurnSettings({ model, effort });
+}
+
+function desktopStartTurnRequest(threadId, text, images = [], turnSettings = {}) {
+  const { model, effort } = preparedTurnSettings(turnSettings);
+  return {
+    method: "thread-follower-start-turn",
+    params: {
+      conversationId: threadId,
+      hostId: "local",
+      turnStart: {
+        request: {
+          threadId,
+          model,
+          effort,
+          input: desktopTurnInput(text, images)
+        },
+        context: {
+          localTurnMetadata: { fileAttachmentCount: 0 },
+          attachments: [],
+          commentAttachments: [],
+          mcpAppModelContextAttachments: [],
+          useAppServerPermissionDefault: true,
+          usePermissionSelection: false,
+          inheritThreadSettings: false
+        }
+      }
+    }
+  };
+}
+
+function ipcVersionForMethod(method) {
+  return IPC_VERSION_BY_METHOD[method] ?? 0;
+}
+
+function ipcVersionForRequest(method, params = {}, routedHostId = null) {
+  if (routedHostId && method.startsWith("thread-follower-")) {
+    return ipcVersionForMethod(method) + 1;
+  }
+  if (method === "thread-follower-interrupt-turn") {
+    return typeof params.expectedTurnId === "string" && params.expectedTurnId ? 4 : 3;
+  }
+  return ipcVersionForMethod(method);
+}
+
+function desktopInterruptTurnRequest(threadId, expectedTurnId = null) {
+  const params = {
+    conversationId: threadId,
+    mode: "user-stop"
+  };
+  if (typeof expectedTurnId === "string" && expectedTurnId) params.expectedTurnId = expectedTurnId;
+  return { method: "thread-follower-interrupt-turn", params };
+}
+
+function desktopSteerRestoreMessage(text, cwd, clientUserMessageId = randomUUID()) {
+  const resolvedCwd = String(cwd || process.cwd());
+  return {
+    id: clientUserMessageId,
+    text: String(text || ""),
+    context: {
+      prompt: String(text || ""),
+      addedFiles: [],
+      fileAttachments: [],
+      ideContext: null,
+      imageAttachments: [],
+      commentAttachments: [],
+      workspaceRoots: [resolvedCwd],
+      collaborationMode: null
+    },
+    cwd: resolvedCwd,
+    createdAt: Date.now(),
+    responsesapiClientMetadata: {}
+  };
+}
+
+function queuedMessagePreview(text, imageCount = 0) {
+  const content = String(text || "").trim().replace(/\s+/g, " ").slice(0, 160);
+  const count = Math.max(0, Number(imageCount) || 0);
+  const imageLabel = count === 1 ? "【图片】" : count > 1 ? "【图片 " + count + " 张】" : "";
+  return [content, imageLabel].filter(Boolean).join(" ") || "待发送消息";
+}
+
+function normalizedQueuedSendState(value) {
+  const state = String(value || "").trim();
+  return ["queued", "sending", "awaitingConfirmation", "failed"].includes(state) ? state : "queued";
+}
+
+function cloneQueuedSendImages(images) {
+  return (Array.isArray(images) ? images : []).map((image) => ({
+    name: String(image?.name || ""),
+    mimeType: String(image?.mimeType || ""),
+    data: String(image?.data || ""),
+    size: Number(image?.size) || 0,
+    width: Number(image?.width) || 0,
+    height: Number(image?.height) || 0
+  }));
+}
+
+function normalizePersistedQueuedSendItem(value) {
+  if (!value || typeof value !== "object") return null;
+  const text = String(value.text || "").trim();
+  let images;
+  try {
+    images = normalizeSendImages(value.images);
+  } catch {
+    return null;
+  }
+  if (!text && !images.length) return null;
+  const state = normalizedQueuedSendState(value.deliveryState);
+  return {
+    id: String(value.id || randomUUID()),
+    text,
+    images,
+    // Validate against the live catalog at delivery time. The service may be
+    // restoring this item before the active Codex catalog has been loaded.
+    turnSettings: {
+      model: String(value.turnSettings?.model || "").trim(),
+      effort: String(value.turnSettings?.effort || "").trim()
+    },
+    enqueuedAt: String(value.enqueuedAt || new Date().toISOString()),
+    lastError: value.lastError ? String(value.lastError).slice(0, 1200) : null,
+    nextAttemptAtMs: Number.isFinite(Number(value.nextAttemptAtMs)) ? Number(value.nextAttemptAtMs) : 0,
+    deliveryState: state === "sending" ? "awaitingConfirmation" : state,
+    deliveryBaseline: Math.max(0, Math.floor(Number(value.deliveryBaseline) || 0)),
+    deliveryTurnId: value.deliveryTurnId ? String(value.deliveryTurnId) : null,
+    deliveryAttemptedAtMs: Number.isFinite(Number(value.deliveryAttemptedAtMs))
+      ? Number(value.deliveryAttemptedAtMs)
+      : 0
+  };
+}
+
+function serializableQueuedSendItem(item) {
+  const normalized = normalizePersistedQueuedSendItem(item);
+  if (!normalized) return null;
+  return {
+    ...normalized,
+    images: cloneQueuedSendImages(normalized.images)
+  };
+}
+
+function pendingSendQueueDocument(queues = pendingSendQueues) {
+  const serializedQueues = {};
+  for (const [threadId, items] of queues.entries()) {
+    const key = String(threadId || "").trim();
+    if (!key || !Array.isArray(items)) continue;
+    const serializedItems = items.map(serializableQueuedSendItem).filter(Boolean);
+    if (serializedItems.length) serializedQueues[key] = serializedItems;
+  }
+  return {
+    version: PENDING_SEND_QUEUE_SCHEMA_VERSION,
+    updatedAt: new Date().toISOString(),
+    queues: serializedQueues
+  };
+}
+
+function persistPendingSendQueues() {
+  if (!IS_MAIN) return;
+  const directory = path.dirname(PENDING_SEND_QUEUE_FILE);
+  const temporaryPath = PENDING_SEND_QUEUE_FILE + "." + process.pid + "." + randomUUID() + ".tmp";
+  try {
+    mkdirSync(directory, { recursive: true });
+    writeFileSync(temporaryPath, JSON.stringify(pendingSendQueueDocument()), "utf8");
+    renameSync(temporaryPath, PENDING_SEND_QUEUE_FILE);
+  } catch (error) {
+    try {
+      unlinkSync(temporaryPath);
+    } catch {
+      // Best-effort cleanup for a failed atomic replacement.
+    }
+    throw error;
+  }
+}
+
+function restorePendingSendQueues() {
+  if (!IS_MAIN || !existsSync(PENDING_SEND_QUEUE_FILE)) return { restored: 0, dropped: 0 };
+  try {
+    const parsed = JSON.parse(readFileSync(PENDING_SEND_QUEUE_FILE, "utf8"));
+    const sourceQueues = parsed?.queues;
+    if (!sourceQueues || typeof sourceQueues !== "object" || Array.isArray(sourceQueues)) {
+      throw new Error("Queue document does not contain a queues object.");
+    }
+    pendingSendQueues.clear();
+    let restored = 0;
+    let dropped = 0;
+    for (const [threadId, items] of Object.entries(sourceQueues)) {
+      const key = String(threadId || "").trim();
+      if (!key || !Array.isArray(items)) {
+        dropped += Array.isArray(items) ? items.length : 1;
+        continue;
+      }
+      const restoredItems = items.map(normalizePersistedQueuedSendItem).filter(Boolean);
+      dropped += items.length - restoredItems.length;
+      if (!restoredItems.length) continue;
+      pendingSendQueues.set(key, restoredItems);
+      restored += restoredItems.length;
+      scheduleLocalQueuedSendDrain(key, 1000);
+    }
+    if (dropped) persistPendingSendQueues();
+    logInfo("[queue] Restored " + restored + " pending message" + (restored === 1 ? "" : "s") + ".");
+    return { restored, dropped };
+  } catch (error) {
+    logError("[queue] Could not restore pending messages: " + (error?.message || error));
+    return { restored: 0, dropped: 0, error: error?.message || String(error) };
+  }
+}
+
+function setPendingSendQueue(threadId, nextQueue) {
+  const key = String(threadId || "");
+  const previous = pendingSendQueues.get(key);
+  if (nextQueue?.length) pendingSendQueues.set(key, nextQueue);
+  else pendingSendQueues.delete(key);
+  try {
+    persistPendingSendQueues();
+  } catch (error) {
+    if (previous?.length) pendingSendQueues.set(key, previous);
+    else pendingSendQueues.delete(key);
+    throw error;
+  }
+  return nextQueue || [];
+}
+
+function updateQueuedSendItem(threadId, itemId, updater) {
+  const key = String(threadId || "");
+  const queue = pendingSendQueues.get(key) || [];
+  const index = queue.findIndex((item) => item.id === itemId);
+  if (index < 0) return null;
+  const nextItem = updater({ ...queue[index], images: cloneQueuedSendImages(queue[index].images) });
+  if (!nextItem) return null;
+  const nextQueue = queue.slice();
+  nextQueue[index] = nextItem;
+  setPendingSendQueue(key, nextQueue);
+  return nextItem;
+}
+
+function removeQueuedSendItem(threadId, itemId) {
+  const key = String(threadId || "");
+  const queue = pendingSendQueues.get(key) || [];
+  const nextQueue = queue.filter((item) => item.id !== itemId);
+  if (nextQueue.length === queue.length) return false;
+  setPendingSendQueue(key, nextQueue);
+  if (!nextQueue.length) queueIdleObservations.delete(key);
+  return true;
+}
+
+function localQueuedSendStatus(threadId) {
+  const queue = pendingSendQueues.get(String(threadId || "")) || [];
+  return {
+    queueLength: queue.length,
+    queuedMessages: queue.map((item) => ({
+      id: item.id,
+      text: item.text,
+      preview: queuedMessagePreview(item.text, item.images.length),
+      imageCount: item.images.length,
+      images: item.images.map((image, index) => ({
+        name: image.name,
+        url: `/api/queue/image?threadId=${encodeURIComponent(threadId)}&itemId=${encodeURIComponent(item.id)}&index=${index}`
+      })),
+      enqueuedAt: item.enqueuedAt,
+      lastError: item.lastError || null,
+      deliveryState: normalizedQueuedSendState(item.deliveryState)
+    }))
+  };
+}
+
+/** PI-Desktop 桥提供权威 turn_queue；桌面端与手机端只显示这一份队列。 */
+async function requestNativeQueue(method, threadId, extra = {}, timeoutMs = 15000) {
+  const client = getCodexIpcClient();
+  await client.ensureReady();
+  const response = await client.request(
+    `turnloom/queue/${method}`,
+    { conversationId: String(threadId || ""), threadId: String(threadId || ""), ...extra },
+    { timeoutMs }
+  );
+  return response?.result ?? response ?? {};
+}
+
+
+/** 桥未重载 / 未连接时给手机端一个可操作的说法，而不是 500。 */
+function hostBridgeError(error) {
+  const message = String(error?.message || error || "");
+  const needsReload =
+    /unsupported method:\s*turnloom\//i.test(message) || /desktop IPC is not connected/i.test(message);
+  return {
+    status: needsReload ? 503 : 502,
+    body: {
+      error: needsReload
+        ? "PI 插件需要重载后才能使用这个能力：在 PI 插件页重载 cn.star.turnloom-bridge，或下次启动 PI。"
+        : /workspace required/i.test(message)
+          ? "这个会话没有绑定工作区（项目），无法浏览文件或查看改动。请在桌面端把会话移到项目后再试。"
+          : message,
+      needsReload
+    }
+  };
+}
+
+async function hostReply(res, work) {
+  try {
+    sendJson(res, 200, await work());
+  } catch (error) {
+    const { status, body } = hostBridgeError(error);
+    sendJson(res, status, body);
+  }
+}
+/**
+ * 旧桥用 `method.includes("approval")` 兜底，会把 turnloom/approvals/* 吞成
+ * {ok:true}，手机端会误以为「没有待审批」。这里用响应形状把这种假成功识别成
+ * 「桥需要重载」，避免静默丢审批。
+ */
+function assertHostShape(data, key, method) {
+  if (!data || !Array.isArray(data[key])) {
+    throw new Error(`unsupported method: turnloom/${method}`);
+  }
+  return data;
+}
+/**
+ * 统一的桥委托：手机端的「更多能力」都走这里。
+ * 白名单在桥里（HOST_*_OPERATIONS），服务端只做形状校验与审计；
+ * 危险操作必须由请求体显式 confirm:true（手机端二次确认后才带）。
+ */
+async function requestBridge(method, params = {}, timeoutMs = 20000) {
+  const client = getCodexIpcClient();
+  await client.ensureReady();
+  const response = await client.request(`turnloom/${method}`, params, { timeoutMs });
+  const result = response?.result ?? response ?? {};
+  if (result && result.ok === false) {
+    throw new Error(String(result.error || result.reason || `${method} failed`));
+  }
+  return result;
+}
+
+/**
+ * 只有「桥明确不支持新方法」才说明运行中的插件尚未重载；连接失败/超时必须
+ * 保持错误，不能把消息偷偷写进第二套队列，否则桌面端与手机端会各发一份。
+ */
+function isLegacyQueueBridge(error) {
+  return /unsupported method:\s*turnloom\/queue\//i.test(String(error?.message || error || ""));
+}
+
+let legacyQueueBridgeWarned = false;
+
+function useLegacyQueueFallback(error) {
+  if (!isLegacyQueueBridge(error)) throw error;
+  if (!legacyQueueBridgeWarned) {
+    legacyQueueBridgeWarned = true;
+    logError("[queue] PI bridge needs reload; using the legacy local queue until then.");
+  }
+  return true;
+}
+
+/** 旧桥期间即使 PI_NATIVE_QUEUE=true，也要让本地队列继续 drain。 */
+let legacyQueueMode = false;
+
+function localQueueDrainEnabled() {
+  return !PI_NATIVE_QUEUE || legacyQueueMode;
+}
+
+function markLegacyQueueMode() {
+  legacyQueueMode = true;
+}
+
+function queueUnavailableStatus(error) {
+  return {
+    queueLength: 0,
+    queuedMessages: [],
+    queueError: error?.message || String(error),
+    queueUnavailable: true,
+    queueSource: "pi-native"
+  };
+}
+
+/** IPC 抖动时保留上一次成功读到的共享队列，绝不偷偷写第二套影子队列。 */
+const lastKnownNativeQueue = new Map();
+function nativeQueueFallbackStatus(threadId, error, store = lastKnownNativeQueue) {
+  const previous = store.get(String(threadId || ""));
+  if (!previous) return queueUnavailableStatus(error);
+  return {
+    ...previous,
+    queueError: error?.message || String(error),
+    queueUnavailable: true,
+    queueStale: true,
+    queueSource: "pi-native"
+  };
+}
+
+function normalizedDeliveryState(value) {
+  const state = String(value || "").toLowerCase();
+  return ["queued", "sending", "awaitingConfirmation", "failed"].includes(state) ? state : "queued";
+}
+
+function nativeQueuedSendStatusFromEntries(threadId, entries) {
+  const rows = Array.isArray(entries) ? entries : [];
+  return {
+    queueLength: rows.length,
+    queuedMessages: rows.map((entry, index) => {
+      const text = String(entry?.content ?? entry?.text ?? "");
+      const images = Array.isArray(entry?.attachments)
+        ? entry.attachments.map((image, imageIndex) => ({
+            name: String(image?.name || `图片 ${imageIndex + 1}`),
+            url: `/api/queue/image?threadId=${encodeURIComponent(threadId)}&itemId=${encodeURIComponent(entry?.id || "")}&index=${imageIndex}`
+          }))
+        : [];
+      return {
+        id: String(entry?.id || `native-${index}`),
+        text,
+        preview: queuedMessagePreview(text, images.length),
+        imageCount: images.length,
+        images,
+        enqueuedAt: entry?.createdAt || new Date().toISOString(),
+        lastError: entry?.lastError ? String(entry.lastError) : null,
+        deliveryState: normalizedDeliveryState(entry?.deliveryState),
+        nextAttemptAtMs: Number(entry?.nextAttemptAtMs) || 0,
+        model: String(entry?.model || ""),
+        effort: String(entry?.effort || ""),
+        principal: String(entry?.principal || ""),
+        position: Number(entry?.position) || index + 1,
+        priority: entry?.priority == null ? null : Number(entry.priority),
+        source: "pi-native"
+      };
+    }),
+    queueSource: "pi-native"
+  };
+}
+
+async function queuedSendStatus(threadId) {
+  if (!PI_NATIVE_QUEUE || legacyQueueMode) return localQueuedSendStatus(threadId);
+  try {
+    const result = await requestNativeQueue("list", threadId, {}, 8000);
+    const status = nativeQueuedSendStatusFromEntries(threadId, result.entries);
+    lastKnownNativeQueue.set(String(threadId), status);
+    return status;
+  } catch (error) {
+    if (useLegacyQueueFallback(error)) {
+      markLegacyQueueMode();
+      return localQueuedSendStatus(threadId);
+    }
+    logError(`[queue] PI native queue unavailable: ${error?.message || error}`);
+    return nativeQueueFallbackStatus(threadId, error);
+  }
+}
+
+const drainingNativeQueues = new Set();
+const nativeQueuedSendDrainTimers = new Map();
+const nativeQueueIdleObservations = new Map();
+
+function scheduleNativeQueuedSendDrain(threadId, delayMs = 250) {
+  const key = String(threadId || "");
+  if (!PI_NATIVE_QUEUE || legacyQueueMode || !key || drainingNativeQueues.has(key) || nativeQueuedSendDrainTimers.has(key)) return;
+  const timer = setTimeout(() => {
+    nativeQueuedSendDrainTimers.delete(key);
+    void drainNativeQueuedSend(key);
+  }, Math.max(0, Number(delayMs) || 0));
+  nativeQueuedSendDrainTimers.set(key, timer);
+  timer.unref?.();
+}
+
+const MAX_CLIENT_INLINE_IMAGE_CHARS = 16 * 1024;
+const MAX_CLIENT_MESSAGE_CONTENT_CHARS = 24 * 1024;
+
+function offloadInlineImageForClient(image, threadId, sequence) {
+  const dataUrl = typeof image === "string" ? image : "";
+  const match = /^data:image\/(png|jpe?g|webp|gif|bmp|heic);base64,([A-Za-z0-9+/]+={0,2})$/i.exec(dataUrl);
+  if (!match) return { image, savedChars: 0 };
+  const mimeType = `image/${match[1].toLowerCase() === "jpg" ? "jpeg" : match[1].toLowerCase()}`;
+  const ext = mimeType === "image/jpeg" ? "jpg" : match[1].toLowerCase();
+  const safeThreadId = String(threadId || "");
+  if (!/^[A-Za-z0-9._-]+$/.test(safeThreadId)) return { image, savedChars: 0 };
+  const name = `turnloom-client-${createHash("sha256").update(dataUrl).digest("hex").slice(0, 20)}.${ext}`;
+  const target = path.resolve(PI_DATA_ROOT, "scratch", safeThreadId, name);
+  const bytes = Buffer.from(match[2], "base64");
+  try {
+    if (!existsSync(target)) {
+      mkdirSync(path.dirname(target), { recursive: true });
+      writeFileSync(target, bytes);
+    }
+  } catch {
+    return { image, savedChars: 0 };
+  }
+  const url = `/api/thread-image?threadId=${encodeURIComponent(safeThreadId)}&name=${encodeURIComponent(name)}`;
+  return {
+    image: { name, mimeType, size: bytes.byteLength, url, dataUrl: url, offloadedImage: true },
+    savedChars: dataUrl.length - url.length
+  };
+}
+
+// Only inline base64 images embedded in message *text* are pathological. Long
+// prose is left intact so "copy full text" stays lossless.
+const CLIENT_INLINE_IMAGE_TEXT = /data:image\/[a-z0-9.+-]+;base64,[A-Za-z0-9+/]+={0,2}/gi;
+
+function compactOversizedMessageContent(value) {
+  if (typeof value !== "string" || value.length <= MAX_CLIENT_MESSAGE_CONTENT_CHARS) return { value, savedChars: 0 };
+  const replaced = value.replace(CLIENT_INLINE_IMAGE_TEXT, "[内联图片已移出正文]");
+  if (replaced.length <= MAX_CLIENT_MESSAGE_CONTENT_CHARS) {
+    return { value: replaced, savedChars: value.length - replaced.length };
+  }
+  const notice = `\n\n… 内容过长，已省略 ${replaced.length - MAX_CLIENT_MESSAGE_CONTENT_CHARS} 个字符`;
+  return {
+    value: `${replaced.slice(0, MAX_CLIENT_MESSAGE_CONTENT_CHARS)}${notice}`,
+    savedChars: value.length - MAX_CLIENT_MESSAGE_CONTENT_CHARS - notice.length
+  };
+}
+
+function capMessagesResponseForClient(response, threadId) {
+  if (!response || !Array.isArray(response.messages)) return response;
+  let savedChars = 0;
+  let sequence = 0;
+  const messages = response.messages.map((message) => {
+    if (!message || typeof message !== "object") return message;
+    const next = { ...message };
+    if (Array.isArray(next.images)) {
+      next.images = next.images.map((image) => {
+        if (typeof image !== "string" || image.length <= MAX_CLIENT_INLINE_IMAGE_CHARS) return image;
+        const result = offloadInlineImageForClient(image, threadId, sequence++);
+        savedChars += result.savedChars;
+        return result.image;
+      });
+    }
+    for (const key of ["content", "text"]) {
+      if (typeof next[key] === "string") {
+        const result = compactOversizedMessageContent(next[key]);
+        next[key] = result.value;
+        savedChars += result.savedChars;
+      }
+    }
+    return next;
+  });
+  const result = { ...response, messages };
+  // base_instructions / dynamic_tools in the rollout meta are session setup,
+  // not chat content: ~49 KB here, never rendered by the phone UI. Bound large
+  // fields (including nested objects) while keeping the meta shape intact.
+  if (result.meta && typeof result.meta === "object" && !Array.isArray(result.meta)) {
+    const meta = {};
+    for (const [key, value] of Object.entries(result.meta)) {
+      const text = typeof value === "string" ? value : JSON.stringify(value);
+      if (text && text.length > 1024) {
+        meta[key] = `[已省略 ${text.length} 字符]`;
+        savedChars += text.length;
+      } else {
+        meta[key] = value;
+      }
+    }
+    result.meta = meta;
+  }
+  if (savedChars) result.clientPayloadBytesSaved = savedChars;
+  return result;
+}
+
+async function finalizeMessagesResponse(threadId, response) {
+  const queueStatus = await queuedSendStatus(threadId);
+  // 服务端持久回显：只要该会话存在 receipt，就把暂存附件补到对应纯文本用户消息。
+  // 不消费、不删 receipt；刷新和换设备读到的是同一份本地文件。
+  let messages = Array.isArray(response?.messages) ? response.messages : null;
+  if (messages) {
+    const restored = restoreLocalImages(messages, readImageReceipts(threadId), threadId);
+    messages = restored.messages;
+  }
+  const result = {
+    ...response,
+    ...(messages ? { messages } : {}),
+    status: {
+      ...(response.status || {}),
+      ...queueStatus
+    }
+  };
+  if (localQueueDrainEnabled() && !result.status.thinking && queueStatus.queueLength) {
+    scheduleLocalQueuedSendDrain(threadId);
+  } else if (!localQueueDrainEnabled() && !result.status.thinking && queueStatus.queueLength && !result.status.queueStale) {
+    scheduleNativeQueuedSendDrain(threadId);
+  }
+  return capMessagesResponseForClient(result, threadId);
+}
+
+
+async function enqueueSend(threadId, text, images = [], turnSettings = {}, clientRequestId = "") {
+  const key = String(threadId);
+  if (PI_NATIVE_QUEUE && !legacyQueueMode) {
+    try {
+      const result = await requestNativeQueue("push", key, {
+        content: String(text || ""),
+        images,
+        clientRequestId: String(clientRequestId || randomUUID()),
+        model: turnSettings?.model || "",
+        effort: turnSettings?.effort || ""
+      });
+      const status = await queuedSendStatus(key);
+      scheduleNativeQueuedSendDrain(key);
+      const item = status.queuedMessages.find((entry) => entry.id === String(result?.id || "")) || status.queuedMessages.at(-1) || null;
+      return {
+        ok: true,
+        mode: "queue",
+        queued: true,
+        threadId: key,
+        queueItem: item,
+        queueLength: status.queueLength,
+        sentAt: result?.createdAt || new Date().toISOString(),
+        queueSource: "pi-native"
+      };
+    } catch (error) {
+      // 连接/超时错误不能回退，否则权威表可能已经写入，手机端又会出现第二份。
+      if (!useLegacyQueueFallback(error)) throw error;
+      markLegacyQueueMode();
+    }
+  }
+  const queue = pendingSendQueues.get(key) || [];
+  queueIdleObservations.delete(key);
+  const item = {
+    id: randomUUID(),
+    text,
+    images,
+    turnSettings,
+    enqueuedAt: new Date().toISOString(),
+    lastError: null,
+    nextAttemptAtMs: 0,
+    deliveryState: "queued",
+    deliveryBaseline: 0,
+    deliveryTurnId: null,
+    deliveryAttemptedAtMs: 0
+  };
+  setPendingSendQueue(key, [...queue, item]);
+  scheduleLocalQueuedSendDrain(key);
+  const status = localQueuedSendStatus(key);
+  return {
+    ok: true,
+    mode: "queue",
+    queued: true,
+    threadId: key,
+    queueItem: status.queuedMessages.find((entry) => entry.id === item.id),
+    queueLength: status.queueLength,
+    sentAt: item.enqueuedAt
+  };
+}
+
+async function cancelQueuedSend(threadId, itemId = "", { edit = false } = {}) {
+  const key = String(threadId || "");
+  if (PI_NATIVE_QUEUE && !legacyQueueMode) {
+    try {
+      const result = await requestNativeQueue("remove", key, { itemId: String(itemId || ""), edit: Boolean(edit) });
+      const status = nativeQueuedSendStatusFromEntries(key, result.entries);
+      return {
+        ok: true,
+        threadId: key,
+        cancelled: Number(result?.cancelled) || 0,
+        cancelledIds: Array.isArray(result?.cancelledIds) ? result.cancelledIds : [],
+        ...(edit && result?.draft ? { draft: result.draft } : {}),
+        ...status
+      };
+    } catch (error) {
+      if (!useLegacyQueueFallback(error)) throw error;
+      markLegacyQueueMode();
+    }
+  }
+  const queue = pendingSendQueues.get(key) || [];
+  const status = () => localQueuedSendStatus(key);
+  if (!queue.length) return { ok: true, threadId: key, cancelled: 0, ...status() };
+  const selected = queue.filter((item) => !itemId || item.id === itemId);
+  if (selected.some((item) => ["sending", "awaitingConfirmation"].includes(item.deliveryState))) {
+    const error = new Error("这条消息正在发送或等待确认，暂时不能编辑或取消。");
+    error.status = 409;
+    throw error;
+  }
+  if (edit && (!itemId || !selected.length)) {
+    const error = new Error("排队消息已发送或已移除，请刷新后查看。");
+    error.status = 409;
+    throw error;
+  }
+  const remaining = itemId ? queue.filter((item) => item.id !== itemId) : [];
+  const cancelled = queue.length - remaining.length;
+  setPendingSendQueue(key, remaining);
+  if (!remaining.length) {
+    queueIdleObservations.delete(key);
+    const timer = queuedSendDrainTimers.get(key);
+    if (timer) clearTimeout(timer);
+    queuedSendDrainTimers.delete(key);
+  }
+  return {
+    ok: true, threadId: key, cancelled,
+    cancelledIds: selected.map((item) => item.id),
+    ...(edit ? { draft: { text: selected[0].text, images: cloneQueuedSendImages(selected[0].images) } } : {}),
+    ...status()
+  };
+}
+
+function sendRequestFingerprint(body = {}) {
+  return JSON.stringify({
+    threadId: body.threadId || null,
+    newThread: Boolean(body.newThread),
+    mode: body.mode || "start",
+    model: body.model || null,
+    effort: body.effort || null,
+    message: body.message || "",
+    images: Array.isArray(body.images)
+      ? body.images.map((image) => ({ name: image?.name || "", mimeType: image?.mimeType || "", data: image?.data || "" }))
+      : [],
+    files: sendFiles.sendFilesFingerprint(body.files)
+  });
+}
+
+function scheduleLocalQueuedSendDrain(threadId, delayMs = 250) {
+  const key = String(threadId || "");
+  if (!key || drainingSendQueues.has(key) || queuedSendDrainTimers.has(key)) return;
+  const timer = setTimeout(() => {
+    queuedSendDrainTimers.delete(key);
+    void drainQueuedSend(key);
+  }, delayMs);
+  queuedSendDrainTimers.set(key, timer);
+  timer.unref?.();
+}
+
+function runIdempotentSend(requestId, fingerprint, execute, store = recentSendRequests) {
+  const key = String(requestId || "").trim();
+  if (!key) return Promise.resolve().then(execute);
+  const existing = store.get(key);
+  if (existing) {
+    if (existing.fingerprint !== fingerprint) {
+      const err = new Error("This send request ID was already used for a different message.");
+      err.status = 409;
+      return Promise.reject(err);
+    }
+    return existing.promise;
+  }
+  const promise = Promise.resolve().then(execute).catch((error) => {
+    // A confirmed pre-send gate did no host work. Let the unchanged draft retry
+    // after that gate clears; ambiguous execution failures stay deduplicated.
+    if (error?.sendNotStarted === true && store.get(key)?.promise === promise) store.delete(key);
+    throw error;
+  });
+  store.set(key, { fingerprint, promise });
+  const timer = setTimeout(() => { if (store.get(key)?.promise === promise) store.delete(key); }, 5 * 60 * 1000);
+  timer.unref?.();
+  return promise;
+}
+
+/** Stage ordinary files once, inside the same idempotency operation as sending. */
+async function sendWithFiles(body = {}, execute = sendToCodex, {
+  dataRoot = PI_DATA_ROOT, store = recentSendRequests
+} = {}) {
+  const files = sendFiles.normalizeSendFiles(body.files);
+  // Validate images before staging; they retain their own model-image pipeline.
+  const images = normalizeSendImages(body.images);
+  return runIdempotentSend(body.clientRequestId, sendRequestFingerprint(body), async () => {
+    if (!ALLOW_WRITE) { const error = new Error("Read-only mode is enabled."); error.status = 403; throw error; }
+    const staged = await sendFiles.stageSendFiles(files, { dataRoot, sessionKey: body.threadId || body.clientRequestId });
+    const message = sendFiles.messageWithSendFiles(body.message, staged);
+    const result = await execute(message, body.threadId, images, {
+      newThread: Boolean(body.newThread), mode: body.mode, model: body.model,
+      effort: body.effort, project: body.project || null,
+      clientRequestId: String(body.clientRequestId || "")
+    });
+    return staged.length ? { ...result, files: sendFiles.sendFilesPublicMetadata(staged) } : result;
+  }, store);
+}
+
+function runSerializedThreadStart(threadId, execute, store = threadStartOperations) {
+  const key = String(threadId || "");
+  const previous = store.get(key) || Promise.resolve();
+  const operation = previous.catch(() => {}).then(execute);
+  store.set(key, operation);
+  operation
+    .finally(() => {
+      if (store.get(key) === operation) store.delete(key);
+    })
+    .catch(() => {});
+  return operation;
+}
+
+
+function queuedSendIdleDecision(thinking, idleSinceMs, nowMs = Date.now(), settleMs = QUEUE_IDLE_SETTLE_MS) {
+  if (thinking) return { ready: false, idleSinceMs: null, retryAfterMs: null };
+  const observedIdleSinceMs = Number.isFinite(idleSinceMs) ? idleSinceMs : nowMs;
+  const elapsedMs = Math.max(0, nowMs - observedIdleSinceMs);
+  return {
+    ready: elapsedMs >= settleMs,
+    idleSinceMs: observedIdleSinceMs,
+    retryAfterMs: Math.max(0, settleMs - elapsedMs)
+  };
+}
+
+async function steerQueuedSend(threadId, itemId) {
+  const key = String(threadId || "");
+  if (PI_NATIVE_QUEUE && !legacyQueueMode) {
+    try {
+      const result = await requestNativeQueue("steer", key, { itemId: String(itemId || "") });
+      const status = nativeQueuedSendStatusFromEntries(key, result.entries);
+      return {
+        ok: true,
+        threadId: key,
+        mode: result?.mode || "priority",
+        turnId: result?.turnId || null,
+        ...status
+      };
+    } catch (error) {
+      if (!useLegacyQueueFallback(error)) throw error;
+      markLegacyQueueMode();
+    }
+  }
+  const queue = pendingSendQueues.get(key) || [];
+  const index = queue.findIndex((item) => item.id === itemId);
+  if (index < 0) {
+    const error = new Error("排队消息已发送或已移除，请刷新后查看。");
+    error.status = 409;
+    throw error;
+  }
+  const item = queue[index];
+  if (["sending", "awaitingConfirmation"].includes(normalizedQueuedSendState(item.deliveryState))) {
+    const error = new Error("这条消息正在发送，暂时不能转为插入。");
+    error.status = 409;
+    throw error;
+  }
+  const remaining = queue.filter((entry) => entry.id !== itemId);
+  setPendingSendQueue(key, remaining);
+  try {
+    const result = await sendToCodex(item.text, key, item.images, { mode: "steer", ...item.turnSettings });
+    return {
+      ok: true,
+      threadId: key,
+      mode: result?.mode || "steer",
+      turnId: result?.turnId || null,
+      ...localQueuedSendStatus(key)
+    };
+  } catch (error) {
+    // Restore the item at its original position so a failed insert never loses
+    // the user's queued message.
+    const current = pendingSendQueues.get(key) || [];
+    setPendingSendQueue(key, [...current.slice(0, index), item, ...current.slice(index)]);
+    scheduleLocalQueuedSendDrain(key);
+    throw error;
+  }
+}
+
+function queuedSendMatchCount(messages, item) {
+  const expectedText = String(item?.text || "").trim();
+  const expectedImageCount = Array.isArray(item?.images) ? item.images.length : 0;
+  return (Array.isArray(messages) ? messages : []).filter((message) => {
+    if (message?.role !== "user") return false;
+    if (expectedText) {
+      return messageTextForMatch(message.content || message.text || message).includes(expectedText);
+    }
+    const imageCount = Math.max(message?.images?.length || 0, message?.localImages?.length || 0);
+    return expectedImageCount > 0 && imageCount >= expectedImageCount;
+  }).length;
+}
+
+function queuedSendConfirmed(response, item) {
+  const expectedTurnId = String(item?.deliveryTurnId || "").trim();
+  if (expectedTurnId) {
+    if (String(response?.status?.turnId || "") === expectedTurnId) return true;
+    if ((Array.isArray(response?.messages) ? response.messages : []).some((message) => String(message?.turnId || "") === expectedTurnId)) {
+      return true;
+    }
+  }
+  return queuedSendMatchCount(response?.messages, item) > Math.max(0, Number(item?.deliveryBaseline) || 0);
+}
+
+async function queuedSendConfirmationSnapshot(threadId, item) {
+  const response = await getMessages(threadId, { limit: 160, fullHistory: false });
+  return {
+    response,
+    matchCount: queuedSendMatchCount(response.messages, item)
+  };
+}
+
+async function waitForQueuedSendConfirmation(threadId, item, timeoutMs = QUEUE_CONFIRMATION_TIMEOUT_MS) {
+  const deadline = Date.now() + timeoutMs;
+  while (true) {
+    invalidateThreadCaches();
+    try {
+      const response = await getMessages(threadId, { limit: 160, fullHistory: false });
+      if (queuedSendConfirmed(response, item)) return true;
+    } catch {
+      // Codex can rotate its local data files while the new turn is being written.
+    }
+    if (Date.now() >= deadline) return false;
+    await sleep(Math.min(QUEUE_CONFIRMATION_POLL_MS, Math.max(1, deadline - Date.now())));
+  }
+}
+
+function setQueuedSendDeliveryState(threadId, itemId, patch) {
+  return updateQueuedSendItem(threadId, itemId, (item) => ({
+    ...item,
+    ...patch,
+    deliveryState: normalizedQueuedSendState(patch.deliveryState ?? item.deliveryState)
+  }));
+}
+
+function completeQueuedSend(threadId, itemId) {
+  if (!removeQueuedSendItem(threadId, itemId)) return false;
+  recordNotice(threadId, {
+    severity: "info",
+    title: "排队消息已发送",
+    content: "上一条任务完成后，排队中的消息已确认送达 Codex。",
+    source: "queue"
+  });
+  return true;
+}
+
+async function drainQueuedSend(threadId) {
+  const key = String(threadId || "");
+  if (!key || drainingSendQueues.has(key)) return;
+  const queue = pendingSendQueues.get(key);
+  if (!queue?.length) return;
+  drainingSendQueues.add(key);
+  try {
+    let item = queue[0];
+    if (["sending", "awaitingConfirmation"].includes(normalizedQueuedSendState(item.deliveryState))) {
+      const confirmed = await waitForQueuedSendConfirmation(key, item);
+      if (confirmed) {
+        completeQueuedSend(key, item.id);
+      } else {
+        setQueuedSendDeliveryState(key, item.id, {
+          deliveryState: "awaitingConfirmation",
+          lastError: null,
+          nextAttemptAtMs: Date.now() + QUEUE_CONFIRMATION_RECHECK_MS
+        });
+      }
+      return;
+    }
+    if (item.nextAttemptAtMs > Date.now()) return;
+    const current = await getMessages(key, { limit: 20, fullHistory: true });
+    const idleDecision = queuedSendIdleDecision(
+      Boolean(current.status?.thinking),
+      queueIdleObservations.get(key),
+      Date.now()
+    );
+    if (current.status?.thinking) {
+      queueIdleObservations.delete(key);
+      return;
+    }
+    queueIdleObservations.set(key, idleDecision.idleSinceMs);
+    if (!idleDecision.ready) {
+      scheduleLocalQueuedSendDrain(key, idleDecision.retryAfterMs);
+      return;
+    }
+    queueIdleObservations.delete(key);
+    try {
+      const snapshot = await queuedSendConfirmationSnapshot(key, item);
+      item = setQueuedSendDeliveryState(key, item.id, {
+        deliveryState: "sending",
+        deliveryBaseline: snapshot.matchCount,
+        deliveryTurnId: null,
+        deliveryAttemptedAtMs: Date.now(),
+        lastError: null,
+        nextAttemptAtMs: 0
+      });
+      if (!item) return;
+      const result = await sendToCodex(item.text, key, item.images, { mode: "start", ...item.turnSettings });
+      item = setQueuedSendDeliveryState(key, item.id, {
+        deliveryState: "awaitingConfirmation",
+        deliveryTurnId: result?.turnId ? String(result.turnId) : null,
+        deliveryAttemptedAtMs: Date.now(),
+        lastError: null,
+        nextAttemptAtMs: 0
+      });
+      if (!item) return;
+      if (await waitForQueuedSendConfirmation(key, item)) {
+        completeQueuedSend(key, item.id);
+      } else {
+        setQueuedSendDeliveryState(key, item.id, {
+          deliveryState: "awaitingConfirmation",
+          lastError: null,
+          nextAttemptAtMs: Date.now() + QUEUE_CONFIRMATION_RECHECK_MS
+        });
+      }
+    } catch (error) {
+      if (error?.status === 409 && /still running/i.test(error?.message || "")) {
+        setQueuedSendDeliveryState(key, item.id, {
+          deliveryState: "queued",
+          lastError: null,
+          nextAttemptAtMs: 0
+        });
+        return;
+      }
+      const failureMessage = error?.message || "Queued send failed";
+      setQueuedSendDeliveryState(key, item.id, {
+        deliveryState: "failed",
+        lastError: failureMessage,
+        nextAttemptAtMs: Date.now() + 30_000
+      });
+      recordNotice(key, {
+        severity: "error",
+        title: "排队发送失败",
+        content: failureMessage,
+        source: "queue"
+      });
+    }
+  } catch (error) {
+    logError("[queue] " + key + ": " + (error?.message || error));
+  } finally {
+    drainingSendQueues.delete(key);
+    const remaining = pendingSendQueues.get(key);
+    if (remaining?.length) {
+      const retryDelayMs = Math.max(1500, (remaining[0].nextAttemptAtMs || 0) - Date.now());
+      scheduleLocalQueuedSendDrain(key, retryDelayMs);
+    }
+  }
+}
+/** 权威队列的附件只允许本会话 scratch 下的 turnloom-* 图片。 */
+function safeQueuedNativeAttachment(threadId, attachment, root = PI_DATA_ROOT) {
+  const name = path.basename(String(attachment?.path || ""));
+  if (!/^turnloom-[A-Za-z0-9._-]+\.(jpg|jpeg|png|webp)$/i.test(name)) return null;
+  const sessionRoot = path.resolve(root, "scratch", String(threadId || ""));
+  const candidate = path.resolve(sessionRoot, name);
+  if (!candidate.startsWith(sessionRoot + path.sep) || !existsSync(candidate)) return null;
+  const mimeType = String(attachment?.mimeType || "").trim().toLowerCase();
+  if (!SUPPORTED_SEND_IMAGE_MIME_TYPES.has(mimeType)) return null;
+  return { path: candidate, name: String(attachment?.name || name), mimeType };
+}
+
+function nativeQueueImages(threadId, attachments) {
+  const images = [];
+  for (const attachment of Array.isArray(attachments) ? attachments : []) {
+    const safe = safeQueuedNativeAttachment(threadId, attachment);
+    if (!safe) continue;
+    const bytes = readFileSync(safe.path);
+    images.push({ name: safe.name, mimeType: safe.mimeType, data: bytes.toString("base64"), size: bytes.byteLength });
+  }
+  return images;
+}
+
+async function drainNativeQueuedSend(threadId) {
+  const key = String(threadId || "");
+  if (!key || drainingNativeQueues.has(key) || legacyQueueMode) return;
+  drainingNativeQueues.add(key);
+  try {
+    const current = await getMessages(key, { limit: 20, fullHistory: true });
+    const idleDecision = queuedSendIdleDecision(
+      Boolean(current.status?.thinking),
+      nativeQueueIdleObservations.get(key),
+      Date.now()
+    );
+    if (current.status?.thinking) {
+      nativeQueueIdleObservations.delete(key);
+      return;
+    }
+    nativeQueueIdleObservations.set(key, idleDecision.idleSinceMs);
+    if (!idleDecision.ready) {
+      scheduleNativeQueuedSendDrain(key, idleDecision.retryAfterMs);
+      return;
+    }
+    nativeQueueIdleObservations.delete(key);
+    const claim = await requestNativeQueue("claim", key, {}, 12000);
+    if (!claim?.claimed || !claim?.entry) return;
+    const entry = claim.entry;
+    const images = nativeQueueImages(key, entry.attachments);
+    try {
+      const result = await sendToCodex(entry.content, key, images, {
+        mode: "start",
+        model: entry.model,
+        effort: entry.effort,
+        clientRequestId: `native-queue-${entry.id}`
+      });
+      await requestNativeQueue("state", key, {
+        itemId: entry.id,
+        deliveryState: "queued",
+        lastError: "",
+        nextAttemptAtMs: 0
+      }, 8000).catch(() => {});
+      logInfo(`[queue] native item sent: ${entry.id} turn=${result?.turnId || "-"}`);
+    } catch (error) {
+      const message = String(error?.message || error || "排队发送失败");
+      const nextAttemptAtMs = Date.now() + 30_000;
+      // claim 已原子 DELETE。失败时以原 id 幂等写回权威表，再把失败原因标到同一 id；
+      // 消息绝不丢，也不会由两个消费者重复下发。
+      let restoredId = entry.id;
+      try {
+        const restored = await requestNativeQueue("push", key, {
+          content: entry.content,
+          images,
+          clientRequestId: `native-queue-${entry.id}`,
+          restoreId: entry.id,
+          model: entry.model || "",
+          effort: entry.effort || ""
+        }, 12000);
+        restoredId = String(restored?.id || restored?.entry?.id || entry.id);
+      } catch (restoreError) {
+        logError(`[queue] native item restore failed: ${entry.id}: ${restoreError?.message || restoreError}`);
+      }
+      await requestNativeQueue("state", key, {
+        itemId: restoredId,
+        deliveryState: "failed",
+        lastError: message,
+        nextAttemptAtMs
+      }, 8000).catch(() => {});
+      recordNotice(key, { severity: "error", title: "排队发送失败", content: message, source: "queue" });
+    }
+  } catch (error) {
+    logError(`[queue] native drain ${key}: ${error?.message || error}`);
+  } finally {
+    drainingNativeQueues.delete(key);
+    try {
+      const status = await queuedSendStatus(key);
+      if (status.queueLength && !status.queueStale) {
+        const next = Math.max(1500, (status.queuedMessages[0]?.nextAttemptAtMs || 0) - Date.now());
+        scheduleNativeQueuedSendDrain(key, Math.min(next, 30_000));
+      }
+    } catch {}
+  }
+}
+
+
+function normalizeSendImages(images) {
+  if (!Array.isArray(images)) return [];
+  if (images.length > MAX_SEND_IMAGES) {
+    const err = new Error(`Too many images. Maximum is ${MAX_SEND_IMAGES}.`);
+    err.status = 400;
+    throw err;
+  }
+  return images.map((image, index) => {
+    const mimeType = String(image?.mimeType || "").trim().toLowerCase();
+    const data = String(image?.data || "").replace(/^data:[^;]+;base64,/, "");
+    const name = String(image?.name || `image-${index + 1}`).slice(0, 120);
+    if (!SUPPORTED_SEND_IMAGE_MIME_TYPES.has(mimeType)) {
+      const err = new Error("Unsupported image format. Use JPEG, PNG, or WebP.");
+      err.status = 400;
+      throw err;
+    }
+    if (!data || data.length % 4 !== 0 || !/^[a-zA-Z0-9+/]+={0,2}$/.test(data)) {
+      const err = new Error("Invalid image data");
+      err.status = 400;
+      throw err;
+    }
+    const bytes = Buffer.from(data, "base64");
+    const validation = validateSendImageBytes(bytes, mimeType);
+    if (bytes.byteLength > MAX_SEND_IMAGE_BYTES) {
+      const err = new Error(`Image is too large. Maximum is ${Math.round(MAX_SEND_IMAGE_BYTES / 1024 / 1024)} MB.`);
+      err.status = 400;
+      throw err;
+    }
+    return { name, mimeType, data, size: bytes.byteLength, width: validation.width, height: validation.height };
+  });
+}
+
+function invalidImage(message = "Invalid image data") {
+  const err = new Error(message);
+  err.status = 400;
+  return err;
+}
+
+function validateSendImageBytes(bytes, mimeType) {
+  if (!Buffer.isBuffer(bytes) || bytes.byteLength < MIN_SEND_IMAGE_BYTES) {
+    throw invalidImage("Invalid image: image data is too small.");
+  }
+  const dimensions =
+    mimeType === "image/jpeg"
+      ? jpegDimensions(bytes)
+      : mimeType === "image/png"
+        ? pngDimensions(bytes)
+        : mimeType === "image/webp"
+          ? webpDimensions(bytes)
+          : null;
+  if (!dimensions) {
+    throw invalidImage("Invalid image: file content does not match its image type.");
+  }
+  const { width, height } = dimensions;
+  const pixels = width * height;
+  if (
+    !Number.isSafeInteger(width) ||
+    !Number.isSafeInteger(height) ||
+    width < MIN_SEND_IMAGE_EDGE ||
+    height < MIN_SEND_IMAGE_EDGE ||
+    width > MAX_SEND_IMAGE_EDGE ||
+    height > MAX_SEND_IMAGE_EDGE ||
+    pixels > MAX_SEND_IMAGE_PIXELS
+  ) {
+    throw invalidImage(
+      `Invalid image: dimensions must be ${MIN_SEND_IMAGE_EDGE}-${MAX_SEND_IMAGE_EDGE}px per side and under ${Math.round(MAX_SEND_IMAGE_PIXELS / 1_000_000)}MP.`
+    );
+  }
+  return dimensions;
+}
+
+function pngDimensions(bytes) {
+  const signature = "89504e470d0a1a0a";
+  if (bytes.byteLength < 33 || bytes.subarray(0, 8).toString("hex") !== signature) return null;
+  if (bytes.subarray(12, 16).toString("ascii") !== "IHDR") return null;
+  const width = bytes.readUInt32BE(16);
+  const height = bytes.readUInt32BE(20);
+  return { width, height };
+}
+
+function jpegDimensions(bytes) {
+  if (bytes.byteLength < 4 || bytes[0] !== 0xff || bytes[1] !== 0xd8) return null;
+  let offset = 2;
+  while (offset + 9 < bytes.byteLength) {
+    if (bytes[offset] !== 0xff) return null;
+    let marker = bytes[offset + 1];
+    while (marker === 0xff) {
+      offset += 1;
+      marker = bytes[offset + 1];
+    }
+    offset += 2;
+    if (marker === 0xd9 || marker === 0xda) break;
+    if (offset + 2 > bytes.byteLength) return null;
+    const segmentLength = bytes.readUInt16BE(offset);
+    if (segmentLength < 2 || offset + segmentLength > bytes.byteLength) return null;
+    if (
+      (marker >= 0xc0 && marker <= 0xc3) ||
+      (marker >= 0xc5 && marker <= 0xc7) ||
+      (marker >= 0xc9 && marker <= 0xcb) ||
+      (marker >= 0xcd && marker <= 0xcf)
+    ) {
+      if (segmentLength < 7) return null;
+      const height = bytes.readUInt16BE(offset + 3);
+      const width = bytes.readUInt16BE(offset + 5);
+      return { width, height };
+    }
+    offset += segmentLength;
+  }
+  return null;
+}
+
+function webpDimensions(bytes) {
+  if (bytes.byteLength < 30 || bytes.subarray(0, 4).toString("ascii") !== "RIFF" || bytes.subarray(8, 12).toString("ascii") !== "WEBP") {
+    return null;
+  }
+  const chunk = bytes.subarray(12, 16).toString("ascii");
+  if (chunk === "VP8X" && bytes.byteLength >= 30) {
+    return {
+      width: 1 + bytes.readUIntLE(24, 3),
+      height: 1 + bytes.readUIntLE(27, 3)
+    };
+  }
+  if (chunk === "VP8 " && bytes.byteLength >= 30 && bytes[23] === 0x9d && bytes[24] === 0x01 && bytes[25] === 0x2a) {
+    return {
+      width: bytes.readUInt16LE(26) & 0x3fff,
+      height: bytes.readUInt16LE(28) & 0x3fff
+    };
+  }
+  if (chunk === "VP8L" && bytes.byteLength >= 25 && bytes[20] === 0x2f) {
+    const bits = bytes.readUInt32LE(21);
+    return {
+      width: (bits & 0x3fff) + 1,
+      height: ((bits >> 14) & 0x3fff) + 1
+    };
+  }
+  return null;
+}
+
+async function sendToCodex(text, threadId, images = [], { newThread = false, mode = "start", model, effort, project = null, clientRequestId = "" } = {}) {
+  const homeState = await refreshCodexHomeContext({ source: "send" });
+  const modelConfiguration = await loadCodexModelConfiguration(homeState.home);
+  if (!ALLOW_WRITE) {
+    const err = new Error("Read-only mode is enabled. Restart without --readonly to send messages to Codex Desktop.");
+    err.status = 403;
+    throw err;
+  }
+  const trimmed = String(text || "").trim();
+  const normalizedImages = normalizeSendImages(images);
+  const resolved = resolveTurnSettings({ model, effort }, modelConfiguration);
+  if (resolved.requestedModel && !resolved.modelKnown) {
+    // 用错模型比发送失败更糟：用户以为在跑 DS，实际跑的是默认模型。
+    const err = new Error(
+      `所选模型「${resolved.requestedModel}」不在电脑端模型目录里（可能已下架或供应商被禁用）。请刷新模型列表后重新选择，本轮不会用其它模型代替发送。`
+    );
+    err.status = 409;
+    err.code = "MODEL_NOT_IN_CATALOG";
+    err.requestedModel = resolved.requestedModel;
+    throw err;
+  }
+  if (resolved.modelRemapped) {
+    logInfo(`[send] model "${resolved.requestedModel}" remapped to "${resolved.model}"`);
+  }
+  const turnSettings = { model: resolved.model, effort: resolved.effort };
+  // PI 后端：把「手机端显式选的模型」真正下发到会话，并回读验证。失败就 409。
+  // 排队发送不在这里切：真正的下发发生在 drain（那时会话才空闲）。
+  if (PI_NATIVE_QUEUE && !newThread && threadId && resolved.requestedModel
+      && String(mode || "start").toLowerCase() !== "queue") {
+    const live = await getMessages(threadId, { limit: 1, fullHistory: true });
+    if (live.status?.thinking) {
+      const err = new Error("会话正在运行，无法切换模型。请等这一轮结束后再发送，或改用排队。");
+      err.status = 409;
+      err.code = "MODEL_SWITCH_BUSY";
+      throw err;
+    }
+    const applied = await applyPiThreadModel(threadId, turnSettings);
+    if (applied?.effort) turnSettings.effort = applied.effort;
+  }
+  if (normalizedImages.length && !(await modelSupportsImagesForSend(turnSettings.model, modelConfiguration))) {
+    const err = new Error("当前模型不支持图片。请在模型面板切换到带「支持图片」标记的模型后再发送，或移除图片只发文字。");
+    err.status = 409;
+    throw err;
+  }
+  const sendMode = newThread ? "start" : String(mode || "start").toLowerCase();
+  if (!["start", "queue", "steer"].includes(sendMode)) {
+    const err = new Error("Invalid send mode. Use start, queue, or steer.");
+    err.status = 400;
+    throw err;
+  }
+  if (!trimmed && !normalizedImages.length) {
+    const err = new Error("消息内容为空，请输入文字后再发送。");
+    err.status = 400;
+    throw err;
+  }
+  if (trimmed.length > 12000) {
+    const err = new Error("消息过长，请拆分成多条发送（上限 12000 字）。");
+    err.status = 400;
+    throw err;
+  }
+  if (newThread) {
+    const result = await startNewCodexThread(trimmed, turnSettings, project, normalizedImages);
+    if (result.threadId) {
+      await notifyCodexDesktopThreadCreated(result.threadId);
+      rememberStartedThread({
+        id: result.threadId,
+        title: startedThreadTitle(trimmed),
+        createdAtMs: Date.now(),
+        updatedAtMs: Date.now(),
+        archived: false,
+        preview: trimmed.slice(0, 120),
+        cwd: project?.root || "",
+        model: turnSettings.model || "",
+        rolloutPath: "",
+        source: result.source || "desktop-ipc",
+        // Show the new conversation in its folder right away instead of only
+        // after the next facade sync.
+        ...(project ? { project: { key: `project:${project.id}`, id: project.id, name: project.name, native: true } } : {})
+      });
+    }
+    return {
+      ok: true,
+      mode: result.source || "desktop-ipc",
+      threadId: result.threadId,
+      images: normalizedImages.map(({ name, mimeType, size }) => ({ name, mimeType, size })),
+      turnId: result.turnId,
+      model: turnSettings.model,
+      effort: turnSettings.effort,
+      requestedModel: resolved.requestedModel || null,
+      sent: true,
+      sentAt: new Date().toISOString()
+    };
+  }
+
+  const targetThreadId = threadId || (await getThreads())[0]?.id;
+  if (!targetThreadId) {
+    const err = new Error("No target thread selected");
+    err.status = 400;
+    throw err;
+  }
+  const targetThread = await findThread(targetThreadId);
+  if (!targetThread) {
+    const err = new Error("Thread not found");
+    err.status = 404;
+    throw err;
+  }
+
+  if (sendMode === "queue") return enqueueSend(targetThreadId, trimmed, normalizedImages, turnSettings, clientRequestId);
+
+  if (sendMode === "steer") {
+    const current = await getMessages(targetThreadId, { limit: 20, fullHistory: true });
+    if (!current.status?.thinking) {
+      const err = new Error("There is no active Codex turn to insert this message into. Send it as a normal message instead.");
+      err.status = 409;
+      throw err;
+    }
+    let result;
+    try {
+      result = await getCodexIpcClient().steerTurn(targetThreadId, trimmed, normalizedImages, { cwd: targetThread.cwd });
+    } catch (error) {
+      if (isIpcTimeoutError(error)) return ambiguousSendResult(targetThreadId, trimmed, "steer");
+      if (!isNoActiveTurnError(error)) throw error;
+      const refreshed = await getMessages(targetThreadId, { limit: 20, fullHistory: true });
+      if (refreshed.status?.thinking) {
+        const err = new Error("Codex changed turns while the insert was being sent. Try Insert again or choose Queue.");
+        err.status = 409;
+        throw err;
+      }
+      const fallback = await sendToCodex(trimmed, targetThreadId, normalizedImages, { mode: "start", ...turnSettings });
+      return { ...fallback, mode: "start-after-steer", fallbackFrom: "steer" };
+    }
+    const response = {
+      ok: true,
+      mode: "steer",
+      threadId: targetThreadId,
+      images: normalizedImages.map(({ name, mimeType, size }) => ({ name, mimeType, size })),
+      turnId: result?.result?.result?.turnId || result?.result?.turnId || current.status.turnId || null,
+      model: turnSettings.model,
+      effort: turnSettings.effort,
+      requestedModel: resolved.requestedModel || null,
+    };
+    void refreshCodexDesktopAfterSend(targetThreadId, getCodexIpcClient(), { turnId: response.turnId }).catch((error) => {
+      logError(`[send-refresh] ${targetThreadId}: ${error?.message || error}`);
+    }, { timeoutMs: 60_000 });
+    return response;
+  }
+  return runSerializedThreadStart(targetThreadId, async () => {
+    const current = await getMessages(targetThreadId, { limit: 1, fullHistory: true });
+    if (current.status?.thinking) {
+      const err = new Error("Codex is still running. Choose Queue or Insert for this follow-up message.");
+      err.status = 409;
+      err.sendNotStarted = true;
+      throw err;
+    }
+
+    const repair = await repairInvalidCustomToolCallIds(targetThreadId);
+    if (repair.repaired) {
+      recordNotice(targetThreadId, {
+        severity: "warning",
+        title: "对话已修复",
+        content: `发送前修复了 ${repair.repaired} 个无效的自定义工具调用 ID，并已在本地保存备份。`,
+        source: "session-repair"
+      });
+    }
+
+    // The repair check can take long enough for another Desktop action to
+    // start a turn. Recheck immediately before Desktop creates its optimistic
+    // in-progress turn.
+    const finalStatus = await getMessages(targetThreadId, { limit: 1, fullHistory: true });
+    if (finalStatus.status?.thinking) {
+      const err = new Error("Codex is still running. Choose Queue or Insert for this follow-up message.");
+      err.status = 409;
+      err.sendNotStarted = true;
+      throw err;
+    }
+
+    let result;
+    try {
+      result = await startTurnWithOwnerRecovery(getCodexIpcClient(), targetThreadId, trimmed, normalizedImages, turnSettings);
+    } catch (error) {
+      const noticeMessage = error?.message || "Codex Desktop rejected the message.";
+      if (isNoOpenOwnerError(error)) {
+        const err = new Error(`Codex Desktop has no open owner for this thread. I tried opening the target conversation, but it did not become ready. Last IPC error: ${noticeMessage}.`);
+        err.status = 409;
+        recordNotice(targetThreadId, {
+          severity: "error",
+          title: "发送失败",
+          content: err.message,
+          source: "send"
+        });
+        throw err;
+      } else if (isIpcTimeoutError(error)) {
+        recordNotice(targetThreadId, {
+          severity: "warning",
+          title: "发送超时",
+          content: "桌面端未在预期时间内确认这次发送。为避免重复发送，本轮不会重试，你可以稍后在对话里核对。",
+          source: "send"
+        });
+        return ambiguousSendResult(targetThreadId, trimmed, "start");
+      } else {
+        recordNotice(targetThreadId, {
+          severity: noticeSeverity(error?.ipcMessage || { type: "error", message: noticeMessage }, "error"),
+          title: noticeTitle(error?.ipcMessage || { type: "error", message: noticeMessage }, "error"),
+          content: noticeMessage,
+          source: "send"
+        });
+        throw error;
+      }
+    }
+    const response = {
+      ok: true,
+      mode: "desktop-ipc",
+      threadId: targetThreadId,
+      images: normalizedImages.map(({ name, mimeType, size }) => ({ name, mimeType, size })),
+      turnId: result?.result?.turn?.id || result?.result?.turnId || null,
+      model: turnSettings.model,
+      effort: turnSettings.effort,
+      requestedModel: resolved.requestedModel || null,
+    };
+    void refreshCodexDesktopAfterSend(targetThreadId, getCodexIpcClient(), { turnId: response.turnId }).catch((error) => {
+      logError(`[send-refresh] ${targetThreadId}: ${error?.message || error}`);
+    });
+    return response;
+  });
+}
+
+async function setThreadPinned(threadId, pinned) {
+  if (!ALLOW_WRITE) {
+    const err = new Error("Read-only mode is enabled. Restart without --readonly to manage conversations.");
+    err.status = 403;
+    throw err;
+  }
+  const id = String(threadId || "").trim();
+  const rows = await runSqlJson(`
+    SELECT threads.id, threads.is_pinned AS isPinned, threads.thread_section_id AS threadSectionId,
+           thread_sections.name AS sectionName
+    FROM threads
+    LEFT JOIN thread_sections ON thread_sections.id = threads.thread_section_id
+    WHERE threads.id = '${sqlString(id)}'
+    LIMIT 1;
+  `);
+  if (!rows[0]) {
+    const err = new Error("Thread not found");
+    err.status = 404;
+    throw err;
+  }
+
+  const currentPinned = threadListMetadata(rows[0]).pinned;
+  if (currentPinned !== Boolean(pinned)) {
+    if (pinned) {
+      const sections = await runSqlJson(`SELECT id FROM thread_sections WHERE lower(name) = 'pinned' ORDER BY id LIMIT 1;`);
+      const sectionId = String(sections[0]?.id || randomUUID());
+      await runSqlWrite(`
+        BEGIN IMMEDIATE;
+        INSERT OR IGNORE INTO thread_sections (id, name, appearance)
+        VALUES ('${sqlString(sectionId)}', 'Pinned', NULL);
+        UPDATE threads
+        SET is_pinned = 1,
+            thread_section_id = '${sqlString(sectionId)}',
+            section_position = (
+              SELECT COALESCE(MAX(section_position), 0) + 1000000
+              FROM threads
+              WHERE thread_section_id = '${sqlString(sectionId)}' AND id <> '${sqlString(id)}'
+            ),
+            section_entered_at_ms = ${Date.now()}
+        WHERE id = '${sqlString(id)}';
+        COMMIT;
+      `);
+    } else {
+      await runSqlWrite(`
+        UPDATE threads
+        SET is_pinned = 0, thread_section_id = NULL, section_position = NULL, section_entered_at_ms = NULL
+        WHERE id = '${sqlString(id)}';
+      `);
+    }
+  }
+
+  invalidateThreadCaches();
+  void getCodexIpcClient().refreshRecentConversations("local").catch((error) => {
+    logError(`[pin-refresh] ${id}: ${error?.message || error}`);
+  });
+  return { ok: true, threadId: id, pinned: Boolean(pinned), desktopRefreshQueued: true };
+}
+
+async function waitForDesktopTurnPersistence(threadId, turnId, timeoutMs = 5000) {
+  const id = String(threadId || "").trim();
+  const expectedTurnId = String(turnId || "").trim();
+  if (!id || !expectedTurnId) {
+    await sleep(650);
+    return false;
+  }
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    try {
+      const current = await getMessages(id, { limit: 80, fullHistory: false });
+      if (String(current.status?.turnId || "") === expectedTurnId) return true;
+      if ((Array.isArray(current.messages) ? current.messages : []).some((message) => String(message?.turnId || "") === expectedTurnId)) {
+        return true;
+      }
+    } catch {
+      // The rollout may still be appended; retry until the bounded deadline.
+    }
+    await sleep(180);
+  }
+  return false;
+}
+
+function createDesktopRefreshQueue(refresh, { retryMs = 15000 } = {}) {
+  const pending = new Map();
+  let timer = null;
+  let running = false;
+  let stopped = false;
+  function schedule() {
+    if (stopped || timer || !pending.size) return;
+    timer = setTimeout(() => {
+      timer = null;
+      void flush();
+    }, retryMs);
+    timer.unref?.();
+  }
+  async function flush() {
+    if (running || stopped) return;
+    running = true;
+    try {
+      for (const [id, entry] of pending) {
+        try {
+          const result = await refresh(id, entry.client, entry.options);
+          if (result.refreshed && (result.persisted || !entry.options?.turnId) && !result.failures.length && pending.get(id) === entry) {
+            pending.delete(id);
+          }
+        } catch {
+          // Keep the refresh intent through a missing or reconnecting Desktop.
+        }
+      }
+    } finally {
+      running = false;
+      schedule();
+    }
+  }
+  return {
+    pending,
+    flush,
+    enqueue(id, client, options) {
+      pending.set(id, { client, options });
+      return flush();
+    },
+    close() {
+      stopped = true;
+      clearTimeout(timer);
+      timer = null;
+      pending.clear();
+    }
+  };
+}
+
+const desktopRefreshQueue = createDesktopRefreshQueue(attemptCodexDesktopRefresh);
+
+async function refreshCodexDesktopAfterSend(threadId, client = getCodexIpcClient(), options = {}) {
+  const id = String(threadId || "").trim();
+  if (!id) return;
+  invalidateThreadCaches();
+  return desktopRefreshQueue.enqueue(id, client, options);
+}
+
+async function attemptCodexDesktopRefresh(
+  threadId,
+  client = getCodexIpcClient(),
+  {
+    turnId = null,
+    waitForPersistence = waitForDesktopTurnPersistence
+  } = {}
+) {
+  const id = String(threadId || "").trim();
+  if (!id) return { refreshed: false, failures: [] };
+
+  // The rollout is already written by Desktop at this point. Drop local
+  // snapshots first so the next API read cannot serve the pre-send state.
+  invalidateThreadCaches();
+  const persisted = await waitForPersistence(id, turnId);
+
+  const failures = [];
+  let refreshed = false;
+  for (let attempt = 0; attempt < 2 && !refreshed; attempt += 1) {
+    try {
+      await client.refreshRecentConversations("local");
+      refreshed = true;
+    } catch (error) {
+      failures.push(`refresh: ${error?.message || error}`);
+      if (attempt === 0) {
+        await sleep(persisted ? 250 : 650);
+      }
+    }
+  }
+
+  // Background synchronization must never open or re-select a Desktop
+  // conversation. The refresh queue retries for minutes, so doing that here
+  // would repeatedly pull focus away from whatever the user is viewing.
+  return { refreshed, failures, persisted };
+}
+
+function shouldRecordDesktopRefreshNotice(failures = []) {
+  const items = Array.isArray(failures) ? failures.filter(Boolean).map(String) : [];
+  return items.length > 0 && !items.every((failure) => /no-client-found/i.test(failure));
+}
+
+function conversationIdFromStartConversation(response) {
+  const result = response?.result;
+  if (typeof result === "string" && result) return result;
+  return firstString(result?.conversationId, result?.threadId, result?.id, response?.conversationId, response?.threadId, response?.id);
+}
+
+function turnIdFromStartConversation(response) {
+  const result = response?.result;
+  return firstString(result?.turn?.id, result?.turnId, result?.turn_id, response?.turnId, response?.turn_id);
+}
+
+async function startNewCodexThread(text, turnSettings, project = null, images = [], {
+  ipcClient = getCodexIpcClient(), fallbackStart = startNewCodexThreadViaAppServer
+} = {}) {
+  try {
+    const response = await ipcClient.startConversation(text, images, turnSettings, project);
+    const threadId = conversationIdFromStartConversation(response);
+    if (!threadId) throw new Error(`Codex Desktop did not return a conversation id. ${compact(response, 1200)}`);
+    return {
+      threadId,
+      turnId: turnIdFromStartConversation(response),
+      source: "desktop-ipc"
+    };
+  } catch (error) {
+    // An acknowledgement timeout or malformed result may hide an already-created
+    // conversation. Only fall back after a definite pre-execution rejection.
+    const unavailable = /^(?:no-client-found|unsupported method(?::|\b)|method not found\b)/i.test(String(error?.message || ""))
+      || ["ENOENT", "ECONNREFUSED"].includes(error?.code);
+    if (images.length || PI_NATIVE_QUEUE || !unavailable) throw error;
+    const fallback = await fallbackStart(text, turnSettings, project);
+    return {
+      ...fallback,
+      source: "app-server-fallback",
+      fallbackReason: error.message || String(error)
+    };
+  }
+}
+
+function startNewCodexThreadViaAppServer(text, turnSettings = {}, project = null, { spawnProcess = spawnHidden } = {}) {
+  const { model, effort } = preparedTurnSettings(turnSettings);
+  const { home } = codexPaths();
+  return startAppServerFirstTurn({
+    command: CODEX_CLI, home, cwd: project?.root || process.cwd(),
+    text, model, effort, spawnProcess,
+    onBackgroundError: (threadId) => {
+      if (threadId) recordNotice(threadId, {
+        severity: "error", title: "首轮执行失败",
+        content: "电脑端首轮执行未能完成。请在会话中检查错误后重试；本轮没有自动重复发送。",
+        source: "new-thread"
+      });
+    }
+  });
+}
+
+async function notifyCodexDesktopThreadCreated(threadId) {
+  const id = String(threadId || "").trim();
+  if (!id) return;
+  const client = getCodexIpcClient();
+  const failures = [];
+  try {
+    await client.refreshRecentConversations("local");
+  } catch (error) {
+    failures.push(`refresh: ${error.message || error}`);
+  }
+  try {
+    await client.setActiveConversation(id, true, "local");
+  } catch (error) {
+    // A brand-new conversation has no rollout file yet, so some backends do not
+    // implement this method at all. "Unsupported" is not a failure the user can act
+    // on — surfacing it produced a scary English warning on every phone-started chat.
+    if (!/unsupported method/i.test(String(error?.message || error))) {
+      failures.push(`set active: ${error.message || error}`);
+    }
+  }
+  try {
+    await openCodexUrl(`codex://threads/${encodeURIComponent(id)}`);
+  } catch (error) {
+    failures.push(`open: ${error.message || error}`);
+  }
+  if (failures.length) {
+    recordNotice(id, {
+      severity: "warning",
+      title: "桌面端刷新稍有延迟",
+      content: ["对话已创建，但桌面端可能还需要一点时间刷新。", "", failures.join("；")].join("\n"),
+      source: "new-thread"
+    });
+  }
+}
+
+function firstRegexGroup(text, regex) {
+  const match = String(text || "").match(regex);
+  return match?.[1] || "";
+}
+
+async function openCodexUrl(url) {
+  const command = process.platform === "win32" ? "rundll32.exe" : "open";
+  const args = process.platform === "win32"
+    ? ["url.dll,FileProtocolHandler", url]
+    : String(url || "").startsWith("codex://")
+      ? ["-b", "com.openai.codex", url]
+      : [url];
+  await execFileHidden(command, args);
+}
+
+function isNoOpenOwnerError(error) {
+  const message = String(error?.message || "");
+  return message === "no-client-found" || message.includes("thread-role-timeout");
+}
+
+function isNoActiveTurnError(error) {
+  const message = String(error?.message || "");
+  return /without an active turn id|no active codex turn|no active turn|active turn (?:already |has )?ended/i.test(message);
+}
+
+async function forkThread(threadId, options = {}) {
+  return getCodexIpcClient().forkThread(threadId, options);
+}
+
+function isStaleInterruptTurnError(error) {
+  const message = String(error?.message || "").toLowerCase();
+  return /expected.?turn|turn.?id/.test(message) && /(invalid|mismatch|stale|not found|unknown|different|expired)/.test(message);
+}
+
+function interruptResultPayload(response) {
+  const outerResult = response?.result;
+  if (outerResult?.result && typeof outerResult.result === "object") return outerResult.result;
+  if (outerResult && typeof outerResult === "object") return outerResult;
+  return response && typeof response === "object" ? response : null;
+}
+
+function isExplicitInterruptNoop(response) {
+  const result = interruptResultPayload(response);
+  return Boolean(
+    result &&
+    Object.prototype.hasOwnProperty.call(result, "interruptedTurnId") &&
+    !String(result.interruptedTurnId || "").trim()
+  );
+}
+
+async function startTurnWithOwnerRecovery(
+  ipcClient,
+  threadId,
+  text,
+  images = [],
+  {
+    model,
+    effort,
+    openThread = (selectedThreadId) => openCodexUrl(`codex://threads/${encodeURIComponent(selectedThreadId)}`),
+    ownerTimeoutMs = THREAD_OWNER_OPEN_TIMEOUT_MS
+  } = {}
+) {
+  // sendToCodex already validated these values against the active Desktop
+  // catalog. Preserve them here so a transient catalog fallback cannot map a
+  // newer model back to the default between validation and IPC dispatch.
+  const turnSettings = preparedTurnSettings({ model, effort });
+  try {
+    return await ipcClient.startTurn(threadId, text, images, turnSettings);
+  } catch (error) {
+    if (!isNoOpenOwnerError(error)) throw error;
+    await openThread(threadId);
+    const ownerClientId = await ipcClient.waitForThreadOwner(threadId, { timeoutMs: ownerTimeoutMs });
+    if (!ownerClientId) throw error;
+    return ipcClient.startTurn(threadId, text, images, turnSettings, { targetClientId: ownerClientId });
+  }
+}
+
+async function interruptTurnWithOwnerRecovery(
+  ipcClient,
+  threadId,
+  expectedTurnId = null,
+  {
+    openThread = (selectedThreadId) => openCodexUrl(`codex://threads/${encodeURIComponent(selectedThreadId)}`),
+    refreshExpectedTurnId = async () => expectedTurnId,
+    ownerTimeoutMs = THREAD_OWNER_OPEN_TIMEOUT_MS
+  } = {}
+) {
+  try {
+    return await ipcClient.interruptTurn(threadId, expectedTurnId);
+  } catch (error) {
+    if (!isNoOpenOwnerError(error)) throw error;
+    await openThread(threadId);
+    const ownerClientId = await ipcClient.waitForThreadOwner(threadId, { timeoutMs: ownerTimeoutMs });
+    if (!ownerClientId) throw error;
+    return ipcClient.interruptTurn(threadId, await refreshExpectedTurnId(), { targetClientId: ownerClientId });
+  }
+}
+
+async function interruptTurnWithFallback(
+  ipcClient,
+  threadId,
+  expectedTurnId = null,
+  options = {}
+) {
+  let response;
+  try {
+    response = await interruptTurnWithOwnerRecovery(ipcClient, threadId, expectedTurnId, options);
+  } catch (error) {
+    if (!expectedTurnId || (!isNoActiveTurnError(error) && !isStaleInterruptTurnError(error))) throw error;
+    // Desktop can advance the active turn between the status read and the
+    // interrupt request. Retry with the protocol's no-turn-id form so a stale
+    // optimistic status cannot leave the phone's task stuck in "running".
+    return interruptTurnWithOwnerRecovery(ipcClient, threadId, null, options);
+  }
+  if (expectedTurnId && isExplicitInterruptNoop(response)) {
+    return interruptTurnWithOwnerRecovery(ipcClient, threadId, null, options);
+  }
+  return response;
+}
+
+async function interruptTurnAndConfirm(
+  ipcClient,
+  threadId,
+  initialStatus,
+  {
+    readStatus = async (selectedThreadId) => (await getMessages(selectedThreadId, { limit: 1 })).status,
+    beforeStatusRead = invalidateThreadCaches,
+    attempts = 24,
+    intervalMs = 180,
+    sleepFn = sleep,
+    ...interruptOptions
+  } = {}
+) {
+  const originalTurnId = String(initialStatus?.turnId || "").trim() || null;
+  if (!initialStatus?.thinking) {
+    return { confirmed: true, alreadyStopped: true, response: null, status: initialStatus || { thinking: false, turnId: null } };
+  }
+
+  const response = await interruptTurnWithFallback(ipcClient, threadId, originalTurnId, interruptOptions);
+  let status = initialStatus;
+  for (let attempt = 0; attempt < attempts; attempt += 1) {
+    beforeStatusRead();
+    const snapshot = await readStatus(threadId);
+    status = snapshot?.status || snapshot || { thinking: false, turnId: null };
+    const currentTurnId = String(status?.turnId || "").trim() || null;
+    if (!status?.thinking || (originalTurnId && currentTurnId && currentTurnId !== originalTurnId)) {
+      return { confirmed: true, alreadyStopped: false, response, status };
+    }
+    if (attempt + 1 < attempts) await sleepFn(intervalMs);
+  }
+
+  const error = new Error("Codex Desktop acknowledged the stop request, but the original turn is still running.");
+  error.status = 409;
+  error.code = "INTERRUPT_NOT_CONFIRMED";
+  throw error;
+}
+
+function isIpcTimeoutError(error) {
+  return /timed out/i.test(String(error?.message || ""));
+}
+
+function messageTextForMatch(value) {
+  if (typeof value === "string") return value;
+  if (Array.isArray(value)) return value.map(messageTextForMatch).filter(Boolean).join("\n");
+  if (!value || typeof value !== "object") return "";
+  return [value.text, value.content, value.message, value.prompt].map(messageTextForMatch).filter(Boolean).join("\n");
+}
+
+function hasUserMessageText(messages, expectedText) {
+  const expected = String(expectedText || "").trim();
+  if (!expected) return false;
+  return (Array.isArray(messages) ? messages : []).some((message) => {
+    if (message?.role !== "user") return false;
+    return messageTextForMatch(message.content || message.text || message).includes(expected);
+  });
+}
+
+async function ambiguousSendResult(threadId, text, mode) {
+  // A desktop IPC timeout is ambiguous: the request may have reached Codex even
+  // though the response did not reach Companion. Never make the phone retry it.
+  await sleep(350);
+  try {
+    const refreshed = await getMessages(threadId, { limit: 20 });
+    return {
+      ok: true,
+      uncertain: true,
+      accepted: Boolean(refreshed.status?.thinking || hasUserMessageText(refreshed.messages, text)),
+      mode: `${mode}-uncertain`,
+      threadId,
+      turnId: refreshed.status?.turnId || null,
+      sentAt: new Date().toISOString()
+    };
+  } catch {
+    return {
+      ok: true,
+      uncertain: true,
+      accepted: false,
+      mode: `${mode}-uncertain`,
+      threadId,
+      turnId: null,
+      sentAt: new Date().toISOString()
+    };
+  }
+}
+
+async function interruptCodex(threadId) {
+  if (!ALLOW_WRITE) {
+    const err = new Error("Read-only mode is enabled. Restart without --readonly to control Codex Desktop.");
+    err.status = 403;
+    throw err;
+  }
+  const targetThreadId = threadId || (await getThreads())[0]?.id;
+  if (!targetThreadId) {
+    const err = new Error("No target thread selected");
+    err.status = 400;
+    throw err;
+  }
+  if (!(await findThread(targetThreadId))) {
+    const err = new Error("Thread not found");
+    err.status = 404;
+    throw err;
+  }
+
+  const currentStatus = async () => (await getMessages(targetThreadId, { limit: 1 })).status;
+  const initialStatus = await currentStatus();
+
+  try {
+    await interruptTurnAndConfirm(getCodexIpcClient(), targetThreadId, initialStatus, {
+      readStatus: currentStatus,
+      refreshExpectedTurnId: async () => {
+        const status = await currentStatus();
+        return status?.thinking ? status.turnId || null : null;
+      }
+    });
+  } catch (error) {
+    if (isNoOpenOwnerError(error)) {
+      const err = new Error("Codex Desktop has no open owner for this thread. Open the target conversation in Codex Desktop, then try again.");
+      err.status = 409;
+      throw err;
+    }
+    throw error;
+  }
+  return {
+    ok: true,
+    mode: "desktop-ipc",
+    threadId: targetThreadId,
+    interruptedAt: new Date().toISOString()
+  };
+}
+
+function normalizeApprovalDecision(value) {
+  const text = String(value || "").trim();
+  if (["accept", "approve", "yes", "true"].includes(text)) return "accept";
+  if (["acceptForSession", "approveForSession", "approve-for-session", "always", "session"].includes(text)) return "acceptForSession";
+  if (["decline", "deny", "no", "false"].includes(text)) return "decline";
+  const err = new Error("Unknown approval decision");
+  err.status = 400;
+  throw err;
+}
+
+function approvalDecisionCandidates(value) {
+  const normalized = normalizeApprovalDecision(value);
+  if (normalized === "accept") return ["accept", "approve"];
+  if (normalized === "acceptForSession") return ["acceptForSession", "approve_for_session", "approveForSession", "accept_for_session"];
+  if (normalized === "decline") return ["decline", "deny"];
+  return [normalized];
+}
+
+function approvalDecisionCandidatesForRequest(value, liveRequest) {
+  const normalized = normalizeApprovalDecision(value);
+  const options = Array.isArray(liveRequest?.availableDecisions) ? liveRequest.availableDecisions : [];
+  if (!options.length) return approvalDecisionCandidates(value);
+  const matches = options
+    .map((option) => (typeof option === "string" ? option : firstString(option?.id, option?.value, option?.action, option?.label, option?.title)))
+    .filter(Boolean)
+    .filter((option) => {
+      try { return normalizeApprovalDecision(option) === normalized; } catch { return false; }
+    });
+  if (!matches.length) {
+    const err = new Error("The requested approval decision is not offered by the host");
+    err.status = 409;
+    throw err;
+  }
+  return [...new Set(matches)];
+}
+
+function approvalKindFromMethod(method) {
+  const text = String(method || "").toLowerCase();
+  if (text.includes("file")) return "file";
+  if (text.includes("permission")) return "permission";
+  if (text.includes("command") || text.includes("execution") || text.includes("exec") || text.includes("terminal")) return "command";
+  return "";
+}
+
+function approvalMethodForKind(kind) {
+  if (kind === "file") return "thread-follower-file-approval-decision";
+  if (kind === "permission") return "thread-follower-permissions-request-approval-response";
+  return "thread-follower-command-approval-decision";
+}
+
+function approvalMethodCandidatesForKind(kind) {
+  if (kind === "file") {
+    return [
+      { method: "thread-follower-file-approval-decision", mode: "follower" },
+      { method: "reply-with-file-change-approval-decision", mode: "direct" }
+    ];
+  }
+  if (kind === "permission") {
+    return [
+      { method: "thread-follower-permissions-request-approval-response", mode: "follower" },
+      { method: "reply-with-permissions-request-approval-response", mode: "direct" }
+    ];
+  }
+  return [
+    { method: "thread-follower-command-approval-decision", mode: "follower" },
+    { method: "reply-with-command-execution-approval-decision", mode: "direct" }
+  ];
+}
+
+function approvalAvailableDecisions(payload) {
+  const params = payload?.params || payload?.payload || {};
+  const request = payload?.request || params?.request || {};
+  return (
+    (Array.isArray(payload?.available_decisions) && payload.available_decisions) ||
+    (Array.isArray(payload?.availableDecisions) && payload.availableDecisions) ||
+    (Array.isArray(params?.available_decisions) && params.available_decisions) ||
+    (Array.isArray(params?.availableDecisions) && params.availableDecisions) ||
+    (Array.isArray(request?.available_decisions) && request.available_decisions) ||
+    (Array.isArray(request?.availableDecisions) && request.availableDecisions) ||
+    (Array.isArray(payload?.options) && payload.options) ||
+    (Array.isArray(params?.options) && params.options) ||
+    (Array.isArray(request?.options) && request.options) ||
+    []
+  );
+}
+
+function visitObjects(value, visitor, depth = 0, seen = new Set()) {
+  if (!value || typeof value !== "object" || depth > 10 || seen.has(value)) return null;
+  seen.add(value);
+  const result = visitor(value);
+  if (result) return result;
+  if (Array.isArray(value)) {
+    for (const item of value) {
+      const found = visitObjects(item, visitor, depth + 1, seen);
+      if (found) return found;
+    }
+    return null;
+  }
+  for (const child of Object.values(value)) {
+    const found = visitObjects(child, visitor, depth + 1, seen);
+    if (found) return found;
+  }
+  return null;
+}
+
+function approvalThreadId(message) {
+  const params = message?.params || message?.payload || {};
+  const request = message?.request || params?.request || {};
+  return String(message?.conversationId || message?.conversation_id || message?.threadId || message?.thread_id || params?.conversationId || params?.conversation_id || params?.threadId || params?.thread_id || request?.conversationId || request?.conversation_id || request?.threadId || request?.thread_id || "");
+}
+function approvalRequestsFromEvents(events, threadId, nowMs = Date.now()) {
+  const selectedThreadId = String(threadId || "");
+  if (!selectedThreadId || !Array.isArray(events)) return [];
+  const cutoff = nowMs - APPROVAL_TTL_MS;
+  const requests = [];
+  const decisions = [];
+  for (let eventIndex = 0; eventIndex < events.length; eventIndex += 1) {
+    const event = events[eventIndex];
+    const timestampMs = Date.parse(event?.timestamp || "");
+    if (!Number.isFinite(timestampMs) || timestampMs < cutoff || timestampMs > nowMs + 60_000 || approvalThreadId(event.message) !== selectedThreadId) continue;
+    if (isApprovalDecisionPayload(event.message)) {
+      const requestId = String(interactionRequestId(event.message) || "");
+      if (requestId) decisions.push({ eventIndex, requestId });
+      continue;
+    }
+    for (const payload of interactionPayloadsFromIpcMessage(event.message)) {
+      const requestId = String(interactionRequestId(payload) || "");
+      const approvalKind = approvalKindFromPayload(payload) || approvalKindFromMethod(payload.method || payload.type || payload.name);
+      if (!requestId) continue;
+      const message = messageFromInteractionEvent(event.timestamp, payload, { source: "desktop-ipc", threadId: selectedThreadId });
+      requests.push({ requestId, approvalKind, canApprove: Boolean(message?.canApprove), detailsHash: message?.detailsHash, title: message?.title, content: message?.content, availableDecisions: message?.availableDecisions || [], eventIndex });
+    }
+  }
+  const latestById = new Map();
+  for (const request of requests) {
+    const previous = latestById.get(request.requestId);
+    if (!previous || request.eventIndex > previous.eventIndex) latestById.set(request.requestId, request);
+  }
+  return [...latestById.values()]
+    .filter(request => APPROVAL_KINDS.has(request.approvalKind) && request.canApprove && request.detailsHash && !decisions.some(decision => decision.requestId === request.requestId && decision.eventIndex > request.eventIndex))
+    .sort((a, b) => a.eventIndex - b.eventIndex)
+    .map(({ eventIndex, canApprove, ...request }) => request);
+}
+
+function findLiveApprovalRequest(threadId, requestId, approvalKind, detailsHash) {
+  const selectedThreadId = String(threadId || "");
+  const selectedRequestId = String(requestId || "");
+  const selectedKind = String(approvalKind || "");
+  const selectedHash = String(detailsHash || "");
+  if (!selectedThreadId || !selectedRequestId || !APPROVAL_KINDS.has(selectedKind) || !/^[a-f0-9]{64}$/.test(selectedHash)) return null;
+  const resolved = resolvedApprovalsByThread.get(selectedThreadId);
+  const resolvedAt = resolved?.get(selectedRequestId);
+  if (resolvedAt && Date.now() - resolvedAt < APPROVAL_TTL_MS) return null;
+  if (resolvedAt) resolved.delete(selectedRequestId);
+  return approvalRequestsFromEvents(codexIpcClient?.events || [], selectedThreadId)
+    .find(request => request.requestId === selectedRequestId && request.approvalKind === selectedKind && request.detailsHash === selectedHash) || null;
+}
+
+async function respondToApproval({ threadId, requestId, decision, approvalKind, detailsHash } = {}) {
+  if (!ALLOW_WRITE) {
+    const err = new Error("Read-only mode is enabled. Restart without --readonly to control Codex Desktop.");
+    err.status = 403;
+    throw err;
+  }
+  const targetThreadId = String(threadId || "");
+  if (!targetThreadId) {
+    const err = new Error("Exact target thread is required");
+    err.status = 400;
+    throw err;
+  }
+  if (!(await findThread(targetThreadId))) {
+    const err = new Error("Thread not found");
+    err.status = 404;
+    throw err;
+  }
+  const selectedRequestId = String(requestId || "");
+  const selectedKind = String(approvalKind || "");
+  const selectedHash = String(detailsHash || "");
+  if (!selectedRequestId || !APPROVAL_KINDS.has(selectedKind) || !/^[a-f0-9]{64}$/.test(selectedHash)) {
+    const err = new Error("Exact request id, approval kind, and displayed detail hash are required");
+    err.status = 400;
+    throw err;
+  }
+  const liveRequest = findLiveApprovalRequest(targetThreadId, selectedRequestId, selectedKind, selectedHash);
+  if (!liveRequest) {
+    const err = new Error("Approval is missing, changed, expired, already resolved, or does not match the displayed request");
+    err.status = 409;
+    throw err;
+  }
+  const normalizedDecision = normalizeApprovalDecision(decision);
+  const decisionCandidates = approvalDecisionCandidatesForRequest(decision, liveRequest);
+  const resolvedRequestId = selectedRequestId;
+  const resolvedKind = selectedKind;
+  const inFlight = pendingApprovalsByThread.get(targetThreadId) || new Set();
+  if (inFlight.has(resolvedRequestId)) {
+    const err = new Error("Approval decision is already being submitted");
+    err.status = 409;
+    throw err;
+  }
+  inFlight.add(resolvedRequestId);
+  pendingApprovalsByThread.set(targetThreadId, inFlight);
+
+  const methodCandidates = approvalMethodCandidatesForKind(resolvedKind);
+  const paramsForDecision = (candidate, mode) => {
+    const base =
+      resolvedKind === "permission"
+        ? { conversationId: targetThreadId, requestId: resolvedRequestId, response: candidate }
+        : { conversationId: targetThreadId, requestId: resolvedRequestId, decision: candidate };
+    return mode === "follower" ? { hostId: "local", ...base } : base;
+  };
+  try {
+    let lastError = null;
+    for (const { method, mode } of methodCandidates) {
+      for (const candidate of decisionCandidates) {
+        try {
+          await getCodexIpcClient().request(method, paramsForDecision(candidate, mode));
+          lastError = null;
+          break;
+        } catch (error) {
+          if (!/unknown method|unsupported method|method not found|not implemented|(?:invalid|unknown|unsupported).*decision/i.test(String(error?.message || error))) throw error;
+          lastError = error;
+        }
+      }
+      if (!lastError) break;
+    }
+    if (lastError) throw lastError;
+  } catch (error) {
+    recordNotice(targetThreadId, {
+      severity: "error",
+      title: "审批失败",
+      content: `审批未能完成：${error.message || "桌面端拒绝了该审批"}。请求 ${resolvedRequestId}，已尝试 ${decisionCandidates.join("、")}。`,
+      source: "approval"
+    });
+    throw error;
+  } finally {
+    pendingApprovalsByThread.get(targetThreadId)?.delete(resolvedRequestId);
+  }
+  if (!resolvedApprovalsByThread.has(targetThreadId)) resolvedApprovalsByThread.set(targetThreadId, new Map());
+  resolvedApprovalsByThread.get(targetThreadId).set(resolvedRequestId, Date.now());
+  return {
+    ok: true,
+    mode: "desktop-ipc",
+    threadId: targetThreadId,
+    requestId: resolvedRequestId,
+    decision: normalizedDecision,
+    approvalKind: resolvedKind,
+    decidedAt: new Date().toISOString()
+  };
+}
+
+// Browsers and Android WebViews happily reuse a cached /app.js long after the desktop
+// upgraded, which shows the user stale UI. Stamp every local asset reference in the
+// HTML with a mtime+size fingerprint so each deploy produces new URLs.
+async function assetVersion(publicPath) {
+  try {
+    const stat = await fs.stat(path.join(PUBLIC_DIR, publicPath));
+    return `${Math.trunc(stat.mtimeMs).toString(36)}-${stat.size.toString(36)}`;
+  } catch {
+    return "";
+  }
+}
+
+async function withAssetVersions(html) {
+  const targets = new Set();
+  for (const match of html.matchAll(/(?:href|src)="(\/[^"?#]+\.(?:css|js))"/g)) targets.add(match[1]);
+  let out = html;
+  for (const target of targets) {
+    const version = await assetVersion(target.replace(/^\//, ""));
+    if (!version) continue;
+    out = out.split(`"${target}"`).join(`"${target}?v=${version}"`);
+  }
+  return out;
+}
+/**
+ * 流式发送必须自带 error 兜底：全局 uncaughtException 是 process.exit(1)，
+ * 一次 ENOENT/EPIPE（发布时替换 APK、清理 scratch 图片）就会把整个服务带走。
+ */
+function streamFileToResponse(filePath, res, options = {}) {
+  const stream = createReadStream(filePath, options);
+  stream.on("error", (error) => {
+    logError(`[stream] ${filePath}: ${error?.message || error}`);
+    if (!res.headersSent) {
+      sendText(res, 500, "Read failed");
+      return;
+    }
+    res.destroy(error);
+  });
+  // 客户端中断（手机切后台）时释放文件句柄，别让 fd 泄漏。
+  res.on("close", () => stream.destroy());
+  stream.pipe(res);
+  return stream;
+}
+
+/** 大于这个体积的静态文件一律走流式，避免把 260MB 的 APK 读进内存。 */
+const MAX_STATIC_INLINE_BYTES = 2 * 1024 * 1024;
+
+async function serveStatic(res, pathname, { versioned = false } = {}) {
+  const requested = pathname === "/" ? "/index.html" : pathname;
+  const filePath = path.normalize(path.join(PUBLIC_DIR, requested));
+  if (!filePath.startsWith(path.normalize(PUBLIC_DIR + path.sep))) {
+    sendText(res, 403, "Forbidden");
+    return;
+  }
+  const ext = path.extname(filePath);
+  const types = {
+    ".html": "text/html; charset=utf-8",
+    ".css": "text/css; charset=utf-8",
+    ".js": "application/javascript; charset=utf-8",
+    ".png": "image/png",
+    ".svg": "image/svg+xml",
+    ".webmanifest": "application/manifest+json; charset=utf-8"
+  };
+  // 只有带 ?v= 指纹的资源才能长缓存：否则改完桌面端还在跑旧 UI。
+  // 反过来，全站 no-store 又让 ?v= 指纹彻底失去意义（每次冷启动重传 230KB app.js）。
+  const cacheControl = ext === ".html" || !versioned ? "no-store, must-revalidate" : "public, max-age=31536000, immutable";
+  try {
+    const stat = await fs.stat(filePath);
+    if (!stat.isFile()) throw new Error("not a file");
+    const headers = {
+      "content-type": types[ext] || "application/octet-stream",
+      "cache-control": cacheControl,
+      ...staticSecurityHeaders
+    };
+    if (ext === ".html") {
+      const data = Buffer.from(await withAssetVersions(await fs.readFile(filePath, "utf8")), "utf8");
+      res.writeHead(200, { ...headers, "content-length": data.length });
+      res.end(data);
+      return;
+    }
+    if (stat.size <= MAX_STATIC_INLINE_BYTES) {
+      const data = await fs.readFile(filePath);
+      res.writeHead(200, { ...headers, "content-length": data.length });
+      res.end(data);
+      return;
+    }
+    res.writeHead(200, { ...headers, "content-length": stat.size });
+    streamFileToResponse(filePath, res);
+  } catch {
+    sendText(res, 404, "Not found");
+  }
+}
+
+async function allowedLocalFilePath(rawPath, threadId = "") {
+  const requested = String(rawPath || "").trim();
+  const selectedThreadId = String(threadId || "").trim();
+  if (!requested || !selectedThreadId || requested.startsWith("file://") || requested.includes("\0") || !path.isAbsolute(requested)) return null;
+  let canonicalPath;
+  try {
+    canonicalPath = await fs.realpath(path.resolve(requested));
+  } catch {
+    return null;
+  }
+  let authorized = referencedFilesByThread.get(selectedThreadId);
+  if (!authorized?.has(canonicalPath)) {
+    try {
+      await getMessages(selectedThreadId, { limit: MAX_MESSAGE_LIMIT });
+    } catch {
+      return null;
+    }
+    authorized = referencedFilesByThread.get(selectedThreadId);
+  }
+  return authorized?.has(canonicalPath) ? canonicalPath : null;
+}
+
+async function serveLocalImage(res, filePath, threadId = "") {
+  const normalized = await allowedLocalFilePath(filePath, threadId);
+  if (!normalized) {
+    sendText(res, 403, "Forbidden");
+    return;
+  }
+  const mimeType = mimeTypeForAsset(normalized);
+  if (!mimeType.startsWith("image/")) {
+    sendText(res, 415, "Unsupported image type");
+    return;
+  }
+  try {
+    const stat = await fs.stat(normalized);
+    if (!stat.isFile() || stat.size <= 0 || stat.size > MAX_LOCAL_IMAGE_BYTES) {
+      sendText(res, 404, "Not found");
+      return;
+    }
+    const data = await fs.readFile(normalized);
+    res.writeHead(200, {
+      "content-type": mimeType,
+      "cache-control": "no-store, must-revalidate"
+    });
+    res.end(data);
+  } catch {
+    sendText(res, 404, "Not found");
+  }
+}
+
+function requestedByteRange(rangeHeader, size) {
+  const match = String(rangeHeader || "").match(/^bytes=(\d*)-(\d*)$/);
+  if (!match) return null;
+  const startText = match[1];
+  const endText = match[2];
+  if (!startText && !endText) return null;
+  let start;
+  let end;
+  if (!startText) {
+    const suffixLength = Number(endText);
+    if (!Number.isFinite(suffixLength) || suffixLength <= 0) return null;
+    start = Math.max(0, size - suffixLength);
+    end = size - 1;
+  } else {
+    start = Number(startText);
+    end = endText ? Number(endText) : size - 1;
+  }
+  if (!Number.isInteger(start) || !Number.isInteger(end) || start < 0 || end < start || start >= size) return null;
+  return { start, end: Math.min(end, size - 1) };
+}
+
+function encodeRfc5987Value(value) {
+  return encodeURIComponent(value).replace(/['()*]/g, (character) => `%${character.charCodeAt(0).toString(16).toUpperCase()}`);
+}
+
+function contentDispositionForDownload(fileName) {
+  const normalized = String(fileName || "download.bin").replace(/[\r\n"]/g, "_");
+  const extension = path.extname(normalized).replace(/[^\x20-\x7e]/g, "");
+  let asciiFallback = normalized.normalize("NFKD").replace(/[^\x20-\x7e]/g, "_").replace(/[\\/:*?<>|]/g, "_");
+  if (!asciiFallback.replace(/[_.\s-]/g, "")) asciiFallback = `download${extension || ".bin"}`;
+  return `attachment; filename="${asciiFallback}"; filename*=UTF-8''${encodeRfc5987Value(normalized)}`;
+}
+
+async function serveLocalFile(req, res, filePath, threadId = "") {
+  const normalized = await allowedLocalFilePath(filePath, threadId);
+  if (!normalized) {
+    sendText(res, 403, "Forbidden");
+    return;
+  }
+  try {
+    const stat = await fs.stat(normalized);
+    if (!stat.isFile() || stat.size <= 0 || stat.size > MAX_LOCAL_FILE_BYTES) {
+      sendText(res, stat.size > MAX_LOCAL_FILE_BYTES ? 413 : 404, stat.size > MAX_LOCAL_FILE_BYTES ? "File too large" : "Not found");
+      return;
+    }
+    const mimeType = mimeTypeForAsset(normalized) || "application/octet-stream";
+    const fileName = path.basename(normalized).replace(/[\r\n"]/g, "_");
+    const rangeHeader = req.headers.range;
+    const range = rangeHeader ? requestedByteRange(rangeHeader, stat.size) : null;
+    if (rangeHeader && !range) {
+      res.writeHead(416, {
+        "content-range": `bytes */${stat.size}`,
+        "accept-ranges": "bytes",
+        "cache-control": "no-store, must-revalidate"
+      });
+      res.end();
+      return;
+    }
+    const start = range?.start ?? 0;
+    const end = range?.end ?? stat.size - 1;
+    const headers = {
+      "content-type": mimeType,
+      "content-length": end - start + 1,
+      "content-disposition": contentDispositionForDownload(fileName),
+      "accept-ranges": "bytes",
+      "cache-control": "no-store, must-revalidate"
+    };
+    if (range) headers["content-range"] = `bytes ${start}-${end}/${stat.size}`;
+    res.writeHead(range ? 206 : 200, headers);
+    streamFileToResponse(normalized, res, { start, end });
+  } catch {
+    sendText(res, 404, "Not found");
+  }
+}
+
+function serverStatSignature(stat) {
+  return {
+    dev: Number(stat.dev) || 0,
+    ino: Number(stat.ino) || 0,
+    size: Number(stat.size) || 0,
+    mtimeMs: Number(stat.mtimeMs) || 0,
+    ctimeMs: Number(stat.ctimeMs) || 0
+  };
+}
+
+async function serveApk(req, res) {
+  const release = await currentAppRelease();
+  if (!release.available) {
+    sendText(res, 404, "APK not found");
+    return;
+  }
+  // Open the exact inode whose bytes were hashed, then verify the open fd.
+  // Range requests cannot silently switch to a newer staged artifact.
+  let descriptor;
+  try {
+    descriptor = await fs.open(APK_PATH, "r");
+    const openStat = await descriptor.stat();
+    if (!openStat.isFile() || !appRelease.sameSignature(release.signature, serverStatSignature(openStat))) {
+      await descriptor.close();
+      sendText(res, 404, "APK not found");
+      return;
+    }
+  } catch {
+    if (descriptor) await descriptor.close().catch(() => {});
+    sendText(res, 404, "APK not found");
+    return;
+  }
+
+  const size = release.sizeBytes;
+  const rangeHeader = req.headers.range;
+  const range = rangeHeader ? requestedByteRange(rangeHeader, size) : null;
+  if (rangeHeader && !range) {
+    await descriptor.close();
+    res.writeHead(416, {
+      "content-range": `bytes */${size}`,
+      "accept-ranges": "bytes",
+      "cache-control": "no-cache, must-revalidate"
+    });
+    res.end();
+    return;
+  }
+  const start = range?.start ?? 0;
+  const end = range?.end ?? size - 1;
+  const headers = {
+    "content-type": "application/vnd.android.package-archive",
+    "content-length": end - start + 1,
+    "content-disposition": contentDispositionForDownload(path.basename(APK_PATH)),
+    "accept-ranges": "bytes",
+    "cache-control": "no-cache, must-revalidate"
+  };
+  if (range) headers["content-range"] = `bytes ${start}-${end}/${size}`;
+  res.writeHead(range ? 206 : 200, headers);
+  const stream = descriptor.createReadStream({ start, end, autoClose: true });
+  stream.on("error", (error) => {
+    logError(`[stream] ${APK_PATH}: ${error?.message || error}`);
+    if (!res.headersSent) sendText(res, 500, "Read failed");
+    else res.destroy(error);
+  });
+  res.on("close", () => stream.destroy());
+  stream.pipe(res);
+}
+
+async function handleAuthSessionExchange(req, res) {
+  const blockedFor = authBlockRemainingMs(req);
+  if (blockedFor > 0) {
+    sendRateLimited(res, blockedFor);
+    return;
+  }
+  try {
+    const body = await readJsonBody(req);
+    const profile = findAuthProfileByToken(body.token);
+    if (!profile) {
+      noteAuthFailure(req);
+      sendJson(res, 401, { error: "Unauthorized", authRequired: true });
+      return;
+    }
+    clearAuthFailures(req);
+    const session = issueAuthSession(profile);
+    sendJson(res, 200, {
+      ok: true,
+      profile: profile.id ? { id: profile.id, label: profile.label, backend: profile.backend } : null,
+      expiresAtMs: session.expiresAtMs
+    }, {
+      "set-cookie": authSessionCookie(req, session),
+      "cache-control": "no-store"
+    });
+  } catch (error) {
+    sendJson(res, error?.status || 400, { error: error?.message || "Invalid session request" });
+  }
+}
+
+function handleAuthLogout(req, res) {
+  const sessionId = cookieValue(req, SESSION_COOKIE_NAME);
+  if (sessionId) authSessions.delete(sessionId);
+  sendJson(res, 200, { ok: true }, {
+    "set-cookie": clearAuthSessionCookie(req),
+    "cache-control": "no-store"
+  });
+}
+
+function handleLoginRedirect(req, res, url) {
+  const blockedFor = authBlockRemainingMs(req);
+  if (blockedFor > 0) {
+    sendRateLimited(res, blockedFor);
+    return;
+  }
+  const token = url.searchParams.get("login") || url.searchParams.get("token") || "";
+  const profile = findAuthProfileByToken(token);
+  if (!profile) {
+    noteAuthFailure(req);
+    res.writeHead(302, { location: "/", "cache-control": "no-store", "referrer-policy": "no-referrer" });
+    res.end();
+    return;
+  }
+  clearAuthFailures(req);
+  const session = issueAuthSession(profile);
+  const target = new URL(url.pathname === "/login" ? "/" : url.pathname, `http://${req.headers.host || "localhost"}`);
+  for (const [key, value] of url.searchParams) {
+    if (key !== "login" && key !== "token") target.searchParams.append(key, value);
+  }
+  res.writeHead(302, {
+    location: `${target.pathname}${target.search}${target.hash}`,
+    "set-cookie": authSessionCookie(req, session),
+    "cache-control": "no-store",
+    "referrer-policy": "no-referrer"
+  });
+  res.end();
+}
+
+
+async function handleHttpBackendApi(req, res, url, profile = null) {
+  const backend = profile?.backend === "http" ? profile.client : HTTP_BACKEND;
+  if (!backend) return false;
+  const { pathname, searchParams } = url;
+  if (!pathname.startsWith("/api/")) return false;
+  if (!requireAuthorized(req, res, url)) return true;
+
+  const messagesMatch = pathname.match(/^\/api\/threads\/([^/]+)\/messages$/);
+  const changesMatch = pathname.match(/^\/api\/threads\/([^/]+)\/changes$/);
+  const pinMatch = pathname.match(/^\/api\/threads\/([^/]+)\/pin$/);
+  const goalMatch = pathname.match(/^\/api\/threads\/([^/]+)\/goal$/);
+  const compactMatch = pathname.match(/^\/api\/threads\/([^/]+)\/compact$/);
+  const branchMatch = pathname.match(/^\/api\/threads\/([^/]+)\/branch$/);
+  try {
+    if (req.method === "GET" && pathname === "/api/health") {
+      sendJson(res, 200, {
+        ok: true,
+        backend: { kind: "http", url: backend.baseUrl, profile: profile?.id || null },
+        profile: profile ? { id: profile.id, label: profile.label, backend: profile.backend } : null,
+        codexHome: null,
+        codexHomeVersion: null,
+        codexHomeSource: "http",
+        codexHomeFixed: false,
+        codexHomeChangedAt: null,
+        codexIpcSocket: null,
+        authRequired: AUTH_REQUIRED,
+        allowWrite: ALLOW_WRITE,
+        models: FALLBACK_CODEX_MODELS,
+        defaultModel: DEFAULT_CODEX_MODEL,
+        defaultEffort: DEFAULT_CODEX_EFFORT,
+        now: new Date().toISOString(),
+        ...appRelease.legacyHealthFields(await currentAppRelease())
+      });
+      return true;
+    }
+
+    if (req.method === "GET" && pathname === "/api/threads") {
+      let threads = await backend.listThreads();
+      const selectedId = String(searchParams.get("selectedId") || "").trim();
+      if (selectedId && !threads.some((thread) => thread.id === selectedId)) {
+        const selected = await backend.findThread(selectedId).catch(() => null);
+        if (selected) threads = [selected, ...threads];
+      }
+      threads = threads.map((thread) => {
+        const override = adapterStatusOverrideFor(thread.id);
+        return override
+          ? { ...thread, status: { ...thread.status, ...statusFieldsFromOverride(override) } }
+          : thread;
+      });
+      const limit = normalizeThreadsLimit(searchParams.get("limit"));
+      const page = threadsPage(threads, { limit, cursor: searchParams.get("cursor") });
+      const body = {
+        threads: page.threads,
+        ...(limit ? { total: page.total, nextCursor: page.nextCursor } : {}),
+        backend: { kind: "http", url: backend.baseUrl, profile: profile?.id || null }
+      };
+      const etag = weakEtagFor(JSON.stringify(body));
+      if (ifNoneMatchMatches(req.headers["if-none-match"], etag)) {
+        res.writeHead(304, { etag, "cache-control": "private, no-cache" });
+        res.end();
+        return true;
+      }
+      sendJson(res, 200, body, { etag, "cache-control": "private, no-cache" });
+      return true;
+    }
+
+    if (req.method === "GET" && messagesMatch) {
+      const threadId = decodeURIComponent(messagesMatch[1]);
+      const fullHistory = searchParams.get("history") === "full";
+      const data = await backend.getMessages(threadId, {
+        limit: fullHistory ? MAX_MESSAGE_LIMIT : Number(searchParams.get("limit")) || DEFAULT_MESSAGE_LIMIT,
+        before: searchParams.get("before") || ""
+      });
+      const override = adapterStatusOverrideFor(threadId);
+      if (override) data.status = { ...data.status, ...statusFieldsFromOverride(override) };
+      sendJson(res, 200, capMessagesResponseForClient(data, threadId));
+      return true;
+    }
+
+    if (req.method === "GET" && changesMatch) {
+      const threadId = decodeURIComponent(changesMatch[1]);
+      const cursor = String(searchParams.get("cursor") || "");
+      const deadline = Date.now() + Math.min(30_000, Math.max(250, Number(searchParams.get("timeout")) || 25_000));
+      let current = await backend.changeSignature(threadId);
+      while (current === cursor && Date.now() < deadline) {
+        await sleep(Math.min(750, Math.max(50, deadline - Date.now())));
+      current = await backend.changeSignature(threadId);
+      }
+      sendJson(res, 200, { cursor: current, changed: current !== cursor });
+      return true;
+    }
+    if (req.method === "POST" && pinMatch) {
+      const body = await readJsonBody(req);
+      const threadId = decodeURIComponent(pinMatch[1]);
+      sendJson(res, 200, { ok: true, threadId, ...(await backend.setPinned(threadId, body.pinned)) });
+      return true;
+    }
+
+    if (goalMatch) {
+      const threadId = decodeURIComponent(goalMatch[1]);
+      if (req.method === "GET") {
+        const result = await backend.getGoal(threadId);
+        sendJson(res, 200, { goal: result?.goal ?? result ?? null });
+        return true;
+      }
+      if (req.method === "PUT") {
+        const result = await backend.setGoal(threadId, await readJsonBody(req));
+        sendJson(res, 200, { goal: result?.goal ?? result ?? null });
+        return true;
+      }
+      if (req.method === "DELETE") {
+        sendJson(res, 200, { ok: true, ...(await backend.clearGoal(threadId)) });
+        return true;
+      }
+    }
+
+    if (req.method === "POST" && compactMatch) {
+      sendJson(res, 200, { ok: true, ...(await backend.compactThread(decodeURIComponent(compactMatch[1]))) });
+      return true;
+    }
+
+    if (req.method === "POST" && branchMatch) {
+      const result = await backend.branchThread(decodeURIComponent(branchMatch[1]), await readJsonBody(req));
+      const thread = result?.thread || result?.result?.thread || null;
+      sendJson(res, 200, { ok: true, thread, threadId: thread?.id || result?.threadId || null, ...result });
+      return true;
+    }
+
+    if (req.method === "POST" && pathname === "/api/approval") {
+      sendJson(res, 200, { ok: true, ...(await backend.respondToApproval(await readJsonBody(req))) });
+      return true;
+    }
+
+    if (req.method === "POST" && pathname === "/api/queue/cancel") {
+      sendJson(res, 200, { ok: true, ...(await backend.cancelQueuedSend(await readJsonBody(req))) });
+      return true;
+    }
+
+    if (req.method === "POST" && pathname === "/api/queue/steer") {
+      sendJson(res, 200, { ok: true, ...(await backend.steerQueuedSend(await readJsonBody(req))) });
+      return true;
+    }
+
+    if (req.method === "POST" && pathname === "/api/new-thread") {
+      const body = await readJsonBody(req, MAX_SEND_BODY_BYTES);
+      const files = sendFiles.normalizeSendFiles(body.files);
+      const result = await backend.createThread(body.message || body.text || "", body.images, {
+        ...body, files: files.map(({ name, mimeType, data }) => ({ name, mimeType, data }))
+      });
+      const threadId = result?.threadId || result?.thread?.id || null;
+      sendJson(res, 200, { ok: true, threadId, ...result });
+      return true;
+    }
+
+    if (req.method === "GET" && pathname === "/api/account") {
+      sendJson(res, 200, {
+        user: { name: "HTTP Backend", email: "", label: "HTTP Backend" },
+        plan: { type: "local", label: "Local" },
+        usage: null,
+        backend: { kind: "http", url: backend.baseUrl }
+      });
+      return true;
+    }
+
+    if (req.method === "GET" && pathname === "/api/plugins") {
+      sendJson(res, 200, { plugins: [], codexHome: null, codexHomeVersion: null });
+      return true;
+    }
+
+    if (req.method === "GET" && pathname === "/api/skills") {
+      sendJson(res, 200, { skills: [], codexHome: null, codexHomeVersion: null });
+      return true;
+    }
+
+    if (req.method === "GET" && pathname === "/api/debug/events") {
+      sendJson(res, 200, { ok: true, backend: { kind: "http", url: backend.baseUrl }, events: [] });
+      return true;
+    }
+
+    if (req.method === "GET" && pathname === "/api/queue/image") {
+      sendJson(res, 404, { error: "Queued image not available from HTTP backend" });
+      return true;
+    }
+
+    if (req.method === "POST" && pathname === "/api/send") {
+      const body = await readJsonBody(req, MAX_SEND_BODY_BYTES);
+      // Remote adapters receive bytes, never local paths they cannot access.
+      const files = sendFiles.normalizeSendFiles(body.files);
+      const images = normalizeSendImages(body.images);
+      const options = { files: files.map(({ name, mimeType, data }) => ({ name, mimeType, data })),
+        model: body.model, effort: body.effort, mode: body.mode,
+        projectId: body.projectId, clientRequestId: body.clientRequestId };
+      const result = await runIdempotentSend(body.clientRequestId, sendRequestFingerprint(body), async () => {
+        if (body.newThread) {
+          const created = await backend.createThread(body.message, images, options);
+          return { ok: true, newThread: true, threadId: created?.threadId || created?.thread?.id || null, ...created };
+        }
+        const threadId = String(body.threadId || "").trim();
+        if (!threadId) { const error = new Error("threadId is required"); error.status = 400; throw error; }
+        return { ok: true, threadId, ...(await backend.sendMessage(threadId, body.message, images, options)) };
+      });
+      sendJson(res, 200, result);
+      return true;
+    }
+
+    if (req.method === "POST" && pathname === "/api/interrupt") {
+      const body = await readJsonBody(req);
+      const threadId = String(body.threadId || "").trim();
+      if (!threadId) {
+        sendJson(res, 400, { error: "threadId is required" });
+        return true;
+      }
+      sendJson(res, 200, { ok: true, threadId, ...(await backend.interrupt(threadId)) });
+      return true;
+    }
+
+    if (pathname === "/api/adapters/status") {
+      if (req.method === "GET") {
+        sendJson(res, 200, { ok: true, overrides: activeAdapterStatusOverrides() });
+        return true;
+      }
+      if (req.method === "POST") {
+        const body = await readJsonBody(req);
+        const threadId = body.threadId || body.id || "";
+        if (body.clear === true || String(body.state || "").toLowerCase() === "clear") {
+          sendJson(res, 200, { ok: true, cleared: clearAdapterStatusOverride(threadId) });
+          return true;
+        }
+        const record = setAdapterStatusOverride(threadId, {
+          state: body.state,
+          turnId: body.turnId,
+          startedAtMs: body.startedAtMs,
+          ttlMs: body.ttlMs
+        });
+        sendJson(res, 200, { ok: true, status: { ...record, expiresInMs: Math.max(0, record.expiresAtMs - Date.now()) } });
+        return true;
+      }
+      if (req.method === "DELETE") {
+        sendJson(res, 200, { ok: true, cleared: clearAdapterStatusOverride(searchParams.get("threadId") || "") });
+        return true;
+      }
+      sendJson(res, 405, { error: "Method not allowed" });
+      return true;
+    }
+
+    if (req.method === "GET" && pathname === "/api/admin/diagnostics") {
+      const threads = await backend.listThreads();
+      sendJson(res, 200, {
+        ok: true,
+        backend: { kind: "http", url: backend.baseUrl, profile: profile?.id || null },
+        threads: { total: threads.length, archived: threads.filter((thread) => thread.archived).length, statusColumns: [] },
+        rolloutIssues: { missingCount: 0, outsideHomeCount: 0, missing: [], outsideHome: [], truncated: false },
+        adapterStatus: { count: activeAdapterStatusOverrides().length, overrides: activeAdapterStatusOverrides() },
+        sqlite: { preference: "n/a", active: "n/a", nodeSqliteError: null, cliError: null, nodeQueries: 0, cliQueries: 0 },
+        settings: { activeTurnStaleMinutes: ACTIVE_TURN_STALE_MS / 60_000, statusMaxAgeMinutes: STATUS_OVERRIDE_MAX_AGE_MS / 60_000 }
+      });
+      return true;
+    }
+
+    if (req.method === "GET" && pathname === "/api/app/update") {
+      sendJson(res, 200, appRelease.publicUpdatePayload(await currentAppRelease()));
+      return true;
+    }
+
+    if (req.method === "GET" && pathname === "/api/apk") return false;
+
+    sendJson(res, 501, {
+      error: "This endpoint is not supported by the HTTP backend",
+      backend: { kind: "http", url: backend.baseUrl, profile: profile?.id || null }
+    });
+    return true;
+  } catch (error) {
+    logError(`[http-backend] ${req.method} ${pathname}: ${error?.stack || error?.message || String(error)}`);
+    const status = error?.status && ![401, 403].includes(error.status) ? error.status : 502;
+    sendJson(res, status, {
+      error: error?.message || "HTTP backend request failed",
+      backend: { kind: "http", url: backend.baseUrl, profile: profile?.id || null }
+    });
+    return true;
+  }
+}
+
+const server = http.createServer(async (req, res) => {
+  const url = new URL(req.url || "/", `http://${req.headers.host || "localhost"}`);
+  const requestStartedAt = performance.now();
+  const requestMethod = req.method || "UNKNOWN";
+  res.once("finish", () => {
+    const durationMs = Math.round(performance.now() - requestStartedAt);
+    if (res.statusCode >= 400 || durationMs >= slowRequestThresholdMs(requestMethod, url.pathname)) {
+      const level = res.statusCode >= 500 ? "error" : res.statusCode >= 400 ? "warn" : "slow";
+      const message = `[http:${level}] ${requestMethod} ${url.pathname} ${res.statusCode} ${durationMs}ms`;
+      const logDecision = shouldLogHttpEvent({ method: requestMethod, pathname: url.pathname, statusCode: res.statusCode, level });
+      if (!logDecision) return;
+      const suppressed = typeof logDecision === "object" && logDecision.suppressed ? ` (suppressed ${logDecision.suppressed} similar)` : "";
+      if (res.statusCode >= 500) logError(`${message}${suppressed}`);
+      else logInfo(`${message}${suppressed}`);
+    }
+  });
+  const requestProfile = profileForRequest(req, url);
+  req.turnloomProfile = requestProfile;
+  return requestContext.run(requestProfile, async () => {
+  try {
+    if (req.method === "POST" && url.pathname === "/api/auth/session") {
+      await handleAuthSessionExchange(req, res);
+      return;
+    }
+    if (req.method === "POST" && url.pathname === "/api/auth/logout") {
+      handleAuthLogout(req, res);
+      return;
+    }
+    // "/" with a token only needs the login hop when the request is not already
+    // authorized; redirecting an authorized request bounces between "/" and the
+    // reverse-proxy token injection and ends in ERR_TOO_MANY_REDIRECTS.
+    if (
+      req.method === "GET" &&
+      (url.pathname === "/login" ||
+        (url.pathname === "/" &&
+          (url.searchParams.has("login") || url.searchParams.has("token")) &&
+          !isAuthorized(req, url)))
+    ) {
+      handleLoginRedirect(req, res, url);
+      return;
+    }
+    req.turnloomProfile = profileForRequest(req, url);
+    // --backend http 必须在本地处理之前转发：否则配置了 backend:"http"
+    // 仍然读写本机 Codex，属于静默的错误路由（handleHttpBackendApi 自己会鉴权）。
+    if (await handleHttpBackendApi(req, res, url, req.turnloomProfile)) return;
+    if (req.method === "GET" && url.pathname === machinePairing.HARNESS_PATH) {
+      const requestedToken = requestToken(req, url);
+      const isMachineToken = tokensEqual(requestedToken, MACHINE_TOKEN);
+      const isHarnessToken = tokensEqual(requestedToken, ACCESS_TOKEN);
+      if (!isMachineToken && !isHarnessToken) {
+        if (requestedToken) noteAuthFailure(req);
+        sendJson(res, 401, { error: "invalid-machine-token", protocol: machinePairing.PROTOCOL, version: machinePairing.VERSION });
+        return;
+      }
+      clearAuthFailures(req);
+      const profile = req.turnloomProfile;
+      const harness = {
+        id: profile?.id || "default",
+        name: profile?.label || MACHINE_NAME,
+        token: isHarnessToken ? ACCESS_TOKEN : profile?.token || requestedToken,
+        kind: profile?.backend || BACKEND_KIND,
+        defaultHarness: true,
+        online: true,
+      };
+      const harnesses = machinePairing.normalizeHarnesses([harness], harness.id);
+      sendJson(res, 200, {
+        ok: true,
+        protocol: machinePairing.PROTOCOL,
+        version: machinePairing.VERSION,
+        machineId: MACHINE_ID,
+        machineName: MACHINE_NAME,
+        defaultHarnessId: harness.id,
+        harnesses,
+      });
+      return;
+    }
+    if (req.method === "GET" && url.pathname === "/api/local-image") {
+      if (!requireAuthorized(req, res, url)) return;
+      await serveLocalImage(res, url.searchParams.get("path"), url.searchParams.get("threadId"));
+      return;
+    }
+    if (req.method === "GET" && url.pathname === "/api/local-file") {
+      if (!requireAuthorized(req, res, url)) return;
+      await serveLocalFile(req, res, url.searchParams.get("path"), url.searchParams.get("threadId"));
+      return;
+    }
+    if (req.method === "GET" && url.pathname === "/api/apk") {
+      if (!requireAuthorized(req, res, url)) return;
+      await serveApk(req, res);
+      return;
+    }
+    // 公开更新入口：未配对/连不上电脑时也要能查更新。只暴露版本号、SHA 与下载路径，
+    // 不泄漏任何会话、路径或凭据；APK 本身仍走 /api/apk 的鉴权下载。
+    if (req.method === "GET" && url.pathname === "/api/app/update-public") {
+      const release = appRelease.publicUpdatePayload(await currentAppRelease());
+      sendJson(res, 200, {
+        available: release.available,
+        packageName: release.packageName,
+        versionCode: release.versionCode,
+        versionName: release.versionName,
+        sha256: release.sha256,
+        sizeBytes: release.sizeBytes,
+        notes: release.notes,
+        apkUrl: release.apkUrl,
+      });
+      return;
+    }
+    if (req.method === "GET" && url.pathname === "/api/app/update") {
+      if (!requireAuthorized(req, res, url)) return;
+      sendJson(res, 200, appRelease.publicUpdatePayload(await currentAppRelease()));
+      return;
+    }
+    if (req.method === "GET" && url.pathname === "/api/health") {
+      if (!requireAuthorized(req, res, url)) return;
+      keepIpcWarm();
+      const homeState = await refreshCodexHomeContext({ force: true, source: "health" });
+      const modelConfiguration = await loadCodexModelConfiguration(homeState.home);
+      const usedModels = await usedModelIds(homeState.home);
+      const release = await currentAppRelease();
+      sendJson(res, 200, {
+        ok: true,
+        codexHome: homeState.home,
+        codexHomeVersion: homeState.version,
+        codexHomeSource: homeState.source,
+        codexHomeFixed: homeState.fixed,
+        codexHomeChangedAt: homeState.changedAt,
+        codexIpcSocket: CODEX_IPC_SOCKET,
+        authRequired: AUTH_REQUIRED,
+        allowWrite: ALLOW_WRITE,
+        profile: req.turnloomProfile ? {
+          id: req.turnloomProfile.id,
+          label: req.turnloomProfile.label,
+          backend: req.turnloomProfile.backend
+        } : null,
+        backend: { kind: "codex" },
+        activeTurnStaleMinutes: ACTIVE_TURN_STALE_MS / 60_000,
+        statusMaxAgeMinutes: STATUS_OVERRIDE_MAX_AGE_MS / 60_000,
+        sqliteDriver: sqliteDriverInfo(),
+        models: modelConfiguration.models,
+        usedModelIds: usedModels,
+        defaultModel: modelConfiguration.defaultModel,
+        defaultEffort: modelConfiguration.defaultEffort,
+        now: new Date().toISOString(),
+        ...appRelease.legacyHealthFields(release)
+      });
+      return;
+    }
+    if (req.method === "GET" && url.pathname === "/api/admin/diagnostics") {
+      if (!requireAuthorized(req, res, url)) return;
+      sendJson(res, 200, await buildThreadDiagnostics());
+      return;
+    }
+    if (req.method === "GET" && url.pathname === "/api/debug/events") {
+      if (!requireAuthorized(req, res, url)) return;
+      keepIpcWarm();
+      const homeState = await refreshCodexHomeContext({ force: true, source: "debug" });
+      sendJson(res, 200, {
+        ok: true,
+        codexHome: homeState.home,
+        codexHomeVersion: homeState.version,
+        codexHomeSource: homeState.source,
+        ipcConnected: Boolean(codexIpcClient?.socket?.writable),
+        clientId: codexIpcClient?.clientId || null,
+        eventCount: codexIpcClient?.events?.length || 0,
+        events: codexIpcClient?.rawEvents(url.searchParams.get("limit")) || []
+      });
+      return;
+    }
+    if (url.pathname === "/api/adapters/status") {
+      if (!requireAuthorized(req, res, url)) return;
+      if (req.method === "GET") {
+        sendJson(res, 200, { ok: true, overrides: activeAdapterStatusOverrides() });
+        return;
+      }
+      if (req.method === "POST") {
+        const body = await readJsonBody(req);
+        const threadId = body.threadId || body.id || "";
+        if (body.clear === true || String(body.state || "").toLowerCase() === "clear") {
+          sendJson(res, 200, { ok: true, cleared: clearAdapterStatusOverride(threadId) });
+          return;
+        }
+        const record = setAdapterStatusOverride(threadId, {
+          state: body.state,
+          turnId: body.turnId,
+          startedAtMs: body.startedAtMs,
+          ttlMs: body.ttlMs
+        });
+        sendJson(res, 200, {
+          ok: true,
+          status: { ...record, expiresInMs: Math.max(0, record.expiresAtMs - Date.now()) }
+        });
+        return;
+      }
+      if (req.method === "DELETE") {
+        const threadId = url.searchParams.get("threadId") || "";
+        sendJson(res, 200, { ok: true, cleared: clearAdapterStatusOverride(threadId) });
+        return;
+      }
+      sendJson(res, 405, { error: "Method not allowed" });
+      return;
+    }
+    // ── 手机端「更多能力」：统一委托给桥的白名单宿主调用层 ──────────────
+    if (req.method === "POST" && url.pathname === "/api/host") {
+      if (!requireAuthorized(req, res, url)) return;
+      if (!requireWriteEnabled(res)) return;
+      const body = await readJsonBody(req, MAX_SEND_BODY_BYTES);
+      const operation = String(body.operation || "").trim();
+      if (!operation) {
+        sendJson(res, 400, { error: "operation is required" });
+        return;
+      }
+      const confirm = body.confirm === true;
+      if (DANGEROUS_HOST_OPERATIONS.has(operation) && !confirm) {
+        sendJson(res, 409, { error: `confirmation required for ${operation}`, needsConfirm: true });
+        return;
+      }
+      const args = Array.isArray(body.args) ? body.args : [];
+      await hostReply(res, () => requestBridge("host/invoke", { operation, args, confirm }));
+      return;
+    }
+
+    if (req.method === "POST" && url.pathname === "/api/host/approvals/resolve") {
+      if (!requireAuthorized(req, res, url)) return;
+      const body = await readJsonBody(req, MAX_SEND_BODY_BYTES);
+      if (body.confirm !== true) {
+        sendJson(res, 409, { error: "approval requires explicit confirmation", needsConfirm: true });
+        return;
+      }
+      await hostReply(res, () => requestBridge("approvals/resolve", body));
+      return;
+    }
+    // 手机端「从列表移除 / 恢复」：只写 sessions.deleted_at，不触发桌面确认框。
+    if (req.method === "POST" && (url.pathname === "/api/host/session/hide" || url.pathname === "/api/host/session/restore")) {
+      if (!requireAuthorized(req, res, url)) return;
+      const body = await readJsonBody(req);
+      const threadId = String(body.threadId || body.sessionId || "").trim();
+      if (!threadId) {
+        sendJson(res, 400, { error: "threadId is required" });
+        return;
+      }
+      const method = url.pathname.endsWith("/hide") ? "session/hide" : "session/restore";
+      await hostReply(res, () => requestBridge(method, { threadId }));
+      return;
+    }
+
+
+    if (req.method === "POST" && url.pathname === "/api/host/notifications/read") {
+      if (!requireAuthorized(req, res, url)) return;
+      const body = await readJsonBody(req);
+      await hostReply(res, () => requestBridge("notifications/read", { id: String(body.id || "") }));
+      return;
+    }
+
+    if (req.method === "GET" && url.pathname.startsWith("/api/host/")) {
+      if (!requireAuthorized(req, res, url)) return;
+      const name = url.pathname.slice("/api/host/".length);
+      const threadId = String(url.searchParams.get("threadId") || "").trim();
+      const filePath = String(url.searchParams.get("path") || "");
+      if (name === "approvals") {
+        await hostReply(res, async () => assertHostShape(await requestBridge("approvals/list", { threadId }), "approvals", "approvals/list"));
+        return;
+      }
+      if (name === "todos") {
+        await hostReply(res, async () => assertHostShape(await requestBridge("todos", { threadId }), "todos", "todos"));
+        return;
+      }
+      if (name === "notifications") {
+        await hostReply(res, async () => assertHostShape(await requestBridge("notifications", { limit: url.searchParams.get("limit") }), "notifications", "notifications"));
+        return;
+      }
+      if (name === "scheduled") {
+        await hostReply(res, async () => assertHostShape(await requestBridge("scheduled", {}), "tasks", "scheduled"));
+        return;
+      }
+      if (name === "usage") {
+        await hostReply(res, async () => assertHostShape(await requestBridge("usage", { threadId }), "turns", "usage"));
+        return;
+      }
+      if (name === "hidden") {
+        await hostReply(res, async () => assertHostShape(await requestBridge("session/hidden", {}), "sessions", "session/hidden"));
+        return;
+      }
+      if (name === "files") {
+        // 空 path 表示「按会话 cwd 列出」，非空则必须是已知项目根之内的真实路径。
+        const listedPath = filePath ? await allowedHostFilePath(filePath) : "";
+        if (filePath && !listedPath) {
+          sendJson(res, 403, { error: "path is outside the known project roots" });
+          return;
+        }
+        await hostReply(res, () =>
+          requestBridge("host/invoke", {
+            operation: "fs/list",
+            args: [{ sessionId: threadId, path: listedPath }]
+          })
+        );
+        return;
+      }
+      if (name === "file-image") {
+        if (!threadId || !filePath) {
+          sendJson(res, 400, { error: "threadId and path are required" });
+          return;
+        }
+        const imagePath = await allowedHostFilePath(filePath);
+        if (!imagePath) {
+          sendJson(res, 403, { error: "path is outside the known project roots" });
+          return;
+        }
+        await hostReply(res, () =>
+          requestBridge("host/invoke", {
+            operation: "fs/readImageDataUrl",
+            args: [{ sessionId: threadId, path: imagePath }]
+          })
+        );
+        return;
+      }
+      if (name === "file") {
+        if (!threadId || !filePath) {
+          sendJson(res, 400, { error: "threadId and path are required" });
+          return;
+        }
+        const safePath = await allowedHostFilePath(filePath);
+        if (!safePath) {
+          sendJson(res, 403, { error: "path is outside the known project roots" });
+          return;
+        }
+        await hostReply(res, async () => {
+          const result = await requestBridge("host/invoke", {
+            operation: "fs/read",
+            args: [{ sessionId: threadId, path: safePath }]
+          });
+          // 文本预览上限：手机不需要把几十 MB 的文件塞进 JSON。
+          const payload = result?.result ?? result;
+          const content = String(payload?.content ?? payload?.text ?? payload?.data ?? "");
+          const truncated = content.length > MAX_HOST_TEXT_PREVIEW;
+          return {
+            ...payload,
+            content: truncated ? content.slice(0, MAX_HOST_TEXT_PREVIEW) : content,
+            truncated
+          };
+        });
+        return;
+      }
+      if (name === "diff") {
+        await hostReply(res, () =>
+          requestBridge("host/invoke", { operation: "workspace/diff", args: [{ sessionId: threadId, path: filePath }] })
+        );
+        return;
+      }
+      sendJson(res, 404, { error: "unknown host resource" });
+      return;
+    }
+
+    if (req.method === "POST" && url.pathname === "/api/send") {
+      if (!requireAuthorized(req, res, url)) return;
+      const body = await readJsonBody(req, MAX_SEND_BODY_BYTES);
+      // A new conversation may be filed into one of the known projects. Resolve
+      // it against the server-side list so a client cannot hand the host an
+      // arbitrary path; an unknown reference is refused instead of being
+      // silently created outside every project.
+      let project = null;
+      if (body.newThread && (body.projectId || body.projectPath)) {
+        const projects = await readProjectList();
+        project = pickKnownProject(projects, { projectId: body.projectId, projectPath: body.projectPath });
+        if (!project) {
+          sendJson(res, 400, { error: "Unknown project for the new conversation. Refresh the project list and try again." });
+          return;
+        }
+      }
+      const result = await sendWithFiles({ ...body, project });
+      sendJson(res, 200, result);
+      return;
+    }
+    if (req.method === "POST" && url.pathname === "/api/queue/cancel") {
+      if (!requireAuthorized(req, res, url)) return;
+      if (!requireWriteEnabled(res)) return;
+      const body = await readJsonBody(req);
+      sendJson(res, 200, await cancelQueuedSend(body.threadId, body.itemId, { edit: body.edit === true }));
+      return;
+    }
+    if (req.method === "POST" && url.pathname === "/api/queue/steer") {
+      if (!requireAuthorized(req, res, url)) return;
+      if (!requireWriteEnabled(res)) return;
+      const body = await readJsonBody(req);
+      sendJson(res, 200, await steerQueuedSend(body.threadId, body.itemId));
+      return;
+    }
+    if (req.method === "POST" && url.pathname === "/api/queue/retry") {
+      if (!requireAuthorized(req, res, url)) return;
+      if (!requireWriteEnabled(res)) return;
+      const body = await readJsonBody(req);
+      const threadId = String(body?.threadId || "").trim();
+      const itemId = String(body?.itemId || "").trim();
+      if (!threadId || !itemId) {
+        sendJson(res, 400, { error: "threadId and itemId are required" });
+        return;
+      }
+      if (PI_NATIVE_QUEUE && !legacyQueueMode) {
+        await requestNativeQueue("retry", threadId, { itemId }, 8000);
+        scheduleNativeQueuedSendDrain(threadId, 250);
+      } else {
+        const item = setQueuedSendDeliveryState(threadId, itemId, {
+          deliveryState: "queued",
+          lastError: null,
+          nextAttemptAtMs: 0
+        });
+        if (!item) {
+          sendJson(res, 409, { error: "排队消息已发送或已移除，请刷新后查看。" });
+          return;
+        }
+        scheduleLocalQueuedSendDrain(threadId, 250);
+      }
+      sendJson(res, 200, { ok: true, threadId, itemId, ...(await queuedSendStatus(threadId)) });
+      return;
+    }
+    if (req.method === "GET" && url.pathname === "/api/queue/image") {
+      if (!requireAuthorized(req, res, url)) return;
+      const threadId = String(url.searchParams.get("threadId") || "");
+      const itemId = String(url.searchParams.get("itemId") || "");
+      const index = Number(url.searchParams.get("index"));
+      if (PI_NATIVE_QUEUE && !legacyQueueMode) {
+        const result = await requestNativeQueue("list", threadId, {}, 8000);
+        const entry = (Array.isArray(result?.entries) ? result.entries : []).find((row) => String(row?.id || "") === itemId);
+        const attachment = Array.isArray(entry?.attachments) ? entry.attachments[index] : null;
+        // Queue attachments are staged under PI's per-session scratch directory.
+        // Never trust an arbitrary absolute path from the database.
+        const scratchRoot = path.join(PI_DATA_ROOT, "scratch", threadId);
+        const candidate = attachment?.path ? path.resolve(String(attachment.path)) : "";
+        const safePath = candidate && candidate.startsWith(path.resolve(scratchRoot) + path.sep)
+          ? candidate
+          : "";
+        if (safePath && existsSync(safePath)) {
+          res.writeHead(200, { "content-type": String(attachment.mimeType || "image/png"), "cache-control": "private, no-store", "x-content-type-options": "nosniff" });
+          streamFileToResponse(safePath, res);
+          return;
+        }
+      } else {
+        const queue = pendingSendQueues.get(threadId) || [];
+        const item = queue.find((entry) => entry.id === itemId);
+        const image = item?.images[index];
+        if (image) {
+          res.writeHead(200, { "content-type": image.mimeType, "cache-control": "private, no-store", "x-content-type-options": "nosniff" });
+          res.end(Buffer.from(image.data, "base64"));
+          return;
+        }
+      }
+      return sendJson(res, 404, { error: "Queued image not found" });
+    }
+    if (req.method === "GET" && url.pathname === "/api/thread-image") {
+      if (!requireAuthorized(req, res, url)) return;
+      const threadId = String(url.searchParams.get("threadId") || "");
+      const name = String(url.searchParams.get("name") || "");
+      const safePath = safeThreadScratchPath(threadId, name);
+      if (!safePath || !existsSync(safePath)) {
+        sendJson(res, 404, { error: "Image not found" });
+        return;
+      }
+      const mimeType = imageMimeTypeFromName(name);
+      res.writeHead(200, { "content-type": mimeType, "cache-control": "private, no-store", "x-content-type-options": "nosniff" });
+      streamFileToResponse(safePath, res);
+      return;
+    }
+    if (req.method === "POST" && url.pathname === "/api/new-thread") {
+      if (!requireAuthorized(req, res, url)) return;
+      sendJson(res, 200, {
+        ok: true,
+        mode: "local-draft",
+        draft: true,
+        createdAt: new Date().toISOString()
+      });
+      return;
+    }
+    if (req.method === "POST" && url.pathname === "/api/interrupt") {
+      if (!requireAuthorized(req, res, url)) return;
+      const body = await readJsonBody(req);
+      sendJson(res, 200, await interruptCodex(body.threadId));
+      return;
+    }
+    if (req.method === "POST" && url.pathname === "/api/approval") {
+      if (!requireAuthorized(req, res, url)) return;
+      const body = await readJsonBody(req);
+      sendJson(res, 200, await respondToApproval(body));
+      return;
+    }
+    if (req.method === "GET" && url.pathname === "/api/account") {
+      if (!requireAuthorized(req, res, url)) return;
+      const homeState = await refreshCodexHomeContext({ source: "account" });
+      sendJson(res, 200, { ...(await getAccountInfo()), codexHome: homeState.home, codexHomeVersion: homeState.version });
+      return;
+    }
+    if (req.method === "GET" && url.pathname === "/api/plugins") {
+      if (!requireAuthorized(req, res, url)) return;
+      sendJson(res, 200, await getPlugins());
+      return;
+    }
+    if (req.method === "GET" && url.pathname === "/api/skills") {
+      if (!requireAuthorized(req, res, url)) return;
+      sendJson(res, 200, await getSkills());
+      return;
+    }
+    if (req.method === "GET" && url.pathname === "/api/threads") {
+      if (!requireAuthorized(req, res, url)) return;
+      const homeState = await refreshCodexHomeContext({ source: "threads" });
+      const allThreads = await getThreads({ preserveIds: [url.searchParams.get("selectedId")] });
+      const limit = normalizeThreadsLimit(url.searchParams.get("limit"));
+      const page = threadsPage(allThreads, {
+        limit,
+        cursor: url.searchParams.get("cursor")
+      });
+      const body = {
+        threads: page.threads,
+        ...(limit ? { total: page.total, nextCursor: page.nextCursor } : {}),
+        codexHome: homeState.home,
+        codexHomeVersion: homeState.version
+      };
+      const etag = weakEtagFor(JSON.stringify(body));
+      if (ifNoneMatchMatches(req.headers["if-none-match"], etag)) {
+        res.writeHead(304, { etag, "cache-control": "private, no-cache" });
+        res.end();
+        return;
+      }
+      sendJson(res, 200, body, { etag, "cache-control": "private, no-cache" });
+      return;
+    }
+    if (req.method === "GET" && url.pathname === "/api/projects") {
+      if (!requireAuthorized(req, res, url)) return;
+      const projects = await readProjectList();
+      sendJson(res, 200, { projects }, { "cache-control": "private, no-cache" });
+      return;
+    }
+    const pinMatch = url.pathname.match(/^\/api\/threads\/([0-9a-fA-F-]{20,})\/pin$/);
+    if (req.method === "POST" && pinMatch) {
+      if (!requireAuthorized(req, res, url)) return;
+      const body = await readJsonBody(req);
+      sendJson(res, 200, await setThreadPinned(pinMatch[1], Boolean(body.pinned)));
+      return;
+    }
+    const archiveMatch = url.pathname.match(/^\/api\/threads\/([^/]+)\/archive$/);
+    if (req.method === "POST" && archiveMatch) {
+      if (!requireAuthorized(req, res, url)) return;
+      if (!requireWriteEnabled(res)) return;
+      const body = await readJsonBody(req);
+      const archived = body.archived !== false;
+      const written = await writeSidebarArchived(decodeURIComponent(archiveMatch[1]), archived);
+      // 归档状态变了，下一次列表必须重新读盘，不能拿旧缓存。
+      threadsCache = { key: "", cachedAt: 0, value: [] };
+      sendJson(res, 200, { ok: true, threadId: decodeURIComponent(archiveMatch[1]), archived: written });
+      return;
+    }
+    const goalMatch = url.pathname.match(/^\/api\/threads\/([0-9a-fA-F-]{20,})\/goal$/);
+    if (goalMatch && req.method === "GET") {
+      if (!requireAuthorized(req, res, url)) return;
+      sendJson(res, 200, { goal: await getThreadGoalSafe(goalMatch[1]) });
+      return;
+    }
+    if (goalMatch && req.method === "PUT") {
+      if (!requireAuthorized(req, res, url)) return;
+      if (!requireWriteEnabled(res)) return;
+      sendJson(res, 200, { goal: await setThreadGoal(goalMatch[1], await readJsonBody(req)) });
+      return;
+    }
+    if (goalMatch && req.method === "DELETE") {
+      if (!requireAuthorized(req, res, url)) return;
+      if (!requireWriteEnabled(res)) return;
+      sendJson(res, 200, await clearThreadGoal(goalMatch[1]));
+      return;
+    }
+    const compactMatch = url.pathname.match(/^\/api\/threads\/([0-9a-fA-F-]{20,})\/compact$/);
+    if (req.method === "POST" && compactMatch) {
+      if (!requireAuthorized(req, res, url)) return;
+      if (!requireWriteEnabled(res)) return;
+      sendJson(res, 200, await compactThread(compactMatch[1]));
+      return;
+    }
+    const branchMatch = url.pathname.match(/^\/api\/threads\/([0-9a-fA-F-]{20,})\/branch$/);
+    if (req.method === "POST" && branchMatch) {
+      if (!requireAuthorized(req, res, url)) return;
+      if (!requireWriteEnabled(res)) return;
+      const body = await readJsonBody(req);
+      const source = await findThread(branchMatch[1]);
+      if (!source) {
+        const err = new Error("Thread not found");
+        err.status = 404;
+        throw err;
+      }
+      const result = await getCodexIpcClient().forkThread(branchMatch[1], {
+        lastTurnId: body.lastTurnId || null,
+        beforeTurnId: body.beforeTurnId || null
+      });
+      // 分叉出来的新会话 id 可能在不同位置的形状里：Codex 给 thread 对象，
+      // 而 PI 桥直接回 { threadId }。少认一种，界面就会「提示成功但不跳过去」。
+      const thread = result?.result?.thread || result?.thread || null;
+      const threadId =
+        thread?.id ||
+        result?.threadId ||
+        result?.conversationId ||
+        result?.result?.threadId ||
+        result?.result?.conversationId ||
+        result?.result?.id ||
+        null;
+      const branchFallback = Boolean(result?.branchFallback || result?.result?.branchFallback);
+      sendJson(res, 200, { ok: true, thread, threadId, branchFallback });
+      return;
+    }
+    const match = url.pathname.match(/^\/api\/threads\/([0-9a-fA-F-]{20,})\/messages$/);
+    const changesMatch = url.pathname.match(/^\/api\/threads\/([0-9a-fA-F-]{20,})\/changes$/);
+    if (req.method === "GET" && changesMatch) {
+      if (!requireAuthorized(req, res, url)) return;
+      const threadId = changesMatch[1];
+      const cursor = String(url.searchParams.get("cursor") || "");
+      const result = await waitForThreadChange(threadId, cursor, url.searchParams.get("timeout"));
+      sendJson(res, 200, result);
+      return;
+    }
+    if (req.method === "GET" && match) {
+      if (!requireAuthorized(req, res, url)) return;
+      sendJson(res, 200, await getMessages(match[1], {
+        limit: url.searchParams.get("limit"),
+        before: url.searchParams.get("before"),
+        fullHistory: url.searchParams.get("history") === "full"
+      }));
+      return;
+    }
+    if (req.method !== "GET") {
+      sendText(res, 405, "Method not allowed");
+      return;
+    }
+    await serveStatic(res, decodeURIComponent(url.pathname), { versioned: url.searchParams.has("v") });
+  } catch (error) {
+    logError(`[http:error] ${requestMethod} ${url.pathname}: ${error?.stack || error?.message || String(error)}`);
+    sendJson(res, error.status || 500, { error: error.message || "Internal server error" });
+  }
+  });
+});
+
+let shuttingDown = false;
+async function shutdown(signal) {
+  if (shuttingDown) return;
+  shuttingDown = true;
+  desktopRefreshQueue.close();
+  logInfo(`[shutdown] Received ${signal}; closing HTTP server and IPC client.`);
+  const closeServer = new Promise((resolve) => {
+    if (!server.listening) {
+      resolve();
+      return;
+    }
+    server.close((error) => {
+      if (error) logFatalError("HTTP server close failed", error);
+      resolve();
+    });
+  });
+  const timeout = setTimeout(() => {
+    logError("[shutdown] Close timeout reached; forcing exit.");
+    process.exit(1);
+  }, 5000);
+  timeout.unref?.();
+  try {
+    codexIpcClient?.close?.();
+  } catch (error) {
+    logFatalError("IPC client close failed", error);
+  }
+  await closeServer;
+  clearTimeout(timeout);
+  logInfo("[shutdown] Complete.");
+  process.exit(0);
+}
+
+server.on("error", (error) => {
+  if (error?.code === "EADDRINUSE") {
+    logError(`[fatal] Cannot start Codex-Turnloom: ${HOST}:${PORT} is already in use.`);
+    logError("Stop the existing service first, choose another --port, or run:");
+    logError(`  lsof -nP -iTCP:${PORT} -sTCP:LISTEN`);
+    logError("  codex-turnloom-uninstall-service");
+  } else if (error?.code === "EACCES") {
+    logError(`[fatal] Cannot start Codex-Turnloom: permission denied for ${HOST}:${PORT}.`);
+    logError("Choose a different --host/--port or check local firewall and permission settings.");
+  } else {
+    logFatalError("HTTP server failed to start", error);
+  }
+  process.exit(1);
+});
+
+if (IS_MAIN) process.once("SIGINT", () => {
+  void shutdown("SIGINT");
+});
+
+if (IS_MAIN) process.once("SIGTERM", () => {
+  void shutdown("SIGTERM");
+});
+
+if (IS_MAIN) {
+  restorePendingSendQueues();
+  server.listen(PORT, HOST, () => {
+  const localUrl = `http://127.0.0.1:${PORT}/`;
+  const lanUrls = Object.values(os.networkInterfaces())
+    .flat()
+    .filter((entry) => entry && entry.family === "IPv4" && !entry.internal)
+    .map((entry) => `http://${entry.address}:${PORT}/`);
+  const primaryUrl = PUBLIC_URL || lanUrls[0] || localUrl;
+  const printRuntimeUrls = () => {
+    logInfo(`Local:  ${localUrl}`);
+    if (PUBLIC_URL) logInfo(`Public: ${PUBLIC_URL}/`);
+    for (const lanUrl of lanUrls) logInfo(`LAN:    ${lanUrl}`);
+  };
+  const printQr = () => {
+    if (!IS_INTERACTIVE_TTY) return;
+    console.log("");
+    if (AUTH_REQUIRED) console.log("QR:     opens the LAN page and signs in automatically");
+    else console.log("QR:     opens the LAN page");
+    qrcode.generate(loginUrlForProfile(primaryUrl, PROFILE_MODE ? PROFILES[0] : null), { small: true });
+  };
+
+  logInfo("Codex-Turnloom is running");
+  logInfo(`Boot:   ${SYSTEM_BOOT_AT_ISO} (${formatDuration(PROCESS_STARTED_AT_MS - SYSTEM_BOOT_AT_MS)} ago)`);
+  logInfo(`Start:  ${PROCESS_STARTED_AT_ISO}`);
+  logInfo(`Origin: ${START_SOURCE}${IS_INTERACTIVE_TTY ? " · interactive terminal" : " · background service"}`);
+  printRuntimeUrls();
+  if (AUTH_REQUIRED) {
+    // 后台日志会被守护脚本、控制台导出和用户随手粘贴带走，访问码不能明文落盘。
+    logInfo(
+      `Access code: ${IS_INTERACTIVE_TTY ? ACCESS_TOKEN : "(masked in background logs — start interactively or open the console to read it)"}`
+    );
+  }
+  logInfo(
+    `Mode:   ${ALLOW_WRITE ? "write enabled" : "read-only"}${
+      AUTH_REQUIRED ? " · access-code protected" : " · auth disabled"
+    }`
+  );
+  logInfo(`Data:   ${codexHomeState.home}${codexHomeState.fixed ? " (fixed)" : " (dynamic)"}`);
+  if (IS_INTERACTIVE_TTY) {
+    logInfo("Type:   qr, url, code, no-auth, auth, or help + Enter for runtime commands");
+    printQr();
+  }
+
+  if (IS_INTERACTIVE_TTY) {
+    const terminal = readline.createInterface({ input: process.stdin, output: process.stdout, prompt: "" });
+    terminal.on("line", (line) => {
+      const command = line.trim().toLowerCase();
+      if (command === "qr") printQr();
+      else if (command === "no-auth") {
+        AUTH_REQUIRED = false;
+        console.log("Access-code auth disabled. Existing and new browser sessions can access the LAN page without a code.");
+        console.log("Type auth + Enter to enable access-code auth again.");
+      } else if (command === "auth") {
+        AUTH_REQUIRED = true;
+        console.log("Access-code auth enabled.");
+        console.log(`Access code: ${ACCESS_TOKEN}`);
+        printQr();
+      } else if (command === "url") {
+        console.log(`Local:  ${localUrl}`);
+        for (const lanUrl of lanUrls) console.log(`LAN:    ${lanUrl}`);
+      } else if (command === "code") {
+        console.log(`Access code: ${ACCESS_TOKEN}`);
+        if (!AUTH_REQUIRED) console.log("Access-code auth is currently disabled.");
+      } else if (command === "help" || command === "?") {
+        console.log("Commands: qr, url, code, no-auth, auth, help");
+      } else if (command) {
+        console.log("Unknown command. Type help for available commands.");
+      }
+    });
+  }
+  });
+}
+/* ── 带图消息持久回显 ────────────────────────────────────────────────────
+ * 宿主先写纯文本 rollout、后异步补附件时，刷新/换设备会看到 images=0。
+ * 发送成功后只在会话 scratch 留一份不含 base64/token 的 receipt，读取历史时
+ * 按 turnId / 文本 / 时间把本地暂存图片补回用户消息。
+ */
+const IMAGE_RECEIPTS_FILE = "turnloom-image-receipts.json";
+const IMAGE_RECEIPT_LIMIT = 200;
+const IMAGE_RECEIPT_MAX_BYTES = 1024 * 1024;
+const IMAGE_RECEIPT_MATCH_WINDOW_MS = 10 * 60 * 1000;
+
+function safeThreadScratchPath(threadId, name, root = PI_DATA_ROOT) {
+  const safeThreadId = String(threadId || "");
+  const safeName = path.basename(String(name || ""));
+  if (!/^[A-Za-z0-9._-]+$/.test(safeThreadId)) return null;
+  if (!/^turnloom-[A-Za-z0-9._-]+\.(jpg|jpeg|png|webp|gif|bmp|heic)$/i.test(safeName)) return null;
+  const sessionRoot = path.resolve(root, "scratch", safeThreadId);
+  const candidate = path.resolve(sessionRoot, safeName);
+  if (!candidate.startsWith(sessionRoot + path.sep)) return null;
+  return candidate;
+}
+function imageMimeTypeFromName(name) {
+  const ext = path.extname(String(name || "")).toLowerCase();
+  if (ext === ".jpg" || ext === ".jpeg") return "image/jpeg";
+  if (ext === ".png") return "image/png";
+  if (ext === ".webp") return "image/webp";
+  if (ext === ".gif") return "image/gif";
+  if (ext === ".bmp") return "image/bmp";
+  if (ext === ".heic") return "image/heic";
+  return "application/octet-stream";
+}
+
+
+function imageReceiptsPath(threadId, root = PI_DATA_ROOT) {
+  const dir = path.resolve(root, "scratch", String(threadId || ""));
+  return path.join(dir, IMAGE_RECEIPTS_FILE);
+}
+
+function readImageReceipts(threadId, root = PI_DATA_ROOT) {
+  try {
+    const parsed = JSON.parse(readFileSync(imageReceiptsPath(threadId, root), "utf8"));
+    return Array.isArray(parsed) ? parsed.slice(-IMAGE_RECEIPT_LIMIT) : [];
+  } catch {
+    return [];
+  }
+}
+
+function appendImageReceipt(threadId, text, images, turnId = null, root = PI_DATA_ROOT) {
+  if (!Array.isArray(images) || !images.length) return null;
+  const dir = path.dirname(imageReceiptsPath(threadId, root));
+  mkdirSync(dir, { recursive: true });
+  const receipt = {
+    id: `${Date.now()}-${randomUUID().slice(0, 8)}`,
+    turnId: String(turnId || ""),
+    text: String(text || "").slice(0, 120),
+    createdAtMs: Date.now(),
+    images: images.slice(0, MAX_SEND_IMAGES).map((image) => ({
+      name: path.basename(String(image?.name || "")),
+      mimeType: String(image?.mimeType || ""),
+      size: Number(image?.size) || 0
+    }))
+  };
+  const receipts = [...readImageReceipts(threadId, root), receipt].slice(-IMAGE_RECEIPT_LIMIT);
+  const data = JSON.stringify(receipts);
+  if (Buffer.byteLength(data, "utf8") > IMAGE_RECEIPT_MAX_BYTES) return null;
+  const target = imageReceiptsPath(threadId, root);
+  const temp = `${target}.${process.pid}.${Date.now()}.tmp`;
+  try {
+    writeFileSync(temp, data, "utf8");
+    renameSync(temp, target);
+  } finally {
+    try { rmSync(temp, { force: true }); } catch {}
+  }
+  return receipt;
+}
+
+function messageTextForRestore(message) {
+  const content = message?.content ?? message?.text ?? "";
+  return String(Array.isArray(content) ? content.map((part) => part?.text || "").join("\n") : content).trim().slice(0, 120);
+}
+
+function restoreLocalImages(messages, receipts, threadId) {
+  const source = Array.isArray(messages) ? messages : [];
+  const pending = Array.isArray(receipts) ? receipts.slice() : [];
+  const consumedIds = new Set();
+  const output = source.map((message) => {
+    if (message?.role !== "user") return message;
+    if (message?.images?.length || message?.localImages?.length) return message;
+    const messageTime = Date.parse(message?.timestamp || "") || 0;
+    const text = messageTextForRestore(message);
+    let index = pending.findIndex((receipt) => receipt?.turnId && String(receipt.turnId) === String(message?.turnId || ""));
+    if (index < 0) {
+      index = pending.findIndex((receipt) => {
+        const sameText = String(receipt?.text || "") === text;
+        const delta = messageTime && Number(receipt?.createdAtMs) ? Math.abs(messageTime - Number(receipt.createdAtMs)) : 0;
+        return sameText && delta <= IMAGE_RECEIPT_MATCH_WINDOW_MS;
+      });
+    }
+    if (index < 0) return message;
+    const [receipt] = pending.splice(index, 1);
+    // images 是前端期待的 data URL 形状；localImages 保留文件名/路径元数据。
+    // 服务端不可访问客户端 token，URL 只写到此处，客户端渲染时再 withAuthToken。
+    const images = (Array.isArray(receipt.images) ? receipt.images : []).map((image) => {
+      const url = `/api/thread-image?threadId=${encodeURIComponent(threadId)}&name=${encodeURIComponent(image?.name || "")}`;
+      return {
+        name: String(image?.name || ""),
+        mimeType: String(image?.mimeType || ""),
+        size: Number(image?.size) || 0,
+        url,
+        dataUrl: url
+      };
+    });
+    if (!images.length) return message;
+    consumedIds.add(String(receipt.id || ""));
+    return { ...message, images, localImages: images, restoredAttachments: true };
+  });
+  return { messages: output, consumedIds: [...consumedIds], remainingReceipts: pending };
+}
+
+
+export {
+  approvalRequestsFromEvents,
+  findLiveApprovalRequest,
+  respondToApproval,
+  setCodexIpcClientForApprovalTests,
+  rememberStartedThreadsForTest,
+  approvalDetailsHash,
+  sendWithFiles,
+  sendRequestFingerprint,
+  nativeQueueFallbackStatus,
+  safeQueuedNativeAttachment,
+  restoreLocalImages,
+  capMessagesResponseForClient,
+  offloadInlineImageForClient,
+  compactOversizedMessageContent,
+  safeThreadScratchPath,
+  appendImageReceipt,
+  readImageReceipts,
+  attemptCodexDesktopRefresh,
+  withAssetVersions,
+  authProfileFromRaw,
+  overrideNeedsRolloutCorroboration,
+  overrideLacksCorroboration,
+  startedThreadTitle,
+  rememberStartedThread,
+  recentStartedThreadRows,
+  threadStatusCandidates,
+  createDesktopRefreshQueue,
+  DesktopCodexIpcClient,
+  canExposeLocalFilesForMessage,
+  contentDispositionForDownload,
+  createRolloutParseState,
+  desktopInterruptTurnRequest,
+  desktopStartTurnRequest,
+  desktopSteerRestoreMessage,
+  enqueueSend,
+  steerQueuedSend,
+  ipcVersionForMethod,
+  ipcVersionForRequest,
+  interruptTurnAndConfirm,
+  interruptTurnWithOwnerRecovery,
+  interruptTurnWithFallback,
+  isNoActiveTurnError,
+  isIpcTimeoutError,
+  isNoOpenOwnerError,
+  limitMessagesForClient,
+  localPathCandidates,
+  loadCodexModelConfiguration,
+  modelConfigurationFromCatalog,
+  normalizeTurnSettings,
+  resolveTurnSettings,
+  catalogModelMatch,
+  modelSupportsImages,
+  modelSupportsImagesForSend,
+  parseCodexModelConfig,
+  parseRolloutLine,
+  parseRolloutTail,
+  cancelQueuedSend,
+  localQueuedSendStatus,
+  nativeQueuedSendStatusFromEntries,
+  queuedSendStatus,
+  queuedSendIdleDecision,
+  repairInvalidCustomToolCallIdsInText,
+  requestedByteRange,
+  rolloutPathForCurrentHome,
+  sessionIdFromRolloutName,
+  rolloutResultFromState,
+  contextCompactionMessage,
+  planMessage,
+  getThreadGoalSafe,
+  sanitizeThreadGoal,
+  setThreadGoal,
+  clearThreadGoal,
+  compactThread,
+  forkThread,
+  runSerializedThreadStart,
+  sameFilePath,
+  runIdempotentSend,
+  refreshCodexDesktopAfterSend,
+  shouldRecordDesktopRefreshNotice,
+  startTurnWithOwnerRecovery,
+  startNewCodexThread,
+  startNewCodexThreadViaAppServer,
+  stripHiddenMessageLocalAssets,
+  isSubagentThread,
+  threadListMetadata,
+  readPackagedAppVersion,
+  visibleThreadRows,
+  loginUrlFor,
+  loginUrlForProfile,
+  staticSecurityHeaders,
+  buildThreadDiagnostics,
+  ifNoneMatchMatches,
+  normalizeStatusState,
+  normalizeThreadsLimit,
+  sqliteDriverInfo,
+  statusFieldsFromOverride,
+  statusOverrideFromRow,
+  safeResolveRolloutPath,
+  resolveRolloutFile,
+  parseRollout,
+  readZstdRolloutLines,
+  adapterStatusOverrideFor,
+  clearAdapterStatusOverride,
+  setAdapterStatusOverride,
+  threadsPage,
+  weakEtagFor
+};

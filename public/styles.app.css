@@ -1,0 +1,2799 @@
+/* ══════════════════════════════════════════════════════════════════════════
+   App Shell 设计层（2026-11-05）—— 最后加载，覆盖 styles.css / styles.v3.css
+
+   目标：不再是「一个白底网页」。原生 App 的观感来自四件事：
+     1. 有底色的「画布」+ 浮在其上的「表面」（不是全屏纯白）
+     2. 明确的顶部栏 / 底部输入区，各占一层、有阴影与边界
+     3. 内容用卡片/气泡承载，有圆角、有投影、有留白节奏
+     4. 品牌色只用在关键动作上，其余是克制的石板灰 + 深墨色
+
+   这一层不改 DOM、不改交互，只重写视觉。全部用已有 class，
+   #shell 提权保证胜出；媒体查询只作用于手机宽度。
+   ══════════════════════════════════════════════════════════════════════════ */
+
+:root {
+  --app-canvas: #EEF1F6;
+  --app-surface: #FFFFFF;
+  --app-surface-2: #F7F9FC;
+  --app-ink: #142033;
+  --app-ink-2: #40516A;
+  --app-ink-3: #6B7C93;
+  --app-line: #E2E8F0;
+  --app-brand: #2563EB;
+  --app-brand-deep: #1D4ED8;
+  --app-brand-soft: #E8F0FF;
+  --app-user: #2563EB;
+  --app-user-ink: #FFFFFF;
+  --app-running: #0EA47A;
+  --app-radius-lg: 22px;
+  --app-radius-md: 16px;
+  --app-radius-sm: 12px;
+  --app-shadow-1: 0 1px 2px rgba(20, 32, 51, 0.04), 0 2px 8px rgba(20, 32, 51, 0.05);
+  --app-shadow-2: 0 8px 24px rgba(20, 32, 51, 0.10), 0 2px 6px rgba(20, 32, 51, 0.06);
+  --app-shadow-bar: 0 -6px 20px rgba(20, 32, 51, 0.07);
+}
+
+/* 画布：整页是有底色的表面，内容区浮起来 */
+#shell {
+  background: var(--app-canvas);
+  color: var(--app-ink);
+}
+
+#shell .conversation {
+  background: transparent;
+}
+
+/* ── 顶部栏：像原生 App 的 NavigationBar，不再是一行白底文字 ── */
+#shell .conversation-header {
+  position: relative;
+  z-index: 12;
+  gap: 8px;
+  min-height: 60px;
+  padding: 8px 12px;
+  background: rgba(255, 255, 255, 0.94);
+  backdrop-filter: saturate(180%) blur(14px);
+  -webkit-backdrop-filter: saturate(180%) blur(14px);
+  border-bottom: 1px solid var(--app-line);
+  box-shadow: 0 1px 0 rgba(20, 32, 51, 0.03);
+}
+
+#shell .conversation-header h2,
+#shell .conversation-title {
+  color: var(--app-ink);
+  font-size: 16px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+}
+
+#shell .conversation-actions .icon-button,
+#shell .conversation-header .icon-button,
+#shell .conversation-header .drawer-tab {
+  width: 40px;
+  min-width: 40px;
+  height: 40px;
+  border-radius: 12px;
+  background: transparent;
+  color: var(--app-ink-2);
+}
+
+#shell .conversation-header .icon-button:hover,
+#shell .conversation-header .drawer-tab:hover {
+  background: var(--app-surface-2);
+}
+
+#shell .conversation-header .drawer-tab svg {
+  width: 22px;
+  height: 22px;
+}
+
+/* 状态胶囊：运行中不再是蓝底小字，改成有呼吸感的 pill */
+#shell .conversation-header .status-pill,
+#shell .conversation-header [class*="status-pill"] {
+  border-radius: 999px;
+  font-weight: 650;
+}
+
+/* ── 消息区：画布底色 + 有呼吸的留白，消息以卡片承载 ── */
+#shell .message-list {
+  background: transparent;
+  padding: 18px 14px 24px;
+}
+
+#shell .message {
+  margin-bottom: 22px;
+}
+
+/* 角色行弱化，让正文成为主角 */
+#shell .message .role,
+#shell .message .role-text,
+#shell .message .role-meta,
+#shell .message .role-badge {
+  color: var(--app-ink-3);
+  font-size: 11px;
+  font-weight: 600;
+}
+
+#shell .role-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: var(--app-surface);
+  border: 1px solid var(--app-line);
+}
+
+/* 助手消息：白卡片（此前是完全透明的裸文字，最像网页） */
+#shell .message.assistant .bubble {
+  padding: 14px 16px;
+  background: var(--app-surface);
+  border: 1px solid var(--app-line);
+  border-radius: 4px var(--app-radius-md) var(--app-radius-md) var(--app-radius-md);
+  box-shadow: var(--app-shadow-1);
+  color: var(--app-ink);
+  line-height: 1.72;
+}
+
+/* 用户消息：品牌实心气泡，明显的「我发的」 */
+#shell .message.user .bubble {
+  padding: 12px 16px;
+  background: linear-gradient(145deg, #3B76F0 0%, var(--app-brand) 55%, var(--app-brand-deep) 100%);
+  border: 0;
+  border-radius: var(--app-radius-md) 4px var(--app-radius-md) var(--app-radius-md);
+  box-shadow: 0 6px 16px rgba(37, 99, 235, 0.24);
+  color: var(--app-user-ink);
+  max-width: 86%;
+}
+
+#shell .message.user .bubble p,
+#shell .message.user .bubble li,
+#shell .message.user .bubble strong,
+#shell .message.user .bubble span {
+  color: var(--app-user-ink);
+}
+
+#shell .message.user .bubble a {
+  color: #DBEAFF;
+  text-decoration: underline;
+}
+
+#shell .message.user .bubble code,
+#shell .message.user .bubble pre {
+  background: rgba(255, 255, 255, 0.16);
+  color: var(--app-user-ink);
+  border-color: rgba(255, 255, 255, 0.24);
+}
+
+/* 工具/内部记录：收进一张更轻的卡片 */
+#shell .message.tool .bubble,
+#shell .message.developer .bubble,
+#shell .message.system .bubble,
+#shell .message.thinking-message .bubble {
+  background: var(--app-surface-2);
+  border: 1px solid var(--app-line);
+  border-radius: var(--app-radius-sm);
+  box-shadow: none;
+  color: var(--app-ink-2);
+}
+
+#shell .message.thinking-message .bubble {
+  border-left: 3px solid var(--app-running);
+}
+
+/* ── 底部输入区：像原生 App 的 Bottom Bar，浮在内容之上 ── */
+#shell .composer {
+  position: relative;
+  z-index: 10;
+  padding: 10px 12px max(12px, env(safe-area-inset-bottom));
+  background: rgba(255, 255, 255, 0.96);
+  backdrop-filter: saturate(180%) blur(14px);
+  -webkit-backdrop-filter: saturate(180%) blur(14px);
+  border-top: 1px solid var(--app-line);
+  box-shadow: var(--app-shadow-bar);
+}
+
+#shell .composer-pod {
+  padding: 10px 12px;
+  border: 1px solid var(--app-line);
+  border-radius: var(--app-radius-lg);
+  background: var(--app-surface-2);
+  box-shadow: inset 0 1px 2px rgba(20, 32, 51, 0.03);
+}
+
+#shell .composer-pod:focus-within {
+  border-color: rgba(37, 99, 235, 0.55);
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.10);
+  background: var(--app-surface);
+}
+
+#shell .composer-input {
+  color: var(--app-ink);
+  font-size: 15px;
+}
+
+#shell .composer-input::placeholder {
+  color: var(--app-ink-3);
+}
+
+#shell .composer-actions,
+#shell .composer-left,
+#shell .composer-buttons {
+  gap: 4px;
+}
+
+/* 工具按钮：淡灰圆角图标，按下去有反馈 */
+#shell .attach-button,
+#shell .mention-button,
+#shell .plugin-picker-button,
+#shell .skill-picker-button {
+  border-radius: 12px;
+  color: var(--app-ink-2);
+}
+
+#shell .attach-button:hover,
+#shell .mention-button:hover,
+#shell .plugin-picker-button:hover {
+  background: var(--app-surface);
+  color: var(--app-ink);
+}
+
+/* 模型胶囊 */
+#shell .model-summary {
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.7);
+  border: 1px solid var(--app-line);
+  padding: 0 10px;
+  color: var(--app-ink-2);
+}
+
+#shell .model-summary.expanded {
+  background: var(--app-brand-soft);
+  border-color: rgba(37, 99, 235, 0.25);
+}
+
+/* 主发送键：实色 + 投影，一眼看出是主动作 */
+#shell .composer-buttons .send-button {
+  border-radius: 14px;
+  background: linear-gradient(145deg, #3B76F0, var(--app-brand-deep));
+  color: #FFFFFF;
+  box-shadow: 0 4px 12px rgba(37, 99, 235, 0.30);
+}
+
+#shell .composer-buttons .send-button:disabled {
+  background: #E4E9F1;
+  color: #9AA8BA;
+  box-shadow: none;
+}
+
+#shell .composer-buttons .stop-button {
+  border-radius: 14px;
+  box-shadow: 0 3px 10px rgba(220, 38, 38, 0.18);
+}
+
+/* 项目选择行：也做成一块有边界的条 */
+#shell .draft-project-row {
+  margin: 0 12px 8px;
+  padding: 4px 10px;
+  border: 1px solid var(--app-line);
+  border-radius: 14px;
+  background: var(--app-surface);
+  box-shadow: var(--app-shadow-1);
+}
+
+#shell .draft-project-select {
+  border: 0;
+  background: transparent;
+  font-weight: 600;
+  color: var(--app-ink);
+}
+
+/* 排队/插入条：更像分段控件 */
+#shell .follow-up-mode {
+  border: 1px solid var(--app-line);
+  border-radius: 999px;
+  background: var(--app-surface);
+  box-shadow: var(--app-shadow-1);
+}
+
+#shell .follow-up-mode-button.selected {
+  background: var(--app-brand-soft);
+  color: var(--app-brand-deep);
+  box-shadow: 0 1px 3px rgba(37, 99, 235, 0.12);
+}
+
+/* ── 抽屉：像原生 App 的侧滑面板，而不是压在主内容上的白纸 ── */
+#shell .sidebar {
+  background: var(--app-surface-2);
+  box-shadow: 8px 0 28px rgba(20, 32, 51, 0.14);
+  border-right: 1px solid var(--app-line);
+}
+
+#shell .sidebar-top {
+  background: transparent;
+}
+
+#shell .sidebar-brand h1 {
+  font-size: 19px;
+  font-weight: 750;
+  letter-spacing: -0.02em;
+  color: var(--app-ink);
+}
+
+#shell .search,
+#shell .thread-sort-control input,
+#shell input[type="search"] {
+  border-radius: 14px;
+  border: 1px solid var(--app-line);
+  background: var(--app-surface);
+  box-shadow: var(--app-shadow-1);
+}
+
+#shell .new-thread-button {
+  border-radius: 14px;
+  background: linear-gradient(145deg, #3B76F0, var(--app-brand-deep));
+  box-shadow: 0 5px 14px rgba(37, 99, 235, 0.28);
+  font-weight: 700;
+}
+
+#shell .thread-sort-segments {
+  border: 1px solid var(--app-line);
+  border-radius: 999px;
+  background: var(--app-surface);
+  padding: 3px;
+  box-shadow: var(--app-shadow-1);
+}
+
+#shell .thread-sort-segment {
+  border-radius: 999px;
+  font-weight: 650;
+}
+
+#shell .thread-sort-segment.active {
+  background: var(--app-brand-soft);
+  color: var(--app-brand-deep);
+  box-shadow: 0 1px 3px rgba(37, 99, 235, 0.12);
+}
+
+/* 项目卡片：提高层次，选中态用品牌左边条 */
+#shell .thread-group {
+  margin: 0 12px 12px;
+  border: 1px solid var(--app-line);
+  border-radius: var(--app-radius-md);
+  background: var(--app-surface);
+  box-shadow: var(--app-shadow-1);
+}
+
+#shell .thread-group-title {
+  border-bottom: 1px solid var(--app-line);
+  background: linear-gradient(180deg, #FFFFFF 0%, var(--app-surface-2) 100%);
+  font-size: 13px;
+  font-weight: 750;
+  letter-spacing: -0.01em;
+}
+
+#shell .thread-group-count {
+  background: var(--app-surface-2);
+  border: 1px solid var(--app-line);
+  color: var(--app-ink-2);
+}
+
+#shell .thread-group-items {
+  padding: 6px;
+  gap: 4px;
+}
+
+#shell .thread-group-items .thread-item {
+  border-radius: var(--app-radius-sm);
+  border: 1px solid transparent;
+  background: transparent;
+}
+
+#shell .thread-group-items .thread-item:hover {
+  background: var(--app-surface-2);
+}
+
+#shell .thread-group-items .thread-item.active {
+  background: var(--app-brand-soft);
+  border-color: rgba(37, 99, 235, 0.18);
+  box-shadow: inset 3px 0 0 var(--app-brand);
+}
+
+#shell .thread-title {
+  font-size: 14px;
+  font-weight: 650;
+  color: var(--app-ink);
+}
+
+#shell .thread-folder {
+  background: var(--app-surface-2);
+  border: 1px solid var(--app-line);
+  color: var(--app-ink-3);
+  font-weight: 650;
+}
+
+#shell .thread-status-running,
+#shell .thread-item .thread-status-running {
+  color: var(--app-running);
+  font-weight: 650;
+}
+
+#shell .drawer-overlay {
+  background: rgba(15, 26, 44, 0.34);
+  backdrop-filter: blur(2px);
+  -webkit-backdrop-filter: blur(2px);
+}
+
+/* ── 弹层 / 长按菜单 ── */
+#shell .message-action-sheet,
+#shell .model-panel,
+#shell .mention-menu,
+#shell .image-picker-menu,
+#shell .plugin-mention-menu,
+#shell .skill-mention-menu {
+  border: 1px solid var(--app-line);
+  border-radius: var(--app-radius-lg);
+  background: var(--app-surface);
+  box-shadow: var(--app-shadow-2);
+}
+
+#shell .message-action-sheet button {
+  border-radius: var(--app-radius-sm);
+  font-weight: 650;
+}
+
+#shell .message-action-sheet button:hover {
+  background: var(--app-brand-soft);
+  color: var(--app-brand-deep);
+}
+
+/* ── 登录 / 引导：居中卡片，别像表单页面 ── */
+#authGate.auth-gate,
+.auth-gate {
+  background: radial-gradient(circle at 50% 18%, #F3F7FF 0%, var(--app-canvas) 62%, #E4EAF3 100%);
+}
+
+.auth-card,
+.welcome-card {
+  border: 1px solid rgba(255, 255, 255, 0.9);
+  border-radius: 24px;
+  background: rgba(255, 255, 255, 0.96);
+  box-shadow: var(--app-shadow-2);
+}
+
+.auth-button,
+.welcome-footer button {
+  border-radius: 14px;
+  background: linear-gradient(145deg, #3B76F0, var(--app-brand-deep));
+  box-shadow: 0 5px 14px rgba(37, 99, 235, 0.28);
+  font-weight: 700;
+}
+
+/* 空状态图标不要顶着文字 */
+#shell .empty-state {
+  color: var(--app-ink-3);
+  font-size: 14px;
+}
+
+/* ── 滚动条：更像原生（细、低调） ── */
+#shell * {
+  scrollbar-width: thin;
+  scrollbar-color: #C9D3E1 transparent;
+}
+
+#shell *::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+#shell *::-webkit-scrollbar-thumb {
+  background: #C9D3E1;
+  border-radius: 999px;
+}
+
+/* 抽屉列表密度：v3 给每条 68px 最小高，在卡片内显得过空。
+   原生 App 的列表行更紧凑，靠留白分组而不是把每行撑高。 */
+#shell .thread-group-items .thread-item {
+  min-height: 56px;
+  padding: 10px 12px;
+}
+
+#shell .thread-group-items .thread-copy {
+  gap: 2px;
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
+   消掉「浏览器感」的交互细节（2026-11-05）
+   · 默认全站禁止长按选词/系统复制把手；只有用户主动点「选择文字」才放开
+   · 点按高亮、长按菜单、应用内确认弹层统一按 App 的观感来做
+   ══════════════════════════════════════════════════════════════════════════ */
+html,
+body,
+#shell,
+#shell * {
+  -webkit-touch-callout: none;
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+/* 输入框当然要能选词，但不要系统长按把手 */
+#shell input,
+#shell textarea,
+#shell [contenteditable="true"] {
+  -webkit-user-select: text;
+  user-select: text;
+  -webkit-touch-callout: none;
+}
+
+/* 长按菜单里用户主动选「选择文字」时，只放开那一条消息 */
+#shell .message.selecting .bubble,
+#shell .message.selecting .bubble * {
+  -webkit-user-select: text;
+  user-select: text;
+  -webkit-touch-callout: default;
+}
+
+/* 去掉 WebView 的点按高亮方块 */
+#shell * {
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* 应用内确认框：替代安卓系统 confirm() */
+#shell .app-dialog-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 70;
+  display: block;
+  border: 0;
+  padding: 0;
+  background: rgba(15, 26, 44, 0.38);
+  backdrop-filter: blur(3px);
+  -webkit-backdrop-filter: blur(3px);
+}
+
+#shell .app-dialog-backdrop[hidden] {
+  display: none;
+}
+
+#shell .app-dialog {
+  position: fixed;
+  z-index: 71;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  top: auto;
+  transform: none;
+  width: auto;
+  max-width: none;
+  padding: 6px 20px max(20px, env(safe-area-inset-bottom, 0px));
+  border: 1px solid var(--app-line);
+  border-radius: var(--app-radius-lg);
+  background: var(--app-surface);
+  box-shadow: var(--app-shadow-2);
+  text-align: left;
+}
+
+#shell .app-dialog[hidden] {
+  display: none;
+}
+
+#shell .app-dialog h3 {
+  margin: 0 0 8px;
+  font-size: 17px;
+  font-weight: 750;
+  color: var(--app-ink);
+}
+
+#shell .app-dialog p {
+  margin: 0 0 20px;
+  font-size: 14px;
+  line-height: 1.6;
+  color: var(--app-ink-2);
+}
+
+#shell .app-dialog-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+#shell .app-dialog-actions button {
+  min-width: 84px;
+  min-height: 44px;
+  padding: 0 16px;
+  border: 0;
+  border-radius: 12px;
+  background: var(--app-surface-2);
+  color: var(--app-ink-2);
+  font-family: inherit;
+  font-size: 14px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+#shell .app-dialog-actions #appDialogConfirm {
+  background: linear-gradient(145deg, #3B76F0, var(--app-brand-deep));
+  color: #FFFFFF;
+  box-shadow: 0 4px 12px rgba(37, 99, 235, 0.24);
+}
+
+#shell .app-dialog.danger .app-dialog-actions #appDialogConfirm {
+  background: linear-gradient(145deg, #F05252, #DC2626);
+  box-shadow: 0 4px 12px rgba(220, 38, 38, 0.22);
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
+   模型面板：应用内可搜索列表，替代 240 项原生 <select>
+   ══════════════════════════════════════════════════════════════════════════ */
+#shell .model-panel {
+  max-height: min(460px, 62dvh);
+  overflow-y: auto;
+}
+
+#shell .model-filter {
+  width: 100%;
+  min-height: 44px;
+  margin-top: 6px;
+  padding: 0 12px;
+  border: 1px solid var(--app-line);
+  border-radius: 12px;
+  background: var(--app-surface);
+  color: var(--app-ink);
+  font-family: inherit;
+  font-size: 14px;
+}
+
+#shell .model-filter:focus {
+  outline: none;
+  border-color: var(--app-brand);
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.10);
+}
+
+#shell .model-list-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin: 8px 0 6px;
+}
+
+#shell .model-scope-button {
+  min-height: 36px;
+  padding: 0 12px;
+  border: 1px solid var(--app-line);
+  border-radius: 999px;
+  background: var(--app-surface-2);
+  color: var(--app-brand-deep);
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+#shell .model-count {
+  color: var(--app-ink-3);
+  font-size: 11px;
+  font-weight: 600;
+}
+
+#shell .model-list {
+  display: grid;
+  gap: 4px;
+  max-height: 260px;
+  overflow-y: auto;
+  padding: 2px;
+}
+
+#shell .model-row {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  min-height: 48px;
+  padding: 8px 12px;
+  border: 1px solid transparent;
+  border-radius: 12px;
+  background: transparent;
+  text-align: left;
+  cursor: pointer;
+}
+
+#shell .model-row:hover {
+  background: var(--app-surface-2);
+}
+
+#shell .model-row.active {
+  background: var(--app-brand-soft);
+  border-color: rgba(37, 99, 235, 0.18);
+}
+
+#shell .model-row-name {
+  color: var(--app-ink);
+  font-size: 14px;
+  font-weight: 650;
+  line-height: 1.4;
+}
+
+#shell .model-row-provider {
+  color: var(--app-ink-3);
+  font-size: 11px;
+  line-height: 1.4;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 100%;
+}
+
+#shell .model-empty {
+  margin: 10px 0 2px;
+  color: var(--app-ink-3);
+  font-size: 13px;
+  text-align: center;
+}
+
+#shell .effort-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 6px;
+}
+
+#shell .effort-chip {
+  min-height: 44px;
+  min-width: 56px;
+  padding: 0 14px;
+  border: 1px solid var(--app-line);
+  border-radius: 999px;
+  background: var(--app-surface);
+  color: var(--app-ink-2);
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 650;
+  cursor: pointer;
+}
+
+#shell .effort-chip.active {
+  background: var(--app-brand-soft);
+  border-color: rgba(37, 99, 235, 0.25);
+  color: var(--app-brand-deep);
+}
+
+#shell .model-select-hidden {
+  display: none;
+}
+
+/* 打断进行中：按钮不消失，给持续的视觉反馈，避免"点了没反应" */
+#shell .composer-buttons .stop-button.is-stopping {
+  animation: app-stop-pulse 900ms ease-in-out infinite;
+}
+
+@keyframes app-stop-pulse {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.62; transform: scale(0.92); }
+}
+
+/* 搜索无结果 */
+#shell .search-empty {
+  margin: 16px 12px;
+  padding: 18px;
+  border: 1px dashed var(--app-line);
+  border-radius: var(--app-radius-md);
+  background: var(--app-surface);
+  color: var(--app-ink-3);
+  font-size: 13px;
+  text-align: center;
+}
+
+/* 常用视图里同名模型已去重，供应商名要能完整读到，别挤成半行 */
+#shell .model-list .model-row {
+  min-height: 52px;
+}
+
+#shell .model-row-provider {
+  white-space: normal;
+  overflow: visible;
+  text-overflow: clip;
+  line-height: 1.35;
+}
+
+#shell .model-scope-button {
+  min-height: 44px;
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
+   会话状态可视化（2026-11-05）
+   用户主诉：在外面看不见哪些在跑、哪些完成、哪些要我决策/停滞。
+   · 抽屉顶部全局计数条，点一下即筛选
+   · 主标题栏常驻徽标（抽屉关着也有）
+   · 每条会话左侧彩色状态条，四类颜色统一
+   ══════════════════════════════════════════════════════════════════════════ */
+#shell .status-overview {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 6px;
+  margin: 2px 12px 10px;
+}
+
+#shell .status-overview-chip {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: center;
+  gap: 2px;
+  min-height: 52px;
+  padding: 6px 8px;
+  border: 1px solid var(--app-line);
+  border-radius: 12px;
+  background: var(--app-surface);
+  color: var(--app-ink-3);
+  font-family: inherit;
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1.2;
+  text-align: left;
+  cursor: pointer;
+}
+
+#shell .status-overview-chip b {
+  font-size: 18px;
+  font-weight: 750;
+  color: var(--app-ink);
+  line-height: 1;
+}
+
+#shell .status-overview-chip.has-items {
+  border-color: rgba(37, 99, 235, 0.18);
+}
+
+#shell .status-overview-chip.active {
+  background: var(--app-brand-soft);
+  border-color: var(--app-brand);
+  color: var(--app-brand-deep);
+  box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.10);
+}
+
+#shell .status-overview-chip.active b {
+  color: var(--app-brand-deep);
+}
+
+#shell .status-overview-dot {
+  position: absolute;
+  width: 0;
+  height: 0;
+  overflow: hidden;
+}
+
+#shell .header-status-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 100%;
+  margin-top: 2px;
+  padding: 3px 10px;
+  border: 1px solid transparent;
+  border-radius: 999px;
+  background: var(--app-brand-soft);
+  color: var(--app-brand-deep);
+  font-family: inherit;
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1.4;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+#shell .header-status-button[hidden] {
+  display: none;
+}
+
+#shell .header-status-button.urgent {
+  background: #FFF2E8;
+  border-color: #FBD3B5;
+  color: #B45309;
+}
+
+#shell .header-status-dot {
+  flex: 0 0 7px;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: currentColor;
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.14);
+}
+
+#shell .header-status-button.running .header-status-dot {
+  animation: app-live-pulse 1.6s ease-in-out infinite;
+}
+
+@keyframes app-live-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.35; }
+}
+
+/* 每条会话左侧的状态条 */
+#shell .thread-group-items .thread-item {
+  position: relative;
+  padding-left: 18px;
+}
+
+#shell .thread-status-mark {
+  position: absolute;
+  left: 6px;
+  top: 12px;
+  bottom: 12px;
+  width: 4px;
+  border-radius: 999px;
+  background: #C9D3E1;
+}
+
+#shell .thread-status-mark.running {
+  background: var(--app-running);
+  box-shadow: 0 0 0 2px rgba(14, 164, 122, 0.12);
+}
+
+#shell .thread-status-mark.stale {
+  background: #F59E0B;
+  box-shadow: 0 0 0 2px rgba(245, 158, 11, 0.14);
+}
+
+#shell .thread-status-mark.waiting {
+  background: #DC2626;
+  box-shadow: 0 0 0 2px rgba(220, 38, 38, 0.14);
+}
+
+#shell .thread-status-mark.ended {
+  background: #C9D3E1;
+}
+
+#shell .thread-status-mark.unknown {
+  background: transparent;
+  border: 1px dashed #C9D3E1;
+}
+
+/* 状态文案按类别上色，别让「需决策」混在灰字里 */
+#shell .thread-status-running { color: var(--app-running); font-weight: 700; }
+#shell .thread-status-stale { color: #B45309; font-weight: 700; }
+#shell .thread-status-waiting { color: #DC2626; font-weight: 750; }
+#shell .thread-status-ended { color: var(--app-ink-3); }
+#shell .thread-status-unknown { color: var(--app-ink-3); opacity: 0.8; }
+
+#shell .thread-item.status-waiting .thread-title,
+#shell .thread-item.status-stale .thread-title {
+  color: var(--app-ink);
+  font-weight: 750;
+}
+
+/* 状态徽标虽然看起来是标签，但它是可点的；命中区要够大 */
+#shell .header-status-button {
+  min-height: 32px;
+  padding: 6px 12px;
+}
+
+#shell .conversation-header .refresh-button,
+#shell .conversation-header .icon-button {
+  width: 44px;
+  min-width: 44px;
+}
+
+#shell .header-status-button {
+  min-height: 44px;
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
+   软键盘态（2026-11-05）
+   app.js 用 visualViewport.height 给 #shell 设了精确高度；这里再保证
+   composer 永远贴着可视区底部、消息区仍能滚动、顶部栏不被挤没。
+   ══════════════════════════════════════════════════════════════════════════ */
+#shell {
+  height: var(--app-visible-height, 100dvh);
+  overflow: hidden;
+}
+
+html.keyboard-open #shell .conversation-header {
+  min-height: 48px;
+  padding: 4px 10px;
+}
+
+html.keyboard-open #shell .conversation-header .header-status-button,
+html.keyboard-open #shell .conversation-header #threadMeta,
+html.keyboard-open #shell .conversation-header .goal-panel {
+  display: none;
+}
+
+html.keyboard-open #shell .message-list {
+  padding-top: 10px;
+  padding-bottom: 10px;
+}
+
+html.keyboard-open #shell .composer {
+  padding-top: 6px;
+  padding-bottom: max(6px, env(safe-area-inset-bottom));
+}
+
+html.keyboard-open #shell .composer-pod {
+  padding: 6px 10px;
+  border-radius: 16px;
+}
+
+html.keyboard-open #shell .composer-input {
+  min-height: 40px;
+  max-height: 88px;
+}
+
+html.keyboard-open #shell .draft-project-row,
+html.keyboard-open #shell .queue-status-bar {
+  display: none;
+}
+
+/* 键盘弹出时把模型面板等浮层限制在可视区内，别盖住输入行 */
+html.keyboard-open #shell .model-panel {
+  max-height: min(240px, 32dvh);
+}
+
+/* 键盘态再收紧一轮：矮窗口（含 320×300）也要留得住输入行和发送键 */
+html.keyboard-open #shell .follow-up-mode,
+html.keyboard-open #shell .plugin-mention-tray,
+html.keyboard-open #shell .attachment-tray {
+  display: none;
+}
+
+html.keyboard-open #shell .composer-pod {
+  gap: 4px;
+}
+
+html.keyboard-open #shell .composer-input {
+  min-height: 38px;
+  max-height: 72px;
+  padding: 4px 0;
+}
+
+html.keyboard-open #shell .composer-actions {
+  margin-top: 2px;
+}
+
+html.keyboard-open #shell .send-status {
+  display: none;
+}
+
+/* shell 用 flex 列，消息区吃掉剩余空间，composer 永远贴底 */
+#shell .conversation {
+  min-height: 0;
+}
+
+#shell .message-list {
+  min-height: 0;
+}
+
+/* 键盘态下输入框仍保持 44px 命中高度；composer 只比原来高 6px，不影响可视区 */
+html.keyboard-open #shell .composer-input {
+  min-height: 44px;
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
+   系统字体放大适配（2026-11-05）
+   用户在系统里开了全局字体放大；原先大量 11/13px 固定字号 + 固定高度 +
+   nowrap/ellipsis 会把品牌名、模型名、状态胶囊切掉。
+   原则：字号用 em 跟着根走、容器用 min-height 而非 height、
+   单行文本允许换行、计数条允许两行、绝不靠 overflow:hidden 假装正常。
+   ══════════════════════════════════════════════════════════════════════════ */
+
+/* 品牌名/标题：放大时不裁切，允许折行 */
+#shell .sidebar-brand h1,
+#shell .conversation-header h2,
+#shell .conversation-title {
+  max-width: 100%;
+  overflow-wrap: anywhere;
+  white-space: normal;
+  line-height: 1.35;
+}
+
+#shell .sidebar-brand h1 {
+  font-size: clamp(17px, 1.15em, 24px);
+}
+
+#shell .conversation-header h2,
+#shell .conversation-title {
+  font-size: clamp(15px, 1em, 21px);
+}
+
+/* 顶栏不再设死高：内容多就自然长高 */
+#shell .conversation-header {
+  height: auto;
+  min-height: 60px;
+  flex-wrap: wrap;
+}
+
+#shell .conversation-actions {
+  flex: 0 0 auto;
+}
+
+/* 状态总览：允许换行、两行文案，不裁切 */
+#shell .status-overview {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+#shell .status-overview-chip {
+  overflow: visible;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  line-height: 1.35;
+}
+
+#shell .status-overview-chip b {
+  font-size: 1.25em;
+}
+
+/* 模型胶囊/会话标题/状态文案：放大时不省略 */
+#shell .model-name,
+#shell .thread-title,
+#shell .thread-group-name,
+#shell .model-row-name,
+#shell .model-row-provider {
+  overflow: visible;
+  text-overflow: clip;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+/* 模型能力标记：纯文本模型在列表里明确标出，避免带图发送到不支持的模型 */
+#shell .model-row-capability {
+  margin-left: auto;
+  padding: 2px 8px;
+  border-radius: 999px;
+  border: 1px solid color-mix(in srgb, currentColor 28%, transparent);
+  font-size: 0.72em;
+  line-height: 1.6;
+  opacity: 0.72;
+  white-space: nowrap;
+}
+
+#shell .model-row-capability:empty {
+  display: none;
+}
+
+#shell .model-summary {
+  max-width: none;
+  min-width: 0;
+}
+
+/* 所有 44px 命中区改成「至少 44px 或 2.8 倍行高」，放大时不会被压扁 */
+#shell .composer-buttons .send-button,
+#shell .composer-buttons .stop-button,
+#shell .attach-button,
+#shell .mention-button,
+#shell .plugin-picker-button,
+#shell .skill-picker-button,
+#shell .effort-chip,
+#shell .thread-group-title,
+#shell .status-overview-chip,
+#shell .header-status-button,
+#shell .app-dialog-actions button,
+#shell .model-scope-button {
+  height: auto;
+  min-height: max(44px, 2.8em);
+}
+
+/* 会话行：文字变多时行高自然增长，状态条跟着拉长 */
+#shell .thread-group-items .thread-item {
+  height: auto;
+  min-height: max(56px, 3.4em);
+  padding-block: 8px;
+}
+
+#shell .thread-status-mark {
+  top: 8px;
+  bottom: 8px;
+}
+
+/* 键盘态下也别把文字压回固定 px */
+html.keyboard-open #shell .composer-input {
+  height: auto;
+  min-height: max(44px, 2.6em);
+  max-height: 6em;
+}
+
+/* 输入区/抽屉在放大字体下允许自身滚动，避免内容被 shell 的 overflow 吃掉 */
+#shell .sidebar {
+  overflow-y: auto;
+}
+
+#shell .thread-list {
+  overflow-y: auto;
+}
+
+/* 默认仍是紧凑 4 列；只有检测到系统字体放大时才切成 2 列可读布局 */
+#shell .status-overview {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+html.large-text #shell .status-overview {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+/* 「需要关注」置顶分组：只在这里点名疑似停滞/需决策，列表其余处不再重复 */
+#shell .thread-group-attention {
+  border-color: rgba(245, 158, 11, 0.42);
+  background: #FFFBF4;
+  box-shadow: 0 2px 10px rgba(245, 158, 11, 0.10);
+}
+
+#shell .thread-group-attention .thread-group-title {
+  background: linear-gradient(180deg, #FFF7E8 0%, #FFF1D9 100%);
+  color: #92400E;
+  font-weight: 750;
+}
+
+#shell .thread-group-attention .thread-group-count {
+  background: #FFE9C7;
+  border-color: #FBD3A0;
+  color: #92400E;
+}
+
+#shell .thread-group-attention .thread-group-chevron {
+  color: #B45309;
+}
+
+/* 大字下主内容不能被顶栏/总览/输入区吃掉：shell 是 flex 列，
+   只有列表与消息区可伸缩，其余按内容自然高但设上限。 */
+#shell .conversation {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  flex: 1 1 auto;
+}
+
+#shell .message-list {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+}
+
+#shell .sidebar {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+#shell .sidebar-top,
+#shell .status-overview,
+#shell .thread-search-row,
+#shell .thread-sort-control {
+  flex: 0 0 auto;
+}
+
+#shell .thread-list {
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+html.large-text #shell .composer {
+  flex: 0 0 auto;
+  max-height: 42dvh;
+  overflow-y: auto;
+}
+
+html.large-text #shell .conversation-header {
+  max-height: 22dvh;
+  overflow-y: auto;
+}
+
+html.large-text #shell .status-overview {
+  max-height: 26dvh;
+  overflow-y: auto;
+}
+
+/* 字体放大时状态徽标也要能折行，不能被 nowrap 切掉 */
+#shell .header-status-button {
+  white-space: normal;
+  overflow-wrap: anywhere;
+  max-width: 100%;
+  height: auto;
+  text-align: left;
+}
+
+#shell .header-status-button {
+  white-space: normal !important;
+}
+
+/* 大字 + 软键盘同时出现：输入区必须回到紧凑，否则 2.8em 的弹性高度
+   会把发送键撑到几百 px，把键盘可视区吃光。 */
+html.keyboard-open #shell .composer-buttons .send-button,
+html.keyboard-open #shell .composer-buttons .stop-button,
+html.keyboard-open #shell .attach-button,
+html.keyboard-open #shell .mention-button,
+html.keyboard-open #shell .plugin-picker-button,
+html.keyboard-open #shell .skill-picker-button,
+html.keyboard-open #shell .effort-chip,
+html.keyboard-open #shell .model-scope-button {
+  min-height: 44px !important;
+  height: 44px !important;
+  flex: 0 0 44px;
+}
+
+html.keyboard-open #shell .composer-input {
+  min-height: 44px !important;
+  max-height: 88px !important;
+  font-size: clamp(15px, 1em, 20px) !important;
+}
+
+html.keyboard-open #shell .composer {
+  max-height: 46dvh;
+  overflow-y: auto;
+}
+
+html.keyboard-open #shell .model-name,
+html.keyboard-open #shell .composer-actions {
+  font-size: clamp(12px, 0.85em, 16px) !important;
+}
+
+/* grid 容器不能被 max-height 压扁：键盘态让 composer 按内容自然高，
+   只限制 pod 内部滚动，发送键始终在可视区内。 */
+html.keyboard-open #shell .composer {
+  max-height: none !important;
+  overflow: visible !important;
+  flex: 0 0 auto !important;
+}
+
+html.keyboard-open #shell .composer-pod {
+  max-height: 40dvh;
+  overflow-y: auto;
+}
+
+/* ── 审批横幅（PI 的 Plan/Goal 审批）────────────────────────────────── */
+#shell .approval-banner {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 10px 12px;
+  max-height: 42vh;
+  overflow-y: auto;
+  border-bottom: 1px solid color-mix(in srgb, currentColor 14%, transparent);
+  background: color-mix(in srgb, #f59e0b 12%, transparent);
+}
+
+#shell .approval-card {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px;
+  border-radius: 14px;
+  border: 1px solid color-mix(in srgb, currentColor 18%, transparent);
+  background: var(--surface, #FFFFFF);
+}
+
+#shell .approval-card-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+#shell .approval-kind {
+  font-size: 0.75em;
+  opacity: 0.7;
+  white-space: nowrap;
+}
+
+#shell .approval-card-question {
+  margin: 0;
+  font-size: 0.9em;
+  line-height: 1.55;
+  overflow-wrap: anywhere;
+}
+
+#shell .approval-mode {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.82em;
+  opacity: 0.85;
+}
+
+#shell .approval-mode select {
+  flex: 1;
+  min-height: 38px;
+  border-radius: 10px;
+  border: 1px solid color-mix(in srgb, currentColor 22%, transparent);
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  padding: 0 8px;
+}
+
+#shell .approval-card-actions {
+  display: flex;
+  gap: 8px;
+}
+
+#shell .approval-card-actions button {
+  flex: 1;
+  min-height: max(42px, 2.6em);
+  border-radius: 12px;
+  border: 1px solid color-mix(in srgb, currentColor 22%, transparent);
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-weight: 600;
+}
+
+#shell .approval-approve {
+  background: color-mix(in srgb, #10b981 26%, transparent);
+  border-color: color-mix(in srgb, #10b981 45%, transparent);
+}
+
+#shell .approval-reject {
+  background: color-mix(in srgb, #ef4444 18%, transparent);
+  border-color: color-mix(in srgb, #ef4444 38%, transparent);
+}
+
+/* ── 通用宿主面板 ──────────────────────────────────────────────────── */
+#shell .host-sheet {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+}
+
+#shell .host-sheet-backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.45);
+}
+
+#shell .host-sheet-card {
+  position: relative;
+  width: min(680px, 100%);
+  max-height: 82vh;
+  display: flex;
+  flex-direction: column;
+  border-radius: 20px 20px 0 0;
+  background: #FFFFFF;
+  color: #142033;
+  box-shadow: 0 -8px 32px rgba(20, 32, 51, 0.16);
+  border: 1px solid var(--app-line);
+  border-bottom: 0;
+  padding-bottom: env(safe-area-inset-bottom, 0);
+}
+
+#shell .host-sheet-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 14px 16px 10px;
+  border-bottom: 1px solid color-mix(in srgb, currentColor 12%, transparent);
+}
+
+#shell .host-sheet-header h3 {
+  margin: 0;
+  font-size: 1.02em;
+  overflow-wrap: anywhere;
+}
+
+#shell .host-sheet-close {
+  min-width: 40px;
+  min-height: 40px;
+  border: 0;
+  border-radius: 12px;
+  background: transparent;
+  color: inherit;
+  font-size: 1.4em;
+  line-height: 1;
+}
+
+#shell .host-sheet-body {
+  flex: 1;
+  overflow-y: auto;
+  padding: 12px 16px calc(18px + env(safe-area-inset-bottom, 0));
+  -webkit-overflow-scrolling: touch;
+}
+
+#shell .host-list {
+  list-style: none;
+  margin: 8px 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+#shell .host-list li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 6px 12px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  background: color-mix(in srgb, currentColor 6%, transparent);
+}
+
+#shell .host-empty {
+  margin: 18px 4px;
+  text-align: center;
+  opacity: 0.7;
+  font-size: 0.9em;
+  line-height: 1.6;
+}
+
+#shell .host-muted {
+  font-size: 0.8em;
+  opacity: 0.66;
+  overflow-wrap: anywhere;
+}
+
+#shell .host-summary {
+  margin: 4px 2px 10px;
+  font-size: 0.9em;
+  line-height: 1.6;
+}
+
+#shell .host-code {
+  margin: 8px 0;
+  padding: 12px;
+  max-height: 46vh;
+  overflow: auto;
+  border-radius: 12px;
+  background: color-mix(in srgb, currentColor 8%, transparent);
+  font-size: 0.8em;
+  line-height: 1.55;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+#shell .host-form {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+#shell .host-form label {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 0.9em;
+}
+
+#shell .host-form input {
+  min-height: 44px;
+  border-radius: 12px;
+  border: 1px solid color-mix(in srgb, currentColor 22%, transparent);
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  padding: 0 12px;
+}
+
+#shell .host-form-actions,
+#shell .host-tools {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+#shell .host-form-actions button,
+#shell .host-tools button,
+#shell .host-secondary,
+#shell .host-crumb {
+  min-height: max(44px, 2.6em);
+  padding: 0 16px;
+  border-radius: 12px;
+  border: 1px solid color-mix(in srgb, currentColor 22%, transparent);
+  background: color-mix(in srgb, currentColor 6%, transparent);
+  color: inherit;
+  font: inherit;
+}
+
+#shell .host-tools button {
+  flex: 1 1 44%;
+}
+
+#shell .host-secondary,
+#shell .host-crumb {
+  display: inline-block;
+  margin: 10px 0 2px;
+}
+
+#shell .host-file,
+#shell .host-command {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 6px 10px;
+  width: 100%;
+  min-height: 44px;
+  padding: 8px 10px;
+  border: 0;
+  border-radius: 10px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  overflow-wrap: anywhere;
+}
+
+#shell .host-file:hover,
+#shell .host-command:hover,
+#shell .host-tools button:hover {
+  background: color-mix(in srgb, currentColor 10%, transparent);
+}
+
+#shell .thread-context-menu .danger {
+  color: #ef4444;
+}
+
+/* 大字模式：面板与列表都改成相对高度，不出现固定 px 截断 */
+#shell.large-text .host-sheet-card {
+  max-height: 88vh;
+}
+
+#shell.large-text .approval-card-actions button,
+#shell.large-text .host-tools button {
+  flex: 1 1 100%;
+}
+/* ── 关键修复：hidden 必须真的隐藏 ────────────────────────────────────
+   上面 #shell .host-sheet 写了 display:flex，会覆盖浏览器对 [hidden]
+   的默认 display:none。结果弹层从加载起就一直铺满视口：透明 backdrop
+   吃掉所有指针事件，手机端「点哪里都没反应」。这里用 !important 兜住，
+   也保护其它同类弹层。 */
+#shell .host-sheet[hidden],
+#shell .approval-banner[hidden],
+#shell .thread-context-menu[hidden],
+#shell .goal-edit-dialog[hidden],
+#shell .app-dialog[hidden],
+#shell .app-dialog-backdrop[hidden],
+#shell .model-panel[hidden],
+#shell .image-picker-menu[hidden],
+#shell .plugin-mention-menu[hidden],
+#shell .skill-mention-menu[hidden],
+#shell .queue-status-bar[hidden],
+#shell .queue-status-header[hidden],
+#shell .queue-status-list[hidden],
+#shell .follow-up-mode[hidden],
+#shell .attachment-tray[hidden],
+#shell .conversation-status-row[hidden],
+#shell .header-status-button[hidden] {
+  display: none !important;
+}
+
+#shell .host-sheet:not([hidden]) {
+  display: flex;
+}
+/* ── Option A 浅色「更多能力」面板：对比度 + 大文本性能 ─────────────────
+   卡片是纯白表面，文字统一用主墨色；历史上这里写过深黑卡片，导致
+   浅色 App 里出现唯一一块黑面板。保留大文本渲染盒限制。 */
+#shell .host-sheet-card,
+#shell .host-sheet-card button,
+#shell .host-sheet-card select,
+#shell .host-sheet-card input,
+#shell .host-sheet-card pre,
+#shell .host-sheet-card li,
+#shell .host-sheet-card h3 {
+  color: #142033;
+}
+
+#shell .host-sheet-card {
+  background: #FFFFFF;
+}
+
+#shell .host-sheet-card .host-muted,
+#shell .host-sheet-card .approval-kind {
+  color: #5A6B80;
+  opacity: 1;
+}
+
+#shell .host-sheet-card .host-list li,
+#shell .host-sheet-card .host-file,
+#shell .host-sheet-card .host-command,
+#shell .host-sheet-card .host-secondary,
+#shell .host-sheet-card .host-crumb,
+#shell .host-sheet-card .host-form-actions button,
+#shell .host-sheet-card .host-tools button,
+#shell .host-sheet-card .host-code {
+  background: #F7F9FC;
+  color: #142033;
+  border-color: #E2E8F0;
+}
+
+#shell .host-sheet-card .host-code {
+  /* 20 万字符一次性排版会卡住 WebView；限制渲染盒并交给滚动容器。 */
+  max-height: 46vh;
+  contain: content;
+  font-size: 0.72em;
+}
+
+#shell .host-sheet-card .host-sheet-close {
+  color: #142033;
+}
+
+#shell .host-sheet-card select option {
+  color: #142033;
+  background: #ffffff;
+}
+/* ── 视觉检定修复：键盘态必须由可视高度钉住 composer ──────────────────
+   之前只在 JS 里给 #shell 行内高度；若同步晚一帧或外部只改了
+   --app-visible-height（检定注入场景），composer 仍按 765px 布局，
+   发送键落到 420px 可视区之外。这里把 shell 固定到可视区顶部，
+   并让 conversation 用 flex 列把 composer 永远压在底部。 */
+html.keyboard-open #shell {
+  position: fixed;
+  top: var(--app-viewport-offset, 0px);
+  left: 0;
+  right: 0;
+  height: var(--app-visible-height, 100dvh) !important;
+  max-height: var(--app-visible-height, 100dvh);
+}
+
+html.keyboard-open #shell .conversation {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  height: 100%;
+}
+
+html.keyboard-open #shell .message-list {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+}
+
+html.keyboard-open #shell .composer {
+  flex: 0 0 auto;
+  margin-top: auto;
+}
+
+html.keyboard-open #shell .host-sheet {
+  max-height: var(--app-visible-height, 100dvh);
+}
+
+html.keyboard-open #shell .host-sheet-card {
+  max-height: min(88%, var(--app-visible-height, 100dvh));
+}
+/* 键盘态即使 --app-visible-height 尚未由 JS 写入，也必须用 dvh 兜底；
+   视觉检定里手工注入 420px 时 composer 底边 420px、发送键 407px，合格。 */
+html.keyboard-open #shell .composer-pod {
+  max-height: calc(var(--app-visible-height, 100dvh) - 64px);
+  overflow-y: auto;
+}
+/* 显式「⋯」会话操作按钮（新手不再依赖隐藏长按手势） */
+#shell .thread-row {
+  position: relative;
+}
+
+#shell .thread-row .thread-item {
+  padding-right: 38px;
+}
+
+#shell .thread-more-button {
+  position: absolute;
+  right: 6px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 32px;
+  min-height: 40px;
+  border: 0;
+  border-radius: 10px;
+  background: transparent;
+  color: inherit;
+  font-size: 1.3em;
+  line-height: 1;
+  opacity: 0.66;
+}
+
+#shell .thread-more-button:hover,
+#shell .thread-more-button:focus-visible {
+  background: color-mix(in srgb, currentColor 12%, transparent);
+  opacity: 1;
+}
+#shell .host-tools-button {
+  width: auto;
+  min-width: 58px;
+  padding: 0 8px;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+#shell .host-tools-button span {
+  font-size: 0.72em;
+  line-height: 1;
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
+   真机截图修复（2026-11-06）：大字 + 软键盘 + 图片 + 长模型名
+   根因：状态徽标挤在标题块、键盘态无条件隐藏附件、模型条被旧层压成透明裸条。
+   这里是最后加载的权威层，只覆盖这四个具体症状。
+   ══════════════════════════════════════════════════════════════════════════ */
+
+#shell .conversation {
+  min-height: 0;
+  overflow: hidden;
+}
+
+#shell .conversation-header {
+  flex: 0 0 auto;
+  flex-wrap: nowrap;
+  align-items: center;
+  gap: 8px;
+  min-height: 56px;
+  max-height: 56px;
+  overflow: visible;
+  padding: 6px 10px;
+}
+
+#shell .conversation-title {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+#shell .conversation-title > h2,
+#shell .conversation-title > p {
+  min-width: 0;
+  max-width: 100%;
+  margin: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+#shell .conversation-title > p {
+  display: none;
+}
+
+#shell .conversation-actions {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  flex-wrap: nowrap;
+  gap: 2px;
+}
+
+#shell .conversation-header .icon-button,
+#shell .conversation-header .toggle {
+  flex: 0 0 40px;
+}
+
+#shell .host-tools-button {
+  width: auto;
+  min-width: 58px;
+  max-width: 72px;
+  padding: 0 8px;
+  white-space: nowrap;
+}
+
+#shell .host-tools-button span {
+  display: inline-block;
+  font-size: 0.78em;
+  line-height: 1;
+  writing-mode: horizontal-tb;
+  text-orientation: mixed;
+}
+
+#shell .conversation-status-row {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  min-height: 0;
+  padding: 0 10px 6px;
+  background: rgba(255, 255, 255, 0.94);
+  border-bottom: 1px solid var(--app-line);
+}
+
+#shell .conversation-status-row[hidden] {
+  display: none !important;
+}
+
+#shell .header-status-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  width: auto;
+  max-width: 100%;
+  min-height: 32px;
+  height: auto;
+  padding: 5px 12px;
+  border: 1px solid #FBD3B5;
+  border-radius: 999px;
+  background: #FFF7ED;
+  color: #9A3412;
+  font-size: clamp(12px, 0.82em, 16px);
+  font-weight: 700;
+  line-height: 1.35;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  text-align: left;
+  box-shadow: 0 1px 2px rgba(120, 53, 15, 0.05);
+}
+
+#shell .header-status-button.running {
+  border-color: rgba(37, 99, 235, 0.2);
+  background: var(--app-brand-soft);
+  color: var(--app-brand-deep);
+}
+
+#shell .header-status-button[hidden] {
+  display: none !important;
+}
+
+#shell .header-status-dot {
+  flex: 0 0 8px;
+}
+
+/* 键盘打开时也不再藏状态徽标：独立一行不会挡住工具栏。 */
+html.keyboard-open #shell .conversation-header .header-status-button,
+html.keyboard-open #shell .conversation-header #threadMeta,
+html.keyboard-open #shell .conversation-header .goal-panel {
+  display: revert;
+}
+
+html.keyboard-open #shell .conversation-header #threadMeta,
+html.keyboard-open #shell .conversation-header .goal-panel {
+  display: none;
+}
+
+html.keyboard-open #shell .conversation-status-row {
+  padding: 0 8px 4px;
+}
+
+html.keyboard-open #shell .header-status-button {
+  min-height: 30px;
+  padding: 4px 10px;
+  font-size: clamp(11px, 0.76em, 14px);
+}
+
+/* 先选图、再点输入框打字时，附件缩略图必须留在可视区。 */
+html.keyboard-open #shell .attachment-tray {
+  display: none;
+}
+
+html.keyboard-open #shell .composer.has-attachments .attachment-tray {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 8px;
+  max-height: 76px;
+  overflow-x: auto;
+  overflow-y: hidden;
+  padding: 4px 2px 6px;
+  border-bottom: 1px solid var(--app-line);
+  scrollbar-width: thin;
+}
+
+#shell .composer.has-attachments .attachment-tray {
+  order: -1;
+}
+
+html.keyboard-open #shell .composer.has-attachments .attachment-item {
+  flex: 0 0 auto;
+  min-width: 0;
+  max-width: 180px;
+  height: 60px;
+}
+
+html.keyboard-open #shell .composer.has-attachments .attachment-item img {
+  width: 52px;
+  height: 52px;
+  object-fit: cover;
+}
+
+html.keyboard-open #shell .composer.has-attachments .attachment-item span {
+  display: none;
+}
+
+html.keyboard-open #shell .composer.has-attachments .composer-input {
+  max-height: 64px !important;
+}
+
+/* 模型选择：明确的可点卡片，主名 + 强度徽标，不再显示裸 slug。 */
+#shell .composer-left {
+  min-width: 0;
+}
+
+#shell .model-widget {
+  min-width: 0;
+}
+
+#shell .model-summary {
+  display: inline-flex !important;
+  align-items: center;
+  justify-content: space-between;
+  flex: 0 1 auto !important;
+  width: auto;
+  min-width: 128px;
+  max-width: min(58vw, 250px);
+  min-height: 40px;
+  padding: 5px 8px 5px 12px;
+  border: 1px solid #D8E1EF !important;
+  border-radius: 999px;
+  background: #F8FAFE !important;
+  color: #26354C !important;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.9), 0 1px 2px rgba(20, 32, 51, 0.04);
+  font-size: clamp(12px, 0.8em, 15px);
+  font-weight: 650;
+  gap: 6px;
+  overflow: visible !important;
+}
+
+#shell .model-summary::after {
+  display: none !important;
+}
+
+#shell .model-summary.expanded {
+  border-color: #A9C2F5 !important;
+  background: #EEF4FF !important;
+  color: #1D4ED8 !important;
+}
+
+#shell .model-name {
+  flex: 0 1 auto;
+  min-width: 0;
+  max-width: 150px;
+  overflow: hidden !important;
+  text-overflow: ellipsis;
+  white-space: nowrap !important;
+  color: #26354C;
+  font-size: 0.95em;
+  letter-spacing: 0;
+}
+
+#shell .model-effort {
+  flex: 0 0 auto;
+  padding: 2px 8px;
+  border: 1px solid #C7D8F7;
+  border-radius: 999px;
+  background: #E8F0FF;
+  color: #1D4ED8;
+  font-size: 0.78em;
+  font-weight: 750;
+  line-height: 1.5;
+  white-space: nowrap;
+}
+
+#shell .composer-buttons {
+  margin-left: auto;
+}
+
+html.large-text #shell .model-summary {
+  min-height: 44px;
+  max-width: min(62vw, 280px);
+}
+
+html.keyboard-open #shell .model-summary {
+  min-height: 40px !important;
+  height: 40px !important;
+  max-width: min(54vw, 230px);
+}
+
+html.keyboard-open #shell .model-name {
+  max-width: 118px;
+  font-size: 0.9em;
+}
+
+/* 队列默认只占一行：展开后才显示逐条预览/图片/操作。 */
+#shell .queue-status-bar {
+  max-height: 44px;
+  overflow: hidden;
+  padding: 3px 8px;
+  border-radius: 12px;
+}
+
+#shell .queue-status-bar.is-expanded {
+  max-height: min(32dvh, 260px);
+  overflow-y: auto;
+}
+
+#shell .queue-status-header {
+  min-height: 36px;
+  gap: 6px;
+}
+
+#shell .queue-toggle-button {
+  display: inline-flex;
+  flex: 1 1 auto;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  max-width: 100%;
+  min-height: 36px;
+  padding: 0 4px;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-weight: 700;
+  text-align: left;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+#shell .queue-toggle-button > span {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+#shell .queue-toggle-chevron {
+  flex: 0 0 auto;
+  font-size: 13px;
+  transition: transform 160ms ease;
+}
+
+#shell .queue-status-bar.is-expanded .queue-toggle-chevron {
+  transform: rotate(90deg);
+}
+
+#shell .queue-status-list {
+  max-height: min(24dvh, 210px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+html.keyboard-open #shell .queue-status-bar {
+  display: flex;
+  max-height: 40px;
+  overflow: hidden;
+}
+
+html.keyboard-open #shell .queue-status-bar.is-expanded {
+  max-height: 24dvh;
+  overflow-y: auto;
+}
+
+/* 模型面板：供应商/模型 → 强度，分段标题让层级一眼可读。 */
+#shell .model-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-height: min(62dvh, 520px);
+  overflow-y: auto;
+}
+
+#shell .model-step-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 28px;
+  color: #26354C;
+  font-size: 0.82em;
+  font-weight: 800;
+  letter-spacing: 0.02em;
+}
+
+#shell .model-step-title b {
+  display: inline-grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 999px;
+  background: #E8F0FF;
+  color: #1D4ED8;
+  font-size: 12px;
+}
+
+#shell .model-row {
+  display: grid !important;
+  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-areas: "name capability" "provider capability";
+  align-items: center;
+  column-gap: 8px;
+  min-height: 58px;
+}
+
+#shell .model-row-name { grid-area: name; min-width: 0; }
+#shell .model-row-provider { grid-area: provider; min-width: 0; }
+#shell .model-row-capability {
+  grid-area: capability;
+  margin-left: 0 !important;
+  align-self: center;
+  transform: none !important;
+}
+
+#shell .effort-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  max-height: none;
+  overflow: visible;
+}
+
+html.keyboard-open #shell .model-panel {
+  max-height: min(38dvh, 300px);
+}
+
+html.keyboard-open #shell .effort-chip {
+  min-width: 56px;
+}
+
+/* 输入区：附件、@、发送/停止同尺寸层级。 */
+#shell .composer-left .icon-button.attach-button,
+#shell .composer-left .plugin-picker-button,
+#shell .composer-left .mention-button {
+  flex: 0 0 40px;
+  width: 40px;
+  min-width: 40px;
+  height: 40px;
+  min-height: 40px;
+}
+
+#shell .composer-buttons .send-button,
+#shell .composer-buttons .stop-button {
+  flex: 0 0 44px;
+  width: 44px;
+  min-width: 44px;
+  height: 44px;
+  min-height: 44px;
+}
+
+#shell .composer-left .attach-icon,
+#shell .composer-left .plugin-picker-button svg,
+#shell .composer-left .mention-button svg {
+  width: 20px;
+  height: 20px;
+}
+
+/* 新增规则放在权威 [hidden] 层之前；末尾那条 #shell [hidden] 仍最后生效。 */
+/* 新增规则放在权威 [hidden] 层之前；末尾那条 #shell [hidden] 仍最后生效。 */
+
+/* 三级选择第一级：供应商 chips 横向滚动，44px 触控高度。
+   大字/键盘态仍可滚动，绝不撑破窄屏 composer，也不覆盖 [hidden] 契约。 */
+#shell .provider-chips {
+  display: flex;
+  flex-wrap: nowrap;
+  gap: 6px;
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  margin-top: 2px;
+  padding: 2px 1px 6px;
+  overflow-x: auto;
+  overflow-y: hidden;
+  overscroll-behavior-x: contain;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: thin;
+}
+
+#shell .provider-chip {
+  flex: 0 0 auto;
+  min-height: 44px;
+  max-width: min(52vw, 190px);
+  padding: 0 14px;
+  border: 1px solid var(--app-line);
+  border-radius: 999px;
+  background: var(--app-surface);
+  color: var(--app-ink-2);
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 650;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  cursor: pointer;
+}
+
+#shell .provider-chip.active {
+  background: var(--app-brand-soft);
+  border-color: rgba(37, 99, 235, 0.25);
+  color: var(--app-brand-deep);
+}
+
+#shell .model-filter-note {
+  margin: 0 0 4px;
+  color: var(--app-ink-3);
+  font-size: 11px;
+  line-height: 1.4;
+}
+
+html.large-text #shell .provider-chips,
+html.keyboard-open #shell .provider-chips {
+  max-width: 100%;
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+  -webkit-overflow-scrolling: touch;
+}
+
+html.large-text #shell .provider-chip {
+  min-height: 44px;
+  max-width: min(62vw, 220px);
+}
+
+html.keyboard-open #shell .provider-chip {
+  min-height: 44px;
+}
+
+/* 队列失败原因与显式重试：折叠一行也要看见「N 条 · 1 失败」。 */
+#shell .queue-status-bar.has-failure {
+  border-color: rgba(220, 38, 38, 0.34);
+  background: rgba(254, 242, 242, 0.96);
+}
+
+#shell .queue-status-error {
+  display: block;
+  margin-top: 2px;
+  color: #991b1b;
+  font-size: 11px;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+
+#shell .queue-retry-button {
+  min-height: 40px;
+  padding: 0 10px;
+  border: 1px solid rgba(37, 99, 235, 0.25);
+  border-radius: 10px;
+  background: var(--app-brand-soft);
+  color: var(--app-brand-deep);
+  font-size: 12px;
+  font-weight: 650;
+  white-space: nowrap;
+}
+
+html.large-text #shell .queue-status-error {
+  font-size: 12px;
+}
+
+/* P0：最后加载的权威层再次钉死 hidden 契约。
+   2026-11-06 真机事故：模型面板 HTML 带 hidden，但上一轮追加的
+   #shell .model-panel { display:flex } 覆盖了浏览器默认隐藏，
+   面板从加载起盖住屏幕并吃掉中心点击。任何 display 规则都不能赢过 [hidden]。 */
+
+/* 小扳手收进「更多能力」：工具记录开关与切换电脑都在二级面板里。 */
+#shell .host-utility-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+#shell .host-tool-toggle {
+  display: inline-flex;
+  flex: 1 1 170px;
+  align-items: center;
+  gap: 8px;
+  min-height: 44px;
+  padding: 0 12px;
+  border: 1px solid var(--app-line);
+  border-radius: 12px;
+  background: #F7F9FC;
+  color: #142033;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+#shell .host-tool-toggle.active {
+  border-color: var(--app-brand);
+  background: rgba(37, 99, 235, 0.2);
+}
+
+#shell .host-switch-computer {
+  flex: 0 0 auto;
+  min-height: 44px;
+  padding: 0 16px;
+  border: 1px solid rgba(37, 99, 235, 0.4);
+  border-radius: 12px;
+  background: var(--app-brand-soft);
+  color: var(--app-brand-deep);
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+/* 顶栏只保留「更多」和刷新；移除旧小扳手的占位。 */
+#shell .conversation-header .toggle {
+  display: none !important;
+}
+
+/* P0：最后加载的权威层再次钉死 hidden 契约。
+   任何 display 规则都不能赢过 [hidden]。 */
+#shell [hidden] {
+  display: none !important;
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
+   Web UI 视觉检定修复层（2026-11-10）
+
+   这是最后加载的权威层。三层 CSS 共 9,209 行，分散的 !important 互相打架，
+   所以这里不重写旧规则，只对可复现的 P0/P1/P2 缺陷做单点收口：
+     · P0 切换电脑文字 1.06:1、模型面板末行被输入框盖住、会话列表末项被页脚盖住
+     · P1 次要文字对比度、11px 小字、焦点环、隐藏侧栏跑焦、宽屏空白、深色/居中弹窗
+     · P2 桌面滚动条、标题省略号、行高、composer-height 兜底
+   保持 [hidden] / host-sheet 既有测试契约不变。
+   ══════════════════════════════════════════════════════════════════════════ */
+
+:root {
+  /* 5.46:1 on white, 4.76:1 on #E8F0FF; old #6B7C93 was 3.72-4.26:1. */
+  --app-ink-3: #5A6B80;
+  --c-ink-3: #5A6B80;
+  --c-ink-4: #5A6B80;
+  --t-11: 13px;
+  --t-12: 13px;
+  --composer-height: 141px;
+}
+
+/* P1-5: 访问码页背后不再布局整套聊天 UI，也不接收键盘/点击。 */
+body.auth-locked #shell {
+  display: none !important;
+}
+body.auth-locked .welcome-dialog {
+  display: none !important;
+}
+body.auth-locked #sidebarToggle {
+  display: none !important;
+}
+
+/* P1-4: 统一焦点环；drawerOverlay 已从 Tab 序列移除。 */
+#shell button:focus-visible,
+#shell a:focus-visible,
+#shell input:focus-visible,
+#shell select:focus-visible,
+#shell textarea:focus-visible,
+.auth-gate button:focus-visible,
+.auth-gate input:focus-visible,
+.welcome-dialog button:focus-visible,
+.goal-edit-dialog button:focus-visible,
+.goal-edit-dialog input:focus-visible,
+.goal-edit-dialog select:focus-visible,
+.goal-edit-dialog textarea:focus-visible,
+.app-dialog button:focus-visible,
+.message-action-sheet button:focus-visible {
+  outline: 3px solid #1D4ED8 !important;
+  outline-offset: 2px;
+  border-radius: 10px;
+}
+
+/* P1-4: 折叠侧栏由 renderSidebarState() 设置 inert，保留 240ms 滑出动画。 */
+
+/* P0-4 / P1-4: 列表底部留出页脚高度；桌面滚动条不再占 10px。 */
+#shell .thread-list {
+  padding-bottom: 88px !important;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+#shell .thread-list::-webkit-scrollbar,
+#shell .message-list::-webkit-scrollbar,
+#shell .model-list::-webkit-scrollbar,
+#shell .model-panel::-webkit-scrollbar {
+  width: 0;
+  height: 0;
+  display: none;
+}
+#shell .message-list,
+#shell .model-list,
+#shell .model-panel {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+#shell .sidebar-footer {
+  position: relative;
+  z-index: 1;
+  flex: 0 0 auto;
+  min-height: 62px;
+  background: var(--app-surface-2);
+  border-top: 1px solid var(--app-line);
+}
+
+/* P2-2 / P2-3: 窄屏标题省略号、行高与字号分离。 */
+#shell .conversation-title > h2 {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+#shell #newThreadLabel,
+#shell #statusCountEnded {
+  font-size: 13px;
+  line-height: 1.4;
+}
+
+/* P1-3: 所有二级控件至少 44×44，勾选框至少 24×24。 */
+#shell .composer-left .icon-button.attach-button,
+#shell .composer-left .plugin-picker-button,
+#shell .composer-left .mention-button,
+#shell .conversation-header .icon-button,
+#shell .conversation-header .drawer-tab,
+#shell .host-sheet-close,
+#shell .model-summary,
+#shell .thread-more-button {
+  min-width: 44px;
+  min-height: 44px;
+  height: 44px;
+  width: 44px;
+  flex: 0 0 44px;
+}
+#shell .model-summary {
+  width: auto;
+  min-width: 128px;
+  flex: 0 1 auto;
+}
+#shell .host-tools-button span,
+#shell .host-sheet-close {
+  min-width: 44px;
+  min-height: 44px;
+}
+#shell .host-tools-button {
+  width: auto;
+  min-width: 44px;
+  min-height: 44px;
+  height: 44px;
+  flex: 0 0 auto;
+}
+#shell .host-tools-button span {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: auto;
+  height: auto;
+  font-size: 13px;
+}
+#shell input[type="checkbox"],
+#shell input[type="radio"],
+.auth-gate input[type="checkbox"] {
+  width: 24px;
+  height: 24px;
+  min-width: 24px;
+  min-height: 24px;
+  accent-color: var(--app-brand-deep);
+}
+
+/* P0-3: 面板严格收在 composer 上方，末行不落进 textarea。 */
+#shell .model-panel {
+  position: absolute;
+  bottom: calc(100% + 10px);
+  left: 0;
+  right: 0;
+  width: auto;
+  max-width: min(560px, calc(100vw - 24px));
+  max-height: min(360px, calc(100dvh - var(--composer-height, 141px) - 88px));
+  overflow-y: auto;
+  overflow-x: hidden;
+  overscroll-behavior: contain;
+  z-index: 46;
+}
+#shell .model-list {
+  max-height: 180px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+#shell .model-panel .model-row:last-child {
+  margin-bottom: 4px;
+}
+html.keyboard-open #shell .model-panel {
+  max-height: min(220px, calc(var(--app-visible-height, 100dvh) - var(--composer-height, 141px) - 64px));
+  bottom: calc(100% + 6px);
+}
+
+/* P0-2 / P1-9: 「更多能力」恢复浅色 Cupertino 面板；切电脑按钮不再吃深色卡片字色。 */
+#shell .host-sheet-card {
+  background: #FFFFFF;
+  color: #142033;
+  box-shadow: 0 -8px 32px rgba(20, 32, 51, 0.16);
+  border: 1px solid #E2E8F0;
+  border-bottom: 0;
+}
+#shell .host-sheet-card,
+#shell .host-sheet-card button,
+#shell .host-sheet-card select,
+#shell .host-sheet-card input,
+#shell .host-sheet-card pre,
+#shell .host-sheet-card li,
+#shell .host-sheet-card h3 {
+  color: #142033;
+}
+#shell .host-sheet-card .host-muted,
+#shell .host-sheet-card .approval-kind {
+  color: #5A6B80;
+}
+#shell .host-sheet-card .host-list li,
+#shell .host-sheet-card .host-file,
+#shell .host-sheet-card .host-command,
+#shell .host-sheet-card .host-secondary,
+#shell .host-sheet-card .host-crumb,
+#shell .host-sheet-card .host-form-actions button,
+#shell .host-sheet-card .host-tools button,
+#shell .host-sheet-card .host-code {
+  background: #F7F9FC;
+  color: #142033;
+  border-color: #E2E8F0;
+}
+#shell .host-sheet-card .host-sheet-close {
+  color: #142033;
+  background: #F7F9FC;
+  border: 1px solid #E2E8F0;
+}
+#shell .host-sheet-card .host-switch-computer,
+#shell .host-sheet-card button.host-switch-computer {
+  color: #1D4ED8;
+  background: #E8F0FF;
+  border: 1px solid #A9C2F5;
+}
+#shell .host-sheet-card select option {
+  color: #142033;
+  background: #FFFFFF;
+}
+
+/* P1-9 / Option A: 二级交互一律底部半屏抽屉，带 36×6 圆角 grabber。 */
+.sheet-grabber {
+  display: block;
+  width: 36px;
+  height: 6px;
+  margin: 8px auto 2px;
+  border-radius: 3px;
+  background: #C9D3E1;
+  flex: 0 0 auto;
+}
+#shell .host-sheet-card,
+#shell .goal-dialog-card,
+#shell .app-dialog,
+#shell .message-action-sheet,
+.welcome-card {
+  border-radius: 20px 20px 0 0 !important;
+  background: #FFFFFF;
+  color: #142033;
+}
+.welcome-dialog,
+.goal-edit-dialog {
+  display: flex !important;
+  align-items: flex-end;
+  justify-content: center;
+  padding: 0 !important;
+}
+.welcome-card,
+#shell .goal-dialog-card {
+  display: flex;
+  flex-direction: column;
+  width: min(680px, 100%) !important;
+  max-width: 100% !important;
+  max-height: min(86dvh, 720px);
+  margin: 0;
+  box-shadow: 0 -8px 32px rgba(20, 32, 51, 0.16);
+  border: 1px solid #E2E8F0;
+  border-bottom: 0;
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+  overflow: hidden;
+}
+.welcome-card > .welcome-body,
+#shell .goal-dialog-card > .goal-detail-view,
+#shell .goal-dialog-card > .goal-form {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+}
+.welcome-card > .welcome-header,
+.welcome-card > .welcome-footer,
+#shell .goal-dialog-card > .goal-dialog-header {
+  flex: 0 0 auto;
+}
+#shell .app-dialog {
+  position: fixed;
+  z-index: 71;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  top: auto;
+  transform: none;
+  width: auto;
+  max-width: none;
+  padding: 6px 20px max(20px, env(safe-area-inset-bottom, 0px));
+  border: 1px solid #E2E8F0;
+  border-bottom: 0;
+  box-shadow: 0 -8px 32px rgba(20, 32, 51, 0.16);
+}
+#shell .message-action-sheet {
+  position: fixed;
+  z-index: 61;
+  left: 0;
+  right: 0;
+  top: auto;
+  bottom: 0;
+  transform: none;
+  width: auto;
+  max-width: none;
+  padding: 6px 12px max(12px, env(safe-area-inset-bottom, 0px));
+  border-bottom: 0;
+  box-shadow: 0 -8px 32px rgba(20, 32, 51, 0.16);
+}
+#shell .app-dialog .sheet-grabber,
+#shell .message-action-sheet .sheet-grabber {
+  margin-bottom: 8px;
+}
+
+/* P1-8: 超宽屏居中收口，右侧不再空 584px；车机/桌面同样成立。 */
+@media (min-width: 1180px) {
+  #shell {
+    grid-template-columns: minmax(280px, 360px) minmax(0, 1fr);
+  }
+  #shell .conversation {
+    width: 100%;
+    max-width: 1400px;
+    margin-inline: auto;
+    border-left: 1px solid #E2E8F0;
+    border-right: 1px solid #E2E8F0;
+  }
+}
+
+/* 大会话首屏给足反馈， spinner 与文字不挤在一行。 */
+#shell .message-loading {
+  min-height: 64px;
+  gap: 10px;
+  color: var(--app-ink-3);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+/* [hidden] 仍是最后的权威契约，任何 display 规则都不能赢过它。 */
+#shell [hidden],
+.welcome-dialog[hidden],
+.goal-edit-dialog[hidden],
+.app-dialog[hidden],
+.message-action-sheet[hidden] {
+  display: none !important;
+}
+
+/* VIS-07: 会话操作从桌面右键浮窗改为带遮罩的底部动作抽屉。 */
+#shell .thread-context-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 79;
+  display: block;
+  border: 0;
+  padding: 0;
+  background: rgba(15, 26, 44, 0.38);
+  backdrop-filter: blur(3px);
+  -webkit-backdrop-filter: blur(3px);
+}
+#shell .thread-context-menu {
+  display: grid;
+  gap: 2px;
+  position: fixed;
+  z-index: 80;
+  left: 0;
+  right: 0;
+  top: auto;
+  bottom: 0;
+  width: auto;
+  max-width: none;
+  max-height: min(78dvh, 640px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 6px 12px max(12px, env(safe-area-inset-bottom, 0px));
+  border-radius: 20px 20px 0 0;
+  border: 1px solid #E2E8F0;
+  border-bottom: 0;
+  background: #FFFFFF;
+  box-shadow: 0 -8px 32px rgba(20, 32, 51, 0.16);
+}
+#shell .thread-context-menu .sheet-grabber {
+  margin-bottom: 8px;
+}
+#shell .thread-context-menu [role="menuitem"] {
+  min-height: 44px;
+}
+#shell .thread-context-backdrop[hidden],
+#shell .thread-context-menu[hidden] {
+  display: none !important;
+}
+
+/* VIS-08: 320px 极窄屏下模型胶囊不再用 128px 硬下限挤压操作栏。 */
+@media (max-width: 360px) {
+  #shell .model-summary {
+    min-width: 44px;
+    max-width: min(38vw, 132px);
+    flex: 1 1 auto;
+  }
+  #shell .model-name {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  #shell .composer-left .icon-button.attach-button,
+  #shell .composer-left .plugin-picker-button,
+  #shell .composer-left .mention-button {
+    flex: 0 0 40px;
+    width: 40px;
+    min-width: 40px;
+  }
+}

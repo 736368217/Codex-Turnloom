@@ -1,0 +1,1348 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ============================================================
+   Option A / Cupertino Daylight Glass
+   SINGLE_APP_CONTRACT.md section 4 = single source of truth.
+   Light mode is HARD LOCKED. No dark variant, no black canvas,
+   no desktop centered preview shell.
+   ============================================================ */
+
+:root {
+  --tl-canvas: #F2F2F7;
+  --tl-surface: #FFFFFF;
+  --tl-fill-secondary: #EFEFF4;
+  --tl-separator: #E5E5EA;
+  --tl-label-primary: #1C1C1E;
+  --tl-label-secondary: #636366;
+  --tl-blue: #007AFF;
+  --tl-green: #34C759;
+  --tl-red: #FF3B30;
+  --tl-diff-add-bg: #E8F8EE;
+  --tl-diff-add-fg: #1E7E34;
+  --tl-diff-del-bg: #FDECEC;
+  --tl-diff-del-fg: #C82333;
+  --tl-sheet-handle: #C7C7CC;
+  --tl-glass-nav: rgba(255, 255, 255, .82);
+  --tl-glass-thumb: rgba(255, 255, 255, .85);
+  --tl-glass-sheet: rgba(255, 255, 255, .95);
+  --tl-blur-nav: blur(20px) saturate(180%);
+  --tl-blur-thumb: blur(24px) saturate(180%);
+  --tl-blur-sheet: blur(40px) saturate(180%);
+  --tl-radius-card: 16px;
+  --tl-radius-sheet: 24px;
+  --tl-card-shadow: 0 1px 3px rgba(0, 0, 0, .04);
+  --tl-tap: 44px;
+  --tl-press-duration: 150ms;
+  color-scheme: light only;
+}
+
+*, *::before, *::after {
+  -webkit-tap-highlight-color: transparent;
+}
+
+html, body, #root {
+  height: 100%;
+  min-height: 100%;
+  margin: 0;
+  padding: 0;
+}
+
+html {
+  background-color: #F2F2F7 !important;
+  color-scheme: light only;
+  overscroll-behavior: none;
+  -webkit-text-size-adjust: 100%;
+}
+
+body {
+  /* !important guards against Vaul's inline background assignment when
+     shouldScaleBackground is on: the app must never show a black canvas. */
+  background-color: #F2F2F7 !important;
+  color: #1C1C1E;
+  color-scheme: light only;
+  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "PingFang SC",
+    "Helvetica Neue", "Segoe UI", system-ui, sans-serif;
+  overscroll-behavior: none;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
+}
+
+/* Text selection allowed only inside actual message/diff/log content. */
+.tl-selectable, .tl-selectable * {
+  user-select: text;
+  -webkit-user-select: text;
+}
+
+button, input, textarea, select {
+  font: inherit;
+  color: inherit;
+}
+
+input, textarea {
+  user-select: text;
+  -webkit-user-select: text;
+}
+
+.tl-app {
+  height: 100%;
+  width: 100%;
+  background: var(--tl-canvas);
+  color: var(--tl-label-primary);
+  overflow: hidden;
+}
+
+/* ---------- surfaces / cards ---------- */
+
+.tl-card {
+  display: block;
+  background: var(--tl-surface);
+  border-radius: var(--tl-radius-card);
+  box-shadow: var(--tl-card-shadow);
+}
+
+.tl-screen {
+  height: 100%;
+  width: 100%;
+  overflow-y: auto;
+  overflow-x: hidden;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior-y: contain;
+  background: var(--tl-canvas);
+  /* Fixed glass TabBar is ~56px + safe-area; keep a generous trailing gutter
+     so the last actionable element (e.g. "刷新会话列表" / "外观") can always
+     be scrolled fully above the bar instead of being half-covered. */
+  padding-bottom: calc(128px + env(safe-area-inset-bottom, 0px));
+}
+
+.tl-screen::after {
+  content: '';
+  display: block;
+  height: calc(48px + env(safe-area-inset-bottom, 0px));
+  flex: 0 0 auto;
+}
+
+.tl-screen--detail {
+  padding-bottom: calc(128px + env(safe-area-inset-bottom, 0px));
+}
+
+.tl-separator {
+  background: var(--tl-separator);
+  height: 1px;
+}
+
+.tl-fill-secondary {
+  background: var(--tl-fill-secondary);
+}
+
+/* ---------- tap targets & press feedback ---------- */
+
+.tl-tap {
+  min-width: var(--tl-tap);
+  min-height: var(--tl-tap);
+}
+
+.tl-press {
+  transition: transform var(--tl-press-duration) ease,
+    opacity var(--tl-press-duration) ease,
+    background-color var(--tl-press-duration) ease;
+  cursor: pointer;
+  touch-action: manipulation;
+}
+
+.tl-press:active {
+  transform: scale(.98);
+  opacity: .8;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .tl-press { transition-duration: 0ms; }
+}
+
+/* ---------- glass ---------- */
+
+.tl-glass-nav {
+  background: var(--tl-glass-nav);
+  backdrop-filter: var(--tl-blur-nav);
+  -webkit-backdrop-filter: var(--tl-blur-nav);
+  border-top: .5px solid var(--tl-separator);
+}
+
+.tl-glass-thumb {
+  background: var(--tl-glass-thumb);
+  backdrop-filter: var(--tl-blur-thumb);
+  -webkit-backdrop-filter: var(--tl-blur-thumb);
+}
+
+.tl-glass-sheet {
+  background: var(--tl-glass-sheet);
+  backdrop-filter: var(--tl-blur-sheet);
+  -webkit-backdrop-filter: var(--tl-blur-sheet);
+}
+
+.tl-glass-chip {
+  background: var(--tl-glass-nav);
+  backdrop-filter: var(--tl-blur-nav);
+  -webkit-backdrop-filter: var(--tl-blur-nav);
+}
+
+/* ---------- tab bar ---------- */
+
+.tl-tabbar {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 30;
+  display: flex;
+  align-items: stretch;
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+  /* Static translucent glass instead of a live backdrop blur: the bar sits
+     over a fixed light canvas, so the visual result is the same but no
+     per-frame readback is needed (keeps the drawer animation smooth). */
+  background: rgba(255, 255, 255, .94);
+  border-top: .5px solid var(--tl-separator);
+  transform: translateZ(0);
+}
+
+.tl-tabbar-item {
+  flex: 1 1 0;
+  min-width: var(--tl-tap);
+  min-height: 56px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  border: 0;
+  background: transparent;
+  color: var(--tl-label-secondary);
+  padding: 6px 2px;
+}
+
+.tl-tabbar-item--active { color: var(--tl-blue); }
+
+.tl-tabbar-label {
+  font-size: 10px;
+  line-height: 13px;
+  font-weight: 500;
+  letter-spacing: .1px;
+}
+
+/* Legacy .tl-thumbbar rules were removed: the chat composer owns its layout. */
+
+/* ---------- Vaul drawer (global singleton CupertinoSheetHost) ---------- */
+
+[data-vaul-drawer-wrapper] {
+  height: 100%;
+  background: var(--tl-canvas);
+}
+
+/* Light dim scrim. No full-screen backdrop-filter: a full-viewport blur is
+   recomposited every frame during the drawer animation and was the main
+   source of jank. A translucent scrim is visually equivalent and GPU cheap.
+   shouldScaleBackground is OFF, so nothing behind is transformed. */
+[data-vaul-overlay] {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+  background: rgba(28, 28, 30, .22);
+}
+
+/* Explicitely promote the sheet to its own compositor layer. */
+[data-vaul-drawer] {
+  position: fixed !important;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 41;
+  width: 100%;
+  max-height: 92vh;
+  display: flex;
+  flex-direction: column;
+  margin: 0 auto;
+  outline: none;
+  border-radius: var(--tl-radius-sheet) var(--tl-radius-sheet) 0 0;
+  background: #FFFFFF;
+  box-shadow: 0 -8px 32px rgba(0, 0, 0, .10);
+  border-top: .5px solid rgba(255, 255, 255, .95);
+  overflow: hidden;
+  touch-action: none;
+  will-change: transform;
+  transform: translateZ(0);
+}
+
+/* Contract: sheet handle is exactly 36 x 6 px in #C7C7CC
+   (Vaul ships 32 x 5 in #e2e2e4, so it is overridden here). */
+[data-vaul-handle] {
+  width: 36px !important;
+  height: 6px !important;
+  min-height: 6px;
+  background: var(--tl-sheet-handle) !important;
+  opacity: 1 !important;
+  border-radius: 3px;
+  margin-top: 10px;
+  margin-bottom: 2px;
+  flex: 0 0 auto;
+}
+
+[data-vaul-handle-hitarea] {
+  min-width: var(--tl-tap);
+  min-height: var(--tl-tap);
+}
+
+.tl-sheet-body {
+  overflow-y: auto;
+  overscroll-behavior-y: contain;
+  -webkit-overflow-scrolling: touch;
+  touch-action: pan-y;
+  padding: 4px 20px calc(24px + env(safe-area-inset-bottom, 0px));
+}
+
+.tl-sheet-title {
+  font-size: 22px;
+  line-height: 28px;
+  font-weight: 700;
+  letter-spacing: -.4px;
+  color: var(--tl-label-primary);
+  margin: 8px 0 4px;
+}
+
+.tl-sheet-subtitle {
+  font-size: 13px;
+  line-height: 18px;
+  color: var(--tl-label-secondary);
+  margin: 0 0 16px;
+}
+
+/* ---------- diff ---------- */
+
+.tl-diff-add {
+  background: var(--tl-diff-add-bg);
+  color: var(--tl-diff-add-fg);
+}
+
+.tl-diff-del {
+  background: var(--tl-diff-del-bg);
+  color: var(--tl-diff-del-fg);
+}
+
+.tl-diff-line {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 12px;
+  line-height: 20px;
+  white-space: pre-wrap;
+  word-break: break-all;
+  padding: 2px 10px;
+}
+
+/* ---------- misc ---------- */
+
+.tl-hairline-top { border-top: .5px solid var(--tl-separator); }
+.tl-hairline-bottom { border-bottom: .5px solid var(--tl-separator); }
+
+.tl-large-title {
+  font-size: 34px;
+  line-height: 41px;
+  font-weight: 700;
+  letter-spacing: -.8px;
+  color: var(--tl-label-primary);
+}
+
+.tl-section-title {
+  font-size: 13px;
+  line-height: 18px;
+  font-weight: 600;
+  letter-spacing: .4px;
+  text-transform: uppercase;
+  color: var(--tl-label-secondary);
+}
+
+.tl-safe-top { padding-top: env(safe-area-inset-top, 0px); }
+
+.tl-no-scrollbar::-webkit-scrollbar { display: none; }
+.tl-no-scrollbar { scrollbar-width: none; }
+
+/* subtle running indicator rotation, light-mode neutral */
+@keyframes tl-spin { to { transform: rotate(360deg); } }
+.tl-spin { animation: tl-spin 1.1s linear infinite; }
+@media (prefers-reduced-motion: reduce) { .tl-spin { animation: none; } }
+
+/* Konsta Tabbar adds its own translucent bg div and fixed inner height.
+/* Konsta Tabbar renders an absolute bg div + a fixed-height inner flex div.
+   Our wrapper supplies the Option A glass instead, so neutralise those. */
+.tl-tabbar > div > div:first-child { background: transparent !important; backdrop-filter: none !important; }
+.tl-tabbar > div > div:nth-child(2) { height: 56px; align-items: stretch; }
+.tl-tabbar [role="tab"] { min-height: 56px; }
+
+/* Force the exact contract colors on Konsta's internal label/icon spans,
+   which otherwise use text-primary / text-black text-opacity-40. */
+.tl-tabbar [role="tab"] * { color: #8E8E93 !important; }
+.tl-tabbar [role="tab"].k-tabbar-link-active * { color: #007AFF !important; }
+
+/* Press feedback is an opacity/color change only: transform on a fixed tab
+   button changes pointer geometry (the visual "shrink" defect). */
+.tl-tabbar .tl-press:active {
+  transform: none;
+  opacity: 1;
+  background-color: rgba(0, 122, 255, .07);
+}
+
+/* Connect is a full-height, scrollable dedicated screen; no tab bar. */
+.tl-connect-scroll {
+  height: 100%;
+  width: 100%;
+  overflow-y: auto;
+  overflow-x: hidden;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior-y: contain;
+  padding-bottom: calc(24px + env(safe-area-inset-bottom, 0px));
+}
+
+/* Compact empty states on short/narrow screens. */
+.tl-empty-card {
+  display: block !important;
+  height: auto !important;
+  min-height: 0 !important;
+  align-self: flex-start !important;
+  padding: 16px !important;
+  margin: 0 16px !important;
+  text-align: center;
+}
+.tl-empty-card [data-empty-icon] {
+  display: flex !important;
+  justify-content: center;
+  color: var(--tl-label-secondary);
+  margin-bottom: 8px !important;
+}
+.tl-empty-card .tl-empty-title { font-size: 15px; line-height: 21px; font-weight: 600; color: var(--tl-label-primary); }
+.tl-update-body { display: flex !important; flex-direction: column; gap: 8px; height: auto !important; line-height: 19px !important; }
+.tl-update-body > * { flex: 0 0 auto !important; min-height: 0 !important; }
+
+/* Touch targets in the new composer are pinned to >=44px at every width. */
+
+/* Accessibility refinement: decoration keeps system accents; text uses ink. */
+
+/* Konsta's iOS Link applies active:opacity-30 (and our old .tl-press applied
+   scale(.98)); neither is used on the fixed tab bar so pointer geometry and
+   hit-test bounds are identical before, during and after a press. */
+.tl-tabbar [role="tab"]:active,
+.tl-tabbar .k-tabbar-link:active {
+  opacity: 1 !important;
+  transform: none !important;
+  background-color: rgba(0, 122, 255, .07);
+}
+.tl-tabbar [role="tab"] { transition: background-color 150ms ease; }
+.tl-tabbar [role="tab"]:hover { opacity: 1 !important; }
+
+/* Connection actions stay together, including at phone/keyboard widths. */
+.tl-connect-header { padding: 28px 24px 8px; }
+.tl-brand { width: 60px; height: 60px; display: grid; place-items: center; border-radius: 18px; background: #007AFF; box-shadow: 0 6px 20px #007aff26; margin-bottom: 18px; }
+.tl-brand svg { flex: none; max-width: 42px; }
+.tl-connect-header h1 { margin: 0; font-size: 30px; }
+.tl-connect-header p, .tl-connect-hint { color: #63636a; font-size: 13px; line-height: 1.5; margin: 8px 0; }
+.tl-connect-card { margin: 16px; padding: 16px; }
+.tl-connect-manual { display: flex; gap: 8px; align-items: center; width: 100%; min-height: 48px; padding: 6px 4px; border: 0; background: transparent; color: var(--tl-blue); font-size: 14px; text-align: left; }
+.tl-connect-form { display: grid; gap: 10px; padding-top: 12px; }
+.tl-connect-form label { font-size: 13px; font-weight: 600; color: #63636a; }
+.tl-connect-form input { box-sizing: border-box; width: 100%; min-width: 0; height: 48px; padding: 0 12px; border: 1px solid transparent; border-radius: 12px; background: var(--tl-fill-secondary); color: var(--tl-label-primary); font-size: 16px; }
+.tl-connect-form input:focus { outline: 2px solid var(--tl-blue); outline-offset: 1px; }
+.tl-code-field { display: flex; align-items: center; gap: 4px; }
+.tl-code-field button { flex: none; width: 44px; height: 48px; border: 0; border-radius: 12px; display: grid; place-items: center; background: transparent; color: var(--tl-label-secondary); }
+.tl-connect-submit { border: 0; min-height: 50px; border-radius: 16px; background: var(--tl-blue); color: #FFFFFF; font-size: 16px; font-weight: 600; margin-top: 6px; }
+button:disabled { opacity: .48; cursor: default; }
+.tl-connect-error { margin-top: 12px; padding: 12px; border-radius: 12px; color: #a9231b; background: #fff0ee; font-size: 13px; line-height: 1.5; overflow-wrap: anywhere; }
+.tl-recovery-services { display: flex; flex-wrap: wrap; gap: 8px; }
+.tl-recovery-services button { min-height: 44px; border: 0; border-radius: 12px; padding: 8px 16px; background: #007aff12; color: var(--tl-blue); }
+.tl-connect-footer { padding: 8px 24px 24px; color: #63636a; text-align: center; font-size: 12px; line-height: 1.8; }
+.tl-connect-footer svg { display: inline; vertical-align: middle; }
+button:focus-visible, a:focus-visible { outline: 2px solid var(--tl-blue); outline-offset: 2px; }
+@media (max-height: 540px) { .tl-connect-header { padding-top: 12px; } .tl-brand { display: none; } }
+/* The composer enforces >=44px touch targets at every phone width. */
+
+
+
+
+/* Accessibility refinement: decoration keeps system accents; text uses ink. */
+.tl-tabbar [role="tab"] * { color: #636366 !important; }
+.tl-tabbar [role="tab"].k-tabbar-link-active * { color: #0062CC !important; }
+.tl-connect-submit { background: var(--tl-blue); }
+/* Obsolete thumbbar grid/order rules removed; .tl-composer owns narrow layout. */
+.tl-sheet-actions { position: sticky; bottom: 0; background: #FFFFFF; padding: 10px 0; z-index: 2; }
+
+/* ============================================================
+   Chat: compact message typography + fixed, mature composer.
+   Replaces all obsolete .tl-thumbbar layout overrides.
+   ============================================================ */
+
+.tl-detail-scroll {
+  height: 100%;
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  background: var(--tl-canvas);
+}
+
+.tl-detail-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior-y: contain;
+  padding: 0 0 12px;
+}
+
+.tl-chat-list {
+  display: block;
+  margin: 0 12px 10px;
+  padding: 10px 10px 2px;
+  border-radius: 16px;
+  background: var(--tl-surface);
+  box-shadow: var(--tl-card-shadow);
+  min-height: 0;
+}
+
+.tl-chat-list,
+.tl-chat-list *,
+.tl-chat-list *::before,
+.tl-chat-list *::after {
+  box-sizing: border-box;
+  font-family: inherit;
+  font-size: 14px;
+  font-weight: 400;
+  line-height: 21px;
+  letter-spacing: normal;
+  text-align: left;
+  text-indent: 0;
+  text-transform: none;
+  min-height: 0;
+  margin-top: 0;
+  margin-bottom: 0;
+  padding-top: 0;
+  padding-bottom: 0;
+  justify-content: flex-start;
+  align-content: flex-start;
+  align-items: flex-start;
+  gap: 0;
+  flex-grow: 0;
+  white-space: pre-wrap;
+}
+
+.tl-chat-row {
+  display: flex;
+  flex-wrap: nowrap;
+  align-items: flex-start;
+  justify-content: flex-start;
+  gap: 6px;
+  min-height: 0;
+  margin: 0 0 6px;
+  padding: 0;
+}
+
+.tl-chat-row--user { justify-content: flex-end; }
+
+.tl-chat-bubble {
+  display: block;
+  width: fit-content;
+  max-width: 88%;
+  min-width: 0;
+  min-height: 0;
+  margin: 0;
+  padding: 8px 11px;
+  border-radius: 16px;
+  font-size: 14px;
+  line-height: 21px;
+  letter-spacing: normal;
+  text-align: left;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+  /* No equal-space distribution of paragraph or line boxes. */
+  justify-content: flex-start;
+  align-content: flex-start;
+  align-items: flex-start;
+  flex: 0 1 auto;
+}
+
+.tl-chat-bubble *,
+.tl-chat-bubble *::before,
+.tl-chat-bubble *::after {
+  display: inline;
+  float: none;
+  clear: none;
+  position: static;
+  width: auto;
+  height: auto;
+  min-width: 0;
+  min-height: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  font: inherit;
+  line-height: inherit;
+  letter-spacing: inherit;
+  text-align: inherit;
+  white-space: inherit;
+  overflow-wrap: inherit;
+  word-break: inherit;
+  background: transparent;
+  color: inherit;
+  justify-content: flex-start;
+  align-content: flex-start;
+  align-items: flex-start;
+  flex: 0 0 auto;
+}
+
+.tl-chat-bubble--user { background: var(--tl-blue); color: #FFFFFF; }
+.tl-chat-bubble--assistant { background: var(--tl-fill-secondary); color: var(--tl-label-primary); }
+
+.tl-chat-attachment {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  max-width: 100%;
+  min-height: 0;
+  margin: 4px 0 0;
+  padding: 0;
+  font-size: 12px;
+  line-height: 17px;
+  color: inherit;
+  opacity: .9;
+  white-space: normal;
+}
+
+.tl-chat-attachment img {
+  display: block;
+  width: 44px;
+  height: 44px;
+  min-width: 0;
+  min-height: 0;
+  margin: 0;
+  padding: 0;
+  object-fit: cover;
+  border-radius: 8px;
+}
+
+.tl-composer {
+  flex: 0 0 auto;
+  position: relative;
+  z-index: 30;
+  box-sizing: border-box;
+  width: 100%;
+  max-height: 44vh;
+  overflow-y: auto;
+  background: #FFFFFF;
+  border-top: .5px solid var(--tl-separator);
+  padding: 8px 12px calc(8px + env(safe-area-inset-bottom, 0px));
+}
+
+/* One quiet surface: textarea + tools share a single rounded card. */
+.tl-composer-card {
+  box-sizing: border-box;
+  width: 100%;
+  min-width: 0;
+  padding: 4px 6px 4px;
+  border: 1px solid var(--tl-separator);
+  border-radius: 22px;
+  background: #FFFFFF;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, .03);
+}
+
+.tl-composer-row {
+  display: flex;
+  align-items: flex-end;
+  gap: 5px;
+  width: 100%;
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+}
+
+.tl-composer-input {
+  display: block;
+  flex: 1 1 auto;
+  width: 100%;
+  min-width: 0;
+  min-height: 40px;
+  max-height: 96px;
+  box-sizing: border-box;
+  border: 0;
+  outline: none;
+  border-radius: 18px;
+  background: transparent;
+  color: var(--tl-label-primary);
+  padding: 7px 8px;
+  font-size: 16px;
+  line-height: 22px;
+  resize: none;
+  overflow-y: auto;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.tl-composer-input::placeholder { color: var(--tl-label-secondary); }
+
+.tl-composer-tools {
+  display: flex;
+  align-items: center;
+  gap: 0;
+  width: 100%;
+  min-width: 0;
+  padding: 0 0 0 2px;
+}
+
+.tl-composer-spacer { flex: 1 1 auto; min-width: 0; }
+
+/* Quiet text control that shows the real current model and effort. */
+.tl-model-trigger {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  flex: 0 1 auto;
+  min-width: 0;
+  max-width: 58%;
+  min-height: 40px;
+  padding: 0 6px;
+  border: 0;
+  border-radius: 12px;
+  background: transparent;
+  color: var(--tl-label-primary);
+  font-size: 13px;
+  line-height: 16px;
+  text-align: left;
+}
+
+.tl-model-trigger-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 600;
+}
+
+.tl-model-trigger-effort {
+  flex: 0 0 auto;
+  color: var(--tl-blue);
+  font-weight: 600;
+}
+
+.tl-composer-icon {
+  flex: 0 0 auto;
+  width: 38px;
+  min-width: 38px;
+  height: 40px;
+  min-height: 40px;
+  border: 0;
+  border-radius: 12px;
+  background: transparent;
+  color: var(--tl-label-secondary);
+  display: grid;
+  place-items: center;
+}
+
+/* Exactly one accent per composer: the primary action. */
+.tl-composer-send {
+  flex: 0 0 auto;
+  width: 40px;
+  min-width: 40px;
+  height: 40px;
+  min-height: 40px;
+  border: 0;
+  border-radius: 20px;
+  display: grid;
+  place-items: center;
+  background: var(--tl-blue);
+  color: #FFFFFF;
+}
+
+.tl-composer-send:disabled { background: #C7C7CC; color: #FFFFFF; }
+.tl-composer-send--stop { background: var(--tl-red); }
+
+/* Kept as the documented 44px touch target for any text button variant. */
+.tl-composer-button {
+  flex: 0 0 auto;
+  box-sizing: border-box;
+  min-width: 44px;
+  min-height: 44px;
+  border: 0;
+  border-radius: 13px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  padding: 0 8px;
+  font-size: 12px;
+  line-height: 16px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.tl-composer-button--icon { width: 44px; padding: 0; }
+.tl-composer-button--primary { min-width: 48px; }
+
+.tl-composer-tray {
+  display: flex;
+  flex-wrap: nowrap;
+  gap: 6px;
+  margin: 2px 2px 4px;
+  padding: 0 0 2px;
+  overflow-x: auto;
+  overflow-y: hidden;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+}
+
+.tl-composer-tray::-webkit-scrollbar { display: none; }
+
+.tl-composer-attachment {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex: 0 0 auto;
+  max-width: 168px;
+  min-height: 34px;
+  padding: 3px 4px 3px 3px;
+  border-radius: 10px;
+  background: var(--tl-fill-secondary);
+  font-size: 11.5px;
+  line-height: 15px;
+  color: var(--tl-label-primary);
+}
+
+.tl-composer-attachment-name {
+  max-width: 92px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tl-composer-attachment img {
+  width: 28px;
+  height: 28px;
+  border-radius: 7px;
+  object-fit: cover;
+}
+
+.tl-composer-attachment button {
+  width: 28px;
+  min-width: 28px;
+  min-height: 28px;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--tl-label-secondary);
+  display: grid;
+  place-items: center;
+}
+.tl-composer-error {
+  margin: 5px 0 0;
+  font-size: 12px;
+  line-height: 17px;
+  color: #a9231b;
+  overflow-wrap: anywhere;
+}
+.tl-composer-sheet { display: grid; gap: 10px; }
+.tl-composer-sheet-option {
+  display: flex;
+  align-items: center;
+  min-height: 44px;
+  width: 100%;
+  gap: 10px;
+  padding: 8px 12px;
+  border: 0;
+  border-radius: 12px;
+  background: var(--tl-fill-secondary);
+  color: var(--tl-label-primary);
+  font-size: 14px;
+  text-align: left;
+}
+.tl-composer-sheet-option[aria-pressed="true"] { background: #DCEBFF; color: #0062CC; }
+.tl-composer-sheet-subtitle { font-size: 12px; line-height: 17px; color: var(--tl-label-secondary); margin: 0; }
+
+@media (max-width: 393px) {
+  .tl-chat-bubble { max-width: 90%; padding: 7px 10px; }
+  .tl-chat-row { gap: 4px; margin-bottom: 5px; }
+  .tl-composer { padding-left: 7px; padding-right: 7px; }
+  .tl-composer-row { gap: 4px; }
+  .tl-composer-button--icon { width: 44px; }
+}
+
+@media (max-width: 320px) {
+  .tl-chat-list { margin-left: 6px; margin-right: 6px; padding-left: 6px; padding-right: 6px; }
+  .tl-chat-bubble { max-width: 92%; padding: 6px 9px; }
+  .tl-composer { padding-left: 5px; padding-right: 5px; }
+  .tl-composer-row { gap: 3px; }
+  .tl-composer-input { padding-left: 8px; padding-right: 8px; }
+  .tl-composer-button { min-width: 44px; padding: 0 4px; }
+  .tl-composer-button--primary { min-width: 44px; }
+}
+
+@media (max-height: 420px) {
+  .tl-composer { max-height: 52vh; }
+  .tl-composer-input { min-height: 44px; max-height: 60px; }
+}
+
+/* Model picker: provider chips, search, list, then a sticky effort segment. */
+.tl-mp-providers {
+  display: flex;
+  gap: 6px;
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+  padding: 2px 0 10px;
+  margin: 0;
+}
+.tl-mp-provider {
+  flex: 0 0 auto;
+  min-height: 44px;
+  padding: 0 14px;
+  border: 1px solid var(--tl-separator);
+  border-radius: 999px;
+  background: #FFFFFF;
+  color: var(--tl-label-primary);
+  font-size: 13px;
+  white-space: nowrap;
+}
+.tl-mp-provider[aria-pressed="true"] {
+  background: var(--tl-label-primary);
+  border-color: var(--tl-label-primary);
+  color: #FFFFFF;
+}
+.tl-mp-search {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 44px;
+  margin-bottom: 10px;
+  padding: 0 8px 0 12px;
+  border-radius: 12px;
+  background: var(--tl-fill-secondary);
+}
+.tl-mp-search input {
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 44px;
+  border: 0;
+  outline: none;
+  background: transparent;
+  color: var(--tl-label-primary);
+  font-size: 15px;
+}
+.tl-mp-search button {
+  flex: 0 0 auto;
+  width: 32px;
+  height: 32px;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--tl-label-secondary);
+  display: grid;
+  place-items: center;
+}
+.tl-mp-list {
+  display: grid;
+  gap: 1px;
+  max-height: 42vh;
+  overflow-y: auto;
+  overscroll-behavior-y: contain;
+  -webkit-overflow-scrolling: touch;
+  padding-bottom: 4px;
+}
+.tl-mp-model {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  min-height: 52px;
+  padding: 8px 10px;
+  border: 0;
+  border-radius: 12px;
+  background: transparent;
+  color: var(--tl-label-primary);
+  text-align: left;
+}
+.tl-mp-model[aria-selected="true"] { background: var(--tl-fill-secondary); }
+.tl-mp-model-text { flex: 1 1 auto; min-width: 0; }
+.tl-mp-model-name {
+  display: block;
+  font-size: 15px;
+  line-height: 20px;
+  font-weight: 500;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.tl-mp-model-meta {
+  display: block;
+  margin-top: 2px;
+  font-size: 12px;
+  line-height: 16px;
+  color: var(--tl-label-secondary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.tl-mp-note {
+  margin: 8px 2px;
+  font-size: 13px;
+  line-height: 19px;
+  color: var(--tl-label-secondary);
+}
+.tl-mp-effort-note {
+  margin: 2px 2px 0;
+  font-size: 13px;
+  line-height: 18px;
+  color: var(--tl-label-secondary);
+}
+.tl-mp-effort {
+  position: sticky;
+  bottom: 0;
+  z-index: 2;
+  margin-top: 8px;
+  padding: 8px 0 2px;
+  background: linear-gradient(to top, #FFFFFF 72%, rgba(255, 255, 255, 0));
+}
+.tl-mp-effort-label {
+  margin: 0 2px 6px;
+  font-size: 12px;
+  line-height: 16px;
+  font-weight: 600;
+  color: var(--tl-label-secondary);
+}
+.tl-mp-segment {
+  display: flex;
+  gap: 3px;
+  padding: 3px;
+  border-radius: 12px;
+  background: var(--tl-fill-secondary);
+}
+.tl-mp-segment button {
+  flex: 1 1 0;
+  min-width: 0;
+  min-height: 44px;
+  border: 0;
+  border-radius: 9px;
+  background: transparent;
+  color: var(--tl-label-secondary);
+  font-size: 13px;
+  font-weight: 500;
+}
+.tl-mp-segment button[aria-pressed="true"] {
+  background: #FFFFFF;
+  color: var(--tl-label-primary);
+  font-weight: 600;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, .08);
+}
+
+/* New task sheet: same composer, one optional project row. */
+.tl-newtask {
+  display: grid;
+  gap: 12px;
+}
+
+.tl-newtask-projects {
+  overflow: hidden;
+  border-radius: 14px;
+  background: var(--tl-fill-secondary);
+}
+
+.tl-newtask-project-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  min-height: 48px;
+  padding: 0 14px;
+  border: 0;
+  background: transparent;
+  color: var(--tl-label-primary);
+  font-size: 14px;
+  text-align: left;
+}
+
+.tl-newtask-project-head span { flex: 1 1 auto; min-width: 0; }
+
+.tl-newtask-project-list {
+  display: grid;
+  gap: 1px;
+  max-height: 30vh;
+  overflow-y: auto;
+  padding: 0 6px 6px;
+}
+
+.tl-newtask-project {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  min-height: 44px;
+  padding: 0 10px;
+  border: 0;
+  border-radius: 10px;
+  background: #FFFFFF;
+  color: var(--tl-label-primary);
+  font-size: 13.5px;
+  text-align: left;
+}
+
+.tl-newtask-project-name {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tl-newtask-project-check {
+  flex: 0 0 auto;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--tl-blue);
+}
+
+/* 40px visuals keep a 44px pointer target without growing the card. */
+.tl-composer-icon,
+.tl-composer-send { position: relative; }
+.tl-composer-icon::after,
+.tl-composer-send::after {
+  content: '';
+  position: absolute;
+  inset: -2px;
+}
+
+/* Markdown uses real block flow; plain-text bubble resets must not flatten it. */
+.tl-chat-bubble .tl-markdown { display: block; min-width: 0; max-width: 100%; white-space: normal; }
+.tl-chat-bubble .tl-markdown :is(p, blockquote, ul, ol, pre, h1, h2, h3, h4, h5, h6, hr) { display: block; margin: 8px 0; }
+.tl-chat-bubble .tl-markdown > :first-child { margin-top: 0; }
+.tl-chat-bubble .tl-markdown > :last-child { margin-bottom: 0; }
+.tl-chat-bubble .tl-markdown :is(h1, h2, h3, h4, h5, h6) { font-weight: 700; font-size: 16px; line-height: 23px; }
+.tl-chat-bubble .tl-markdown strong { font-weight: 700; }
+.tl-chat-bubble .tl-markdown em { font-style: italic; }
+.tl-chat-bubble .tl-markdown del { text-decoration: line-through; }
+.tl-chat-bubble .tl-markdown :is(ul, ol) { padding-left: 22px; }
+.tl-chat-bubble .tl-markdown ul { list-style-type: disc; }
+.tl-chat-bubble .tl-markdown ol { list-style-type: decimal; }
+.tl-chat-bubble .tl-markdown li { display: list-item; margin: 3px 0; }
+.tl-chat-bubble .tl-markdown blockquote { border-left: 3px solid #c7c7cc; padding-left: 10px; color: #63636a; }
+.tl-chat-bubble .tl-markdown a[href] { color: #0062cc; text-decoration: underline; cursor: pointer; }
+.tl-chat-bubble .tl-markdown code { font: 12px/19px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; background: #e5e5ea; border-radius: 4px; padding: 1px 3px; }
+.tl-chat-bubble .tl-markdown pre { max-width: 100%; overflow-x: auto; padding: 10px; border-radius: 10px; background: #e5e5ea; white-space: pre; word-break: normal; overflow-wrap: normal; }
+.tl-chat-bubble .tl-markdown pre code { display: block; padding: 0; white-space: pre; }
+.tl-chat-bubble .tl-markdown table { display: block; max-width: 100%; overflow-x: auto; border-collapse: collapse; margin: 8px 0; }
+.tl-chat-bubble .tl-markdown thead { display: table-header-group; }
+.tl-chat-bubble .tl-markdown tbody { display: table-row-group; }
+.tl-chat-bubble .tl-markdown tr { display: table-row; }
+.tl-chat-bubble .tl-markdown :is(th, td) { display: table-cell; border: 1px solid #c7c7cc; padding: 5px 8px; }
+.tl-chat-bubble .tl-markdown th { font-weight: 600; }
+.tl-page-note { margin: 12px 20px; color: #63636a; font-size: 12px; line-height: 18px; overflow-wrap: anywhere; }
+.tl-page-note--error { color: #b42318; }
+.tl-conn-banner {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 8px 16px 0;
+  padding: 8px 12px;
+  border-radius: 12px;
+  background: #FFF4E5;
+  color: #8A5300;
+  font-size: 12px;
+  line-height: 16px;
+}
+.tl-conn-banner span { flex: 1; min-width: 0; }
+.tl-conn-banner button {
+  border: 0;
+  background: transparent;
+  color: #8A5300;
+  font-size: 12px;
+  font-weight: 700;
+  padding: 0 4px;
+  min-height: 32px;
+}
+.tl-list-actions { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; padding: 8px 16px 16px; }
+.tl-list-actions button { min-height: 44px; padding: 0 14px; border: 0; border-radius: 12px; background: white; color: #007aff; font-size: 13px; font-weight: 600; }
+.tl-list-actions button:disabled { opacity: .5; }
+.tl-monitor-title { display: block; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 14px; }
+.tl-link-address { margin: 12px 0; padding: 12px; border-radius: 12px; background: #f2f2f7; color: #1c1c1e; font-size: 13px; line-height: 20px; overflow-wrap: anywhere; user-select: text; }
+
+
+.tl-approval-card { display: grid; gap: 10px; width: 100%; padding: 10px; border: 1px solid #f0b8b2; border-radius: 12px; background: #fff8f7; color: var(--tl-label-primary); }
+.tl-approval-title { display: flex; align-items: center; gap: 8px; font-size: 13px; line-height: 18px; font-weight: 700; }
+.tl-approval-kind { margin-left: auto; color: #a9231b; font-size: 11px; font-weight: 600; }
+.tl-approval-content { max-height: 220px; overflow: auto; padding: 8px; border-radius: 8px; background: #fff; font-size: 13px; line-height: 19px; white-space: pre-wrap; overflow-wrap: anywhere; }
+.tl-approval-content .tl-markdown :is(p, pre, ul, ol) { margin: 5px 0; }
+.tl-approval-content .tl-markdown pre { max-width: 100%; overflow-x: auto; padding: 8px; background: #f2f2f7; white-space: pre; }
+.tl-approval-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.tl-approval-actions button { display: flex; align-items: center; justify-content: center; gap: 6px; min-height: 40px; border: 0; border-radius: 10px; font-size: 13px; font-weight: 700; }
+.tl-approval-actions button:disabled { opacity: .45; }
+.tl-approval-reject { background: #fff0ee; color: #b42318; }
+.tl-approval-approve { background: #e8f8ee; color: #1e7e34; }
+.tl-approval-error { color: #b42318; font-size: 12px; line-height: 17px; overflow-wrap: anywhere; }
+.tl-approval-resolved { display: flex; align-items: center; gap: 6px; color: #1e7e34; font-size: 13px; font-weight: 600; }
+.tl-approval-id { display: block; min-width: 0; color: #636366; font: 11px/16px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; overflow-wrap: anywhere; user-select: text; }
+
+/* 思考 / 工具 / 提示：和正文气泡明确分开的三类块 */
+.tl-chat-row--meta { padding: 3px 0; }
+.tl-thought {
+  padding: 6px 10px 8px;
+  border-left: 3px solid #C7C7CC;
+  border-radius: 10px;
+  background: #F7F7FA;
+}
+.tl-thought-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  min-height: 32px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--tl-label-secondary);
+  font-size: 12px;
+  font-weight: 600;
+  text-align: left;
+}
+.tl-thought-toggle { margin-left: auto; font-weight: 500; color: var(--tl-blue); }
+.tl-thought-body {
+  display: -webkit-box;
+  -webkit-line-clamp: 4;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  font-size: 13px;
+  line-height: 19px;
+  color: var(--tl-label-secondary);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.tl-thought-body--open { display: block; overflow: visible; }
+.tl-tool {
+  border: 1px solid var(--tl-separator);
+  border-radius: 12px;
+  overflow: hidden;
+  background: var(--tl-fill-secondary);
+}
+.tl-tool-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 10px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--tl-label-secondary);
+  background: #E6E6EB;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.tl-tool-body {
+  margin: 0;
+  padding: 8px 10px;
+  max-height: 220px;
+  overflow: auto;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 12px;
+  line-height: 18px;
+  color: var(--tl-label-primary);
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+.tl-tool--error { border-color: #F3C2BE; }
+.tl-tool--error .tl-tool-head { color: #C1271F; background: #FDECEC; }
+.tl-chat-notice {
+  padding: 8px 10px;
+  border-radius: 10px;
+  background: #FFF4E5;
+  color: #8A5A00;
+  font-size: 13px;
+  line-height: 19px;
+  overflow-wrap: anywhere;
+}
+
+/* 会话页：视图切换 / 项目分组 / 归档入口 / 确认弹层 */
+.tl-view-switch {
+  display: flex;
+  gap: 4px;
+  margin-top: 10px;
+  padding: 3px;
+  border-radius: 12px;
+  background: var(--tl-fill-secondary);
+}
+.tl-view-switch__item {
+  flex: 1 1 0;
+  min-height: 38px;
+  border: 0;
+  border-radius: 9px;
+  background: transparent;
+  color: var(--tl-label-secondary);
+  font-size: 13px;
+  font-weight: 600;
+}
+.tl-view-switch__item.is-active { background: var(--tl-surface); color: var(--tl-label-primary); box-shadow: 0 1px 3px rgba(0, 0, 0, .08); }
+.tl-group { margin-bottom: 4px; }
+.tl-group-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: calc(100% - 32px);
+  min-height: 44px;
+  margin: 8px 16px 4px;
+  padding: 0 4px;
+  border: 0;
+  background: transparent;
+  color: var(--tl-label-secondary);
+  font-size: 13px;
+  font-weight: 600;
+  text-align: left;
+}
+.tl-group-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tl-group-count { color: var(--tl-label-secondary); font-weight: 500; }
+.tl-archive-toggle {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 40px;
+  margin: 10px 20px 0;
+  padding: 0 4px;
+  border: 0;
+  background: transparent;
+  color: var(--tl-label-secondary);
+  font-size: 12px;
+}
+.tl-confirm-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background: rgba(0, 0, 0, .28);
+}
+.tl-confirm-card {
+  width: 100%;
+  max-width: 320px;
+  padding: 18px 16px 12px;
+  border-radius: 18px;
+  background: var(--tl-surface);
+  box-shadow: 0 12px 40px rgba(0, 0, 0, .18);
+}
+.tl-confirm-title { font-size: 16px; font-weight: 600; color: var(--tl-label-primary); }
+.tl-confirm-body { margin-top: 6px; font-size: 14px; line-height: 20px; color: var(--tl-label-primary); overflow-wrap: anywhere; }
+.tl-confirm-note { margin-top: 6px; font-size: 12px; line-height: 17px; color: var(--tl-label-secondary); }
+.tl-confirm-actions { display: flex; gap: 8px; margin-top: 14px; }
+.tl-confirm-actions button {
+  flex: 1 1 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-height: 44px;
+  border: 0;
+  border-radius: 12px;
+  font-size: 15px;
+  font-weight: 600;
+}
+.tl-confirm-cancel { background: var(--tl-fill-secondary); color: var(--tl-label-primary); }
+.tl-confirm-ok { background: var(--tl-blue); color: #FFFFFF; }

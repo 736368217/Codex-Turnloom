@@ -1,0 +1,71 @@
+# ============================================================================
+# Codex-Turnloom — repository hygiene
+# Only source, user-facing docs and release metadata belong in git.
+# Local build output, QA evidence, machine state and credentials never do.
+# ============================================================================
+
+# Dependencies & runtime caches
+node_modules/
+**/node_modules/
+**/.expo/
+**/dist/
+**/web-build/
+**/.gradle/
+dist-desktop/
+desktop/assets/runtime/
+coverage/
+tmp/
+temp/
+*.tgz
+
+# Logs, temp & editor/OS noise
+*.log
+npm-debug.log*
+*.tmp
+*.bak
+*.orig
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+
+# Secrets & machine-local configuration
+.env
+.env.*
+config.local.json
+*.jks
+*.keystore
+android/local.properties
+AGENTS.md
+
+# Private working memory / deployment records (never public)
+docs/PROJECT_MEMORY.md
+docs/OPERATIONS.md
+docs/OPERATIONS-CHANGELOG.md
+
+# Android / release artifacts (APKs are distributed via GitHub Releases)
+*.apk
+*.aab
+*.idsig
+android/**/build/
+public/downloads/_archive/
+public/downloads/*.apk
+
+# Internal acceptance reports, design drafts, real-data screenshots and
+# offline demos are never published.
+docs/option-a/*
+!docs/option-a/SINGLE_APP_CONTRACT.md
+public/option-a/report/
+docs/design/
+docs/assets/phone-*.png
+docs/assets/turnloom-logo.png
+docs/PUBLIC_ACCESS.zh-CN.md
+docs/PI_BRIDGE_CONTRACT.zh-CN.md
+docs/RELEASE_NOTES_*.zh-CN.md
+docs/WINDOWS_MULTI_COMPUTER.zh-CN.md
+desktop/README.md
+public/downloads/*-offline-demo.html
+android/app/src/main/assets/offline-demo.html
+mobile-app/src/services/offlineDemo.js
+mobile-app/src/services/demoBootstrap.ts
+dist-app/*.zip
