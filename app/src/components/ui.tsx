@@ -116,6 +116,7 @@ export function ActionButton({
   variant = 'primary',
   icon,
   style,
+  className,
   ...rest
 }: ButtonHTMLAttributes<HTMLButtonElement> & {
   children: ReactNode;
@@ -137,7 +138,7 @@ export function ActionButton({
   return (
     <button
       type="button"
-      className="tl-press"
+      className={`tl-press tl-action${className ? ` ${className}` : ''}`}
       style={{
         display: 'flex',
         alignItems: 'center',

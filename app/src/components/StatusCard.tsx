@@ -1,17 +1,23 @@
 /** Home status card: verified machine, selected service and real counters. */
 import type { ReactNode } from 'react';
-import { Server, Wifi, WifiOff, Cpu, Clock, RefreshCw } from 'lucide-react';
+import { Server, Wifi, WifiOff, Cpu, Clock, RefreshCw, TriangleAlert } from 'lucide-react';
 import { useSessionState, currentRequestContext } from '../state/sessionStore';
 import { useDataState, refreshAll } from '../state/dataStore';
 import { haptic } from '../lib/nativeBridge';
 import { COLORS } from '../theme/optionATokens';
 import { StatusPill, TapRow, cardStyle } from './ui';
+import { hostOf, serviceLabel } from './MachineHubHeader';
 
 export default function StatusCard() {
   const session = useSessionState();
   const data = useDataState();
   const context = currentRequestContext();
   const online = session.status === 'ready' && session.online && !data.offline;
+  const selected = session.harnesses.find((item) => item.id === session.harnessId) || null;
+  const service = selected
+    ? serviceLabel(selected.name, selected.kind, session.machineName)
+    : (session.harnessName || '—');
+  const host = hostOf(session.serverUrl);
 
   return (
     <div className="tl-card" style={{ ...cardStyle, margin: '0 16px', overflow: 'hidden' }}>
@@ -23,8 +29,9 @@ export default function StatusCard() {
           <div style={{ fontSize: 16, fontWeight: 600, color: COLORS.labelPrimary, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
             {session.machineName || '已连接的电脑'}
           </div>
+          {/* Second line is service + address, not the machine name again. */}
           <div style={{ fontSize: 12, color: COLORS.labelSecondary, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-            {session.harnessName || session.serverUrl}
+            {[service, host].filter(Boolean).join(' · ') || session.serverUrl}
           </div>
         </div>
         {online
@@ -33,10 +40,18 @@ export default function StatusCard() {
       </div>
       <div className="tl-separator" style={{ margin: '0 16px' }} />
       <div style={{ display: 'flex', padding: '8px 4px' }}>
-        <Metric icon={<Cpu size={15} />} label="当前服务" value={session.harnessName || '—'} />
+        <Metric icon={<Cpu size={15} />} label="服务数" value={String(session.harnesses.length || 1)} />
         <Metric icon={<ActivityPulse />} label="运行中" value={String(data.runningCount)} />
         <Metric icon={<Clock size={15} />} label="会话数" value={String(data.threads.length)} />
       </div>
+      {data.errorCount > 0 && (
+        <>
+          <div className="tl-separator" style={{ margin: '0 16px' }} />
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '8px 16px', fontSize: 12, color: COLORS.actionRed }}>
+            <TriangleAlert size={14} /> {data.errorCount} 个会话报错
+          </div>
+        </>
+      )}
       <div className="tl-separator" style={{ margin: '0 16px' }} />
       <TapRow
         leading={<RefreshCw size={17} color={COLORS.blue} />}
@@ -49,7 +64,15 @@ export default function StatusCard() {
   );
 }
 
-function ActivityPulse() { return <span style={{ fontSize: 13, fontWeight: 700 }}>◉</span>; }
+/** Same optical weight as the 15px Lucide icons next to it, drawn not typed. */
+function ActivityPulse() {
+  return (
+    <svg width="15" height="15" viewBox="0 0 15 15" aria-hidden="true">
+      <circle cx="7.5" cy="7.5" r="6" fill="none" stroke="currentColor" strokeWidth="1.6" />
+      <circle cx="7.5" cy="7.5" r="2.2" fill="currentColor" />
+    </svg>
+  );
+}
 
 function Metric({ icon, label, value }: { icon: ReactNode; label: string; value: string }) {
   return (

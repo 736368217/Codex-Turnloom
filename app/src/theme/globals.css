@@ -111,21 +111,24 @@ input, textarea {
   -webkit-overflow-scrolling: touch;
   overscroll-behavior-y: contain;
   background: var(--tl-canvas);
-  /* Fixed glass TabBar is ~56px + safe-area; keep a generous trailing gutter
-     so the last actionable element (e.g. "刷新会话列表" / "外观") can always
-     be scrolled fully above the bar instead of being half-covered. */
-  padding-bottom: calc(128px + env(safe-area-inset-bottom, 0px));
+  /* The fixed bar is exactly 56px tall plus the bottom safe area (see
+     --tl-tabbar-h). The trailing gutter keeps the last actionable element
+     fully scrollable above it instead of ending underneath the glass. */
+  padding-bottom: calc(96px + env(safe-area-inset-bottom, 0px));
 }
+
+/* One tab-bar height, used by the bar itself and every screen gutter. */
+:root { --tl-tabbar-h: calc(56px + env(safe-area-inset-bottom, 0px)); }
 
 .tl-screen::after {
   content: '';
   display: block;
-  height: calc(48px + env(safe-area-inset-bottom, 0px));
+  height: calc(64px + env(safe-area-inset-bottom, 0px));
   flex: 0 0 auto;
 }
 
 .tl-screen--detail {
-  padding-bottom: calc(128px + env(safe-area-inset-bottom, 0px));
+  padding-bottom: calc(96px + env(safe-area-inset-bottom, 0px));
 }
 
 .tl-separator {
@@ -198,13 +201,17 @@ input, textarea {
   z-index: 30;
   display: flex;
   align-items: stretch;
+  min-height: var(--tl-tabbar-h);
   padding-bottom: env(safe-area-inset-bottom, 0px);
-  /* Static translucent glass instead of a live backdrop blur: the bar sits
-     over a fixed light canvas, so the visual result is the same but no
-     per-frame readback is needed (keeps the drawer animation smooth). */
-  background: rgba(255, 255, 255, .94);
+  /* Option A glass thumb: translucent white + live blur. Without the blur the
+     scrolling list reads straight through the bar and both layers become
+     illegible; the blur is what makes the 56px band a surface. */
+  background: var(--tl-glass-thumb);
+  backdrop-filter: var(--tl-blur-thumb);
+  -webkit-backdrop-filter: var(--tl-blur-thumb);
   border-top: .5px solid var(--tl-separator);
   transform: translateZ(0);
+  isolation: isolate;
 }
 
 .tl-tabbar-item {
@@ -220,16 +227,24 @@ input, textarea {
   background: transparent;
   color: var(--tl-label-secondary);
   padding: 6px 2px;
+  transition: background-color 150ms ease, color 150ms ease;
 }
 
 .tl-tabbar-item--active { color: var(--tl-blue); }
+
+/* Press feedback is a tint only: transform on a fixed bar button changes the
+   pointer geometry mid-press, which is the "tab bar shrinks" defect. */
+.tl-tabbar-item:active { background-color: rgba(0, 122, 255, .07); }
 
 .tl-tabbar-label {
   font-size: 10px;
   line-height: 13px;
   font-weight: 500;
   letter-spacing: .1px;
+  color: var(--tl-label-secondary);
 }
+
+.tl-tabbar-item--active .tl-tabbar-label { color: var(--tl-action-blue); font-weight: 600; }
 
 /* Legacy .tl-thumbbar rules were removed: the chat composer owns its layout. */
 
@@ -370,25 +385,13 @@ input, textarea {
 .tl-spin { animation: tl-spin 1.1s linear infinite; }
 @media (prefers-reduced-motion: reduce) { .tl-spin { animation: none; } }
 
-/* Konsta Tabbar adds its own translucent bg div and fixed inner height.
-/* Konsta Tabbar renders an absolute bg div + a fixed-height inner flex div.
-   Our wrapper supplies the Option A glass instead, so neutralise those. */
-.tl-tabbar > div > div:first-child { background: transparent !important; backdrop-filter: none !important; }
-.tl-tabbar > div > div:nth-child(2) { height: 56px; align-items: stretch; }
+/* The tab bar is rendered by GlassTabBar itself (plain buttons, role="tab").
+   Konsta's Tabbar is no longer used here: it injected an opaque absolute
+   background layer and forced role="link", which broke both the glass and the
+   tab semantics. The rules below only state the contract for our own markup. */
 .tl-tabbar [role="tab"] { min-height: 56px; }
-
-/* Force the exact contract colors on Konsta's internal label/icon spans,
-   which otherwise use text-primary / text-black text-opacity-40. */
-.tl-tabbar [role="tab"] * { color: #8E8E93 !important; }
-.tl-tabbar [role="tab"].k-tabbar-link-active * { color: #007AFF !important; }
-
-/* Press feedback is an opacity/color change only: transform on a fixed tab
-   button changes pointer geometry (the visual "shrink" defect). */
-.tl-tabbar .tl-press:active {
-  transform: none;
-  opacity: 1;
-  background-color: rgba(0, 122, 255, .07);
-}
+.tl-tabbar [role="tab"] svg { flex: 0 0 auto; }
+.tl-tabbar [role="tab"]:active { transform: none; }
 
 /* Connect is a full-height, scrollable dedicated screen; no tab bar. */
 .tl-connect-scroll {
@@ -425,17 +428,19 @@ input, textarea {
 
 /* Accessibility refinement: decoration keeps system accents; text uses ink. */
 
-/* Konsta's iOS Link applies active:opacity-30 (and our old .tl-press applied
-   scale(.98)); neither is used on the fixed tab bar so pointer geometry and
-   hit-test bounds are identical before, during and after a press. */
-.tl-tabbar [role="tab"]:active,
-.tl-tabbar .k-tabbar-link:active {
-  opacity: 1 !important;
-  transform: none !important;
-  background-color: rgba(0, 122, 255, .07);
-}
+/* Konsta's iOS Link applied active:opacity-30; our own tab buttons keep their
+   pointer geometry and only tint, so a press never moves the bar. */
 .tl-tabbar [role="tab"] { transition: background-color 150ms ease; }
-.tl-tabbar [role="tab"]:hover { opacity: 1 !important; }
+
+/* Disabled is a state, not a dimmed copy of the enabled control: a 48%-opacity
+   blue still reads as "press me". Primary actions switch to the neutral fill. */
+button:disabled { opacity: .48; cursor: default; }
+.tl-action:disabled,
+.tl-action[data-disabled="true"] {
+  background: #C7C7CC !important;
+  color: #FFFFFF !important;
+  opacity: 1;
+}
 
 /* Connection actions stay together, including at phone/keyboard widths. */
 .tl-connect-header { padding: 28px 24px 8px; }
@@ -552,10 +557,12 @@ button:focus-visible, a:focus-visible { outline: 2px solid var(--tl-blue); outli
   min-width: 0;
   min-height: 0;
   margin: 0;
-  padding: 8px 11px;
+  padding: 9px 12px;
   border-radius: 16px;
-  font-size: 14px;
-  line-height: 21px;
+  /* 15/22 instead of 14/21: at 390px the 14px body reads a size smaller than
+     every reference app (iMessage/ChatGPT use 16-17). */
+  font-size: 15px;
+  line-height: 22px;
   letter-spacing: normal;
   text-align: left;
   white-space: pre-wrap;
@@ -1173,7 +1180,12 @@ button:focus-visible, a:focus-visible { outline: 2px solid var(--tl-blue); outli
 .tl-approval-content { max-height: 220px; overflow: auto; padding: 8px; border-radius: 8px; background: #fff; font-size: 13px; line-height: 19px; white-space: pre-wrap; overflow-wrap: anywhere; }
 .tl-approval-content .tl-markdown :is(p, pre, ul, ol) { margin: 5px 0; }
 .tl-approval-content .tl-markdown pre { max-width: 100%; overflow-x: auto; padding: 8px; background: #f2f2f7; white-space: pre; }
+/* A host can advertise one, two or three decisions. Three used to leave an
+   orphan half-width button on its own row; a third decision now spans the
+   full width so the action block stays a balanced block. */
 .tl-approval-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.tl-approval-actions > :nth-child(3):last-child { grid-column: 1 / -1; }
+.tl-approval-actions > :only-child { grid-column: 1 / -1; }
 .tl-approval-actions button { display: flex; align-items: center; justify-content: center; gap: 6px; min-height: 40px; border: 0; border-radius: 10px; font-size: 13px; font-weight: 700; }
 .tl-approval-actions button:disabled { opacity: .45; }
 .tl-approval-reject { background: #fff0ee; color: #b42318; }
@@ -1271,7 +1283,9 @@ button:focus-visible, a:focus-visible { outline: 2px solid var(--tl-blue); outli
 }
 .tl-view-switch__item {
   flex: 1 1 0;
-  min-height: 38px;
+  /* 44px minimum: the two halves are the primary control of this screen and
+     were 38px tall, i.e. below the contract's touch target. */
+  min-height: 44px;
   border: 0;
   border-radius: 9px;
   background: transparent;
@@ -1310,23 +1324,46 @@ button:focus-visible, a:focus-visible { outline: 2px solid var(--tl-blue); outli
   color: var(--tl-label-secondary);
   font-size: 12px;
 }
+/* Option A: no centered dialog anywhere. The confirm/notice layer is the same
+   bottom gesture sheet as every other secondary surface (handle + sheet radius),
+   so a destructive confirmation enters from the thumb zone like everything else. */
 .tl-confirm-backdrop {
   position: fixed;
   inset: 0;
   z-index: 40;
   display: flex;
-  align-items: center;
+  align-items: flex-end;
   justify-content: center;
-  padding: 24px;
-  background: rgba(0, 0, 0, .28);
+  padding: 0;
+  background: rgba(28, 28, 30, .22);
+  animation: tl-scrim-in 160ms ease-out;
 }
 .tl-confirm-card {
+  position: relative;
   width: 100%;
-  max-width: 320px;
-  padding: 18px 16px 12px;
-  border-radius: 18px;
+  max-width: 100%;
+  padding: 26px 20px calc(18px + env(safe-area-inset-bottom, 0px));
+  border-radius: var(--tl-radius-sheet) var(--tl-radius-sheet) 0 0;
   background: var(--tl-surface);
-  box-shadow: 0 12px 40px rgba(0, 0, 0, .18);
+  box-shadow: 0 -8px 32px rgba(0, 0, 0, .10);
+  animation: tl-sheet-in 200ms cubic-bezier(.32, .72, 0, 1);
+}
+/* Contract handle: 36 × 6, #C7C7CC, centred. */
+.tl-confirm-card::before {
+  content: '';
+  position: absolute;
+  top: 10px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 36px;
+  height: 6px;
+  border-radius: 3px;
+  background: var(--tl-sheet-handle);
+}
+@keyframes tl-scrim-in { from { background: rgba(28, 28, 30, 0); } to { background: rgba(28, 28, 30, .22); } }
+@keyframes tl-sheet-in { from { transform: translateY(16px); opacity: .6; } to { transform: translateY(0); opacity: 1; } }
+@media (prefers-reduced-motion: reduce) {
+  .tl-confirm-backdrop, .tl-confirm-card { animation: none; }
 }
 .tl-confirm-title { font-size: 16px; font-weight: 600; color: var(--tl-label-primary); }
 .tl-confirm-body { margin-top: 6px; font-size: 14px; line-height: 20px; color: var(--tl-label-primary); overflow-wrap: anywhere; }

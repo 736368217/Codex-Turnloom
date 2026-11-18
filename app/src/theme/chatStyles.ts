@@ -1,5 +1,5 @@
 /**
- * Compact, render-safe chat message styling. The 20px line box is pinned in CSS
+ * Compact, render-safe chat message styling. The 22px line box is pinned in CSS
  * and all descendants are reset: Konsta/Tailwind/Typography rules cannot inflate
  * a paragraph, add min-height, or distribute lines with equal-space flex gaps.
  * Intentional line breaks are preserved by `white-space: pre-wrap`; pathological
@@ -8,8 +8,8 @@
 
 import { COLORS } from './optionATokens';
 
-export const CHAT_BUBBLE_LINE_HEIGHT = 21;
-export const CHAT_BUBBLE_FONT_SIZE = 14;
+export const CHAT_BUBBLE_LINE_HEIGHT = 22;
+export const CHAT_BUBBLE_FONT_SIZE = 15;
 export const CHAT_BUBBLE_MAX_WIDTH_PERCENT = 88;
 export const CHAT_MESSAGE_GAP = 6;
 
@@ -29,7 +29,7 @@ export function chatBubbleStyle(isUser: boolean): Record<string, string | number
     maxWidth: `${CHAT_BUBBLE_MAX_WIDTH_PERCENT}%`,
     minWidth: 0,
     minHeight: 0,
-    padding: '8px 11px',
+    padding: '9px 12px',
     borderRadius: '16px',
     background: isUser ? COLORS.blue : COLORS.fillSecondary,
     color: isUser ? '#FFFFFF' : COLORS.labelPrimary,
@@ -90,7 +90,7 @@ export const CHAT_COMPACT_CSS = `
   min-width: 0;
   min-height: 0;
   margin: 0;
-  padding: 8px 11px;
+  padding: 9px 12px;
   border-radius: 16px;
   font-size: ${CHAT_BUBBLE_FONT_SIZE}px;
   line-height: ${CHAT_BUBBLE_LINE_HEIGHT}px;

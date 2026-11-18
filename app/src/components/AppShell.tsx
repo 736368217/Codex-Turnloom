@@ -94,7 +94,7 @@ export default function AppShell() {
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                   <Download size={18} color={COLORS.blue} />
                   <div className="tl-confirm-title" style={{ flex: 1 }}>发现新版本 {updateOffer.versionName}</div>
-                  <button type="button" className="tl-press" aria-label="稍后再说" onClick={() => setUpdateOffer(null)} style={{ width: 36, height: 36, border: 0, background: 'transparent', color: COLORS.labelSecondary, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  <button type="button" className="tl-press" aria-label="稍后再说" onClick={() => setUpdateOffer(null)} style={{ width: 44, height: 44, marginRight: -8, border: 0, background: 'transparent', color: COLORS.labelSecondary, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                     <X size={16} />
                   </button>
                 </div>

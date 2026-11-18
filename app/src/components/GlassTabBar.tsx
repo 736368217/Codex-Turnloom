@@ -1,4 +1,3 @@
-import { Tabbar, TabbarLink } from 'konsta/react';
 import { Home, MessageSquare, Activity, Settings } from 'lucide-react';
 import type { ReactElement } from 'react';
 import { COLORS } from '../theme/optionATokens';
@@ -13,36 +12,37 @@ const ICONS: Record<TabKey, ReactElement> = {
 };
 
 /**
- * Fixed bottom TabBar. Deliberately no .tl-press class here: its
- * `transform: scale(.98)` changes the CSS layout box while a pointer is down,
- * which is the observed "tab bar suddenly shrinks" defect. Konsta's own
- * `active:opacity-30` is overridden by an opacity-neutral highlight in CSS.
- * elementFromPoint / getBoundingClientRect therefore stay identical.
+ * Fixed bottom tab bar.
+ *
+ * Hand-rolled instead of Konsta's Tabbar: Konsta injected an opaque absolute
+ * background layer (the glass blur could only be restored with `!important`
+ * overrides) and rendered every tab as `role="link"` inside a `role="tablist"`,
+ * which is the wrong semantic for screen readers. Plain buttons give us the
+ * contract's 56px band, a real `role="tab"` + `aria-selected`, and a press
+ * feedback that tints instead of transforming (a transform here changes the
+ * pointer geometry mid-press, the old "tab bar suddenly shrinks" defect).
  */
 export default function GlassTabBar({ activeTab }: { activeTab: TabKey }) {
   return (
-    <div className="tl-tabbar" role="tablist" aria-label="主导航">
-      <Tabbar labels icons className="tl-tabbar-inner-reset" style={{ position: 'relative', width: '100%', background: 'transparent', paddingBottom: 0 }}>
-        {TAB_ORDER.map((tab) => {
-          const active = tab === activeTab;
-          return (
-            <TabbarLink
-              key={tab}
-              component="button"
-              active={active}
-              label={TAB_LABELS[tab]}
-              icon={ICONS[tab]}
-              style={{ color: active ? COLORS.blue : COLORS.labelSecondary, minHeight: 56, minWidth: 44 }}
-              linkProps={{
-                type: 'button', role: 'tab',
-                'aria-selected': active,
-                'aria-label': TAB_LABELS[tab],
-              }}
-              onClick={() => { haptic('selection'); setActiveTab(tab); }}
-            />
-          );
-        })}
-      </Tabbar>
-    </div>
+    <nav className="tl-tabbar" role="tablist" aria-label="主导航">
+      {TAB_ORDER.map((tab) => {
+        const active = tab === activeTab;
+        return (
+          <button
+            key={tab}
+            type="button"
+            role="tab"
+            aria-selected={active}
+            aria-label={TAB_LABELS[tab]}
+            className={`tl-tabbar-item${active ? ' tl-tabbar-item--active' : ''}`}
+            style={{ color: active ? COLORS.blue : COLORS.labelSecondary }}
+            onClick={() => { haptic('selection'); setActiveTab(tab); }}
+          >
+            {ICONS[tab]}
+            <span className="tl-tabbar-label">{TAB_LABELS[tab]}</span>
+          </button>
+        );
+      })}
+    </nav>
   );
 }

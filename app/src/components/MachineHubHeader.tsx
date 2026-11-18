@@ -5,13 +5,34 @@ import { useOfflineState } from '../state/offlineStore';
 import { openSheet } from '../state/sheetStore';
 import { haptic } from '../lib/nativeBridge';
 
+/** `http://192.168.1.10:8787` → `192.168.1.10:8787`, so the header can name the
+ *  machine once and still say where it is. */
+export function hostOf(serverUrl: string): string {
+  try { return new URL(serverUrl).host || ''; } catch { return ''; }
+}
+
+/** Service label: the discovered name, unless it just repeats the machine name. */
+export function serviceLabel(name: string, kind: string, machineName: string): string {
+  const clean = (name || '').trim();
+  if (clean && clean.toLowerCase() !== (machineName || '').trim().toLowerCase()) return clean;
+  const byKind: Record<string, string> = { codex: 'Codex Desktop', pi: 'PI-Desktop', pidesk: 'PI-Desktop' };
+  return byKind[(kind || '').toLowerCase()] || clean || '已连接的服务';
+}
+
 /** Header: identity, connection state and a clear discovered-service switcher. */
 export default function MachineHubHeader() {
   const session = useSessionState();
   const offline = useOfflineState();
   const showOffline = offline.offlineBadgeVisible || !session.online;
   const discovered = session.harnesses;
-  const selectedName = session.harnessName || '选择服务';
+  const selected = discovered.find((item) => item.id === session.harnessId) || null;
+  const service = selected
+    ? serviceLabel(selected.name, selected.kind, session.machineName)
+    : (session.harnessName || '选择服务');
+  // The machine name appears once; the second line is host:port instead of a
+  // fourth repetition of the same string.
+  const host = hostOf(session.serverUrl);
+  const subtitle = [session.machineName, host].filter(Boolean).join(' · ');
 
   return (
     <div className="tl-safe-top" style={{ padding: '12px 20px 0' }}>
@@ -40,10 +61,10 @@ export default function MachineHubHeader() {
         <Cpu size={17} color={COLORS.blue} />
         <span style={{ flex: 1, minWidth: 0 }}>
           <span style={{ display: 'block', fontSize: 14, fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-            {selectedName}
+            {service}
           </span>
           <span style={{ display: 'block', fontSize: 11, color: COLORS.labelSecondary, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-            {session.machineName}{discovered.length > 1 ? ` · ${discovered.length} 个服务` : ''}
+            {subtitle}{discovered.length > 1 ? ` · ${discovered.length} 个服务` : ''}
           </span>
         </span>
         {discovered.length > 1 && <ChevronDown size={16} color={COLORS.labelSecondary} />}
