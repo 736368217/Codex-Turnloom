@@ -274,6 +274,23 @@ test('2.2.1 send faults', async (t) => {
     assert.equal(send.body.images[1].data, 'QkJC');
   });
 
+  await t.test('a real socket stall hits the JS timer and is reported as timeout, not a 5xx', async () => {
+    server.reset();
+    server.setScenario('timeout');
+    const started = Date.now();
+    const result = await h.api.requestWithContext(h.context, '/api/send', {
+      method: 'POST',
+      body: { threadId: 'thread-qa', message: 'stall', clientRequestId: 'stall-1' },
+      timeoutMs: 50,
+    });
+    const elapsed = Date.now() - started;
+    assert.equal(result.ok, false);
+    assert.equal(result.status, 0, 'the native layer reports a read timeout as status 0');
+    assert.match(result.error, /timeout/);
+    assert.ok(elapsed >= 1900 && elapsed < 6000, `timer fired at ${elapsed}ms`);
+    assert.match(h.errors.actionableMessage(result), /请求超时/);
+  });
+
   await t.test('phone diagnostics are redacted and flushed after the next successful send', async () => {
     server.reset();
     const diag = h.load('lib/diagnostics.ts');
