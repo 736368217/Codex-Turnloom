@@ -718,6 +718,32 @@ function sendJson(res, status, body, extraHeaders = {}) {
   res.end(JSON.stringify(body));
 }
 
+/**
+ * 手机端只能靠状态码区分「网络断了」和「服务端拒绝了」：两者都表现为一次失败，
+ * 而 409 的英文长句又被客户端的 safeServerError 丢掉（含空格 → 退化成 HTTP-409）。
+ * 所以每个错误响应都带一个稳定的机器码，status 仍是权威，code 只做细分。
+ */
+function httpErrorCode(status, error) {
+  const explicit = typeof error?.code === "string" ? error.code.trim() : "";
+  if (/^[a-zA-Z][a-zA-Z0-9_]{2,40}$/.test(explicit)) return explicit.toLowerCase();
+  if (status === 400) return "bad_request";
+  if (status === 401) return "unauthorized";
+  if (status === 403) return "forbidden";
+  if (status === 404) return "not_found";
+  if (status === 405) return "method_not_allowed";
+  if (status === 409) return "conflict";
+  if (status === 413) return "payload_too_large";
+  if (status === 429) return "rate_limited";
+  if (status >= 500) return "server_error";
+  return "request_failed";
+}
+
+/** One place for the HTTP error body so `error` stays human text and `code` stays machine-safe. */
+function sendHttpError(res, error) {
+  const status = error?.status || 500;
+  sendJson(res, status, { error: error?.message || "Internal server error", code: httpErrorCode(status, error) });
+}
+
 function sendText(res, status, text) {
   res.writeHead(status, { "content-type": "text/plain; charset=utf-8" });
   res.end(text);
@@ -7311,6 +7337,7 @@ function normalizeApprovalDecision(value) {
   if (["decline", "deny", "no", "false"].includes(text)) return "decline";
   const err = new Error("Unknown approval decision");
   err.status = 400;
+  err.code = "approval_decision_unknown";
   throw err;
 }
 
@@ -7335,6 +7362,7 @@ function approvalDecisionCandidatesForRequest(value, liveRequest) {
   if (!matches.length) {
     const err = new Error("The requested approval decision is not offered by the host");
     err.status = 409;
+    err.code = "approval_decision_not_offered";
     throw err;
   }
   return [...new Set(matches)];
@@ -7466,17 +7494,20 @@ async function respondToApproval({ threadId, requestId, decision, approvalKind, 
   if (!ALLOW_WRITE) {
     const err = new Error("Read-only mode is enabled. Restart without --readonly to control Codex Desktop.");
     err.status = 403;
+    err.code = "write_disabled";
     throw err;
   }
   const targetThreadId = String(threadId || "");
   if (!targetThreadId) {
     const err = new Error("Exact target thread is required");
     err.status = 400;
+    err.code = "approval_thread_required";
     throw err;
   }
   if (!(await findThread(targetThreadId))) {
     const err = new Error("Thread not found");
     err.status = 404;
+    err.code = "approval_thread_not_found";
     throw err;
   }
   const selectedRequestId = String(requestId || "");
@@ -7485,12 +7516,14 @@ async function respondToApproval({ threadId, requestId, decision, approvalKind, 
   if (!selectedRequestId || !APPROVAL_KINDS.has(selectedKind) || !/^[a-f0-9]{64}$/.test(selectedHash)) {
     const err = new Error("Exact request id, approval kind, and displayed detail hash are required");
     err.status = 400;
+    err.code = "approval_identity_required";
     throw err;
   }
   const liveRequest = findLiveApprovalRequest(targetThreadId, selectedRequestId, selectedKind, selectedHash);
   if (!liveRequest) {
     const err = new Error("Approval is missing, changed, expired, already resolved, or does not match the displayed request");
     err.status = 409;
+    err.code = "approval_request_unavailable";
     throw err;
   }
   const normalizedDecision = normalizeApprovalDecision(decision);
@@ -7501,6 +7534,7 @@ async function respondToApproval({ threadId, requestId, decision, approvalKind, 
   if (inFlight.has(resolvedRequestId)) {
     const err = new Error("Approval decision is already being submitted");
     err.status = 409;
+    err.code = "approval_decision_in_flight";
     throw err;
   }
   inFlight.add(resolvedRequestId);
@@ -8817,7 +8851,7 @@ const server = http.createServer(async (req, res) => {
     await serveStatic(res, decodeURIComponent(url.pathname), { versioned: url.searchParams.has("v") });
   } catch (error) {
     logError(`[http:error] ${requestMethod} ${url.pathname}: ${error?.stack || error?.message || String(error)}`);
-    sendJson(res, error.status || 500, { error: error.message || "Internal server error" });
+    sendHttpError(res, error);
   }
   });
 });
@@ -9073,6 +9107,7 @@ export {
   approvalRequestsFromEvents,
   findLiveApprovalRequest,
   respondToApproval,
+  httpErrorCode,
   setCodexIpcClientForApprovalTests,
   rememberStartedThreadsForTest,
   approvalDetailsHash,

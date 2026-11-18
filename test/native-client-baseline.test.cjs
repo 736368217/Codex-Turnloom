@@ -7,6 +7,11 @@ const path = require("node:path");
 
 const ROOT = path.join(__dirname, "..");
 const read = (relative) => fs.readFileSync(path.join(ROOT, relative), "utf8");
+// `dist-native/` 是冻结归档的发布页，从不进 Git（见 README「冻结 / 归档」）。
+// 干净检出里它必然不存在：相关断言只能在本地归档存在时执行，否则测试会凭空失败。
+const ARCHIVED_DELIVERY = path.join("dist-native", "delivery.html");
+const hasArchivedDelivery = () => fs.existsSync(path.join(ROOT, ARCHIVED_DELIVERY));
+const ARCHIVE_SKIP = "dist-native/ 冻结归档未包含在仓库中（仅本地存在时校验）";
 
 test("current mobile-app baseline is an Expo/RN client with RN-rendered bottom tabs", () => {
   const layout = read(path.join("mobile-app", "src", "app", "(tabs)", "_layout.tsx"));
@@ -31,14 +36,19 @@ test("RN client app identity is Codex-Turnloom and never the DSHgo experiment pa
     assert.match(gradle, /applicationId\s+'com\.codexpocket\.optiona\.native'/);
     assert.doesNotMatch(gradle, /io\.github\.ccch1mneyyy\.dsh_app/);
   }
-  const delivery = read(path.join("dist-native", "delivery.html"));
+});
+
+test("archived RN delivery page keeps the Codex-Turnloom package identity", (t) => {
+  if (!hasArchivedDelivery()) return t.skip(ARCHIVE_SKIP);
+  const delivery = read(ARCHIVED_DELIVERY);
   assert.match(delivery, /package|包名/);
   assert.match(delivery, /com\.codexpocket\.optiona\.native/);
   assert.doesNotMatch(delivery, /io\.github\.ccch1mneyyy\.dsh_app/);
 });
 
-test("delivery page identifies the RN client and rejects the Flutter one-code experiment", () => {
-  const delivery = read(path.join("dist-native", "delivery.html"));
+test("delivery page identifies the RN client and rejects the Flutter one-code experiment", (t) => {
+  if (!hasArchivedDelivery()) return t.skip(ARCHIVE_SKIP);
+  const delivery = read(ARCHIVED_DELIVERY);
   assert.match(delivery, /Codex-Turnloom-Native-1\.20\.1-arm64-x86_64\.apk/);
   assert.match(delivery, /com\.codexpocket\.optiona\.native/);
   assert.doesNotMatch(delivery, /正式原生 App|纯原生 App/);

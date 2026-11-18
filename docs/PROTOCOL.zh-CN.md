@@ -259,5 +259,35 @@ codex-turnloom://pair/add?v=2&protocol=codex-turnloom&machine=office-pc&url=http
 
 ---
 
+## 10. 审批决定（`POST /api/approval`）错误语义
+
+审批决定是**不可撤销的写操作**，因此只要不能证明「用户看到的就是即将执行的那一条」，
+服务端就必须失败关闭。手机端只能靠状态码区分「网络断了」和「服务端拒绝了」，
+所以每个错误响应都带机器码：`{"error": "<人类可读文本>", "code": "<稳定标识>"}`。
+`status` 仍是权威，`code` 只做细分；未知 `code` 必须按 `status` 降级处理。
+
+| HTTP | `code` | 含义 | 客户端应做 |
+| :--- | :--- | :--- | :--- |
+| `400` | `approval_thread_required` | 请求体缺少 `threadId`。 | 修 UI：没有选中会话时不要发请求。 |
+| `400` | `approval_identity_required` | 缺少 `requestId` / `approvalKind`，或 `detailsHash` 不是 64 位小写十六进制。 | **禁用批准**，不要用会话 id 冒充审批 id。 |
+| `400` | `approval_decision_unknown` | `decision` 不在 `approve` / `approveForSession` / `decline`（及其别名）内。 | 只渲染 `availableDecisions` 里的选项。 |
+| `403` | `write_disabled` | 服务端以 `--readonly` 运行。 | 提示「电脑端当前只读」，不要重试。 |
+| `403` | `forbidden` | 其他写权限拒绝。 | 同上。 |
+| `404` | `approval_thread_not_found` | 会话不存在（已删除/换了机器）。 | 提示会话已不存在，回列表刷新。 |
+| `409` | `approval_request_unavailable` | 没有与该 `requestId` + `approvalKind` + `detailsHash` 精确匹配的待审批请求：不存在、已过期（TTL 10 分钟）、已被其他端处理、详情已变更，或展示的快照已不是最新。 | 提示「请求已变化或已处理，请刷新后重新核对」；**必须**刷新消息再让用户决定，不得自动重试。 |
+| `409` | `approval_decision_in_flight` | 同一请求的决定正在提交。 | 保持按钮 loading，不重复提交。 |
+| `409` | `approval_decision_not_offered` | 请求的决策不在主机 `availableDecisions` 白名单里。 | 只显示主机提供的选项。 |
+
+约定：
+
+1. 绝不退回「该会话最近一个待处理审批」；没有精确 `requestId` 就是 `400`，对不上就是 `409`。
+2. `canApprove` 是服务端权威布尔：只有来源为桌面 IPC、详情可结构化审查（`reason` 文本里写
+   `Command: ...` 不算）、且未被后续决定/撤回/超时覆盖的请求才为 `true`。UI 不得自行推断。
+3. 4xx/5xx 一律**不是**离线：客户端的 `offline` 只应来自 transport failure（`status === 0`）。
+4. 回归测试：`test/approval-safety.test.js`（函数级 fail-closed）、
+   `test/http-approval-route.test.cjs`（真实进程 + 真实 `POST /api/approval` 的状态码与 `code`）。
+
+---
+
 相关文档：`docs/INSTALL.zh-CN.md`（三端安装与发布矩阵）、`deploy/machine.example.json`
 （网关配置模板）、`installer/README.md`（Windows 安装包与计划任务）。
