@@ -139,6 +139,11 @@
               </p>
             </div>
             <div class="head-actions">
+              <button class="btn" type="button" id="btn-check-update" title="检查电脑端服务是否有新版本">
+                <svg class="i" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><use href="#i-download"></use></svg>
+                <span>检查更新</span>
+              </button>
+              <span class="tag update-tag" id="overview-update-tag" hidden></span>
               <button class="btn icon ghost" type="button" id="btn-refresh" title="刷新状态" aria-label="刷新状态">
                 <svg class="i" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><use href="#i-refresh"></use></svg>
               </button>
@@ -165,7 +170,7 @@
                 <span class="sep">·</span>局域网 <b id="hero-lan">—</b>
                 <span class="sep">·</span>公网隧道 <b id="hero-public">未启用</b>
               </p>
-              <p class="hero-detail" id="hero-detail">正在连接本机服务…</p>
+              <p class="hero-detail"><span id="hero-detail-text">正在连接本机服务…</span><span class="hero-version" id="overview-version" title="当前电脑端服务版本"><span id="overview-version-text">服务版本 —</span></span></p>
               <div class="hero-actions">
                 <button class="btn primary" type="button" id="btn-open-pairing">
                   <svg class="i" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><use href="#i-qr"></use></svg>

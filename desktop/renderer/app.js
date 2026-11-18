@@ -51,6 +51,7 @@
     },
     themePreview: false,
     refreshing: false,
+    update: { current: "", latest: null, source: "", checkedAt: 0, status: "", error: "", checking: false },
     pollTimer: 0,
     modalResolve: null,
     modalReturnFocus: null,
@@ -415,6 +416,7 @@
       button?.classList.remove("loading");
     });
     $("#btn-restart")?.addEventListener("click", restartService);
+    $("#btn-check-update")?.addEventListener("click", () => { void checkForUpdate(); });
     $("#btn-power")?.addEventListener("click", () => {
       const running = ["running", "degraded"].includes(state.runtime?.state);
       if (running) stopServiceWithConfirm();
@@ -499,7 +501,7 @@
     }
 
     setText($("#hero-title"), snap.label || "已停止");
-    setText($("#hero-detail"), snap.detail || "服务未启动");
+    setText($("#hero-detail-text"), snap.detail || "服务未启动");
     const urls = snap.urls || {};
     setText($("#hero-lan"), urls.lan || "—");
     const publicEnabled = Boolean(snap.tunnel?.enabled);
@@ -526,6 +528,7 @@
 
     updateRuntimeButtons(snap);
     updateConnectionInfo();
+    renderUpdateChip();
     renderTaskList();
   }
 
@@ -564,6 +567,11 @@
     }
     const preview = $("#btn-preview");
     if (preview) preview.disabled = !running;
+    const updateButton = $("#btn-check-update");
+    if (updateButton) {
+      updateButton.disabled = !running || state.update.checking;
+      updateButton.title = running ? "检查电脑端服务是否有新版本" : "服务未运行，启动后再检查更新";
+    }
     const copyUrl = $("#btn-copy-url");
     if (copyUrl) copyUrl.disabled = !(snap?.urls?.browser || snap?.urls?.lan);
     updateLogStats();
@@ -575,6 +583,216 @@
     if (serviceState === "starting") return "服务正在启动";
     if (serviceState === "restarting") return "服务正在重启";
     return "服务尚未启动";
+  }
+
+  /* ------------------------------------------------------------------ */
+  /* Service version / update check                                      */
+  /* ------------------------------------------------------------------ */
+
+  const UPDATE_TAGS = {
+    checking: ["检查中", "muted"],
+    latest: ["已是最新", "ok"],
+    available: ["可升级", "warn"],
+    unavailable: ["更新源不可用", "muted"],
+    error: ["检查失败", "err"]
+  };
+
+  function healthVersion() {
+    const info = state.runtime?.health?.info;
+    return info && typeof info.version === "string" ? info.version.trim() : "";
+  }
+
+  function versionText(value) {
+    if (typeof value === "string") return value.trim();
+    if (value && typeof value === "object" && typeof value.version === "string") return value.version.trim();
+    return "";
+  }
+
+  function compareVersions(left, right) {
+    const parse = (value) => {
+      const text = String(value || "").replace(/^v/i, "").trim();
+      const [core, prerelease = ""] = text.split("-", 2);
+      return { parts: core.split(/[.+]/).map((part) => Number(part) || 0), prerelease };
+    };
+    const a = parse(left);
+    const b = parse(right);
+    for (let index = 0; index < Math.max(a.parts.length, b.parts.length); index += 1) {
+      const l = a.parts[index] || 0;
+      const r = b.parts[index] || 0;
+      if (l !== r) return l > r ? 1 : -1;
+    }
+    // A release outranks its own prerelease (2.2.1 > 2.2.1-rc.1).
+    if (a.prerelease && !b.prerelease) return -1;
+    if (!a.prerelease && b.prerelease) return 1;
+    return a.prerelease.localeCompare(b.prerelease);
+  }
+
+  function formatBytes(bytes) {
+    const value = Number(bytes);
+    if (!Number.isFinite(value) || value <= 0) return "";
+    if (value >= 1024 * 1024) return `${(value / 1024 / 1024).toFixed(1)} MB`;
+    if (value >= 1024) return `${Math.round(value / 1024)} KB`;
+    return `${value} B`;
+  }
+
+  function updateWhen(value) {
+    if (!value) return "";
+    if (typeof value === "number") return fullDate(value);
+    const ms = Date.parse(String(value));
+    return Number.isFinite(ms) ? fullDate(ms) : String(value);
+  }
+
+  /** Idle chip shows the live health version; a check result adds one state tag. */
+  function renderUpdateChip() {
+    const live = healthVersion();
+    if (live && live !== state.update.current) {
+      state.update.current = live;
+      // The service changed underneath the last check (restart/upgrade):
+      // an old "available/latest" badge would be misleading.
+      if (!state.update.checking && (state.update.status === "latest" || state.update.status === "available")) {
+        state.update.status = "";
+        state.update.latest = null;
+      }
+    }
+    const version = state.update.current || live;
+    setText($("#overview-version-text"), version ? `服务版本 ${version}` : "服务版本 —");
+    const chip = $("#overview-version");
+    if (chip) chip.title = version ? `当前电脑端服务版本 ${version}` : "服务未运行或未返回版本号";
+    const tag = $("#overview-update-tag");
+    if (!tag) return;
+    const status = state.update.status;
+    // The button already says "检查中…"; a second amber pill would be noise.
+    const [fallback, tone] = status === "checking" ? ["", ""] : (UPDATE_TAGS[status] || ["", ""]);
+    const label = state.update.status === "available" && state.update.latest?.version
+      ? `可升级 ${state.update.latest.version}`
+      : fallback;
+    tag.hidden = !label;
+    if (!label) return;
+    tag.className = `tag ${tone}`;
+    tag.textContent = label;
+    tag.title = state.update.status === "error" ? state.update.error
+      : state.update.status === "unavailable" ? (state.update.latest?.reason || "更新源不可用")
+        : state.update.status === "available" ? `最新 ${state.update.latest?.version || ""}` : "";
+  }
+
+  async function checkForUpdate() {
+    if (state.update.checking) return;
+    if (typeof api.checkUpdate !== "function") {
+      showToast("当前控制台版本还不支持检查更新。", "warn", 4000);
+      return;
+    }
+    const button = $("#btn-check-update");
+    const label = button?.querySelector("span");
+    state.update.checking = true;
+    state.update.status = "checking";
+    state.update.error = "";
+    renderUpdateChip();
+    if (button) {
+      button.disabled = true;
+      button.classList.add("loading");
+    }
+    setText(label, "检查中…");
+
+    let modalPayload = null;
+    try {
+      const result = await api.checkUpdate();
+      if (!result || result.ok === false) throw new Error(result?.error || "无法读取更新源。");
+      const current = versionText(result.current) || state.update.current || healthVersion();
+      const latest = result.latest && typeof result.latest === "object" ? { ...result.latest } : {};
+      const latestVersion = versionText(latest);
+      state.update.current = current;
+      state.update.latest = { ...latest, version: latestVersion };
+      state.update.source = String(result.source || "");
+      state.update.checkedAt = Date.parse(String(result.checkedAt || "")) || Date.now();
+
+      if (latest.available === false) {
+        state.update.status = "unavailable";
+        modalPayload = { status: "unavailable", current, latest: state.update.latest, source: state.update.source, checkedAt: state.update.checkedAt };
+      } else {
+        if (!latestVersion) throw new Error("更新源没有返回版本号。");
+        const available = result.updateAvailable === true
+          || (result.updateAvailable === undefined && compareVersions(latestVersion, current) > 0);
+        state.update.status = available ? "available" : "latest";
+        modalPayload = { status: available ? "available" : "latest", current, latest: state.update.latest, source: state.update.source, checkedAt: state.update.checkedAt };
+      }
+    } catch (error) {
+      state.update.status = "error";
+      state.update.error = error?.message ? String(error.message) : String(error);
+      showToast(`检查更新失败：${state.update.error}`, "error", 6000);
+    } finally {
+      state.update.checking = false;
+      if (button) {
+        button.disabled = !["running", "degraded"].includes(state.runtime?.state || "");
+        button.classList.remove("loading");
+      }
+      setText(label, "检查更新");
+      renderUpdateChip();
+    }
+
+    if (modalPayload) await showUpdateModal(modalPayload);
+  }
+
+  async function showUpdateModal(info) {
+    const facts = document.createElement("div");
+    facts.className = "update-facts";
+    const addFact = (key, value, cls = "") => {
+      if (!value) return;
+      const row = document.createElement("div");
+      row.className = "update-fact";
+      const k = document.createElement("span");
+      k.className = "k";
+      k.textContent = key;
+      const v = document.createElement("span");
+      v.className = `v ${cls}`.trim();
+      v.textContent = value;
+      row.append(k, v);
+      facts.appendChild(row);
+    };
+
+    addFact("当前服务", info.current || "—");
+    if (info.status === "unavailable") {
+      addFact("更新源", info.source || "—", "mono");
+      addFact("原因", info.latest?.reason === "missing-manifest"
+        ? "缺少 desktop-release.json，尚未发布更新清单。"
+        : (info.latest?.reason || "更新源不可用。"));
+    } else {
+      addFact("最新版本", info.latest.version, info.status === "available" ? "warn" : "good");
+      if (info.latest.packageName) addFact("安装包", info.latest.packageName);
+      if (info.latest.sizeBytes) addFact("大小", formatBytes(info.latest.sizeBytes));
+      if (info.latest.sha256) addFact("SHA-256", info.latest.sha256, "mono");
+      if (info.latest.notes) addFact("发布说明", info.latest.notes);
+      if (info.source) addFact("更新源", info.source, "mono");
+    }
+    addFact("检查时间", updateWhen(info.checkedAt));
+
+    const note = document.createElement("p");
+    note.className = "update-note";
+    if (info.status === "unavailable") {
+      note.textContent = "更新清单尚未生成。控制台不会自动更新服务，正在运行的服务不受影响。";
+    } else if (info.status === "available") {
+      const script = info.latest.upgradeScript ? String(info.latest.upgradeScript).split(/[\\/]/).pop() : "update-turnloom.ps1";
+      note.textContent = `只提供下载，不会自动替换正在运行的服务。在目标电脑上运行 ${script} 完成升级。`;
+    } else {
+      note.textContent = "当前服务已是最新版本。控制台不会自动更新服务。";
+    }
+    facts.appendChild(note);
+
+    const download = info.status === "available" ? String(info.latest.downloadUrl || "") : "";
+    const title = info.status === "unavailable" ? "更新源不可用"
+      : info.status === "available" ? `发现新版本 ${info.latest.version}` : "服务已是最新";
+    const message = info.status === "unavailable" ? "只读检查，不会改动正在运行的服务。"
+      : info.status === "available" ? `当前 ${info.current || "未知"} → 最新 ${info.latest.version}`
+        : `当前 ${info.current || "未知"} · 已是最新`;
+    const confirmed = await openModal({
+      title,
+      message,
+      bodyNode: facts,
+      confirmLabel: download ? "下载服务端包" : "知道了",
+      cancelLabel: "稍后",
+      singleAction: !download,
+      icon: info.status === "available" ? "download" : "check"
+    });
+    if (confirmed && download) openExternalSafe(download);
   }
 
   function updateConnectionInfo() {
@@ -2344,13 +2562,14 @@
     if (iconUse) iconUse.setAttribute("href", `#i-${options.icon || "alert"}`);
     if (body) {
       body.replaceChildren();
-      body.hidden = !options.imageSrc;
+      body.hidden = !(options.imageSrc || options.bodyNode);
       if (options.imageSrc) {
         const image = document.createElement("img");
         image.src = options.imageSrc;
         image.alt = options.title || "二维码";
         body.appendChild(image);
       }
+      if (options.bodyNode) body.appendChild(options.bodyNode);
     }
     if (confirm) {
       confirm.hidden = Boolean(options.hideConfirm);
@@ -2598,7 +2817,7 @@
           latencyMs: running ? 32 : 0,
           ipcConnected: running,
           ipcCheckAt: running ? Date.now() - 3000 : null,
-          info: { version: "1.0.0" }
+          info: running ? { version: "2.1.7", buildSha: "demo-build" } : null
         },
         tunnel: {
           enabled: Boolean(demo.config.tunnel.enabled),
@@ -2732,6 +2951,26 @@
         }
       }),
       getState: async () => ({ runtime: snapshot(), config: configPublic() }),
+      checkUpdate: async () => ({
+        ok: true,
+        current: { version: "2.1.7", buildSha: "demo-build", startedAt: Date.now() - 3600000 },
+        latest: {
+          available: true,
+          version: "2.2.1",
+          packageName: "turnloom-2.2.1-server.zip",
+          sha256: "9f".repeat(32),
+          sizeBytes: 4823449,
+          downloadUrl: "https://example.com/downloads/turnloom-2.2.1-server.zip",
+          upgradeScript: "update-turnloom.ps1",
+          notes: "修复发图失败、错误原因与超时提示；新增服务端请求日志与手机诊断归档。",
+          publishedAt: "2026-11-18T21:00:00+08:00"
+        },
+        updateAvailable: true,
+        upToDate: false,
+        source: "public/downloads/desktop-release.json",
+        sourceKind: "file",
+        checkedAt: new Date().toISOString()
+      }),
       getTasks: async () => ({ tasks: dent(demo.tasks), at: Date.now() }),
       refreshTasks: async () => ({ tasks: dent(demo.tasks), at: Date.now() }),
       getLogs: async ({ limit } = {}) => demo.logs.slice(-(Number(limit) || 400)),
