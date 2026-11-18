@@ -8,7 +8,7 @@ import TaskStream, { titleOfThread } from '../components/TaskStream';
 import { EmptyState, SectionTitle } from '../components/ui';
 import { COLORS } from '../theme/optionATokens';
 import { useDataState, refreshThreads, loadMoreThreads } from '../state/dataStore';
-import { useTabState, setThreadsQuery } from '../state/tabStore';
+import { useTabState, setThreadsQuery, setThreadsView } from '../state/tabStore';
 import { currentRequestContext } from '../state/sessionStore';
 import { openSheet } from '../state/sheetStore';
 import { haptic } from '../lib/nativeBridge';
@@ -21,10 +21,10 @@ type View = 'project' | 'time';
 
 export default function ThreadsScreen() {
   const data = useDataState();
-  const { threadsQuery } = useTabState();
+  const { threadsQuery, threadsView: view } = useTabState();
   const [showArchived, setShowArchived] = useState(false);
   // 首屏必须直接看到最近的会话：默认按时间排序；「按项目」分组默认展开。
-  const [view, setView] = useState<View>('time');
+  // 视图存在 tabStore，进出详情不会被重置（旧实现用局部 state，返回列表会跳回默认）。
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
   const [pending, setPending] = useState<{ id: string; title: string; archived: boolean } | null>(null);
   const [archiveRevision, setArchiveRevision] = useState(0);
@@ -89,7 +89,7 @@ export default function ThreadsScreen() {
               role="tab"
               aria-selected={view === key}
               className={`tl-view-switch__item${view === key ? ' is-active' : ''}`}
-              onClick={() => { haptic('selection'); setView(key); }}
+              onClick={() => { haptic('selection'); setThreadsView(key); }}
             >
               {key === 'project' ? '按项目' : '按时间'}
             </button>

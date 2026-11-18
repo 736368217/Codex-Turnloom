@@ -13,11 +13,13 @@ export interface TabState {
   detailTitle: string;
   threadsQuery: string;
   threadsFilter: 'all' | 'running' | 'waiting' | 'done';
+  /** 会话页视图放在 store 里：进出详情不再重置回默认值。 */
+  threadsView: 'project' | 'time';
 }
 
 export const tabStore = createStore<TabState>({
   activeTab: 'home', detailThreadId: null, detailTitle: '',
-  threadsQuery: '', threadsFilter: 'all',
+  threadsQuery: '', threadsFilter: 'all', threadsView: 'time',
 });
 
 export function setActiveTab(tab: TabKey): void {
