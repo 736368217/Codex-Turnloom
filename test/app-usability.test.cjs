@@ -39,8 +39,11 @@ function load(file) {
 
 test('U1: thread list opens on newest conversations, not on collapsed project groups', () => {
   const screen = read('screens/ThreadsScreen.tsx');
+  const store = read('state/tabStore.ts');
   // 首屏默认「按时间」，否则「按项目」+ 全折叠时一行会话都看不到。
-  assert.match(screen, /useState<View>\('time'\)/);
+  // 视图在 tabStore 里持久（进出详情不重置），不再由屏幕局部 state 决定。
+  assert.match(store, /threadsView: 'time'/);
+  assert.match(screen, /threadsView: view/);
   // 分组默认展开：折叠态必须是显式的 true，而不是「不是 false」。
   assert.match(screen, /const collapsedNow = collapsed\[group\.key\] === true/);
   assert.doesNotMatch(screen, /collapsed\[group\.key\] !== false/);
