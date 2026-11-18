@@ -5070,6 +5070,10 @@ function normalizeTurnSettings({ model, effort } = {}, modelConfiguration = acti
  * 字符（供应商改名、模型下架、大小写），就会被静默换成另一个模型，用户只会看到
  * 「手机上选的是 DS，电脑端跑的是别的」。这里先精确匹配，再忽略大小写，
  * 最后用 "/" 之后的模型名在唯一命中时兜底；都不中才算不认识。
+ *
+ * 兜底是**双向**的：`wbfd/deepseek-v4.1-flash` 能匹配请求的裸 id `deepseek-v4.1-flash`，
+ * 反之亦然。PI 的会话行只存裸 `model_id`，手机端目录是 `供应商名/模型 id`；只支持一个
+ * 方向的话，把会话裸 id 原样发上来的请求会被判成「目录里没有这个模型」而 409。
  */
 function catalogModelMatch(models, requested) {
   const slug = String(requested || "").trim();
@@ -5079,7 +5083,7 @@ function catalogModelMatch(models, requested) {
   const lowered = slug.toLowerCase();
   const caseHit = models.find((entry) => String(entry.id).toLowerCase() === lowered);
   if (caseHit) return caseHit;
-  const tail = slug.includes("/") ? slug.slice(slug.indexOf("/") + 1) : "";
+  const tail = slug.slice(slug.lastIndexOf("/") + 1);
   if (tail) {
     const tailHits = models.filter((entry) => {
       const id = String(entry.id);
@@ -5163,6 +5167,28 @@ async function piProviderByCatalogSlug(slug) {
   } catch {
     return null;
   }
+}
+
+/**
+ * 一轮 PI 发送真正下发的 (model, effort)。
+ *
+ * 客户端没选模型时必须沿用**会话当前**的模型（`供应商名/模型 id`），而不是目录默认值：
+ * 桥把任何显式 model 都理解成「用户要换模型」，于是会调宿主的 dangerous
+ * session/configure —— 那会弹原生确认框、等桌面点确认，手机端没人能点，
+ * 整轮发送就挂在 60 秒超时上（实测 2026-11-18：会话切到 deepseek 后，
+ * 每条不带模型的普通消息都变成 start-uncertain）。同值不会触发 configure。
+ */
+function piSendModelSettings({ requestedModel, fallback, live } = {}) {
+  const resolved = {
+    model: String(fallback?.model || "").trim(),
+    effort: String(fallback?.effort || "").trim()
+  };
+  if (String(requestedModel || "").trim()) return resolved;
+  const providerName = String(live?.providerName || "").trim();
+  const modelId = String(live?.modelId || "").trim();
+  if (!providerName || !modelId) return resolved;
+  const liveEffort = String(live?.thinkingLevel || "").trim();
+  return { model: `${providerName}/${modelId}`, effort: liveEffort || resolved.effort };
 }
 
 function modelSwitchError(requested, actual, reason) {
@@ -6610,7 +6636,14 @@ async function sendToCodex(text, threadId, images = [], { newThread = false, mod
   if (resolved.modelRemapped) {
     logInfo(`[send] model "${resolved.requestedModel}" remapped to "${resolved.model}"`);
   }
-  const turnSettings = { model: resolved.model, effort: resolved.effort };
+  const live = PI_NATIVE_QUEUE && !newThread && threadId && !resolved.requestedModel
+    ? await piSessionTurnSettings(threadId)
+    : null;
+  const turnSettings = piSendModelSettings({
+    requestedModel: resolved.requestedModel,
+    fallback: { model: resolved.model, effort: resolved.effort },
+    live
+  });
   // PI 后端：把「手机端显式选的模型」真正下发到会话，并回读验证。失败就 409。
   // 排队发送不在这里切：真正的下发发生在 drain（那时会话才空闲）。
   if (PI_NATIVE_QUEUE && !newThread && threadId && resolved.requestedModel
@@ -9199,6 +9232,7 @@ export {
   ifNoneMatchMatches,
   normalizeStatusState,
   normalizeThreadsLimit,
+  piSendModelSettings,
   sqliteDriverInfo,
   statusFieldsFromOverride,
   statusOverrideFromRow,
