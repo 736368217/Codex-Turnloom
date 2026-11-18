@@ -31,7 +31,7 @@ source += "\nmodule.exports = { handleAction };\n";
 
 const outDir = path.join(os.tmpdir(), `turnloom-project-test-${Date.now()}`);
 fs.mkdirSync(outDir, { recursive: true });
-for (const name of ["codex-side.cjs", "manifest.json"]) {
+for (const name of ["codex-side.cjs", "bridge-config.cjs", "manifest.json"]) {
   fs.copyFileSync(path.join(path.dirname(SRC), name), path.join(outDir, name));
 }
 const testFile = path.join(outDir, "main.js");

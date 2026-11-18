@@ -71,7 +71,7 @@ if (!source.includes(JSON.stringify(dbPath))) {
 }
 source += "\nmodule.exports = { attachmentsFromTurnInput, textFromTurnInput, handleAction, stageAttachmentFile, PI_DATA_ROOT };\n";
 
-for (const name of ["codex-side.cjs", "manifest.json"]) {
+for (const name of ["codex-side.cjs", "bridge-config.cjs", "manifest.json"]) {
   fs.copyFileSync(path.join(path.dirname(SRC), name), path.join(outDir, name));
 }
 const testFile = path.join(outDir, "main.js");

@@ -62,7 +62,7 @@ source = `${dbPatched}\nmodule.exports = { handleAction, piForkPoint };\n`;
 
 const testFile = path.join(outDir, "main.js");
 fs.writeFileSync(testFile, source, "utf8");
-for (const name of ["codex-side.cjs", "manifest.json"]) {
+for (const name of ["codex-side.cjs", "bridge-config.cjs", "manifest.json"]) {
   fs.copyFileSync(path.join(path.dirname(SRC), name), path.join(outDir, name));
 }
 

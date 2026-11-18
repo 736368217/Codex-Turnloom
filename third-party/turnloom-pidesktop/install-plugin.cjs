@@ -84,3 +84,20 @@ console.log("registry     : " + REG);
 console.log("installed    : " + PLUGIN_ID + " -> " + DEST);
 console.log("files        : " + copied.join(", "));
 console.log("entries      : " + reg.length);
+
+// 3. 装到 <dataRoot>/plugins/installed/<id> 之后，__dirname 离仓库根目录还有四层，
+//    插件靠 `../../..` 猜不到 server.js（实测解析成 ~/.pi-desktop，8799 永远起不来）。
+//    这里把仓库根写进门面目录的 bridge.json，插件只认这个绝对路径。
+//    访问码同理必须固定：否则每次启动随机 24 字符，手机永远配不上对。
+//    两件事的实现在 plugin/bridge-config.cjs，与本插件共用同一份，不各自维护。
+const bridgeConfig = require("./plugin/bridge-config.cjs");
+const REPO_ROOT = path.resolve(__dirname, "..", "..");
+bridgeConfig.writeBridgeConfig({ turnloomHome: REPO_ROOT, updatedAt: new Date().toISOString() });
+console.log("bridge config: " + bridgeConfig.BRIDGE_CONFIG_FILE + " (turnloomHome=" + REPO_ROOT + ")");
+
+const accessCode = bridgeConfig.ensureAccessCode();
+console.log("access code  : " + accessCode.file + " (" + accessCode.source + ")");
+if (accessCode.created) {
+  // 首次生成时打印一次：手机配对要手输这个码，人得先看到它。
+  console.log("               " + accessCode.code + "   <- 手机配对用（之后从这里读，不会变）");
+}

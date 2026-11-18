@@ -17,6 +17,7 @@ const fs = require("node:fs");
 const path = require("node:path");
 const os = require("node:os");
 const net = require("node:net");
+const http = require("node:http");
 const { spawn } = require("node:child_process");
 const { DatabaseSync } = require("node:sqlite");
 const codexSide = require("./codex-side.cjs");
@@ -125,6 +126,18 @@ const SHIM_HOME = path.join(os.homedir(), ".pidesktop-turnloom");
 const SESSIONS_DIR = path.join(SHIM_HOME, "sessions");
 
 const crypto = require("node:crypto");
+const bridgeConfig = require("./bridge-config.cjs");
+
+/**
+ * 桥自己的本地配置与访问码：实现在 `./bridge-config.cjs`，安装器共用同一份。
+ *   - `bridge.json` 里的 `turnloomHome` 是仓库根（插件装到
+ *     `<dataRoot>/plugins/installed/<id>` 之后 `__dirname` 离仓库根还有四层，
+ *     `../../..` 必然猜错，实测解析成 `~/.pi-desktop`）；
+ *   - `access-code.txt` 是固定访问码（否则 server.js 每次随机，手机配不上对）。
+ */
+const BRIDGE_CONFIG_FILE = bridgeConfig.BRIDGE_CONFIG_FILE;
+const ACCESS_CODE_FILE = bridgeConfig.ACCESS_CODE_FILE;
+const ACCESS_CODE = bridgeConfig.ensureAccessCode();
 
 /**
  * 手机端与桌面端必须看见同一份排队消息。
@@ -866,9 +879,14 @@ const SESSION_INDEX = path.join(SHIM_HOME, "session_index.jsonl");
 const AUTH_FILE = path.join(SHIM_HOME, "auth.json");
 
 const PIPE_PATH = "\\\\.\\pipe\\pidesktop-codex-ipc";
-const TURNLOOM_DIR = path.resolve(__dirname, "..", "..", "..");
+/**
+ * Turnloom 仓库根目录：环境变量 > bridge.json（安装器写入）> 就地运行的仓库布局。
+ * 一个候选都对不上时返回空串，由 ensureTurnloom 把三个候选整体打进日志。
+ */
+const TURNLOOM_DIR_INFO = bridgeConfig.resolveTurnloomDir({ dirname: __dirname });
+const TURNLOOM_DIR = TURNLOOM_DIR_INFO.dir;
 const TURNLOOM_PORT = 8799;
-const TURNLOOM_PASSWORD = process.env.TURNLOOM_ACCESS_CODE || "";
+const TURNLOOM_PASSWORD = ACCESS_CODE.code;
 const TURNLOOM_LOG = path.join(PI_DATA_ROOT, "logs", "turnloom-8799.log");
 const TURNLOOM_ERR = path.join(PI_DATA_ROOT, "logs", "turnloom-8799.err.log");
 const NODE_BIN = process.platform === "win32" ? "node.exe" : "node";
@@ -887,6 +905,11 @@ let pipeServer = null;
 const pipeSockets = new Set();
 let turnloomChild = null;
 let turnloomTimer = null;
+let warnedForeignTurnloom = false;
+let turnloomConfirmed = false;
+let turnloomProbeCheap = false;
+/** 探活周期：确认实例健康后没必要每 60 秒打扰一次。 */
+const TURNLOOM_SUPERVISOR_INTERVAL_MS = 5 * 60 * 1000;
 let unloading = false;
 let syncBusy = false;
 /** Codex 侧会话 id，用于把动作代理回 Codex IPC。 */
@@ -919,9 +942,80 @@ function rolloutFileName(sessionId, startedMs) {
   return `rollout-${stamp}-${sessionId}.jsonl`;
 }
 
+/**
+ * 自定义供应商（`openai_compatible`）的模型清单常常只写在 `providers.config_json`，
+ * `models` 表是空的（本机实测 0 行）。只按 models 表生成目录，手机端模型目录就是空的。
+ * 老库可能没有 config_json 列（测试夹具也是这样），缺列时按空配置处理。
+ */
+let providerConfigColumn = null;
+function providerConfigSelect(db, tableAlias = "") {
+  if (providerConfigColumn === null) {
+    providerConfigColumn = db.prepare("PRAGMA table_info(providers)").all()
+      .some((column) => String(column.name) === "config_json");
+  }
+  return providerConfigColumn ? `${tableAlias}config_json AS provider_config_json` : "NULL AS provider_config_json";
+}
+
+function modelsFromProviderConfig(db) {
+  const rows = db
+    .prepare(
+      `SELECT id AS provider_id, name AS provider_name, enabled AS provider_enabled,
+              default_model_id AS provider_default_model_id, ${providerConfigSelect(db)}
+         FROM providers ORDER BY name ASC`,
+    )
+    .all();
+  const out = [];
+  for (const row of rows) {
+    let config = null;
+    try {
+      config = JSON.parse(String(row.provider_config_json || "{}"));
+    } catch {
+      continue;
+    }
+    for (const model of Array.isArray(config?.models) ? config.models : []) {
+      const modelId = String(model?.id || model?.modelId || "").trim();
+      if (!modelId) continue;
+      out.push({
+        ...row,
+        model_id: modelId,
+        display_name: String(model?.displayName || model?.display_name || modelId),
+        capabilities_json: JSON.stringify(Array.isArray(model?.capabilities) ? model.capabilities : []),
+      });
+    }
+  }
+  return out;
+}
+
+/**
+ * models 表行 + 供应商配置行取并集（表行优先）。全有或全无会把"混合安装"
+ * ——表里有别的供应商的行、这个供应商只在配置里声明——的模型整批漏掉。
+ */
+function mergeModelRows(tableRows, configRows) {
+  const merged = [];
+  const seen = new Set();
+  for (const row of [...(tableRows || []), ...(configRows || [])]) {
+    const key = `${row.provider_id}/${row.model_id}`;
+    if (!row.model_id || seen.has(key)) continue;
+    seen.add(key);
+    merged.push(row);
+  }
+  return merged;
+}
+
 function readPiSessions() {
   const db = new DatabaseSync(PI_DB, { readOnly: true });
   try {
+    const tableModels = db
+      .prepare(
+        `SELECT p.id AS provider_id, p.name AS provider_name, p.enabled AS provider_enabled,
+                p.default_model_id AS provider_default_model_id,
+                m.model_id AS model_id, m.display_name AS display_name,
+                m.capabilities_json AS capabilities_json,
+                ${providerConfigSelect(db, "p.")}
+           FROM models m INNER JOIN providers p ON p.id = m.provider_id
+          ORDER BY p.name ASC, m.model_id ASC`,
+      )
+      .all();
     return {
       sessions: db
         .prepare(
@@ -936,17 +1030,7 @@ function readPiSessions() {
         .prepare("SELECT session_id, id, started_at FROM turns WHERE status = 'running'")
         .all(),
       // PI 的供应商 × 模型：生成 Codex 兼容的模型目录，手机端才能按 PI 的配置选模型。
-      models: db
-        .prepare(
-          `SELECT p.id AS provider_id, p.name AS provider_name, p.enabled AS provider_enabled,
-                  p.default_model_id AS provider_default_model_id,
-                  m.model_id AS model_id, m.display_name AS display_name,
-                  m.capabilities_json AS capabilities_json,
-                  p.config_json AS provider_config_json
-             FROM models m INNER JOIN providers p ON p.id = m.provider_id
-            ORDER BY p.name ASC, m.model_id ASC`,
-        )
-        .all(),
+      models: mergeModelRows(tableModels, modelsFromProviderConfig(db)),
     };
   } finally {
     db.close();
@@ -1602,6 +1686,8 @@ function buildModelIndex(rows) {
     const providerId = String(row.provider_id || "");
     const modelId = String(row.model_id || "").trim();
     if (!providerId || !modelId) continue;
+    // 停用的供应商不能出现在"可解析/可用"索引里，否则手机端仍能选到它。
+    if (Number(row.provider_enabled) === 0) continue;
     const pair = { providerId, modelId };
     byPair.set(`${providerId}/${modelId}`, pair);
     reasoning.set(`${providerId}/${modelId}`, modelThinkingFromRow(row));
@@ -1630,21 +1716,42 @@ function modelPairUsable(pair) {
   const providerId = String(pair?.providerId || "").trim();
   const modelId = String(pair?.modelId || "").trim();
   if (!providerId || !modelId) return false;
+  // 优先用内存索引：它每 3 秒随 syncOnce 重建，并且已经包含只在
+  // providers.config_json 里声明的模型（自定义供应商的常态，models 表是空的）。
+  const indexed = modelIndex.byPair?.get(`${providerId}/${modelId}`);
+  if (indexed) return true;
+  return dbModelPairUsable(providerId, modelId);
+}
+
+/** 数据库侧判定：models 表 + 供应商 config_json 里声明的模型都算数。 */
+function dbModelPairUsable(providerId, modelId) {
   const db = new DatabaseSync(PI_DB, { readOnly: true });
   try {
-    const row = db
-      .prepare(
-        `SELECT p.enabled AS provider_enabled, m.model_id AS model_id
-           FROM providers p LEFT JOIN models m
-             ON m.provider_id = p.id AND m.model_id = ?
-          WHERE p.id = ?`,
-      )
-      .get(modelId, providerId);
-    return Boolean(row && Number(row.provider_enabled) === 1 && row.model_id);
+    const provider = db
+      .prepare(`SELECT enabled, ${providerConfigSelect(db)} FROM providers WHERE id = ?`)
+      .get(providerId);
+    if (!provider || Number(provider.enabled) !== 1) return false;
+    const inTable = db
+      .prepare("SELECT 1 AS hit FROM models WHERE provider_id = ? AND model_id = ?")
+      .get(providerId, modelId);
+    if (inTable) return true;
+    return providerConfigModelIds(provider.provider_config_json).includes(modelId);
   } catch {
     return false;
   } finally {
     db.close();
+  }
+}
+
+/** providers.config_json.models[].id —— 自定义供应商真正的模型清单。 */
+function providerConfigModelIds(configJson) {
+  try {
+    const config = JSON.parse(String(configJson || "{}"));
+    return (Array.isArray(config?.models) ? config.models : [])
+      .map((model) => String(model?.id || model?.modelId || "").trim())
+      .filter(Boolean);
+  } catch {
+    return [];
   }
 }
 
@@ -1687,42 +1794,39 @@ function fallbackModelPair(sessionId) {
   const id = String(sessionId || "").trim();
   const db = new DatabaseSync(PI_DB, { readOnly: true });
   try {
+    // 1) 这条会话最近成功轮次用过的模型（跳过已失效的那些，不能停在第一条）。
     if (id) {
-      const lastGood = db
+      const recent = db
         .prepare(
-          `SELECT t.provider_id AS provider_id, t.model_id AS model_id
-             FROM turns t
-             JOIN providers p ON p.id = t.provider_id AND p.enabled = 1
-             JOIN models m ON m.provider_id = t.provider_id AND m.model_id = t.model_id
-            WHERE t.session_id = ? AND t.status = 'completed'
-            ORDER BY t.ended_at DESC LIMIT 1`,
+          `SELECT provider_id, model_id FROM turns
+            WHERE session_id = ? AND status = 'completed'
+              AND provider_id IS NOT NULL AND model_id IS NOT NULL
+            ORDER BY ended_at DESC LIMIT 5`,
         )
-        .get(id);
-      if (lastGood?.provider_id && lastGood?.model_id) {
-        return { providerId: String(lastGood.provider_id), modelId: String(lastGood.model_id) };
+        .all(id);
+      for (const row of recent) {
+        const pair = { providerId: String(row.provider_id || ""), modelId: String(row.model_id || "") };
+        if (modelPairUsable(pair)) return pair;
       }
     }
-    const providerDefault = db
+    const providers = db
       .prepare(
-        `SELECT p.id AS provider_id, p.default_model_id AS model_id
-           FROM providers p
-           JOIN models m ON m.provider_id = p.id AND m.model_id = p.default_model_id
-          WHERE p.enabled = 1 AND p.default_model_id IS NOT NULL AND trim(p.default_model_id) <> ''
-          ORDER BY p.name ASC LIMIT 1`,
+        `SELECT id, name, default_model_id, ${providerConfigSelect(db)}
+           FROM providers WHERE enabled = 1 ORDER BY name ASC`,
       )
-      .get();
-    if (providerDefault?.provider_id && providerDefault?.model_id) {
-      return { providerId: String(providerDefault.provider_id), modelId: String(providerDefault.model_id) };
+      .all();
+    // 2) 启用供应商的默认模型（可能是配置里声明的，models 表里没有）。
+    for (const provider of providers) {
+      const pair = { providerId: String(provider.id), modelId: String(provider.default_model_id || "").trim() };
+      if (pair.modelId && modelPairUsable(pair)) return pair;
     }
-    const anyModel = db
-      .prepare(
-        `SELECT m.provider_id AS provider_id, m.model_id AS model_id
-           FROM models m JOIN providers p ON p.id = m.provider_id AND p.enabled = 1
-          ORDER BY m.model_id ASC LIMIT 1`,
-      )
-      .get();
-    if (anyModel?.provider_id && anyModel?.model_id) {
-      return { providerId: String(anyModel.provider_id), modelId: String(anyModel.model_id) };
+    // 3) 任一启用供应商的任一模型：表里优先，其次配置。
+    for (const provider of providers) {
+      const fromTable = db
+        .prepare("SELECT model_id FROM models WHERE provider_id = ? ORDER BY model_id ASC LIMIT 1")
+        .get(provider.id);
+      const modelId = String(fromTable?.model_id || providerConfigModelIds(provider.provider_config_json)[0] || "").trim();
+      if (modelId) return { providerId: String(provider.id), modelId };
     }
     return null;
   } catch {
@@ -1846,9 +1950,12 @@ function turnSettingsFromRequest(params, preferredProviderId = "") {
  */
 async function applyModelIfChanged(sessionId, settings) {
   if (!sessionId || !settings.providerId || !settings.modelId) return;
-  // 内存快照每 3 秒同步一次；桥刚重载时它还是空的。没有快照就以数据库为准，
-  // 否则「模型其实没变」也会触发一次危险操作的确认框。
-  const current = currentSessionModel(sessionId) || sessionModelPair(sessionId);
+  // 以数据库为准，内存快照只做兜底：快照每 3 秒同步一次，而 Turnloom 的 PI 模型
+  // 切换段（server.js 的 [model] 日志）会在**发送前**直接把 (provider, model, thinking)
+  // 写进 sessions 表。先读快照就会把"已经切好了"误判成"要切"，于是再发一次
+  // session/configure —— 那是宿主的危险操作，会弹原生确认框；手机端没人能点，
+  // 整次发送就挂在 60 秒超时上，最后只回一个 start-uncertain（实测 2026-11-18）。
+  const current = sessionModelPair(sessionId) || currentSessionModel(sessionId);
   const samePair = Boolean(current)
     && current.providerId === settings.providerId
     && current.modelId === settings.modelId;
@@ -1889,16 +1996,17 @@ async function applyModelIfChanged(sessionId, settings) {
 }
 
 /**
- * 发送前的唯一模型闸门。
+ * 发送前的模型闸门（**注意：发送路径不再调用它**）。
+ *
+ * 2026-11-18 起 model 下发由 Turnloom 的 PI 段负责（server.js applyPiThreadModel：直接
+ * 写 sessions 行并回读验证，失败就 409），桥的 start-turn 一次都不调 session/configure；
+ * 这条闸门只在需要"修一个坏会话"的显式维护场景里用（导出给回归测试断言修复语义）。
  *
  * 依次决定这一轮到底用哪个 (providerId, modelId)：
  *   1) 手机端明确选中的模型，且它在 PI 里确实可用；
  *   2) 会话当前模型，且仍可用；
  *   3) 这条会话最近一次成功轮次 / 供应商默认模型；
  *   4) 一个都没有 → 直接报错，不发送。
- *
- * 关键点：会话已经坏掉时（供应商被禁用、模型被删除），修好它是发送的前提；
- * 旧实现只切「用户选的新模型」，会话本来坏着就每轮都 No provider configured。
  */
 async function ensureSendableModel(sessionId, settings = {}) {
   const desired = settings.providerId && settings.modelId
@@ -2002,15 +2110,24 @@ async function handleAction(method, params, version) {
     const text = textFromTurnInput(input);
     const attachments = attachmentsFromTurnInput(input, conversationId);
     if (!conversationId) throw new Error("start-turn without conversationId");
-    // 手机端显式选了模型才下发切换：这是用户的一次明确动作，值得走 session/configure
-    // （宿主的危险操作确认框由用户授权）。没选就沿用会话当前模型，绝不每轮弹框。
-    // 旧实现在这里完全丢掉 request.model，于是手机上选好的模型从来没生效过。
+    // 模型：**发送路径一次都不调 session/configure**。
+    // 宿主把 configure 标成 dangerous，会弹原生确认框等人点；手机端没人能点，
+    // 于是整轮发送挂在超时上（实测 2026-11-18：Human 在电脑前被连点三次授权框，
+    // 每条普通消息都变成 PERMISSION_DENIED / start-uncertain）。
+    // 真正下发模型是 Turnloom 的 PI 段（server.js applyPiThreadModel：改 rows + 回读验证，
+    // 失败就 409），桥只负责把这一轮发出去。这里只把"请求模型与会话模型不一致"记一行日志，
+    // 绝不偷偷改配置——那既是原生弹窗的来源，也会把用户的会话改到别的模型上。
     const explicitModel = String(params?.turnStart?.request?.model || "").trim();
     if (explicitModel) {
       const currentPair = sessionModelPair(conversationId) || currentSessionModel(conversationId);
-      const settings = turnSettingsFromRequest(params, currentPair?.providerId || "");
-      if (settings.providerId && settings.modelId) {
-        await ensureSendableModel(conversationId, settings);
+      const requested = turnSettingsFromRequest(params, currentPair?.providerId || "");
+      const differs = Boolean(requested.providerId && requested.modelId)
+        && (requested.providerId !== currentPair?.providerId || requested.modelId !== currentPair?.modelId);
+      if (differs) {
+        log(
+          `model request ${requested.providerId}/${requested.modelId} differs from session`,
+          `${currentPair?.providerId || "-"}/${currentPair?.modelId || "-"} — sending with the session model (no session/configure)`,
+        );
       }
     }
     await invokeHost("agent/prompt", {
@@ -2203,14 +2320,83 @@ function portOpen(port) {
   });
 }
 
+/**
+ * 探活走哪个端点：第一次必须用 /api/health（它同时证明"码对得上"），
+ * 之后换 /api/app/update —— 同样要鉴权，但不像 /api/health 每次强制刷新
+ * Codex home 上下文 + 重新加载模型配置（实测 57ms vs 1ms）。
+ */
+function turnloomProbePath() {
+  return turnloomProbeCheap ? "/api/app/update" : "/api/health";
+}
+
+/** 用保存的访问码探一次：2xx = 是我们托管的那一个。 */
+function probeTurnloomHealth(timeoutMs = 1500) {
+  return new Promise((resolve) => {
+    let settled = false;
+    const done = (value) => {
+      if (!settled) {
+        settled = true;
+        resolve(value);
+      }
+    };
+    try {
+      const request = http.request(
+        {
+          host: "127.0.0.1",
+          port: TURNLOOM_PORT,
+          path: turnloomProbePath(),
+          method: "GET",
+          headers: { "x-access-token": TURNLOOM_PASSWORD },
+          timeout: timeoutMs,
+        },
+        (response) => {
+          response.resume();
+          const status = Number(response.statusCode) || 0;
+          done(status >= 200 && status < 300 ? 200 : status);
+        },
+      );
+      request.on("error", () => done(0));
+      request.on("timeout", () => {
+        request.destroy();
+        done(0);
+      });
+      request.end();
+    } catch {
+      done(0);
+    }
+  });
+}
+
 async function ensureTurnloom() {
   if (unloading) return;
-  if (await portOpen(TURNLOOM_PORT)) return;
-  if (!fs.existsSync(path.join(TURNLOOM_DIR, "server.js"))) {
-    log("turnloom server.js not found at", TURNLOOM_DIR);
+  if (await portOpen(TURNLOOM_PORT)) {
+    // 端口被占不等于"是我们自己那一个"：别人的 Turnloom 用别的访问码时，
+    // 手机永远配不上对，而日志一片安静。这里用保存的码探一次。
+    const status = await probeTurnloomHealth();
+    if (status !== 200 && !warnedForeignTurnloom) {
+      warnedForeignTurnloom = true;
+      log(
+        `port ${TURNLOOM_PORT} already in use but ${turnloomProbePath()} answered ${status || "no response"};`,
+        `access code from ${ACCESS_CODE_FILE} is not accepted by that process`,
+      );
+    }
+    if (status === 200 && !turnloomConfirmed) {
+      turnloomConfirmed = true;
+      turnloomProbeCheap = true; // 确认过是我们自己的实例，后续探活换最便宜的鉴权端点
+    }
     return;
   }
-  log("starting turnloom on port", TURNLOOM_PORT);
+  if (!TURNLOOM_DIR) {
+    log(
+      "turnloom server.js not found in any candidate:",
+      TURNLOOM_DIR_INFO.candidates.map((candidate) => `${candidate.source}=${candidate.dir}`).join(" | ") || "(no candidates)",
+      "- set turnloomHome in",
+      BRIDGE_CONFIG_FILE,
+      "or TURNLOOM_HOME",
+    );
+    return;
+  }
+  log("starting turnloom on port", TURNLOOM_PORT, "from", TURNLOOM_DIR, `(${TURNLOOM_DIR_INFO.source})`, "- access code in", ACCESS_CODE_FILE);
   fs.mkdirSync(path.dirname(TURNLOOM_LOG), { recursive: true });
   const out = fs.openSync(TURNLOOM_LOG, "a");
   const err = fs.openSync(TURNLOOM_ERR, "a");
@@ -2222,12 +2408,18 @@ async function ensureTurnloom() {
       String(TURNLOOM_PORT),
       "--codex-home",
       SHIM_HOME,
-      "--password",
-      TURNLOOM_PASSWORD,
       "--ipc-socket",
       PIPE_PATH,
     ],
-    { cwd: TURNLOOM_DIR, stdio: ["ignore", out, err], windowsHide: true },
+    {
+      cwd: TURNLOOM_DIR,
+      stdio: ["ignore", out, err],
+      windowsHide: true,
+      // 访问码走环境变量而不是 argv：Windows 上同用户的任何进程都能用
+      // `Get-CimInstance Win32_Process` 读到别人的命令行，长期凭据不该出现在那里。
+      // server.js 认 CODEX_LAN_PASSWORD，行为与 --password 完全一致。
+      env: { ...process.env, CODEX_LAN_PASSWORD: TURNLOOM_PASSWORD },
+    },
   );
   turnloomChild.on("exit", (code) => {
     turnloomChild = null;
@@ -2246,7 +2438,7 @@ async function onLoad() {
   syncOnce();
   syncTimer = setInterval(syncOnce, SYNC_INTERVAL_MS);
   ensureTurnloom().catch((error) => log("ensureTurnloom failed:", error?.message || error));
-  turnloomTimer = setInterval(() => ensureTurnloom().catch(() => {}), 60000);
+  turnloomTimer = setInterval(() => ensureTurnloom().catch(() => {}), TURNLOOM_SUPERVISOR_INTERVAL_MS);
 }
 
 async function onUnload() {
@@ -2268,4 +2460,14 @@ async function onUnload() {
   log("unloaded");
 }
 
-module.exports = { onLoad, onUnload };
+// 生产路径只用 onLoad / onUnload；其余导出是回归测试的入口（见 test-bridge-config.cjs）。
+module.exports = {
+  onLoad,
+  onUnload,
+  modelsFromProviderConfig,
+  mergeModelRows,
+  readPiSessions,
+  modelPairUsable,
+  providerConfigModelIds,
+  fallbackModelPair,
+};

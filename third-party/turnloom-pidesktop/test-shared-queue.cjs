@@ -30,7 +30,7 @@ source = source.replace(
   `const PI_DB = ${JSON.stringify(dbPath)};`,
 );
 source += "\nmodule.exports = { nativeQueuePush, nativeQueueList, nativeQueueRemove, nativeQueueSteer, nativeQueueRows, handleAction };\n";
-for (const name of ["codex-side.cjs", "manifest.json"]) {
+for (const name of ["codex-side.cjs", "bridge-config.cjs", "manifest.json"]) {
   fs.copyFileSync(path.join(path.dirname(SRC), name), path.join(outDir, name));
 }
 const testFile = path.join(outDir, "main.js");

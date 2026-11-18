@@ -85,7 +85,7 @@ source = source.replace("const PI_DB = resolvePiDb();", `const PI_DB = ${JSON.st
 if (!source.includes(JSON.stringify(dbPath))) throw new Error("could not redirect PI_DB");
 source +=
   "\nmodule.exports = { hostInvoke, hostApprovals, hostApprovalsResolve, hostTodos, hostNotifications, hostNotificationsRead, hostScheduled, hostUsage, sessionHide, sessionRestore, sessionHidden };\n";
-for (const name of ["codex-side.cjs", "manifest.json"]) {
+for (const name of ["codex-side.cjs", "bridge-config.cjs", "manifest.json"]) {
   fs.copyFileSync(path.join(path.dirname(SRC), name), path.join(outDir, name));
 }
 const testFile = path.join(outDir, "main.js");

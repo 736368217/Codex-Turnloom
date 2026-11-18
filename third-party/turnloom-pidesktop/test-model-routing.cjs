@@ -97,7 +97,7 @@ if (!source.includes(JSON.stringify(dbPath))) throw new Error("could not redirec
 source +=
   "\nmodule.exports = { handleAction, turnSettingsFromRequest, buildModelIndex, ensureSendableModel, modelPairUsable, sessionModelPair, fallbackModelPair, applyModelIfChanged, modelCapabilities, modelVisionFromRow };\n";
 
-for (const name of ["codex-side.cjs", "manifest.json"]) {
+for (const name of ["codex-side.cjs", "bridge-config.cjs", "manifest.json"]) {
   fs.copyFileSync(path.join(path.dirname(SRC), name), path.join(outDir, name));
 }
 const testFile = path.join(outDir, "main.js");
@@ -219,9 +219,12 @@ check(
     JSON.stringify(firstPrompt && firstPrompt.args),
   );
 
-  // 2026-11-17 契约修正：手机端显式换了模型（且能解析）就必须真的切换一次。
-  // 旧契约「发送时一律不 configure」把用户的模型选择彻底废掉了：手机上选 DS、
-  // 电脑端却跑会话原模型。现在只在这一种情况下弹一次确认框。
+  // 2026-11-18 契约（P0）：发送路径**一次都不**调 session/configure。
+  // 宿主把 configure 标为 dangerous，会弹原生确认框；Human 在电脑前被连点三次
+  // （plugin.log 连续三条 session/configure risk=dangerous ok=false PERMISSION_DENIED），
+  // 随后每条普通消息都挂成 start-uncertain。模型下发改由 Turnloom 的 PI 段负责
+  // （server.js applyPiThreadModel 直接写 sessions 行 + 回读验证），桥只负责发这一轮。
+  // 手机上显式换了模型也照发：桥记一行日志，不改配置、不弹框。
   calls.length = 0;
   await plugin.handleAction(
     "thread-follower-start-turn",
@@ -231,10 +234,8 @@ check(
     },
     2,
   );
-  const switched = calls.filter((c) => c.operation === "session/configure");
-  check("显式换模型触发一次 session/configure", switched.length === 1, JSON.stringify(opsOf()));
-  check("换模型调用带 confirm:true", switched[0] && switched[0].confirm === true, JSON.stringify(switched[0]));
-  check("换模型这一轮照常发送", Boolean(calls.find((c) => c.operation === "agent/prompt")), JSON.stringify(opsOf()));
+  check("显式换模型不再触发 session/configure（原生弹窗来源）", calls.every((c) => c.operation !== "session/configure"), JSON.stringify(opsOf()));
+  check("显式换模型这一轮照常发送", Boolean(calls.find((c) => c.operation === "agent/prompt")), JSON.stringify(opsOf()));
   check("普通发送仍调用 agent/prompt", Boolean(calls.find((c) => c.operation === "agent/prompt")), JSON.stringify(opsOf()));
 
   // 同一模型 / 桥刚重载 / 解析不出模型：全部保持发送，不弹确认框。
