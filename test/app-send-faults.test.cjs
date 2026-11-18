@@ -314,7 +314,9 @@ test('2.2.1 send faults', async (t) => {
     while (!server.diagnostics.length && Date.now() < deadline) await new Promise((resolve) => setTimeout(resolve, 25));
     assert.equal(server.diagnostics.length, 1, 'one upload after the confirmed send');
     const uploaded = server.diagnostics[0];
-    assert.equal(uploaded.appVersion, '2.2.1');
+    // Version is bumped per release; assert the payload carries a real
+    // semver, not a literal that turns every bump into a red test.
+    assert.match(uploaded.appVersion, /^\d+\.\d+\.\d+/);
     assert.equal(uploaded.records.length, 1);
     assert.equal(uploaded.records[0].status, 400);
     assert.match(uploaded.records[0].message, /图片尺寸/);
