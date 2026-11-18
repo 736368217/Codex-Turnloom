@@ -1518,10 +1518,13 @@ button:focus-visible, a:focus-visible { outline: 2px solid var(--tl-blue); outli
   border: 0; background: var(--tl-surface); color: var(--tl-label-primary);
   font-size: 15px; line-height: 20px; text-align: left;
 }
-.tl-settings-row + .tl-settings-row::before {
+/* Only the main cards get the automatic inset line; InsetGroup content keeps
+   its explicit separator (a plus b siblings otherwise draw two lines). */
+.tl-settings-card > .tl-settings-row + .tl-settings-row::before {
   content: ''; position: absolute; top: 0; left: 50px; right: 0;
   height: .5px; background: var(--tl-separator);
 }
+.tl-settings-separator { height: .5px; margin-left: 50px; background: var(--tl-separator); }
 .tl-settings-row:active { background: #F7F7FA; }
 .tl-settings-icon {
   width: 24px; height: 24px; flex: 0 0 24px; display: grid; place-items: center;
