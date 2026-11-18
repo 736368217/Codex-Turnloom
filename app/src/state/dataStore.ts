@@ -13,8 +13,10 @@ import {
   getThreads, getThreadMessages, getThreadChanges, getHealth,
   postNewThread, postSend, postInterrupt, postApproval, extractThreadId,
   type ThreadSummary, type ThreadMessage, type ChangeEntry,
-  type RequestContext, type SendOptions,
+  type RequestContext, type SendOptions, type ApiResult,
 } from '../lib/turnloomApi';
+import { actionableMessage } from '../lib/serverErrors';
+import { recordDiagnostic, uploadDiagnostics } from '../lib/diagnostics';
 import { isCurrentContext, getActiveGeneration } from '../lib/turnloomApi';
 import { cacheKeyFor, setOnline, markSynced, sessionStore } from './sessionStore';
 import { projectThread } from '../lib/threadProjection';
@@ -40,6 +42,8 @@ export interface DataState {
   threadPages: number;
   offline: boolean;
   error: string;
+  /** The reason this send failed only — never an older poll's error. */
+  lastSendError: string;
   lastSyncAt: number | null;
   cachedAt: number | null;
   runningCount: number;
@@ -49,7 +53,7 @@ export interface DataState {
 const EMPTY: DataState = {
   scope: '', threads: [], messagesByThread: {}, changesByThread: {}, statusByThread: {}, messageState: {}, messagePages: {},
   loading: false, loadingMore: false, nextCursor: null, threadTotal: null, threadPages: 0,
-  offline: false, error: '', lastSyncAt: null, cachedAt: null, runningCount: 0, errorCount: 0,
+  offline: false, error: '', lastSendError: '', lastSyncAt: null, cachedAt: null, runningCount: 0, errorCount: 0,
 };
 
 /** A local send/stop invalidates status polls that started before it. */
@@ -177,13 +181,23 @@ function applyFailure(context: RequestContext, message: string, offline = false)
 }
 
 function actionable(result: { ok: false; status: number; error: string; offline: boolean }): string {
-  if (result.status === 401) return '连接已失效，请重新配对这台机器。';
-  if (result.offline || result.status === 0) return '暂时连不上电脑，请检查网络与桌面端服务后重试。';
-  if (result.status === 403) return '电脑端当前不允许写入，请在桌面端开启写入后重试。';
-  if (result.status === 404) return '服务或请求已不存在，请刷新后重试。';
-  if (result.status === 409) return '请求已变化或已处理，请刷新后重新核对。';
-  if (result.status >= 500) return '电脑端服务出错，请检查桌面端状态后重试。';
-  return result.error || '请求未成功，请重试。';
+  return actionableMessage(result);
+}
+
+/** A transport blip is worth one retry; the request id makes the resend idempotent. */
+function transportFailure(result: { ok: false; status: number; error: string; offline: boolean }): boolean {
+  return result.status === 0 && !/stale-context/i.test(result.error || '');
+}
+
+async function retryTransport<T>(
+  context: RequestContext,
+  run: () => Promise<ApiResult<T>>,
+): Promise<ApiResult<T>> {
+  const first = await run();
+  if (first.ok || !transportFailure(first) || !current(context)) return first;
+  await new Promise((resolve) => setTimeout(resolve, 700));
+  if (!current(context)) return first;
+  return run();
 }
 
 export async function refreshAll(context: RequestContext): Promise<void> {
@@ -290,12 +304,26 @@ export async function refreshChanges(context: RequestContext, threadId: string):
 export async function createThread(context: RequestContext, options: SendOptions & { projectId?: string }): Promise<string | null> {
   if (!current(context)) return null;
   ensureScope(context);
-  const result = await postNewThread(context, options);
+  const result = await retryTransport(context, () => postNewThread(context, options));
   if (!current(context)) return null;
-  if (!result.ok) { applyFailure(context, actionable(result), result.offline); return null; }
+  if (!result.ok) {
+    const message = actionable(result);
+    dataStore.setState({ lastSendError: message });
+    applyFailure(context, message, result.offline);
+    recordDiagnostic({
+      kind: result.status === 0 ? 'timeout' : 'send',
+      status: result.status,
+      path: '/api/send',
+      message,
+      detail: { newThread: true },
+    });
+    return null;
+  }
+  dataStore.setState({ lastSendError: '' });
   const id = extractThreadId(result.data);
   if (!id) {
     applyFailure(context, '电脑端没有返回会话编号，请刷新会话列表确认是否已创建。');
+    dataStore.setState({ lastSendError: '电脑端没有返回会话编号，请刷新会话列表确认是否已创建。' });
     return null;
   }
   // A list row's "running" is not authoritative; leave status ended until a poll.
@@ -311,10 +339,22 @@ export async function createThread(context: RequestContext, options: SendOptions
 
 export async function sendMessage(context: RequestContext, threadId: string, options: SendOptions): Promise<boolean> {
   if (!current(context) || !threadId) return false;
-  const result = await postSend(context, { ...options, threadId });
+  const result = await retryTransport(context, () => postSend(context, { ...options, threadId }));
   if (!current(context)) return false;
-  if (!result.ok) { applyFailure(context, actionable(result), result.offline); return false; }
-  dataStore.setState({ offline: false, error: '' });
+  if (!result.ok) {
+    const message = actionable(result);
+    dataStore.setState({ lastSendError: message });
+    applyFailure(context, message, result.offline);
+    recordDiagnostic({
+      kind: result.status === 0 ? 'timeout' : 'send',
+      status: result.status,
+      path: '/api/send',
+      message,
+      detail: { threadId, newThread: false },
+    });
+    return false;
+  }
+  dataStore.setState({ offline: false, error: '', lastSendError: '' });
   bumpStatusEpoch(context.scope, threadId);
   markThreadSubmitted(context.scope, threadId);
   const optimistic: ThreadMessage = {
@@ -328,6 +368,8 @@ export async function sendMessage(context: RequestContext, threadId: string, opt
     }
     : {});
   void refreshThreadStatus(context, threadId);
+  // A confirmed send is the honest moment to hand over any pending phone records.
+  void uploadDiagnostics(context);
   return true;
 }
 

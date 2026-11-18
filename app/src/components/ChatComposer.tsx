@@ -3,7 +3,7 @@ import { ArrowUp, Check, ChevronDown, Image as ImageIcon, Paperclip, Search, Squ
 import VaulSheet from './VaulSheet';
 import { COLORS } from '../theme/optionATokens';
 import {
-  resolveTurnPreference, supportsImages, effortLabel, isRunning, sendModelFields,
+  resolveTurnPreference, supportsImages, effortLabel, isRunning, sendModelFields, plainBase64,
   EFFORT_LABEL,
   type ModelCatalog, type ModelCatalogEntry, type SendAttachment,
 } from '../lib/chatContract';
@@ -11,7 +11,8 @@ import {
   ALL_PROVIDERS, sheetPreference, providerOptions, filterModelsByProvider,
   shortModelName, pickerTrayForResult, pickerErrorMessage,
 } from '../lib/composerLogic';
-import { pickAttachments, haptic } from '../lib/nativeBridge';
+import { pickAttachments, haptic, type NativeAttachmentResult } from '../lib/nativeBridge';
+import { compressImageForUpload } from '../lib/imageUpload';
 import { shouldSubmitOnEnter } from '../lib/composerSubmit';
 import {
   useComposerState, selectComposer, setComposerText, setComposerAttachments,
@@ -125,9 +126,34 @@ export function ModelEffortSheet({ open, onClose, catalog, selected, onSelect }:
   );
 }
 
+/**
+ * Phone photos are 3–8 MB and the host rejects >12 MP; shrink before the tray
+ * validates size so a normal camera photo is accepted instead of "4 MB max".
+ */
+async function shrinkPickedImages(
+  result: NativeAttachmentResult,
+  kind: 'image' | 'file',
+): Promise<NativeAttachmentResult> {
+  if (kind !== 'image' || result.status !== 'success' || !result.items?.length) return result;
+  const items: NonNullable<NativeAttachmentResult['items']> = [];
+  for (const item of result.items) {
+    const source: SendAttachment = {
+      id: '', name: item.name, mimeType: item.mimeType, sizeBytes: item.sizeBytes,
+      data: plainBase64(item.dataUrl), dataUrl: item.dataUrl, kind: 'image',
+    };
+    const shrunk = await compressImageForUpload(source);
+    items.push({
+      name: shrunk.name,
+      mimeType: shrunk.mimeType,
+      sizeBytes: shrunk.sizeBytes,
+      dataUrl: `data:${shrunk.mimeType};base64,${shrunk.data}`,
+    });
+  }
+  return { ...result, items };
+}
+
 /** Shared chat/new-task inputs; attachment tray lives in the remount-safe store. */
-export function useComposerFields(scope: string, threadId: string, threadModel?: unknown) {
-  const [catalog, setCatalog] = useState<ModelCatalog | null>(() => getModelCatalog(scope));
+export function useComposerFields(scope: string, threadId: string, threadModel?: unknown) {  const [catalog, setCatalog] = useState<ModelCatalog | null>(() => getModelCatalog(scope));
   const [sheetOpen, setSheetOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
@@ -168,7 +194,8 @@ export function useComposerFields(scope: string, threadId: string, threadModel?:
       const originScope = scope;
       const originThread = threadId;
       setError('');
-      const result = await pickAttachments(kind);
+      const picked = await pickAttachments(kind);
+      const result = await shrinkPickedImages(picked, kind);
       const selectedState = currentComposerState();
       const base = composerStateFor(originScope, originThread);
       const outcome = pickerTrayForResult({
@@ -197,10 +224,12 @@ export function useComposerFields(scope: string, threadId: string, threadModel?:
 export type ComposerFieldsApi = ReturnType<typeof useComposerFields>;
 
 /** Composer chrome: one card, one primary action, quiet icon/text controls. */
-export function ComposerFields({ fields, primary, enterKeyHint = 'send' }: {
+export function ComposerFields({ fields, primary, enterKeyHint = 'send', autoFocus = false }: {
   fields: ComposerFieldsApi;
   primary: ReactNode;
   enterKeyHint?: 'send' | 'done' | 'next';
+  /** A brand-new chat focuses the input so the keyboard opens with it. */
+  autoFocus?: boolean;
 }) {
   const { composer, catalog, preference, imageSupport, sheetOpen, setSheetOpen, error, setError, pick, removeAttachment, select } = fields;
   const entry = catalog?.models.find((row) => row.id === preference.model);
@@ -211,6 +240,7 @@ export function ComposerFields({ fields, primary, enterKeyHint = 'send' }: {
     <>
       <div className="tl-composer-card">
         <textarea className="tl-composer-input tl-selectable" aria-label="消息" placeholder="发送消息…" rows={1} value={composer.text}
+          autoFocus={autoFocus}
           onChange={(event) => { setComposerText(event.target.value); fields.setError(''); }}
           onKeyDown={(event) => {
             if (shouldSubmitOnEnter({

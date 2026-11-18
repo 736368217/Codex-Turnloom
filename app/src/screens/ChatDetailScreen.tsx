@@ -9,9 +9,9 @@ import { messageText, isRunning, supportsImages,
 import { composerSubmitDecision } from '../lib/composerSubmit';
 import { haptic } from '../lib/nativeBridge';
 import {
-  useDataState, dataStore, refreshMessages, loadOlderMessages, refreshChanges, sendMessage, interruptThread, resolveApproval,
+  useDataState, dataStore, refreshMessages, loadOlderMessages, refreshChanges, sendMessage, interruptThread, resolveApproval, createThread,
 } from '../state/dataStore';
-import { closeDetail } from '../state/tabStore';
+import { closeDetail, openDetail } from '../state/tabStore';
 import { currentRequestContext } from '../state/sessionStore';
 import { clearComposerInputs } from '../state/composerStore';
 import { getThreadStatus } from '../state/runtimeStore';
@@ -120,19 +120,22 @@ function ToolBlock({ text, name, failed }: { text: string; name: string; failed?
 }
 
 /** Chat screen: header-only back, compact bubbles, one authoritative primary action. */
-export default function ChatDetailScreen({ threadId, title }: { threadId: string; title: string }) {
+export default function ChatDetailScreen({ threadId, title, newThread = false }: { threadId: string; title: string; newThread?: boolean }) {
   const data = useDataState();
   const context = currentRequestContext();
   const scope = context?.scope || '';
-  const messages = data.messagesByThread[threadId] || [];
-  const changes = data.changesByThread[threadId] || [];
-  const threadModel = data.threads.find((row) => row.id === threadId)?.model;
-  const status: ThreadRuntimeStatus | null = getThreadStatus(scope, threadId);
+  // A blank new chat keeps its own composer slot so it can never inherit a
+  // real thread's draft, tray, or pending clientRequestId.
+  const composerThreadId = newThread ? '__new__' : threadId;
+  const messages = newThread ? [] : data.messagesByThread[threadId] || [];
+  const changes = newThread ? [] : data.changesByThread[threadId] || [];
+  const threadModel = newThread ? undefined : data.threads.find((row) => row.id === threadId)?.model;
+  const status: ThreadRuntimeStatus | null = newThread ? null : getThreadStatus(scope, threadId);
   const running = isRunning(status);
-  const fields = useComposerFields(scope, threadId, threadModel);
+  const fields = useComposerFields(scope, composerThreadId, threadModel);
   const [submitting, setSubmitting] = useState(false);
   const bodyRef = useRef<HTMLElement>(null);
-  const history = data.messagePages[threadId];
+  const history = newThread ? undefined : data.messagePages[threadId];
   const loadHistory = async () => {
     if (!context) return;
     const body = bodyRef.current;
@@ -143,7 +146,7 @@ export default function ChatDetailScreen({ threadId, title }: { threadId: string
   };
 
   useEffect(() => {
-    if (!context) return;
+    if (!context || newThread) return;
     let stopped = false;
     let timer: ReturnType<typeof setTimeout>;
     const refresh = async () => {
@@ -154,7 +157,7 @@ export default function ChatDetailScreen({ threadId, title }: { threadId: string
     };
     void refresh();
     return () => { stopped = true; clearTimeout(timer); };
-  }, [threadId, context?.scope, context?.generation]);
+  }, [threadId, newThread, context?.scope, context?.generation]);
 
   // 打开会话先看最新消息：首次渲染贴底；之后只要用户还在底部附近，就跟新消息走。
   const stickToBottom = useRef(true);
@@ -212,20 +215,42 @@ export default function ChatDetailScreen({ threadId, title }: { threadId: string
     const payload = buildSendPayload({
       message: text, clientRequestId: '', model: fields.send.model, effort: fields.send.effort, attachments,
     });
-    const identity = sendRequestIdentity({ ...payload, threadId, newThread: false });
+    const identity = sendRequestIdentity({ ...payload, threadId: newThread ? '' : threadId, newThread });
     payload.clientRequestId = requestIdForIdentity(identity);
     setSubmitting(true);
     fields.setBusy(true);
     fields.setError('');
+    if (newThread) {
+      // First message creates the real thread; the draft lives under the
+      // placeholder composer slot until the host returns an id.
+      const id = await createThread(context, { ...payload });
+      setSubmitting(false);
+      fields.setBusy(false);
+      if (id) {
+        clearComposerInputs(scope, composerThreadId, fields.composer.text, attachments);
+        openDetail(id, text.slice(0, 48) || '新会话');
+        haptic('success');
+      } else {
+        const reason = dataStore.getState().lastSendError || dataStore.getState().error || '会话未创建成功。';
+        const suffix = /草稿/.test(reason) ? '' : ' 草稿和附件已保留，可再次点发送。';
+        fields.setError(`${reason}${suffix}`);
+        haptic('error');
+      }
+      return;
+    }
     const ok = await sendMessage(context, threadId, { ...payload, threadId });
     setSubmitting(false);
     fields.setBusy(false);
     if (ok) {
-      clearComposerInputs(scope, threadId, fields.composer.text, attachments);
+      clearComposerInputs(scope, composerThreadId, fields.composer.text, attachments);
       haptic('success');
     } else {
       // Keep text, tray, model/effort, and the same clientRequestId for retry.
-      fields.setError(`${dataStore.getState().error || '发送未确认成功。'} 草稿和附件已保留，可再次点发送。`);
+      // Read the failure recorded by THIS send; a stale poll error must not
+      // masquerade as the reason the user's message did not go out.
+      const reason = dataStore.getState().lastSendError || dataStore.getState().error || '发送未确认成功。';
+      const suffix = /草稿/.test(reason) ? '' : ' 草稿和附件已保留，可再次点发送。';
+      fields.setError(`${reason}${suffix}`);
       haptic('error');
     }
   };
@@ -254,10 +279,10 @@ export default function ChatDetailScreen({ threadId, title }: { threadId: string
             <ChevronLeft size={24} />
           </button>
           <div style={{ flex: 1, minWidth: 0 }}>
-            <div style={{ fontSize: 17, fontWeight: 600, color: COLORS.labelPrimary, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{title || '会话详情'}</div>
+            <div style={{ fontSize: 17, fontWeight: 600, color: COLORS.labelPrimary, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{title || (newThread ? '新会话' : '会话详情')}</div>
             <div style={{ fontSize: 11, lineHeight: '15px', color: COLORS.labelSecondary }}>
-              {status?.interactionRequired ? '等待电脑端处理' : running ? '运行中' : '空闲'}
-              {status?.staleTurn ? ' · 长时间无输出' : ''}
+              {newThread ? '输入第一条消息开始会话' : status?.interactionRequired ? '等待电脑端处理' : running ? '运行中' : '空闲'}
+              {!newThread && status?.staleTurn ? ' · 长时间无输出' : ''}
             </div>
           </div>
           {running && <Loader2 size={17} className="tl-spin" color={COLORS.blue} aria-label="运行中" />}
@@ -273,10 +298,16 @@ export default function ChatDetailScreen({ threadId, title }: { threadId: string
         </div>}
         <div className="tl-chat-list" role="log" aria-label="消息流">
           {messages.length === 0 ? (
-            <div role="status" style={{ fontSize: 13, lineHeight: '19px', color: COLORS.labelSecondary, padding: '8px 4px' }}>
-              {data.messageState[threadId]?.error || (data.messageState[threadId]?.loaded ? '暂无消息，可以发送第一条消息。' : '正在加载消息…')}
-              {data.messageState[threadId]?.error && <button type="button" className="tl-connect-manual" onClick={() => { if (context) void refreshMessages(context, threadId); }}>重试加载消息</button>}
-            </div>
+            newThread ? (
+              <div role="status" style={{ fontSize: 13, lineHeight: '19px', color: COLORS.labelSecondary, padding: '8px 4px' }}>
+                开始一个新会话。消息直接发给电脑上的 agent，第一条发送成功后会话会出现在列表里。
+              </div>
+            ) : (
+              <div role="status" style={{ fontSize: 13, lineHeight: '19px', color: COLORS.labelSecondary, padding: '8px 4px' }}>
+                {data.messageState[threadId]?.error || (data.messageState[threadId]?.loaded ? '暂无消息，可以发送第一条消息。' : '正在加载消息…')}
+                {data.messageState[threadId]?.error && <button type="button" className="tl-connect-manual" onClick={() => { if (context) void refreshMessages(context, threadId); }}>重试加载消息</button>}
+              </div>
+            )
           ) : messages.map((message: ThreadMessage, index: number) => {
             const isUser = message.role === 'user';
             const kind = String(message.kind || '').toLowerCase();
@@ -335,8 +366,8 @@ export default function ChatDetailScreen({ threadId, title }: { threadId: string
       </main>
 
       <form className="tl-composer" onSubmit={(event) => { void onSubmit(event); }} aria-label="消息编辑器">
-        <ComposerFields fields={fields} enterKeyHint={running ? 'done' : 'send'}
-          primary={<ChatPrimaryButton scope={scope} threadId={threadId} fields={fields} onStop={stopRunning} />} />
+        <ComposerFields fields={fields} enterKeyHint={running ? 'done' : 'send'} autoFocus={newThread}
+          primary={<ChatPrimaryButton scope={scope} threadId={composerThreadId} fields={fields} onStop={stopRunning} />} />
       </form>
     </div>
   );

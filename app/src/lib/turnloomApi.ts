@@ -13,6 +13,7 @@ import {
   type NativeRequestHandle,
 } from './nativeBridge';
 import { normalizeBaseUrl } from './machinePairing';
+import { serverMessage } from './serverErrors';
 
 export const API_ENDPOINTS = {
   harnesses: '/api/harnesses',
@@ -35,6 +36,7 @@ export const API_ENDPOINTS = {
   queueSteer: '/api/queue/steer',
   queueRetry: '/api/queue/retry',
   queueImage: '/api/queue/image',
+  diagnostics: '/api/diagnostics',
 } as const;
 
 export const ACCESS_TOKEN_HEADER = 'x-access-token';
@@ -270,19 +272,13 @@ function resolveUrl(origin: string, path: string, query?: Record<string, string 
   return parts.length ? `${full}?${parts.join('&')}` : full;
 }
 
-/** Strip server error fields that might accidentally include a token. */
+/**
+ * Keep whatever the host actually said. The previous whitelist only accepted
+ * `^[a-z0-9._:-]{1,80}$`, which turned every sentence with a space or a Chinese
+ * character into `HTTP-400`; users could not tell a bad image from a dead link.
+ */
 function safeServerError(payload: unknown, status: number, transportError?: string): string {
-  const body = payload && typeof payload === 'object' && !Array.isArray(payload)
-    ? payload as Record<string, unknown>
-    : {};
-  const candidate = typeof body.error === 'string' ? body.error : typeof body.message === 'string' ? body.message : '';
-  if (/^[a-z0-9._:-]{1,80}$/i.test(candidate)) return candidate;
-  if (status === 401) return 'unauthorized';
-  if (status === 403) return 'forbidden';
-  if (status === 404) return 'not-found';
-  if (status === 429) return 'rate-limited';
-  if (status === 0) return transportError || 'OFFLINE';
-  return `HTTP-${status}`;
+  return serverMessage(payload, status, transportError);
 }
 
 export interface RequestOptions {
@@ -455,11 +451,28 @@ function sendBody(body: SendOptions, newThread: boolean): Record<string, unknown
 }
 
 /** The createThread flow uses /api/send with newThread:true on the native backend. */
+/**
+ * Send can carry an image; 30 s was shorter than a slow uplink. 60 s is the
+ * native bridge's ceiling and the bridge reports TIMEOUT as its own code.
+ */
+export const SEND_TIMEOUT_MS = 60_000;
+
 export const postNewThread = (context: RequestContext, body: SendOptions): Promise<ApiResult<{ ok?: boolean; threadId?: string | null; [key: string]: unknown }>> =>
-  post(context, API_ENDPOINTS.send, sendBody(body, true), 30_000);
+  post(context, API_ENDPOINTS.send, sendBody(body, true), SEND_TIMEOUT_MS);
 
 export const postSend = (context: RequestContext, body: SendOptions): Promise<ApiResult<{ ok?: boolean; threadId?: string | null; [key: string]: unknown }>> =>
-  post(context, API_ENDPOINTS.send, sendBody(body, false), 30_000);
+  post(context, API_ENDPOINTS.send, sendBody(body, false), SEND_TIMEOUT_MS);
+
+/**
+ * Phone diagnostics: quiet (a failed upload must not flip the app offline),
+ * bounded by the native bridge, and never part of the send result.
+ */
+export const postDiagnostics = (context: RequestContext, body: unknown): Promise<ApiResult<{ ok?: boolean; stored?: number; dropped?: number; file?: string }>> =>
+  requestWithContext<{ ok?: boolean; stored?: number; dropped?: number; file?: string }>(
+    context,
+    API_ENDPOINTS.diagnostics,
+    { method: 'POST', body, timeoutMs: 12_000, quiet: true },
+  );
 
 export const postInterrupt = (context: RequestContext, body: { threadId: string }): Promise<ApiResult<{ ok?: boolean }>> => post(context, API_ENDPOINTS.interrupt, body);
 export const postApproval = (context: RequestContext, body: { threadId: string; requestId: string; approvalKind: 'command' | 'file' | 'permission'; detailsHash: string; decision: 'approve' | 'approveForSession' | 'decline'; approved: boolean }): Promise<ApiResult<{ ok?: boolean; requestId?: string }>> => post(context, API_ENDPOINTS.approval, body);
