@@ -7,7 +7,12 @@ param(
 $ErrorActionPreference = "Stop"
 
 $createdNew = $false
-$supervisorMutex = New-Object System.Threading.Mutex($true, "Local\CodexPocketSupervisor", [ref]$createdNew)
+# Session-scoped single instance per install. A rehearsal on a second install can
+# set CODEX_POCKET_SUPERVISOR_MUTEX so it does not collide with the live one; the
+# scheduled task never sets it, so production keeps the default name.
+$mutexName = [string]$env:CODEX_POCKET_SUPERVISOR_MUTEX
+if (-not $mutexName) { $mutexName = "Local\CodexPocketSupervisor" }
+$supervisorMutex = New-Object System.Threading.Mutex($true, $mutexName, [ref]$createdNew)
 if (-not $createdNew) {
   $supervisorMutex.Dispose()
   exit 0
