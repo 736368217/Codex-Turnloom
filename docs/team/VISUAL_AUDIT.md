@@ -170,7 +170,8 @@ powershell -NoProfile -ExecutionPolicy Bypass -File tools/qa/visual-run.ps1 `
 
 未验证 / 剩余风险：
 
-1. 真机 WebView（`native-shell/`）的键盘遮挡、返回键与真实安全区（iOS 47/34、Android 刘海）未在本轮覆盖，CDP 只能模拟 `env(safe-area-inset-*)` 为 0；需 @Rhea 在模拟器/真机复核。
-2. 截图数据是合成 fixture（`tools/qa/visual-fixture.mjs`），证明的是**布局与样式**，不证明真实 Codex/PI 数据的极端字段（超长标题、乱序时间戳）；真实数据取证见 @NB agent 的 49 会话截图与 @Vera 的 e2e。
-3. 毛玻璃 `backdrop-filter` 在低端 WebView 上有掉帧风险；本轮未做帧率测量，若 Rhea 实测掉帧，退化方案是加 `@supports not (backdrop-filter: blur(1px))` 的纯色兜底而不是关掉模糊。
-4. 本文档的 P1-8 与 `theme/chatStyles.ts` 常量已一致；`test/app-chat-contract.test.cjs` 的区间断言由 @Atlas 维护。
+1. **真机 WebView 复核（@Rhea，Android `paopao_api33`，780×1688@2x = CSS 390×844）已给结论**：底部手势条落在标签下方白带、TabBar 四格与手势条不重叠；键盘弹出时输入舱与连接页表单整体在键盘上方（`docs/qa/android/13-composer-keyboard.png`）；返回键先收键盘 → 详情回列表 → 抽屉先关（`14`/`15`/`21`）。**未测**：`env(safe-area-inset-*)` 的实际像素值——原生壳要开 `turnloom.qaDebug` 才有 WebView 调试端口。
+2. **安全区的结构性疑点（未测，勿据此改样式）**：`styles.xml` 有 `android:windowOptOutEdgeToEdgeEnforcement=true`，窗口非 edge-to-edge，Android 端 `safe-area-inset-bottom` 可能恒为 0。本文件的实现对此是安全的：所有安全区用法都写了 `env(..., 0px)` 兜底，insets=0 时 `--tl-tabbar-h` 退化为 56px、屏幕尾部留白 96/64，仍大于栏高；**不加任何没有实测依据的补偿值**。等 @Rhea 回读 `getComputedStyle` 的真值再决定是否写死。
+3. 毛玻璃 `backdrop-filter` 在低端 WebView 上仍有掉帧风险；模拟器 `hw.gpu.enabled=no` 的软件渲染数据没有参考价值，需真机。若真掉帧，退化方案是 `@supports not (backdrop-filter: blur(1px))` 的纯色兜底，而不是关掉模糊。
+4. 截图数据是合成 fixture（`tools/qa/visual-fixture.mjs`），证明的是**布局与样式**，不证明真实 Codex/PI 数据的极端字段；真实数据取证见 @NB agent 的 49 会话截图与 @Vera 的 e2e。
+5. 本文档的 P1-8 与 `theme/chatStyles.ts` 常量已一致；`test/app-chat-contract.test.cjs` 断言为「CSS 值 == 常量 + 行高 20–24px + 字号 14–16px」，由 @Atlas 维护。
