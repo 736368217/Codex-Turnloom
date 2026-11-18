@@ -1538,3 +1538,27 @@ button:focus-visible, a:focus-visible { outline: 2px solid var(--tl-blue); outli
 }
 .tl-settings-row--danger { color: var(--tl-red); }
 .tl-settings-row--danger .tl-settings-icon { color: var(--tl-red); }
+
+/* Blank chat (new thread): the message area is the empty state, not a
+   one-line note pinned under the header. */
+.tl-chat-list.tl-chat-list--blank {
+  display: flex; min-height: 100%; height: auto;
+  margin: 0; padding: 24px 28px 12px;
+  border-radius: 0; background: transparent; box-shadow: none;
+}
+.tl-chat-list--blank .tl-chat-blank {
+  flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: 8px; text-align: center;
+}
+.tl-chat-list--blank .tl-chat-blank-orb {
+  width: 56px; height: 56px; margin-bottom: 2px; border-radius: 28px;
+  display: grid; place-items: center; background: #EAF2FF; color: var(--tl-blue);
+}
+.tl-chat-list--blank .tl-chat-blank-title {
+  font-size: 17px; line-height: 23px; font-weight: 600; text-align: center;
+  color: var(--tl-label-primary);
+}
+.tl-chat-list--blank .tl-chat-blank-copy {
+  max-width: 260px; margin: 0; font-size: 13px; line-height: 19px; text-align: center;
+  color: var(--tl-label-secondary);
+}
