@@ -35,7 +35,7 @@ const SCENARIOS = new Set([
 /** The documented 2.2.1 error bodies (Atlas, thread:a808b27f). */
 const ERROR_BODIES = {
   "image-400": {
-    error: "图片尺寸超出电脑端限制（单边 16–4096px，且总像素 ≤12MP），请压缩或裁剪后再发送。",
+    error: "图片尺寸超出电脑端限制（单边 16–4096px，且总像素 ≤12MP），当前 4032×3024（12.2MP）。请压缩或裁剪后再发送。",
     code: "image_dimensions_out_of_range",
   },
   "english-400": {

@@ -172,7 +172,7 @@ const server = http.createServer((req, res) => {
       sendsSeen.push({ threadId: decodeURIComponent(msgMatch[1]), model: payload.model ?? null, effort: payload.effort ?? null, message: String(payload.text ?? payload.message ?? "").slice(0, 40), hasModelField: Object.prototype.hasOwnProperty.call(payload, "model") });
       if (SEND_FAIL === "image-400") {
         return json(res, 400, {
-          error: "图片尺寸超出电脑端限制（单边 16–4096px，且总像素 ≤12MP），请压缩或裁剪后再发送。",
+          error: "图片尺寸超出电脑端限制（单边 16–4096px，且总像素 ≤12MP），当前 4032×3024（12.2MP）。请压缩或裁剪后再发送。",
           code: "image_dimensions_out_of_range",
         });
       }
