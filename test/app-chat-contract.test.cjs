@@ -439,9 +439,12 @@ test('screen wiring: header back only, two picker buttons, one primary, no fake 
   assert.match(read('app/src/state/sheetStore.ts'), /fake approval/);
   assert.match(css, /\.tl-detail-body\s*\{[^}]*overflow-y:\s*auto/s);
   assert.match(css, /position:\s*relative;\s*z-index:\s*30/s);
-  assert.match(read('app/src/components/NewTaskSheet.tsx'), /model: fields\.preference\.model/);
-  assert.match(read('app/src/components/NewTaskSheet.tsx'), /effort: fields\.preference\.effort/);
-  assert.match(read('app/src/components/NewTaskSheet.tsx'), /images|files/);
+  // 2.2.2: the standalone new-task drawer is gone; a blank chat creates the
+  // thread on its first message with the same composer payload (images/files).
+  const detail = read('app/src/screens/ChatDetailScreen.tsx');
+  assert.match(detail, /newThread \? '__new__' : threadId/);
+  assert.match(detail, /createThread\(context, \{ \.\.\.payload \}\)/);
+  assert.match(detail, /buildSendPayload\(\{[\s\S]*attachments/);
 });
 
 function stripComments(text) {

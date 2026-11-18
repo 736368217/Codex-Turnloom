@@ -1,6 +1,5 @@
 import { RefreshCw, Cpu, CircleCheck } from 'lucide-react';
 import VaulSheet from './VaulSheet';
-import NewTaskSheet from './NewTaskSheet';
 import { ActionButton, TapRow } from './ui';
 import { COLORS } from '../theme/optionATokens';
 import { useSheetState, closeSheet, setSheetNotice, type SheetKey } from '../state/sheetStore';
@@ -10,12 +9,11 @@ import { haptic, openExternalUrl } from '../lib/nativeBridge';
 import { UpdatePanel } from '../screens/SettingsScreen';
 
 const TITLES: Record<Exclude<SheetKey, null>, string> = {
-  newTask: '新建任务', harness: '切换电脑上的服务',
+  harness: '切换电脑上的服务',
   diagnostics: '运行信息', disconnect: '忘记这台电脑',
   link: '打开链接', update: '应用更新',
 };
 const SUBTITLES: Record<Exclude<SheetKey, null>, string> = {
-  newTask: '在当前电脑的服务中创建任务',
   harness: '选择桌面端发现的服务，切换后会重新读取各自会话',
   diagnostics: '当前连接与会话信息',
   disconnect: '移除配对及这台电脑的本机会话缓存。电脑上的会话不会被删除。',
@@ -39,7 +37,6 @@ export default function CupertinoSheetHost() {
         <ActionButton variant="neutral" onClick={closeSheet}>返回会话</ActionButton>
       </div>;
       case 'disconnect': return <div style={{ display: 'grid', gap: 10 }}><ActionButton variant="red" onClick={() => { clearOfflineCache(context); unpair(); closeSheet(); }}>确认忘记这台电脑</ActionButton><ActionButton variant="neutral" onClick={closeSheet}>保留连接</ActionButton></div>;
-      case 'newTask': return <NewTaskSheet />;
       case 'harness':
         return (
           <div>

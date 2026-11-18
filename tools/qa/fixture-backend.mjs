@@ -181,7 +181,16 @@ const server = http.createServer((req, res) => {
       return json(res, 200, { ok: true });
     }
     if (path === "/threads" && req.method === "POST") {
-      return json(res, 200, { threadId: `qa-new-${Date.now()}` });
+      let payload = {};
+      try { payload = JSON.parse(body || "{}"); } catch { payload = {}; }
+      const text = String(payload.text ?? payload.message ?? "").slice(0, 200);
+      const id = `qa-new-${Date.now()}`;
+      sendsSeen.push({ threadId: id, model: payload.model ?? null, effort: payload.effort ?? null, message: text.slice(0, 40), hasModelField: Object.prototype.hasOwnProperty.call(payload, "model"), newThread: true });
+      threads.unshift({
+        id, title: text.slice(0, 48) || "新会话", preview: text.slice(0, 80),
+        status: { state: "ended" }, updatedAt: Date.now(),
+      });
+      return json(res, 200, { ok: true, threadId: id });
     }
     const interruptMatch = /^\/threads\/([^/]+)\/interrupt$/.exec(path);
     if (interruptMatch && req.method === "POST") {
@@ -210,6 +219,11 @@ const server = http.createServer((req, res) => {
       resolved.clear();
       approvalsSeen.length = 0;
       sendsSeen.length = 0;
+      // Drop threads created by earlier viewports so each screenshot starts
+      // from the same deterministic list.
+      for (let index = threads.length - 1; index >= 0; index -= 1) {
+        if (String(threads[index].id || "").startsWith("qa-new-")) threads.splice(index, 1);
+      }
       return json(res, 200, { ok: true });
     }
     return json(res, 404, { error: `unhandled ${req.method} ${path}` });

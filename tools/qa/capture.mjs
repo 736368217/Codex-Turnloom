@@ -183,7 +183,7 @@ const BRIDGE_SHIM = `(() => {
     secureGet: (k) => store.get(k),
     secureSet: (k, v) => store.set(k, v),
     secureRemove: (k) => store.del(k),
-    getAppInfo: () => JSON.stringify({ label: 'Turnloom QA', version: '2.1.7', versionCode: 2010700, packageName: 'dev.turnloom.qa', cameraAvailable: false, updatesAvailable: false }),
+    getAppInfo: () => JSON.stringify({ label: 'Turnloom QA', version: '2.2.2', versionCode: 91, packageName: 'dev.turnloom.qa', cameraAvailable: false, updatesAvailable: false }),
     haptic: () => {},
     setLightBars: () => {},
     openExternalUrl: () => true,
@@ -223,11 +223,25 @@ const MEASURE = `(() => {
   for (const el of document.querySelectorAll('button, [role="tab"], [role="button"], input, a[href], summary')) {
     if (!visible(el)) continue;
     const rect = el.getBoundingClientRect();
-    if (rect.height < 44 || rect.width < 44) {
+    if (rect.width <= 1 && rect.height <= 1) continue; // visually-hidden inputs
+    // A ::before inset can extend the touch target past the visible pill
+    // (filter chips: 32px visual, 44px hit area).
+    let hitW = rect.width;
+    let hitH = rect.height;
+    const before = getComputedStyle(el, '::before');
+    if (before.content && before.content !== 'none') {
+      const top = parseFloat(before.top);
+      const bottom = parseFloat(before.bottom);
+      const left = parseFloat(before.left);
+      const right = parseFloat(before.right);
+      if (Number.isFinite(top) && Number.isFinite(bottom)) hitH = Math.max(hitH, rect.height - top - bottom);
+      if (Number.isFinite(left) && Number.isFinite(right)) hitW = Math.max(hitW, rect.width - left - right);
+    }
+    if (hitH < 44 || hitW < 44) {
       smallTargets.push({
         tag: el.tagName.toLowerCase(),
         label: (el.getAttribute('aria-label') || el.textContent || '').trim().slice(0, 30),
-        w: Math.round(rect.width), h: Math.round(rect.height),
+        w: Math.round(hitW), h: Math.round(hitH),
         cls: String(el.className || '').toString().slice(0, 40),
       });
     }
@@ -279,13 +293,20 @@ async function clickText(page, text, { selector = "button, [role='tab'], [role='
   return result === "ok";
 }
 
-/** Project groups start collapsed; older builds needed two taps to open one. */
+/** Rows are always visible in the time view; project view needs one tap. */
 async function ensureThreadsOpen(page) {
   for (let attempt = 0; attempt < 3; attempt += 1) {
-    const hasRows = await page.eval("Boolean(document.querySelector('.tl-group .tl-card button'))");
+    const hasRows = await page.eval("Boolean(document.querySelector('.tl-thread-row'))");
     if (hasRows) return true;
-    const toggled = await clickSelector(page, ".tl-group-head", { optional: true });
-    if (!toggled) return false;
+    const project = await clickText(page, "按项目", { selector: "button", optional: true });
+    if (project) {
+      await sleep(300);
+      await clickSelector(page, ".tl-group-head", { optional: true });
+      await sleep(300);
+      if (await page.eval("Boolean(document.querySelector('.tl-thread-row'))")) return true;
+    }
+    const back = await page.eval("window.__turnloomBack ? window.__turnloomBack() : false");
+    if (!back) return false;
     await sleep(300);
   }
   return false;
@@ -313,6 +334,8 @@ async function runViewport(browser, viewport, report) {
   void dir;
   await page.setViewport(width, height, 3, { safeArea: SAFE_AREA });
   const base = `http://127.0.0.1:${PORTS.preview}/`;
+  // Deterministic per viewport: earlier viewports may have created threads.
+  try { await fetch(`http://127.0.0.1:${PORTS.fixture}/__qa/reset`, { method: "POST" }); } catch { /* old fixture */ }
 
   // --- pairing -------------------------------------------------------------
   await page.clearStorage(`http://127.0.0.1:${PORTS.preview}`);
@@ -355,9 +378,9 @@ async function runViewport(browser, viewport, report) {
   }
 
   if (has("dump")) { log(await page.eval(`document.querySelector(".tl-tabbar")?.outerHTML.slice(0, 1200)`)); }
-  // --- home ---------------------------------------------------------------
-  if (selected("home")) {
-    await shot(page, dir, "03-home", report);
+  // --- threads = the landing screen ---------------------------------------
+  if (selected("threads") || selected("home")) {
+    await shot(page, dir, "03-threads-home", report);
   }
 
   // --- threads ------------------------------------------------------------
@@ -365,15 +388,46 @@ async function runViewport(browser, viewport, report) {
     await clickSelector(page, "button[aria-label='会话']");
     await sleep(600);
     await shot(page, dir, "04-threads-default", report);
+    // Project view is one filtered mode now; the group head still opens.
+    await clickText(page, "按项目", { selector: "button", optional: true });
+    await sleep(400);
+    await shot(page, dir, "05-threads-project", report);
     await clickSelector(page, ".tl-group-head", { optional: true });
-    await shot(page, dir, "05-threads-after-one-tap", report);
-    if (!(await page.eval("Boolean(document.querySelectorAll('.tl-thread-list, .tl-card button').length)"))) {
-      await clickSelector(page, ".tl-group-head", { optional: true });
-      await shot(page, dir, "05b-threads-after-two-taps", report);
-    }
-    await page.eval("document.querySelector('.tl-screen')?.scrollTo(0, 600)");
+    await shot(page, dir, "05b-threads-project-toggled", report);
+    await clickText(page, "按时间", { selector: "button", optional: true });
+    await sleep(300);
+    await page.eval("document.querySelector('.tl-thread-scroll')?.scrollTo(0, 600)");
     await sleep(300);
     await shot(page, dir, "06-threads-scrolled", report);
+    await page.eval("document.querySelector('.tl-thread-scroll')?.scrollTo(0, 0)");
+  }
+
+  // --- new chat: "+" opens a blank conversation, first send creates it ----
+  if (selected("compose")) {
+    await page.eval("document.querySelector('.tl-thread-scroll')?.scrollTo(0, 0)");
+    await clickSelector(page, "button[aria-label='新建会话']");
+    await page.waitFor("textarea.tl-composer-input", { timeoutMs: 8_000 });
+    await sleep(400);
+    report.newChat = await page.eval(`(() => {
+      const input = document.querySelector('textarea.tl-composer-input');
+      return { focused: document.activeElement === input, composer: Boolean(input), text: (document.body.innerText || '').slice(0, 80) };
+    })()`);
+    await shot(page, dir, "11a-new-chat", report);
+    await page.fill("textarea.tl-composer-input", "这是一条新会话的测试消息");
+    await clickSelector(page, "button[aria-label='发送']", { optional: true });
+    await sleep(1600);
+    report.newChatAfterSend = await page.eval(`(() => ({
+      title: (document.querySelector('.tl-detail-scroll header div div')?.textContent || '').trim(),
+      body: (document.querySelector('.tl-detail-body')?.innerText || '').replace(/\\s+/g, ' ').slice(0, 120),
+    }))()`);
+    await shot(page, dir, "11b-new-chat-sent", report);
+    await page.eval("window.__turnloomBack && window.__turnloomBack()");
+    await sleep(600);
+    report.newChatInList = await page.eval(`(() => ({
+      rows: document.querySelectorAll('.tl-thread-row').length,
+      first: (document.querySelector('.tl-thread-row')?.innerText || '').replace(/\\s+/g, ' ').slice(0, 80),
+    }))()`);
+    await shot(page, dir, "11c-new-thread-in-list", report);
   }
 
   // --- chat detail --------------------------------------------------------
@@ -500,9 +554,9 @@ async function runViewport(browser, viewport, report) {
   if (selected("sheets")) {
     await clickSelector(page, "button[aria-label='会话']");
     await sleep(500);
-    await clickSelector(page, "button[aria-label='新建任务']", { optional: true });
+    await clickSelector(page, "button[aria-label='新建会话']", { optional: true });
     await sleep(800);
-    await shot(page, dir, "18-new-task-sheet", report);
+    await shot(page, dir, "18-new-chat-sheet", report);
     await page.eval("window.__turnloomBack && window.__turnloomBack()");
     await sleep(500);
     await clickSelector(page, "button[aria-label='监控']");

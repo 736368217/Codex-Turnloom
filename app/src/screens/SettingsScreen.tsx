@@ -1,8 +1,8 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Toggle } from 'konsta/react';
-import { Wifi, Database, Activity, Trash2, Sun, RefreshCw, Download, X, ShieldCheck, CircleCheck, AlertTriangle } from 'lucide-react';
+import { Wifi, Database, Activity, Trash2, RefreshCw, Download, X, ShieldCheck, CircleCheck, AlertTriangle, Info } from 'lucide-react';
 import { InsetGroup } from '../components/Segmented';
-import { TapRow, StatusPill } from '../components/ui';
+import { StatusPill } from '../components/ui';
 import { COLORS, APP_IDENTITY } from '../theme/optionATokens';
 import { useSessionState, setOfflineCacheEnabled, currentRequestContext } from '../state/sessionStore';
 import { useDataState, clearOfflineCache, refreshAll } from '../state/dataStore';
@@ -10,6 +10,7 @@ import { openSheet } from '../state/sheetStore';
 import { haptic, hasNativeUpdater, startUpdateDownload, cancelUpdate, installUpdate } from '../lib/nativeBridge';
 import { getAppUpdate, type RequestContext } from '../lib/turnloomApi';
 import { assessUpdate, absoluteApkUrl } from '../lib/appUpdate';
+import { uploadDiagnostics } from '../lib/diagnostics';
 import { useUpdate, updateStore, setState, setMessage, setRelease, setRequestId } from '../state/updateStore';
 
 export function UpdatePanel() {
@@ -94,32 +95,39 @@ export function UpdatePanel() {
           </div>
         )}
       </div>
-      <div className="tl-separator" style={{ marginLeft: 16 }} />
-      <TapRow leading={<RefreshCw size={17} color={COLORS.blue} />} onClick={() => { haptic('selection'); void check(true); }} disabled={state === 'checking'}>
-        <span style={{ fontSize: 15 }}>手动检查更新</span>
-      </TapRow>
+      <div className="tl-settings-separator" />
+      <button type="button" className="tl-press tl-settings-row" onClick={() => { haptic('selection'); void check(true); }} disabled={state === 'checking'}>
+        <span className="tl-settings-icon"><RefreshCw size={16} /></span>
+        <span>手动检查更新</span>
+        <span className="tl-settings-value">{state === 'checking' ? '检查中…' : '›'}</span>
+      </button>
       {(state === 'available' || state === 'cancelled') && (
         <>
-          <div className="tl-separator" style={{ marginLeft: 16 }} />
-          <TapRow leading={<Download size={17} color={COLORS.green} />} onClick={() => { haptic('success'); download(); }}>
-            <span style={{ fontSize: 15 }}>下载新版本</span>
-          </TapRow>
+          <div className="tl-settings-separator" />
+          <button type="button" className="tl-press tl-settings-row" onClick={() => { haptic('success'); download(); }}>
+            <span className="tl-settings-icon"><Download size={16} /></span>
+            <span>下载新版本</span>
+            <span className="tl-settings-value">›</span>
+          </button>
         </>
       )}
       {state === 'downloading' && (
         <>
-          <div className="tl-separator" style={{ marginLeft: 16 }} />
-          <TapRow leading={<X size={17} color={COLORS.red} />} onClick={() => { haptic('warning'); cancelUpdate(); }}>
-            <span style={{ fontSize: 15 }}>暂停下载</span>
-          </TapRow>
+          <div className="tl-settings-separator" />
+          <button type="button" className="tl-press tl-settings-row" onClick={() => { haptic('warning'); cancelUpdate(); }}>
+            <span className="tl-settings-icon"><X size={16} /></span>
+            <span>暂停下载</span>
+          </button>
         </>
       )}
       {state === 'ready' && (
         <>
-          <div className="tl-separator" style={{ marginLeft: 16 }} />
-          <TapRow leading={<ShieldCheck size={17} color={COLORS.green} />} onClick={() => { haptic('success'); if (!installUpdate()) setMessage('无法打开系统安装界面，请稍后重试'); }}>
-            <span style={{ fontSize: 15 }}>打开系统安装界面</span>
-          </TapRow>
+          <div className="tl-settings-separator" />
+          <button type="button" className="tl-press tl-settings-row" onClick={() => { haptic('success'); if (!installUpdate()) setMessage('无法打开系统安装界面，请稍后重试'); }}>
+            <span className="tl-settings-icon"><ShieldCheck size={16} /></span>
+            <span>打开系统安装界面</span>
+            <span className="tl-settings-value">›</span>
+          </button>
         </>
       )}
     </InsetGroup>
@@ -131,66 +139,102 @@ export default function SettingsScreen() {
   const data = useDataState();
   const context = currentRequestContext();
   const online = session.status === 'ready' && session.online && !data.offline;
+  const [diagBusy, setDiagBusy] = useState(false);
+  const [diagNotice, setDiagNotice] = useState('');
+
+  const uploadPhoneDiagnostics = async (): Promise<void> => {
+    if (diagBusy || !context) return;
+    setDiagBusy(true);
+    setDiagNotice('');
+    haptic('selection');
+    const stored = await uploadDiagnostics(context);
+    setDiagBusy(false);
+    setDiagNotice(stored > 0 ? `已上传 ${stored} 条` : '暂无可上传记录');
+  };
 
   return (
-    <div className="tl-screen tl-no-scrollbar">
-      <div className="tl-safe-top" style={{ padding: '12px 20px 0' }}>
-        <div className="tl-large-title">设置</div>
-        <div style={{ fontSize: 13, color: COLORS.labelSecondary, marginTop: 4 }}>{APP_IDENTITY.label} · {session.appVersion}</div>
+    <div className="tl-thread-screen">
+      <div className="tl-safe-top" style={{ flex: '0 0 auto' }}>
+        <div className="tl-thread-nav"><h1>设置</h1></div>
       </div>
 
-      <InsetGroup title="连接">
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '12px 16px', minHeight: 52 }}>
-          <Wifi size={17} color={online ? COLORS.green : COLORS.red} />
-          <span style={{ flex: 1, minWidth: 0 }}>
-            <span style={{ display: 'block', fontSize: 14, fontWeight: 500 }}>{session.machineName} · {session.harnessName}</span>
-            <span style={{ display: 'block', fontSize: 12, color: COLORS.labelSecondary, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{session.serverUrl}</span>
-          </span>
-          <StatusPill tone={online ? 'green' : 'red'} active>{online ? '已连接' : '离线'}</StatusPill>
-        </div>
-        <div className="tl-separator" style={{ marginLeft: 16 }} />
-        <TapRow leading={<Activity size={17} color={COLORS.blue} />} onClick={() => { if (context) { haptic('selection'); void refreshAll(context); } }}>
-          <span style={{ fontSize: 15 }}>测试连接</span>
-        </TapRow>
-        <div className="tl-separator" style={{ marginLeft: 16 }} />
-        <TapRow leading={<CircleCheck size={17} color={COLORS.blue} />} onClick={() => { haptic('selection'); openSheet('harness'); }}>
-          <span style={{ fontSize: 15 }}>切换电脑上的服务</span>
-        </TapRow>
-      </InsetGroup>
+      <div className="tl-settings-scroll">
+        <section className="tl-settings-group">
+          <div className="tl-settings-label">我的电脑</div>
+          <div className="tl-settings-card">
+            <div className="tl-settings-row">
+              <span className="tl-settings-icon"><Wifi size={16} color={online ? COLORS.green : COLORS.red} /></span>
+              <span style={{ flex: 1, minWidth: 0 }}>
+                <span style={{ display: 'block', fontSize: 15, fontWeight: 500 }}>
+                  {session.machineName}{session.harnessName && session.harnessName !== session.machineName ? ` · ${session.harnessName}` : ''}
+                </span>
+                <span style={{ display: 'block', fontSize: 12, color: COLORS.labelSecondary, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{session.serverUrl}</span>
+              </span>
+              <span className="tl-settings-value"><StatusPill tone={online ? 'green' : 'red'} active>{online ? '已连接' : '离线'}</StatusPill></span>
+            </div>
+            <button type="button" className="tl-press tl-settings-row" onClick={() => { if (context) { haptic('selection'); void refreshAll(context); } }}>
+              <span className="tl-settings-icon"><Activity size={16} /></span>
+              <span>测试连接</span>
+            </button>
+            <button type="button" className="tl-press tl-settings-row" onClick={() => { haptic('selection'); openSheet('harness'); }}>
+              <span className="tl-settings-icon"><CircleCheck size={16} /></span>
+              <span>切换电脑上的服务</span>
+              <span className="tl-settings-value">›</span>
+            </button>
+            <button type="button" className="tl-press tl-settings-row" onClick={() => { void uploadPhoneDiagnostics(); }}>
+              <span className="tl-settings-icon"><Activity size={16} /></span>
+              <span>上传诊断</span>
+              <span className="tl-settings-value">{diagBusy ? '上传中…' : diagNotice || '最近 200 条'}</span>
+            </button>
+          </div>
+        </section>
 
-      <UpdatePanel />
+        <section className="tl-settings-group">
+          <div className="tl-settings-label">会话</div>
+          <div className="tl-settings-card">
+            <div className="tl-settings-row">
+              <span className="tl-settings-icon"><Database size={16} /></span>
+              <span style={{ flex: 1 }}>保留上次同步的会话</span>
+              <Toggle checked={session.offlineCacheEnabled} onChange={() => { haptic('selection'); setOfflineCacheEnabled(!session.offlineCacheEnabled); }} />
+            </div>
+            <button type="button" className="tl-press tl-settings-row" onClick={() => { haptic('warning'); clearOfflineCache(context); }}>
+              <span className="tl-settings-icon"><Trash2 size={16} /></span>
+              <span>清除缓存会话</span>
+              <span className="tl-settings-value">{data.cachedAt ? new Date(data.cachedAt).toLocaleString('zh-CN', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : '无缓存'}</span>
+            </button>
+          </div>
+        </section>
 
-      <InsetGroup title="本机缓存">
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 16px', minHeight: 52 }}>
-          <Database size={17} color={COLORS.blue} />
-          <span style={{ flex: 1, fontSize: 15 }}>保留上次同步的会话</span>
-          <Toggle checked={session.offlineCacheEnabled} onChange={() => { haptic('selection'); setOfflineCacheEnabled(!session.offlineCacheEnabled); }} />
-        </div>
-        <div className="tl-separator" style={{ marginLeft: 16 }} />
-        <TapRow leading={<Trash2 size={17} color={COLORS.red} />} trailing={<span style={{ fontSize: 12, color: COLORS.labelSecondary }}>{data.cachedAt ? new Date(data.cachedAt).toLocaleString('zh-CN', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : '无缓存'}</span>} onClick={() => { haptic('warning'); clearOfflineCache(context); }}>
-          <span style={{ fontSize: 15 }}>清除缓存会话</span>
-        </TapRow>
-        <div style={{ padding: '0 16px 12px', fontSize: 12, color: COLORS.labelSecondary }}>缓存按机器与服务分别保存，切换服务不会混入其他服务的会话。</div>
-      </InsetGroup>
+        <section className="tl-settings-group">
+          <div className="tl-settings-label">关于</div>
+          <div className="tl-settings-card">
+            <button type="button" className="tl-press tl-settings-row" onClick={() => { haptic('selection'); openSheet('update'); }}>
+              <span className="tl-settings-icon"><Download size={16} /></span>
+              <span>检查更新</span>
+              <span className="tl-settings-value">›</span>
+            </button>
+            <button type="button" className="tl-press tl-settings-row" onClick={() => { haptic('selection'); openSheet('diagnostics'); }}>
+              <span className="tl-settings-icon"><Info size={16} /></span>
+              <span>运行信息</span>
+              <span className="tl-settings-value">›</span>
+            </button>
+            <div className="tl-settings-row">
+              <span className="tl-settings-icon"><AlertTriangle size={16} /></span>
+              <span>版本</span>
+              <span className="tl-settings-value">{APP_IDENTITY.label} · {session.appVersion} ({session.appVersionCode})</span>
+            </div>
+          </div>
+        </section>
 
-      <InsetGroup title="关于">
-        <TapRow leading={<AlertTriangle size={17} color={COLORS.blue} />} onClick={() => { haptic('selection'); openSheet('diagnostics'); }}>
-          <span style={{ fontSize: 15 }}>运行信息</span>
-        </TapRow>
-        <div className="tl-separator" style={{ marginLeft: 16 }} />
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '12px 16px', minHeight: 52 }}>
-          <Sun size={17} color={COLORS.labelSecondary} />
-          <span style={{ flex: 1, fontSize: 14 }}>外观</span><StatusPill>浅色</StatusPill>
-        </div>
-      </InsetGroup>
-
-      <InsetGroup title="危险操作">
-        <TapRow leading={<X size={17} color={COLORS.red} />} onClick={() => { haptic('warning'); openSheet('disconnect'); }}>
-          <span style={{ fontSize: 15, color: COLORS.red }}>忘记这台电脑</span>
-        </TapRow>
-      </InsetGroup>
-      <div style={{ textAlign: 'center', fontSize: 11, color: COLORS.labelSecondary, padding: '4px 24px 8px' }}>
-        {APP_IDENTITY.label} · {session.appVersion} ({session.appVersionCode})
+        <section className="tl-settings-group">
+          <div className="tl-settings-label">危险操作</div>
+          <div className="tl-settings-card">
+            <button type="button" className="tl-press tl-settings-row tl-settings-row--danger" onClick={() => { haptic('warning'); openSheet('disconnect'); }}>
+              <span className="tl-settings-icon"><X size={16} /></span>
+              <span>忘记这台电脑</span>
+            </button>
+          </div>
+        </section>
       </div>
     </div>
   );

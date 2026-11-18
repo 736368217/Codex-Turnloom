@@ -1,21 +1,18 @@
 /**
- * Threads: 两种视图 —— 按项目（默认收起，最近用过的项目在前）与按时间（只按最近排序）。
- * 归档默认隐藏，展开后长按会话行才会出现归档/恢复入口，避免误触。
+ * 会话列表 = 首页（2.2.2 IA）。时间倒序是默认视图；项目分组收进顶部筛选。
+ * 归档只走长按，避免误触；列表白底铺满到 TabBar，行间分隔线由 CSS 负责。
  */
 import { useEffect, useMemo, useState } from 'react';
-import { Search, Plus, X, MessageSquare, ChevronDown, ChevronRight, Archive, ArchiveRestore } from 'lucide-react';
+import { Search, Plus, X, ChevronDown, ChevronRight, Archive, ArchiveRestore } from 'lucide-react';
 import TaskStream, { titleOfThread } from '../components/TaskStream';
-import { EmptyState, SectionTitle } from '../components/ui';
 import { COLORS } from '../theme/optionATokens';
 import { useDataState, refreshThreads, loadMoreThreads } from '../state/dataStore';
-import { useTabState, setThreadsQuery, setThreadsView } from '../state/tabStore';
+import { useTabState, setThreadsQuery, setThreadsView, openNewThread } from '../state/tabStore';
 import { currentRequestContext } from '../state/sessionStore';
-import { openSheet } from '../state/sheetStore';
 import { haptic } from '../lib/nativeBridge';
 import { isArchivedThread, groupThreadsByProject, threadUpdatedAtMs } from '../lib/threadProjection';
 import { isLocallyArchived, setThreadArchived, subscribeThreadArchive } from '../lib/threadArchive';
 import { postThreadArchive } from '../lib/turnloomApi';
-
 
 type View = 'project' | 'time';
 
@@ -23,8 +20,6 @@ export default function ThreadsScreen() {
   const data = useDataState();
   const { threadsQuery, threadsView: view } = useTabState();
   const [showArchived, setShowArchived] = useState(false);
-  // 首屏必须直接看到最近的会话：默认按时间排序；「按项目」分组默认展开。
-  // 视图存在 tabStore，进出详情不会被重置（旧实现用局部 state，返回列表会跳回默认）。
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
   const [pending, setPending] = useState<{ id: string; title: string; archived: boolean } | null>(null);
   const [archiveRevision, setArchiveRevision] = useState(0);
@@ -48,8 +43,6 @@ export default function ThreadsScreen() {
 
   const toggleGroup = (key: string) => {
     haptic('selection');
-    // 分组默认展开（undefined），点击折叠，再点展开。旧实现用 `!prev[key]`，
-    // undefined 会变成 true，用户要连点两次才看得到会话。
     setCollapsed((prev) => ({ ...prev, [key]: prev[key] !== true }));
   };
 
@@ -63,84 +56,8 @@ export default function ThreadsScreen() {
     }
   };
 
-  return (
-    <div className="tl-screen tl-no-scrollbar">
-      <div className="tl-safe-top" style={{ padding: '12px 20px 0' }}>
-        <div style={{ display: 'flex', alignItems: 'center' }}>
-          <div className="tl-large-title">会话</div><div style={{ flex: 1 }} />
-          <button type="button" className="tl-press" aria-label="新建任务" onClick={() => { haptic('selection'); openSheet('newTask'); }} style={{ width: 44, height: 44, borderRadius: 22, border: 0, background: COLORS.blue, color: '#FFFFFF', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-            <Plus size={20} />
-          </button>
-        </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 14, minHeight: 44, padding: '0 12px', borderRadius: 14, background: COLORS.fillSecondary }}>
-          <Search size={17} color={COLORS.labelSecondary} />
-          <input value={threadsQuery} onChange={(event) => setThreadsQuery(event.target.value)} placeholder="搜索会话" style={{ flex: 1, minWidth: 0, border: 0, outline: 'none', background: 'transparent', fontSize: 15, color: COLORS.labelPrimary, minHeight: 44 }} />
-          {threadsQuery.length > 0 && (
-            <button type="button" className="tl-press" aria-label="清除搜索" onClick={() => { haptic('selection'); setThreadsQuery(''); }} style={{ width: 44, height: 44, border: 0, background: 'transparent', color: COLORS.labelSecondary, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-              <X size={16} />
-            </button>
-          )}
-        </div>
-        <div className="tl-view-switch" role="tablist" aria-label="会话视图">
-          {(['project', 'time'] as View[]).map((key) => (
-            <button
-              key={key}
-              type="button"
-              role="tab"
-              aria-selected={view === key}
-              className={`tl-view-switch__item${view === key ? ' is-active' : ''}`}
-              onClick={() => { haptic('selection'); setThreadsView(key); }}
-            >
-              {key === 'project' ? '按项目' : '按时间'}
-            </button>
-          ))}
-        </div>
-      </div>
-
-      <SectionTitle>{query ? `匹配会话 · ${rows.length}` : `已加载 ${rows.length}${data.threadTotal !== null ? ` / ${data.threadTotal}` : ''} 个会话`}</SectionTitle>
-
-      {rows.length === 0 ? (
-        <EmptyState
-          title={query ? '没有匹配的会话' : '暂无会话'}
-          description={query ? '换个关键词试试' : data.offline ? '暂时未同步到会话，请检查电脑端连接后刷新' : '点击右上角 + 新建任务'}
-          icon={<MessageSquare size={26} />}
-        />
-      ) : view === 'time' ? (
-        <TaskStream
-          threads={byTime}
-          statusByThread={data.statusByThread}
-          isArchived={archivedOf}
-          onLongPress={(threadId) => {
-            const thread = data.threads.find((item) => item.id === threadId);
-            setPending({ id: threadId, title: thread ? titleOfThread(thread) : threadId, archived: thread ? archivedOf(thread) : false });
-          }}
-        />
-      ) : (
-        groups.map((group) => {
-          const collapsedNow = collapsed[group.key] === true;
-          return (
-            <div key={group.key} className="tl-group">
-              <button type="button" className="tl-group-head tl-press" aria-expanded={!collapsedNow} onClick={() => toggleGroup(group.key)}>
-                {collapsedNow ? <ChevronRight size={16} color={COLORS.labelSecondary} /> : <ChevronDown size={16} color={COLORS.labelSecondary} />}
-                <span className="tl-group-name">{group.name}</span>
-                <span className="tl-group-count">{group.rows.length}</span>
-              </button>
-              {!collapsedNow && (
-                <TaskStream
-                  threads={group.rows}
-                  statusByThread={data.statusByThread}
-                  isArchived={archivedOf}
-                  onLongPress={(threadId) => {
-                    const thread = data.threads.find((item) => item.id === threadId);
-                    setPending({ id: threadId, title: thread ? titleOfThread(thread) : threadId, archived: thread ? archivedOf(thread) : false });
-                  }}
-                />
-              )}
-            </div>
-          );
-        })
-      )}
-
+  const listControls = (
+    <>
       {archivedCount > 0 && (
         <button
           type="button"
@@ -152,9 +69,7 @@ export default function ThreadsScreen() {
           {showArchived ? `隐藏归档会话（${archivedCount}）` : `显示归档会话（${archivedCount}）`}
         </button>
       )}
-
       {data.error && <p role="alert" className="tl-page-note tl-page-note--error">{data.error}</p>}
-
       <div className="tl-list-actions">
         {data.nextCursor && <button type="button" className="tl-press" disabled={data.loading || data.loadingMore} onClick={() => { if (context) void loadMoreThreads(context); }}>
           {data.loadingMore ? '正在加载…' : '加载更早会话'}
@@ -162,6 +77,95 @@ export default function ThreadsScreen() {
         <button type="button" className="tl-press" disabled={data.loading || data.loadingMore} onClick={() => { if (context) { haptic('selection'); void refreshThreads(context); } }}>
           {data.loading ? '正在刷新…' : '刷新会话列表'}
         </button>
+      </div>
+    </>
+  );
+
+  return (
+    <div className="tl-thread-screen">
+      <div className="tl-safe-top" style={{ flex: '0 0 auto' }}>
+        <div className="tl-thread-nav">
+          <h1>会话</h1>
+          <button type="button" className="tl-press tl-nav-action" aria-label="新建会话" onClick={() => { haptic('selection'); openNewThread(); }}>
+            <Plus size={24} />
+          </button>
+        </div>
+      </div>
+
+      <div className="tl-thread-scroll" style={{ display: 'flex', flexDirection: 'column' }}>
+        <div className="tl-thread-search">
+          <Search size={16} aria-hidden="true" />
+          <input value={threadsQuery} onChange={(event) => setThreadsQuery(event.target.value)} placeholder="搜索会话" aria-label="搜索会话" />
+          {threadsQuery.length > 0 && (
+            <button type="button" aria-label="清除搜索" onClick={() => { haptic('selection'); setThreadsQuery(''); }}>
+              <X size={16} />
+            </button>
+          )}
+        </div>
+        <div className="tl-thread-filters" role="tablist" aria-label="会话视图">
+          {(['time', 'project'] as View[]).map((key) => (
+            <button
+              key={key}
+              type="button"
+              role="tab"
+              aria-selected={view === key}
+              className={`tl-filter-chip tl-press${view === key ? ' is-active' : ''}`}
+              onClick={() => { haptic('selection'); setThreadsView(key); }}
+            >
+              {key === 'time' ? '按时间' : '按项目'}
+            </button>
+          ))}
+        </div>
+
+        {rows.length === 0 ? (
+          <div style={{ flex: 1, minHeight: 0, display: 'flex', background: COLORS.surface }}>
+            <TaskStream
+              threads={[]}
+              emptyTitle={query ? '没有匹配的会话' : '暂无会话'}
+              emptyDescription={query ? '换个关键词试试' : data.offline ? '暂时未同步到会话，请检查电脑端连接后刷新' : '点右上角 + 开始一个新会话'}
+            />
+          </div>
+        ) : view === 'time' ? (
+          <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column', background: COLORS.surface }}>
+            <TaskStream
+              threads={byTime}
+              statusByThread={data.statusByThread}
+              isArchived={archivedOf}
+              onLongPress={(threadId) => {
+                const thread = data.threads.find((item) => item.id === threadId);
+                setPending({ id: threadId, title: thread ? titleOfThread(thread) : threadId, archived: thread ? archivedOf(thread) : false });
+              }}
+            />
+            {listControls}
+          </div>
+        ) : (
+          <div style={{ flex: 1, minHeight: 0, overflowY: 'auto', background: COLORS.surface }}>
+            {groups.map((group) => {
+              const collapsedNow = collapsed[group.key] === true;
+              return (
+                <div key={group.key}>
+                  <button type="button" className="tl-group-head tl-press" aria-expanded={!collapsedNow} onClick={() => toggleGroup(group.key)}>
+                    {collapsedNow ? <ChevronRight size={16} color={COLORS.labelSecondary} /> : <ChevronDown size={16} color={COLORS.labelSecondary} />}
+                    <span className="tl-group-name">{group.name}</span>
+                    <span className="tl-group-count">{group.rows.length}</span>
+                  </button>
+                  {!collapsedNow && (
+                    <TaskStream
+                      threads={group.rows}
+                      statusByThread={data.statusByThread}
+                      isArchived={archivedOf}
+                      onLongPress={(threadId) => {
+                        const thread = data.threads.find((item) => item.id === threadId);
+                        setPending({ id: threadId, title: thread ? titleOfThread(thread) : threadId, archived: thread ? archivedOf(thread) : false });
+                      }}
+                    />
+                  )}
+                </div>
+              );
+            })}
+            {listControls}
+          </div>
+        )}
       </div>
 
       {pending && (

@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from 'react';
-import { ChevronDown, ChevronRight, ChevronLeft, Brain, Terminal, FileDiff, Loader2, Check, X } from 'lucide-react';
+import { ChevronDown, ChevronRight, ChevronLeft, Brain, Terminal, FileDiff, Loader2, Check, X, Sparkles } from 'lucide-react';
 import { ComposerFields, ChatPrimaryButton, useComposerFields, requestIdForIdentity } from '../components/ChatComposer';
 import MarkdownMessage from '../components/MarkdownMessage';
 import { COLORS } from '../theme/optionATokens';
@@ -296,18 +296,18 @@ export default function ChatDetailScreen({ threadId, title, newThread = false }:
           </button>
           {history.error && <div role="alert" className="tl-page-note tl-page-note--error">{history.error} 可再次点击重试。</div>}
         </div>}
-        <div className="tl-chat-list" role="log" aria-label="消息流">
-          {messages.length === 0 ? (
-            newThread ? (
-              <div role="status" style={{ fontSize: 13, lineHeight: '19px', color: COLORS.labelSecondary, padding: '8px 4px' }}>
-                开始一个新会话。消息直接发给电脑上的 agent，第一条发送成功后会话会出现在列表里。
-              </div>
-            ) : (
-              <div role="status" style={{ fontSize: 13, lineHeight: '19px', color: COLORS.labelSecondary, padding: '8px 4px' }}>
-                {data.messageState[threadId]?.error || (data.messageState[threadId]?.loaded ? '暂无消息，可以发送第一条消息。' : '正在加载消息…')}
-                {data.messageState[threadId]?.error && <button type="button" className="tl-connect-manual" onClick={() => { if (context) void refreshMessages(context, threadId); }}>重试加载消息</button>}
-              </div>
-            )
+        <div className={`tl-chat-list${newThread ? ' tl-chat-list--blank' : ''}`} role="log" aria-label="消息流">
+          {newThread ? (
+            <div className="tl-chat-blank">
+              <div className="tl-chat-blank-orb" aria-hidden="true"><Sparkles size={26} /></div>
+              <div className="tl-chat-blank-title">开始一个新会话</div>
+              <p className="tl-chat-blank-copy">消息直接发给电脑上的 agent，第一条发送成功后会话会出现在列表里。</p>
+            </div>
+          ) : messages.length === 0 ? (
+            <div role="status" style={{ fontSize: 13, lineHeight: '19px', color: COLORS.labelSecondary, padding: '8px 4px' }}>
+              {data.messageState[threadId]?.error || (data.messageState[threadId]?.loaded ? '暂无消息，可以发送第一条消息。' : '正在加载消息…')}
+              {data.messageState[threadId]?.error && <button type="button" className="tl-connect-manual" onClick={() => { if (context) void refreshMessages(context, threadId); }}>重试加载消息</button>}
+            </div>
           ) : messages.map((message: ThreadMessage, index: number) => {
             const isUser = message.role === 'user';
             const kind = String(message.kind || '').toLowerCase();

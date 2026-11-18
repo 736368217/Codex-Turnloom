@@ -70,15 +70,13 @@ test('R07: authoritative thread status wins for badge, filter, home card and mon
 
   const task = fs.readFileSync(path.join(root, 'components/TaskStream.tsx'), 'utf8');
   const threads = fs.readFileSync(path.join(root, 'screens/ThreadsScreen.tsx'), 'utf8');
-  const home = fs.readFileSync(path.join(root, 'screens/HomeScreen.tsx'), 'utf8');
   const monitor = fs.readFileSync(path.join(root, 'screens/MonitorsScreen.tsx'), 'utf8');
   const state = fs.readFileSync(path.join(root, 'state/dataStore.ts'), 'utf8');
   assert.match(task, /toneOfThread\(thread, statusByThread\)/);
-  // 列表页不再自己算状态或做状态筛选：状态统一由 TaskStream 用 projectThread 计算，
-  // 列表只负责把 statusByThread 透传下去，并在行上提供长按（归档）入口。
+  // 2.2.2 首页=会话列表：列表页不再自己算状态或做状态筛选，状态统一由
+  // TaskStream 用 projectThread 计算，列表只透传 statusByThread 并提供长按归档。
   assert.match(threads, /statusByThread=\{data\.statusByThread\}/);
   assert.match(threads, /onLongPress=/);
-  assert.match(home, /statusByThread=\{data\.statusByThread\}/);
   assert.match(monitor, /projectThread\(thread, data\.statusByThread\)/);
   assert.match(state, /projectThread\(thread, statuses\)/);
 });

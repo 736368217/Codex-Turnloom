@@ -79,8 +79,11 @@ test('U5: primary chat/new-task controls are 44x44, not 40px', () => {
   assert.match(composer, /return \{ width: 44, minWidth: 44, height: 44, minHeight: 44, borderRadius: 22 \};/);
   const detail = read('screens/ChatDetailScreen.tsx');
   assert.match(detail, /className=\{decision === 'decline' \? 'tl-approval-reject' : 'tl-approval-approve'\} style=\{\{ minHeight: 44 \}\}/);
-  const newTask = read('components/NewTaskSheet.tsx');
-  assert.match(newTask, /aria-label="创建任务" title="创建任务" style=\{\{ width: 44, minWidth: 44, height: 44, minHeight: 44/);
+  const threads = read('screens/ThreadsScreen.tsx');
+  assert.match(threads, /className="tl-press tl-nav-action" aria-label="新建会话"/);
+  // The 44px target is real CSS, not a decorative 32px pill.
+  const css = read('theme/globals.css');
+  assert.match(css, /\.tl-thread-nav \.tl-nav-action \{[^}]*width: 44px;[^}]*height: 44px/s);
 });
 
 test('U0: a normal send must not carry the displayed model (P0: PI configure popup)', () => {

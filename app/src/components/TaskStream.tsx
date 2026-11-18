@@ -1,11 +1,9 @@
 import { useEffect, useRef } from 'react';
-import { ChevronRight, MessageSquare, Loader2, Clock, AlertTriangle } from 'lucide-react';
+import { MessageSquare } from 'lucide-react';
 import type { ThreadSummary } from '../lib/turnloomApi';
-import { COLORS } from '../theme/optionATokens';
 import { haptic } from '../lib/nativeBridge';
 import { projectThread, formatThreadWhen, type ThreadStatusProjection } from '../lib/threadProjection';
 import { openDetail } from '../state/tabStore';
-import { StatusPill, EmptyState, cardStyle } from './ui';
 
 export type TaskTone = 'running' | 'waiting' | 'done' | 'error';
 type StatusMap = Record<string, ThreadStatusProjection | undefined>;
@@ -16,6 +14,15 @@ export function toneOfThread(thread: ThreadSummary, statusByThread: StatusMap = 
 
 export function titleOfThread(thread: ThreadSummary): string {
   return String(thread.title || thread.name || thread.preview || thread.id || '未命名会话');
+}
+
+const TONES = ['blue', 'green', 'orange', 'purple', 'teal'] as const;
+/** Deterministic flat tint: the same thread keeps the same avatar color. */
+function toneOfAvatar(thread: ThreadSummary): typeof TONES[number] {
+  const title = titleOfThread(thread);
+  let hash = 0;
+  for (const char of title) hash = (hash * 31 + char.codePointAt(0)!) >>> 0;
+  return TONES[hash % TONES.length];
 }
 
 /** 长按 550ms 触发（归档这种危险动作只走长按，不占地方也不会误触）。 */
@@ -33,22 +40,17 @@ function ThreadRow({
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const fired = useRef(false);
   const tone = toneOfThread(thread, statusByThread);
-  const icon = tone === 'running'
-    ? <Loader2 size={16} color={COLORS.blue} className="tl-spin" />
-    : tone === 'error'
-      ? <AlertTriangle size={16} color={COLORS.red} />
-      : tone === 'waiting'
-        ? <Clock size={16} color={COLORS.blue} />
-        : <MessageSquare size={16} color={COLORS.labelSecondary} />;
-  const pill = tone === 'running'
-    ? <StatusPill tone="blue" active>运行中</StatusPill>
-    : tone === 'error'
-      ? <StatusPill tone="red" active>错误</StatusPill>
-      : tone === 'waiting'
-        ? <StatusPill tone="blue">待处理</StatusPill>
+  const title = titleOfThread(thread);
+  const initial = Array.from(title.trim())[0] || '会';
+  const status = tone === 'running'
+    ? <span className="tl-thread-status tl-thread-status--running">运行中</span>
+    : tone === 'waiting'
+      ? <span className="tl-thread-status tl-thread-status--waiting">待处理</span>
+      : tone === 'error'
+        ? <span className="tl-thread-status" style={{ background: 'rgba(255,59,48,.12)', color: '#C0392B' }}>错误</span>
         : archived
-          ? <StatusPill tone="neutral">已归档</StatusPill>
-          : <StatusPill>已结束</StatusPill>;
+          ? <span className="tl-thread-status" style={{ background: 'rgba(142,142,147,.14)', color: '#636366' }}>已归档</span>
+          : null;
 
   const clear = () => {
     if (timer.current) clearTimeout(timer.current);
@@ -59,11 +61,11 @@ function ThreadRow({
   return (
     <button
       type="button"
-      className="tl-press"
+      className="tl-press tl-thread-row"
       onClick={() => {
         if (fired.current) { fired.current = false; return; }
         haptic('selection');
-        openDetail(thread.id, titleOfThread(thread));
+        openDetail(thread.id, title);
       }}
       onPointerDown={() => {
         if (!onLongPress) return;
@@ -84,47 +86,27 @@ function ThreadRow({
         haptic('warning');
         onLongPress(String(thread.id || ''));
       }}
-      style={{
-        display: 'flex',
-        alignItems: 'center',
-        gap: 12,
-        width: '100%',
-        minHeight: 64,
-        padding: '10px 16px',
-        border: 0,
-        background: 'transparent',
-        textAlign: 'left',
-        color: COLORS.labelPrimary,
-      }}
     >
-      <span style={{ flex: '0 0 auto', display: 'flex' }}>{icon}</span>
-      <span style={{ flex: 1, minWidth: 0 }}>
-        <span style={{ display: 'block', fontSize: 15, fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-          {titleOfThread(thread)}
+      <span className="tl-thread-avatar" data-tone={toneOfAvatar(thread)} aria-hidden="true">{initial}</span>
+      <span className="tl-thread-main">
+        <span className="tl-thread-top">
+          <span className="tl-thread-title">{title}</span>
+          <span className="tl-thread-time">{formatThreadWhen(thread)}</span>
         </span>
-        <span style={{ display: 'block', fontSize: 12, color: COLORS.labelSecondary, marginTop: 3, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-          {String(thread.preview || thread.cwd || thread.id || '')}
-        </span>
+        <span className="tl-thread-preview">{String(thread.preview || thread.cwd || thread.id || '')}</span>
       </span>
-      <span style={{ flex: '0 0 auto', display: 'flex', alignItems: 'center', gap: 6 }}>
-        {/* 时间戳是会话列表里最常用的定位信息；没有它只能靠标题猜新旧。 */}
-        <span style={{ fontSize: 11, lineHeight: '14px', color: COLORS.labelSecondary, fontVariantNumeric: 'tabular-nums' }}>
-          {formatThreadWhen(thread)}
-        </span>
-        {pill}
-      </span>
-      <ChevronRight size={16} color={COLORS.labelSecondary} />
+      <span className="tl-thread-tail">{status}</span>
     </button>
   );
 }
 
-/** Active task stream list used by Home and Threads screens. */
+/** Full-bleed conversation list (2.2.2 IA); CSS lives in globals.css §2.2.2. */
 export default function TaskStream({
   threads,
   statusByThread = {},
   limit,
   emptyTitle = '暂无会话',
-  emptyDescription = '连接主机或新建任务后，会话会显示在这里。',
+  emptyDescription = '连接电脑或点右上角 + 开始一个新会话。',
   onLongPress,
   isArchived,
 }: {
@@ -133,27 +115,30 @@ export default function TaskStream({
   limit?: number;
   emptyTitle?: string;
   emptyDescription?: string;
-  /** 只有列表页传：长按会话行触发（归档确认）。首页不传，长按无副作用。 */
   onLongPress?: (threadId: string) => void;
   isArchived?: (thread: { id?: string; archived?: unknown }) => boolean;
 }) {
   const list = typeof limit === 'number' ? threads.slice(0, limit) : threads;
   if (list.length === 0) {
-    return <EmptyState title={emptyTitle} description={emptyDescription} icon={<MessageSquare size={26} />} />;
+    return (
+      <div className="tl-thread-empty">
+        <MessageSquare size={26} color="var(--tl-label-secondary)" aria-hidden="true" />
+        <div className="tl-empty-title">{emptyTitle}</div>
+        <p>{emptyDescription}</p>
+      </div>
+    );
   }
 
   return (
-    <div className="tl-card" style={{ ...cardStyle, margin: '0 16px', overflow: 'hidden' }}>
-      {list.map((thread, index) => (
-        <div key={thread.id || index}>
-          {index > 0 && <div className="tl-separator" style={{ marginLeft: 16 }} />}
-          <ThreadRow
-            thread={thread}
-            statusByThread={statusByThread}
-            archived={Boolean(isArchived?.(thread))}
-            onLongPress={onLongPress}
-          />
-        </div>
+    <div className="tl-thread-list">
+      {list.map((thread) => (
+        <ThreadRow
+          key={thread.id}
+          thread={thread}
+          statusByThread={statusByThread}
+          archived={Boolean(isArchived?.(thread))}
+          onLongPress={onLongPress}
+        />
       ))}
     </div>
   );
