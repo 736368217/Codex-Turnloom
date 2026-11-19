@@ -73,25 +73,25 @@ const projectB = { key: "pidesktop-bridge", name: "PI-Desktop 桥接" };
 const threads = [
   {
     id: "qa-visual-md", title: "视觉检定：长 Markdown、代码块与表格", status: { state: "ended" },
-    updatedAt: now - 60_000, preview: "这一屏验证 390×844 下的正文排版…", project: projectA,
+    updatedAt: now - 60_000, project: projectA,
     cwd: "D:\\Turn-DSH\\Codex-Turnloom", model: "gpt-5.1-codex",
   },
   {
     id: "qa-visual-running", title: "正在运行：把视觉检定跑完", status: { state: "running", thinking: true, startedAtMs: now - 95_000 },
-    updatedAt: now - 5_000, preview: "工具调用中…", project: projectA, cwd: "D:\\Turn-DSH\\Codex-Turnloom",
+    updatedAt: now - 5_000, project: projectA, cwd: "D:\\Turn-DSH\\Codex-Turnloom",
   },
   {
     id: "qa-visual-approval", title: "等待审批：删除构建产物的命令", status: { state: "waiting", thinking: true, interactionRequired: true },
-    updatedAt: now - 120_000, preview: "需要确认 rm -rf 操作", project: projectA, cwd: "D:\\Turn-DSH\\Codex-Turnloom",
+    updatedAt: now - 120_000, project: projectA, cwd: "D:\\Turn-DSH\\Codex-Turnloom",
   },
   {
     id: "qa-visual-failed", title: "失败：桌面端服务未启动", status: { state: "ended", error: "desktop-ipc-unavailable" },
-    updatedAt: now - 3_600_000, preview: "连接电脑失败", project: projectB, cwd: "D:\\Turn-DSH\\Codex-Turnloom\\third-party",
+    updatedAt: now - 3_600_000, project: projectB, cwd: "D:\\Turn-DSH\\Codex-Turnloom\\third-party",
   },
   {
     id: "qa-visual-longtitle",
     title: "这是一个非常非常长的会话标题用来验证标题截断与换行是否会把右侧状态挤掉或者撑出横向滚动条",
-    status: { state: "ended" }, updatedAt: now - 86_400_000, preview: "很长的标题", project: projectB,
+    status: { state: "ended" }, updatedAt: now - 86_400_000, project: projectB,
   },
 ];
 for (let i = 1; i <= 24; i += 1) {
@@ -100,7 +100,6 @@ for (let i = 1; i <= 24; i += 1) {
     title: `填充会话 ${i}：检查列表滚动与点击目标`,
     status: { state: i % 4 === 0 ? "running" : "ended" },
     updatedAt: now - i * 900_000,
-    preview: "填充数据 · 用于观察列表密度与分隔线",
     project: i % 2 ? projectA : projectB,
     cwd: "D:\\Turn-DSH\\Codex-Turnloom",
   });
@@ -138,6 +137,18 @@ const messagesByThread = {
     { id: "l1", role: "user", content: "标题很长的时候，头部会怎么处理？", createdAt: now - 86_400_000 },
   ],
 };
+
+// 预览必须能从会话自己的最后一条文本消息推出来。
+// 以前这里是手写的漂亮句子（"填充数据 · 用于观察列表密度" 之类），
+// 结果掩盖了一个真实缺陷：生产环境的 /api/threads 常常没有 preview，
+// 列表行就掉到 cwd/id 上，真机上一整列 UUID。夹具不许比生产好看。
+for (const thread of threads) {
+  const rows = messagesByThread[thread.id] || [];
+  const last = [...rows].reverse().find((message) =>
+    (message.role === "user" || message.role === "assistant")
+    && typeof message.content === "string" && message.content.trim() !== "");
+  thread.preview = last ? last.content.replace(/\s+/g, " ").slice(0, 60) : "";
+}
 
 const changes = {
   "qa-visual-md": [

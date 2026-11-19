@@ -316,6 +316,20 @@ const MEASURE = `(() => {
   const barRect = bar ? bar.getBoundingClientRect() : null;
   const composer = document.querySelector('.tl-composer');
   const composerRect = composer ? composer.getBoundingClientRect() : null;
+  // 列表行的第二行只许是「最后一句」。id / 绝对路径都不许出现在这里——
+  // 真机上那一整列 UUID 就是因为夹具自己编了 preview、把回退路径藏起来了。
+  const listRows = Array.from(document.querySelectorAll('.tl-thread-row')).slice(0, 14).map((row) => {
+    const title = ((row.querySelector('.tl-thread-title') || {}).textContent || '').trim();
+    const preview = ((row.querySelector('.tl-thread-preview') || {}).textContent || '').trim();
+    return {
+      title: title.slice(0, 20),
+      preview: preview.slice(0, 36),
+      looksLikeId: /^[0-9a-f]{8}-[0-9a-f]{4}-/i.test(preview),
+      looksLikePath: /^[A-Za-z]:[\\/]|^\\//.test(preview),
+      // 标题本身可能是从第一句推出来的，preview 与标题相同不算泄漏，只记下来。
+      duplicatesTitle: preview !== '' && preview === title,
+    };
+  });
   return {
     title: document.title,
     viewport: { w: window.innerWidth, h: window.innerHeight, dpr: window.devicePixelRatio },
@@ -323,6 +337,8 @@ const MEASURE = `(() => {
     horizontalOverflow: doc.scrollWidth > vw + 0.5,
     offenders: offenders.slice(0, 12),
     smallTargets: smallTargets.slice(0, 20),
+    listRows,
+    badPreviewRows: listRows.filter((row) => row.looksLikeId || row.looksLikePath).length,
     tabbar: barRect ? { top: Math.round(barRect.top), bottom: Math.round(barRect.bottom), height: Math.round(barRect.height) } : null,
     composer: composerRect ? { top: Math.round(composerRect.top), bottom: Math.round(composerRect.bottom) } : null,
     text: document.body.innerText.replace(/\\s+/g, ' ').slice(0, 400),
@@ -383,7 +399,8 @@ async function shot(page, dir, name, report, { measure = true } = {}) {  const f
   const facts = measure ? await page.eval(MEASURE) : null;
   report.screens.push({ name, viewport: dir.split(path.sep).slice(-1)[0], file: path.relative(ROOT, file).replace(/\\/g, "/"), facts });
   if (facts) {
-    log(`${name}: ${facts.horizontalOverflow ? `OVERFLOW ${facts.docScrollWidth}>${facts.viewport.w}` : "ok"} · smallTargets=${facts.smallTargets.length} · offenders=${facts.offenders.length}`);
+    log(`${name}: ${facts.horizontalOverflow ? `OVERFLOW ${facts.docScrollWidth}>${facts.viewport.w}` : "ok"} · smallTargets=${facts.smallTargets.length} · offenders=${facts.offenders.length}`
+      + (facts.badPreviewRows ? ` · BAD-PREVIEW=${facts.badPreviewRows}` : ""));
   } else {
     log(`${name}: saved`);
   }
@@ -480,10 +497,22 @@ async function runViewport(browser, viewport, report) {
       const blank = document.querySelector('.tl-chat-list--blank');
       const orb = document.querySelector('.tl-chat-blank-orb');
       const box = (el) => el ? { top: Math.round(el.getBoundingClientRect().top), height: Math.round(el.getBoundingClientRect().height) } : null;
+      // 居中必须量中心点，不许目测：dx/dy 是相对消息区中心的偏移，验收要求 |dx| ≤ 1。
+      const body = document.querySelector('.tl-detail-body');
+      const bodyRect = body ? body.getBoundingClientRect() : null;
+      const center = (el) => {
+        if (!el || !bodyRect) return null;
+        const r = el.getBoundingClientRect();
+        return {
+          dx: Math.round((r.left + r.width / 2) - (bodyRect.left + bodyRect.width / 2)),
+          dy: Math.round((r.top + r.height / 2) - (bodyRect.top + bodyRect.height / 2)),
+        };
+      };
       return {
         focused: document.activeElement === input, composer: Boolean(input),
         text: (document.body.innerText || '').slice(0, 80),
         main: box(main), blank: box(blank), orb: box(orb),
+        center: { blank: center(document.querySelector('.tl-chat-blank')), orb: center(orb) },
       };
     })()`);
     await shot(page, dir, "11a-new-chat", report);
@@ -500,6 +529,9 @@ async function runViewport(browser, viewport, report) {
       })),
     }))()`);
     await shot(page, dir, "11b-new-chat-sent", report);
+    // 新建会话的请求体：projectId / newThread / clientRequestId 都在这里被夹具记着。
+    report.sendsNewThread = await (await fetch(`http://127.0.0.1:${PORTS.fixture}/__qa/sends`)).json();
+    log(`new-thread send bodies: ${JSON.stringify(report.sendsNewThread)}`);
     await page.eval("window.__turnloomBack && window.__turnloomBack()");
     await sleep(600);
     report.newChatInList = await page.eval(`(() => ({

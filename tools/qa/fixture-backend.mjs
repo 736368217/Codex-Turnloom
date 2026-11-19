@@ -73,15 +73,15 @@ const TOOL_OUTPUT = [
 ].join("\n");
 
 const threads = [
-  { id: "qa-long", title: "长 Markdown、代码块与表格的排版回归", status: { state: "ended" }, updatedAtMs: now - 60_000, preview: "这一轮验证了 390×844 下的会话详情排版…" },
-  { id: "qa-running", title: "正在运行：把视觉检定跑完", status: { state: "running", thinking: true, startedAtMs: now - 95_000 }, updatedAtMs: now - 5_000, preview: "工具调用中…" },
-  { id: "qa-approval", title: "等待审批：删除构建产物的命令", status: { state: "waiting", thinking: false, interactionRequired: true }, updatedAtMs: now - 120_000, preview: "需要确认 rm -rf 操作" },
-  { id: "qa-failed", title: "失败：桌面端服务未启动", status: { state: "ended", error: "desktop-ipc-unavailable" }, updatedAtMs: now - 3_600_000, preview: "连接电脑失败" },
-  { id: "qa-mismatch", title: "审批详情缺失（按钮应禁用）", status: { state: "waiting", interactionRequired: true }, updatedAtMs: now - 7_200_000, preview: "请求详情不完整" },
-  { id: "qa-long-title", title: "这是一个非常非常长的会话标题用来验证标题截断与换行是否会把右侧状态挤掉或者撑出横向滚动条", status: { state: "ended" }, updatedAtMs: now - 86_400_000, preview: "很长的标题" }
+  { id: "qa-long", title: "长 Markdown、代码块与表格的排版回归", status: { state: "ended" }, updatedAtMs: now - 60_000, },
+  { id: "qa-running", title: "正在运行：把视觉检定跑完", status: { state: "running", thinking: true, startedAtMs: now - 95_000 }, updatedAtMs: now - 5_000, },
+  { id: "qa-approval", title: "等待审批：删除构建产物的命令", status: { state: "waiting", thinking: false, interactionRequired: true }, updatedAtMs: now - 120_000, },
+  { id: "qa-failed", title: "失败：桌面端服务未启动", status: { state: "ended", error: "desktop-ipc-unavailable" }, updatedAtMs: now - 3_600_000, },
+  { id: "qa-mismatch", title: "审批详情缺失（按钮应禁用）", status: { state: "waiting", interactionRequired: true }, updatedAtMs: now - 7_200_000, },
+  { id: "qa-long-title", title: "这是一个非常非常长的会话标题用来验证标题截断与换行是否会把右侧状态挤掉或者撑出横向滚动条", status: { state: "ended" }, updatedAtMs: now - 86_400_000, }
 ];
 for (let i = 1; i <= 34; i += 1) {
-  threads.push({ id: `qa-filler-${String(i).padStart(2, "0")}`, title: `填充会话 ${i}：检查列表滚动与点击目标`, status: { state: i % 3 === 0 ? "running" : "ended" }, updatedAtMs: now - i * 900_000, preview: "填充数据" });
+  threads.push({ id: `qa-filler-${String(i).padStart(2, "0")}`, title: `填充会话 ${i}：检查列表滚动与点击目标`, status: { state: i % 3 === 0 ? "running" : "ended" }, updatedAtMs: now - i * 900_000, });
 }
 
 const messagesByThread = {
@@ -120,6 +120,24 @@ const messagesByThread = {
   ]
 };
 
+// 预览必须能从会话自己的最后一条文本消息推出来，不许手写。
+// 生产环境的 /api/threads 常常没有 preview，列表行会掉到 cwd/id 上；
+// 夹具一旦自己编一句好听的，这个缺陷就永远看不见（真机上一整列 UUID 就是这么漏的）。
+for (const thread of threads) {
+  const rows = messagesByThread[thread.id] || [];
+  const last = [...rows].reverse().find((message) =>
+    (message.role === "user" || message.role === "assistant")
+    && typeof message.content === "string" && message.content.trim() !== "");
+  thread.preview = last ? last.content.replace(/\s+/g, " ").slice(0, 60) : "";
+}
+
+// 新建会话的默认项目取自「最近一条有 projectId 的会话」，所以这里必须给真值，
+// id 与 /api/projects 的 id 对齐（turnloom / pidesktop / notes）。
+threads.forEach((thread, index) => {
+  if (index % 3 === 0) thread.projectId = "turnloom";
+  else if (index % 3 === 1) thread.projectId = "pidesktop";
+});
+
 const resolved = new Set();
 const approvalsSeen = [];
 const sendsSeen = [];
@@ -151,6 +169,16 @@ const server = http.createServer((req, res) => {
     if (req.method === "GET" && path === "/threads") {
       return json(res, 200, { threads, total: threads.length });
     }
+    // 新建会话要能选项目：真机上是 /api/projects，这里去掉 /api 前缀。
+    if (req.method === "GET" && path === "/projects") {
+      return json(res, 200, {
+        projects: [
+          { id: "turnloom", name: "Codex-Turnloom", threadCount: 12, updatedAtMs: now - 60_000 },
+          { id: "pidesktop", name: "PI-Desktop 桥接", threadCount: 4, updatedAtMs: now - 3_600_000 },
+          { id: "notes", name: "随手记", threadCount: 1, updatedAtMs: now - 86_400_000 },
+        ],
+      });
+    }
     const msgMatch = /^\/threads\/([^/]+)\/messages$/.exec(path);
     if (msgMatch && req.method === "GET") {
       const id = decodeURIComponent(msgMatch[1]);
@@ -169,7 +197,7 @@ const server = http.createServer((req, res) => {
     if (msgMatch && req.method === "POST") {
       let payload = {};
       try { payload = JSON.parse(body || "{}"); } catch { payload = {}; }
-      sendsSeen.push({ threadId: decodeURIComponent(msgMatch[1]), model: payload.model ?? null, effort: payload.effort ?? null, message: String(payload.text ?? payload.message ?? "").slice(0, 40), hasModelField: Object.prototype.hasOwnProperty.call(payload, "model") });
+      sendsSeen.push({ threadId: decodeURIComponent(msgMatch[1]), model: payload.model ?? null, effort: payload.effort ?? null, message: String(payload.text ?? payload.message ?? "").slice(0, 40), hasModelField: Object.prototype.hasOwnProperty.call(payload, "model"), projectId: payload.projectId ?? null });
       if (SEND_FAIL === "image-400") {
         return json(res, 400, {
           error: "图片尺寸超出电脑端限制（单边 16–4096px，且总像素 ≤12MP），当前 4032×3024（12.2MP）。请压缩或裁剪后再发送。",
@@ -185,7 +213,7 @@ const server = http.createServer((req, res) => {
       try { payload = JSON.parse(body || "{}"); } catch { payload = {}; }
       const text = String(payload.text ?? payload.message ?? "").slice(0, 200);
       const id = `qa-new-${Date.now()}`;
-      sendsSeen.push({ threadId: id, model: payload.model ?? null, effort: payload.effort ?? null, message: text.slice(0, 40), hasModelField: Object.prototype.hasOwnProperty.call(payload, "model"), newThread: true });
+      sendsSeen.push({ threadId: id, model: payload.model ?? null, effort: payload.effort ?? null, message: text.slice(0, 40), hasModelField: Object.prototype.hasOwnProperty.call(payload, "model"), newThread: true, projectId: payload.projectId ?? null, clientRequestId: payload.clientRequestId ?? null });
       threads.unshift({
         id, title: text.slice(0, 48) || "新会话", preview: text.slice(0, 80),
         status: { state: "ended" }, updatedAt: Date.now(),
@@ -239,3 +267,4 @@ const server = http.createServer((req, res) => {
 server.listen(PORT, HOST, () => {
   console.log(`[fixture] backend on http://${HOST}:${PORT}`);
 });
+
