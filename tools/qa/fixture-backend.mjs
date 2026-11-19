@@ -169,6 +169,24 @@ const server = http.createServer((req, res) => {
   let body = "";
   req.on("data", (chunk) => { body += chunk; });
   req.on("end", () => {
+    // 引用菜单的另外两档：形状照 Atlas 的真库（skills 带 uri，plugins 带 compact）。
+    if (req.method === "GET" && path === "/skills") {
+      return json(res, 200, {
+        skills: [
+          { name: "qa-skill-a", displayName: "QA 技能 A", description: "用于验证技能档插入格式", source: "user", priority: 80, kind: "prompt", action: "insert", uri: "skill://qa-skill-a@user" },
+          { name: "qa-skill-b", displayName: "QA 技能 B", description: "第二条技能，用来验证搜索过滤", source: "system", priority: 40, kind: "prompt", action: "insert", uri: "skill://qa-skill-b@system" },
+          { name: "qa-skill-c", displayName: "QA 技能 C", description: "第三条技能", source: "user", priority: 10, kind: "prompt", action: "insert", uri: "skill://qa-skill-c@user" },
+        ],
+      });
+    }
+    if (req.method === "GET" && path === "/plugins") {
+      const compact = url.searchParams.get("compact") === "1";
+      const plugins = [
+        { name: "qa-plugin-a", displayName: "QA 插件 A", description: "用于验证插件档插入格式", marketplace: "local", uri: "plugin://qa-plugin-a@local" },
+        { name: "qa-plugin-b", displayName: "QA 插件 B", description: "第二条插件", marketplace: "community", uri: "plugin://qa-plugin-b@community" },
+      ].map((plugin) => (compact ? plugin : { ...plugin, iconDataUrl: "data:image/png;base64,iVBORw0KGgo=" }));
+      return json(res, 200, { plugins });
+    }
     if (req.method === "GET" && path === "/threads") {
       return json(res, 200, { threads, total: threads.length });
     }

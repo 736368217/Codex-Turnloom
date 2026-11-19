@@ -553,11 +553,19 @@ async function runViewport(browser, viewport, report) {
     if (process.env.QA_QUOTE) {
       await clickSelector(page, "button.tl-quote-trigger", { optional: true });
       await sleep(700);
+      // QA_QUOTE_TAB=技能|插件：先切档再选第一条，验证另外两档的插入格式。
+      if (process.env.QA_QUOTE_TAB) {
+        await clickText(page, process.env.QA_QUOTE_TAB, { selector: "[data-vaul-drawer] button", optional: true });
+        await sleep(600);
+      }
       await shot(page, dir, "12b-quote-menu", report);
       report.quoteTabs = await page.eval(`(() => Array.from(document.querySelectorAll('[data-vaul-drawer] button'))
         .map((el) => (el.textContent || '').trim()).filter(Boolean).slice(0, 8))()`);
       await page.eval(`(() => { const rows = Array.from(document.querySelectorAll('[data-vaul-drawer] button'));
-        const target = rows.find((el) => (el.textContent || '').includes('长 Markdown')) || rows.find((el) => (el.textContent || '').includes('填充会话 1'));
+        const tab = ${JSON.stringify(String(process.env.QA_QUOTE_TAB || ""))};
+        const target = tab
+          ? rows.find((el) => new RegExp('QA ' + tab).test(el.textContent || ''))
+          : rows.find((el) => (el.textContent || '').includes('长 Markdown')) || rows.find((el) => (el.textContent || '').includes('填充会话 1'));
         if (target) target.click(); })()`);
       await sleep(600);
       report.quoteInsert = await page.eval(`(() => {
