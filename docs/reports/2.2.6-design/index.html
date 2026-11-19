@@ -163,7 +163,7 @@
       <li><b>「按时间/按项目」不是回退了，是从来没做成图1那样。</b>发布版里是两个各自填充的药丸（选中变黑），不是一条 track 里滑动的 thumb。提交 <code>dc07ebb</code> 只改了 CSS 的排布，把它变成「可横滑的药丸条」——字面上满足了「胶囊、可滑」，视觉上不是图1。我当时验收看的是「两个视图各 5 行、44px 命中」，没有对着图1 比控件本身，这是我的漏项。</li>
       <li><b>「监控」这个 tab 不必要。</b>它四块内容里，三块在别处已经存在且同源（连接状态=头部徽标、会话数=列表长度、运行中=列表状态点）；唯一有行动价值的是「停止运行中的任务」，而那件事应该在你看到那个任务的地方做。</li>
       <li><b>设备层级要三级，而且一次只露一层</b>：电脑 → 平台（Codex / PI）→ 该平台下的 harness（服务入口）。现在的「切换电脑上的服务」把第二、三层平铺成一个列表，看不出它们属于哪台电脑。</li>
-      <li><b>删一个 tab、并两处、加一层动画。</b>底栏从 3 变 2；会话页头部加一张常驻设备卡；会话行从三块（状态图标 / 标题+时间 / 预览）收到两行，项目进 meta。</li>
+      <li><b>删一个 tab、补一个、并两处、加一层动画。</b>底栏仍是三项，但「监控」换成「设备」——监控的内容拆进别处，设备树需要自己的安放处（配对、忘记、切换都在那一页）。会话页头部再留一行当前设备（机器 · 平台），保证无论在哪一页都知道自己连的是谁。会话行从三块（状态图标 / 标题+时间 / 预览）收到两行，项目进 meta。</li>
     </ol>
   </div>
 
@@ -191,7 +191,7 @@
         <td><b>会话页头部</b></td>
         <td>只有「会话」标题 + 新建 +；当前电脑/平台埋在设置里，不在首屏</td>
         <td>必要性高（换设备、确认在哪台机器时要看）；便利性低：要进设置才知道；易读性中：看不出隶属关系</td>
-        <td><span class="verdict v-change">加常驻设备卡</span> 电脑名 + 平台 + 在线灯 + 模型 chip；点开三级层级</td>
+        <td><span class="verdict v-change">加常驻设备行</span> 电脑名 · 平台名 + 在线灯，点进设备页；模型 chip 留在聊天头部</td>
       </tr>
       <tr>
         <td><b>切换服务抽屉</b></td>
@@ -287,14 +287,14 @@
       <div class="phone">
         <div class="statusbar"><span>9:41</span><span>●●● ⌁ ▮</span></div>
         <div class="ph">
-          <div class="devbar">
-            <div class="laptop"><div class="lid"><i></i></div><div class="base"></div></div>
-            <div class="txt">
-              <div class="nm">Windows · 书房<span class="dot" style="display:inline-block;margin-left:6px;vertical-align:1px"></span></div>
-              <div class="sub">Codex Desktop · 16 模型</div>
-            </div>
-            <span class="modelchip">GPT-6-Astra ⌄</span>
+          <div style="display:flex;align-items:center;padding:8px 0 0">
+            <div style="font-size:26px;font-weight:700;letter-spacing:-.5px">会话</div>
+            <span style="margin-left:auto;width:30px;height:30px;border-radius:50%;background:var(--blue);color:#fff;display:flex;align-items:center;justify-content:center;font-size:18px;font-weight:400">+</span>
           </div>
+          <button type="button" style="display:flex;align-items:center;gap:5px;border:0;background:transparent;padding:1px 0 0;color:var(--label2);font-size:12px;font-weight:600">
+            <span class="dot" style="width:7px;height:7px;box-shadow:0 0 0 2px rgba(52,199,89,.16)"></span>
+            Windows · 书房 <span style="color:#C7C7CC">·</span> Codex Desktop <span style="color:var(--label3);font-size:10px">⌄</span>
+          </button>
 
           <div class="seg" id="seg" style="--i:1">
             <span class="seg-thumb"></span>
@@ -302,7 +302,7 @@
             <button data-i="1" class="on">按项目</button>
           </div>
 
-          <div class="runstrip">
+          <div style="display:flex;align-items:center;gap:6px;background:rgba(118,118,128,.12);border-radius:10px;padding:8px 10px;margin:2px 0 10px;color:var(--label2);font-size:12px">⌕　搜索会话</div>\n\n          <div class="runstrip">
             <span class="spin"></span> 2 个任务在运行 <span class="go">展开 ⌄</span>
           </div>
 
@@ -315,11 +315,12 @@
 
           <div class="tabbar2">
             <div class="on"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>会话</div>
+            <div><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><rect x="3" y="4" width="18" height="12" rx="2"/><path d="M2 20h20"/></svg>设备</div>
             <div><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.9l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.9-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1-1.5 1.7 1.7 0 0 0-1.9.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.9 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1 1.7 1.7 0 0 0-.3-1.9l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.9.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.9-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.9V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg>设置</div>
           </div>
         </div>
       </div>
-      <p class="note">头四行并成一张卡：电脑名 + 平台 + 在线点 + 模型 chip。分段是单条 track，thumb 只做 <code>translateX</code>，不重排文字。<b>分段固定在滚动容器之外</b>（搜索留在滚动区顶部，回顶部就能用）——2.2.5 的 rail 在 <code>.tl-thread-scroll</code> 里，Vera 实测 <code>scrollTop=600</code> 时 rail 从 y=100 变 y=-500；翻到列表中段想切视图必须先滚回顶部，换样式解决不了，必须换位置。</p>
+      <p class="note">头部只在标题下留一行「电脑 · 平台」，12px、可点、带小箭头——它在任何一页都回答「我在跟谁说话」，设备页负责层级与切换，模型 chip 仍在聊天右上角（这里不重复）。分段是单条 track，thumb 只做 <code>translateX</code>，不重排文字。<b>分段固定在滚动容器之外</b>（搜索留在滚动区顶部，回顶部就能用）——2.2.5 的 rail 在 <code>.tl-thread-scroll</code> 里，Vera 实测 <code>scrollTop=600</code> 时 rail 从 y=100 变 y=-500；翻到列表中段想切视图必须先滚回顶部，换样式解决不了，必须换位置。</p>
     </div>
   </div>
 
@@ -489,7 +490,7 @@
     <div class="arrow">↓</div>
     <div class="from"><span class="lbl">错误/告警</span><div><b>→ 设置 · 运行信息</b><br>本来就有诊断抽屉（版本、地址、连接、会话数、同步时间）。把失败任务并进去，出问题时一个入口。</div></div>
     <div class="arrow">↓</div>
-    <div class="from"><span class="lbl">连接/同步</span><div><b>→ 头部设备卡</b><br>在线点 + 「刚同步 / 3 小时前」就写在电脑名下面。它本来就是这台机器的事实，不是全局指标。</div></div>
+    <div class="from"><span class="lbl">连接/同步</span><div><b>→ 头部设备行</b><br>在线点 + 「刚同步 / 3 小时前」就写在电脑名下面。它本来就是这台机器的事实，不是全局指标。</div></div>
     <div class="arrow">↓</div>
     <div class="from"><span class="lbl">会话数</span><div><b>→ 直接删</b><br>列表自己就是计数。三宫格里那个数字没有任何人会拿来做决定。</div></div>
   </div>
@@ -531,7 +532,7 @@
   <table>
     <thead><tr><th>谁</th><th>做什么</th><th>完成判据</th></tr></thead>
     <tbody>
-      <tr><td><b>Iris</b></td><td>会话页：单 track 分段 + thumb 动画；头部设备卡；会话行两行化；运行条</td><td>390/360/320 无溢出；截图与本节原型一致</td></tr>
+      <tr><td><b>Iris</b></td><td>会话页：单 track 分段 + thumb 动画；头部「当前设备」行；会话行两行化；运行条</td><td>390/360/320 无溢出；截图与本节原型一致</td></tr>
       <tr><td><b>Atlas</b></td><td>设备注册表：单机 → 设备列表 + 当前设备；每设备各自的平台/离线/上次同步；删监控 tab 的数据依赖归位</td><td>对 UI 暴露 <code>machines[] / switchMachine(id) / forgetMachine(id)</code>；键仍为 <code>turnloom.machine.v2</code>，值升到 <code>{version:3, activeMachineId, machines[]}</code>，旧单对象自动迁移；非活动机器不探活</td></tr>
       <tr><td><b>Vera</b></td><td>上面的机器判据 + 真机三档截图（夹具 / 真数据 / 真机）</td><td>thumb 位移落在第二个 cell ±1px、无 <code>.tl-filter-chip</code>、设备分支单一、reduce-motion、<b>scrollTop=600 时分段仍在可视区</b>、命中带 44 不外扩</td></tr>
       <tr><td><b>Rhea</b></td><td>2.2.6 / 95 出包与签名</td><td>与 2.2.5 同证书；升级路径不变</td></tr>
