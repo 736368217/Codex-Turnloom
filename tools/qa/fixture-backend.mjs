@@ -191,6 +191,23 @@ const server = http.createServer((req, res) => {
       ].map((plugin) => (compact ? plugin : { ...plugin, iconDataUrl: "data:image/png;base64,iVBORw0KGgo=" }));
       return json(res, 200, { plugins });
     }
+    // 模型目录：形状照 PI 的「已加入集合」（启用供应商 × config_json.models，
+    // pinned 置前）。`--backend http` 形态下 check-model-panel 拿宿主的 /health
+    // 当期望值，正好把「透传后仍是 PI 集合」这条钉住。
+    if (req.method === "GET" && path === "/health") {
+      return json(res, 200, {
+        ok: true,
+        models: [
+          { id: "wbfd/kimi-k3.1-pro", provider: "wbfd", providerLabel: "wbfd", modelId: "kimi-k3.1-pro", label: "kimi-k3.1-pro", efforts: ["high"], defaultEffort: "high", supportsImages: true, pinned: true },
+          { id: "wbfd/deepseek-v4.1-flash", provider: "wbfd", providerLabel: "wbfd", modelId: "deepseek-v4.1-flash", label: "deepseek-v4.1-flash", efforts: ["max"], defaultEffort: "max", supportsImages: true, pinned: false },
+          { id: "wbfd/hy4flash-free", provider: "wbfd", providerLabel: "wbfd", modelId: "hy4flash-free", label: "hy4flash-free", efforts: ["high"], defaultEffort: "high", supportsImages: true, pinned: false },
+        ],
+        defaultModel: "wbfd/hy4flash-free",
+        defaultEffort: "high",
+        lastUsedModel: "wbfd/deepseek-v4.1-flash",
+        usedModelIds: ["wbfd/deepseek-v4.1-flash"],
+      });
+    }
     if (req.method === "GET" && path === "/threads") {
       return json(res, 200, { threads, total: threads.length });
     }
@@ -313,4 +330,5 @@ const server = http.createServer((req, res) => {
 server.listen(PORT, HOST, () => {
   console.log(`[fixture] backend on http://${HOST}:${PORT}`);
 });
+
 
