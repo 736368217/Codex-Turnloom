@@ -125,3 +125,21 @@ powershell -NoProfile -ExecutionPolicy Bypass -File tmp/shipped-measure.ps1 -Mod
 ```
 
 截图：`docs/qa/visual/2.2.6-before/<viewport>/`（**320 档含新控件，不作 2.2.5 基线**）。
+
+## 7｜落地复核：分段控件（2026-11-20 00:46，当前源码）
+
+对象：`vite build` 自当前源码的 `index-96086YuR.js` · 789,997 B（不是 `app/dist`）。390 与 320 同结果。
+
+| 判据 | 结果 | 实测 |
+| :--- | :--- | :--- |
+| thumb 落在选中段内 | **PASS** | 偏移 0、宽差 0；回切同样 0 |
+| 命中带 ≥44 | **PASS** | 带高 44（y 48–91），绘制盒 38 |
+| 滚动时控件不动 | **PASS** | 列表滚 600，控件 top 51→51；控件已在滚动容器外 |
+| 无横向溢出 | **PASS** | `scrollWidth == viewport` |
+| reduce-motion | **PASS** | 4 条 `@media (prefers-reduced-motion: reduce)` 规则在包内 |
+| 单一 `data-machine` | **n/a** | 0 个节点，设备面板未落地——**没有主语就不记 PASS**，落地后单独一行给结论 |
+
+负向对照：同一脚本跑随包 2.2.5 → `thumbInCell` FAIL（无 thumb）、`pinnedWhileScroll` FAIL（控件在滚动容器内）。
+脚本另加了 guard：`scrollTop < 100` 一律 FAIL 并标 `inconclusive`——短列表曾让这条假通过一次。
+
+口径要求（NB3 00:50 升级为通用规则）：**先证明被测对象有被测量的余地**（滚动量、节点数、可选段数），否则记 `inconclusive` / `n/a`，不写 PASS。
