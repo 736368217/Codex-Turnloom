@@ -1,4 +1,4 @@
-<#
+﻿<#
     publish-r2.ps1 — 把 Turnloom 的 APK 与更新清单发布到 Cloudflare R2（经 Worker 上传端点）。
 
     为什么走 Worker 而不是 R2 S3 端点：本机到 <account>.r2.cloudflarestorage.com
@@ -86,6 +86,13 @@ function Find-BuildTool([string]$name) {
 }
 
 if (-not $SkipSignatureCheck) {
+    # Fail closed on the VALUE, not on the parameter existing: under Windows
+    # PowerShell 5.1 a UTF-8 file without BOM is decoded as CP936, and a mangled
+    # line can silently drop this parameter (a $null expected value made
+    # `-notmatch ''` always true — the guard "passed" every APK).
+    if ($ExpectedCertSha256 -notmatch '^[0-9a-f]{64}$') {
+        Fail "expected cert sha256 is missing or malformed; refusing to publish (check the script encoding: it must be UTF-8 with BOM)"
+    }
     $apkSigner = Find-BuildTool 'apksigner.bat'
     if (-not $apkSigner) { $apkSigner = Find-BuildTool 'apksigner' }
     if (-not $apkSigner) { Fail "apksigner not found (set -AndroidHome). Publishing an unverified APK is refused; pass -SkipSignatureCheck to override." }
