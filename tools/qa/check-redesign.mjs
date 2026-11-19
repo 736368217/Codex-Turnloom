@@ -391,6 +391,70 @@ async function bootInto(base, label) {
   return (await waitForShell(25_000)) ? `${label}: 手动配对后进入` : `${label}: 配对后仍未进入`;
 }
 
+/** 设备面板：电脑 → 平台 → harness 三级。今天只有一台电脑、可能只有一个平台，
+ *  所以判据不是「卡片有几张」，而是三条结构性事实：
+ *  1) 带 data-machine 的节点同时只有一个值（跨机器串台是这类面板最容易出的错）；
+ *  2) 平台卡在电脑卡之下可见；
+ *  3) harness 行只在选中平台之后出现（选中前不预渲染，图 2 的「选了才露出」）。
+ *  面板不存在时整段 SKIP —— 不拿「没有主语」的格子当绿。 */
+async function probeDevicePanel() {
+  const entry = await browser.eval(`(() => {
+    const byAttr = document.querySelector('[data-qa="device-panel"], [data-qa="device"], [aria-label*="设备"]');
+    if (byAttr) return 'attr';
+    const byText = [...document.querySelectorAll('button, [role="button"]')]
+      .find((el) => /设备|电脑|DE 工作站/.test((el.textContent || '').trim()));
+    return byText ? 'text' : '';
+  })()`);
+  if (!entry) {
+    skip("设备面板", "还没有入口（电脑卡未落地）");
+    return;
+  }
+  await browser.eval(`(() => {
+    const el = document.querySelector('[data-qa="device-panel"], [data-qa="device"], [aria-label*="设备"]')
+      || [...document.querySelectorAll('button, [role="button"]')].find((node) => /设备|电脑|DE 工作站/.test((node.textContent || '').trim()));
+    el?.click();
+  })()`);
+  await sleep(700);
+
+  const facts = JSON.parse(await browser.eval(`(() => {
+    const machines = [...document.querySelectorAll('[data-machine]')].map((el) => el.getAttribute('data-machine'));
+    const platforms = [...document.querySelectorAll('[data-platform], .plat')].map((el) => (el.textContent || '').trim().slice(0, 20));
+    const harnessRows = [...document.querySelectorAll('[data-harness], .harness-row')].length;
+    return JSON.stringify({ machines, uniqueMachines: [...new Set(machines)], platforms, harnessRows,
+      text: (document.body.innerText || '').replace(/\\s+/g, ' ').slice(0, 160) });
+  })()`));
+  log(`设备面板 · ${JSON.stringify(facts)}`);
+
+  if (facts.machines.length === 0) {
+    skip("设备面板:data-machine", "面板里没有 data-machine 节点（控件未落地）");
+  } else {
+    check(facts.uniqueMachines.length === 1, "设备面板：data-machine 同时只有一个值", facts.uniqueMachines.join(","));
+  }
+
+  if (facts.platforms.length === 0) {
+    skip("设备面板:平台卡", "没有平台卡（data-platform / .plat）");
+    return;
+  }
+  check(facts.platforms.length >= 1, "设备面板：至少一张平台卡", facts.platforms.join(" / "));
+  check(facts.harnessRows === 0, "设备面板：选中平台之前不预渲染 harness 行", `rows=${facts.harnessRows}`);
+
+  const opened = await browser.eval(`(() => {
+    const card = document.querySelector('[data-platform], .plat');
+    if (!card) return false;
+    card.click();
+    return true;
+  })()`);
+  await sleep(700);
+  const after = JSON.parse(await browser.eval(`(() => ({
+    rows: [...document.querySelectorAll('[data-harness], .harness-row')].length,
+    text: (document.body.innerText || '').replace(/\\s+/g, ' ').slice(0, 200),
+  }))()`));
+  log(`设备面板 · 选中平台后 · ${JSON.stringify(after)}`);
+  check(Boolean(opened), "设备面板：平台卡可点", String(opened));
+  check(after.rows > 0, "设备面板：选中平台后露出 harness 行", `rows=${after.rows}`);
+  await browser.screenshot(path.join(OUT, "device-panel.png"));
+}
+
 async function main() {
   const cdpPort = Number(flag("cdp-port", "0")) || await freePort();
   browser = await new CDP({ port: cdpPort, width: 390, height: 844, scale: 3 }).launch();
@@ -580,6 +644,10 @@ async function main() {
         check(interrupt.length > 0, "点停止真的发出 /api/interrupt", `requests=${interrupt.length}`);
       }
       await browser.screenshot(path.join(OUT, "running-entry-390.png"));
+
+      await browser.clearStorage(base);
+      log(await bootInto(base, "device-panel"));
+      await probeDevicePanel();
 
       // ---- reduced motion: the same tap must land in one frame -----------
       await browser.setViewport(390, 844, 2);
