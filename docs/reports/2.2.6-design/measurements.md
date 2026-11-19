@@ -126,20 +126,24 @@ powershell -NoProfile -ExecutionPolicy Bypass -File tmp/shipped-measure.ps1 -Mod
 
 截图：`docs/qa/visual/2.2.6-before/<viewport>/`（**320 档含新控件，不作 2.2.5 基线**）。
 
-## 7｜落地复核：分段控件（2026-11-20 00:46，当前源码）
+## 7｜落地复核：分段控件（2026-11-20 00:56，当前源码）
 
-对象：`vite build` 自当前源码的 `index-96086YuR.js` · 789,997 B（不是 `app/dist`）。390 与 320 同结果。
+对象：`vite build` 自当前源码的 `index-DL-3kC4O.js` · 799.19 kB（不是 `app/dist`）。390 与 320 同结果。
 
 | 判据 | 结果 | 实测 |
 | :--- | :--- | :--- |
+| 紧凑居中（cell ≥88 / 合计 180–200 / ±1） | **PASS** | 92 + 92 = 184，中心偏移 0 |
 | thumb 落在选中段内 | **PASS** | 偏移 0、宽差 0；回切同样 0 |
-| 命中带 ≥44 | **PASS** | 带高 44（y 48–91），绘制盒 38 |
-| 滚动时控件不动 | **PASS** | 列表滚 600，控件 top 51→51；控件已在滚动容器外 |
+| 滚动时控件不动 | **PASS** | 滚 600，top 51→51（room 1334 / 1610） |
 | 无横向溢出 | **PASS** | `scrollWidth == viewport` |
-| reduce-motion | **PASS** | 4 条 `@media (prefers-reduced-motion: reduce)` 规则在包内 |
-| 单一 `data-machine` | **n/a** | 0 个节点，设备面板未落地——**没有主语就不记 PASS**，落地后单独一行给结论 |
+| reduce-motion | **PASS** | 6 条 `@media (prefers-reduced-motion: reduce)` 规则在包内 |
+| 命中带 ⊂ 轨道 | **FAIL** | 带 47–92（高 **46**），轨道 48–92（高 44），上沿冒出 1px |
+| 单一 `data-machine` | **n/a** | 节点 0，设备面板未接——**没有主语就不记 PASS** |
 
-负向对照：同一脚本跑随包 2.2.5 → `thumbInCell` FAIL（无 thumb）、`pinnedWhileScroll` FAIL（控件在滚动容器内）。
+命中带超标的原因：`::before inset:-4px` 把 38 的 cell 撑成 46（+2×4），比 44 的轨道高 2px；
+`inset:-3px` 正好 44 且落在轨道内。Rhea 的三点采样能证明归属，量不出边界；边界只有逐像素扫能看出。
+
+负向对照（同一脚本跑随包 2.2.5）：`thumbInCell` FAIL（无 thumb）、`pinnedWhileScroll` FAIL（控件在滚动容器内）。
 脚本另加了 guard：`scrollTop < 100` 一律 FAIL 并标 `inconclusive`——短列表曾让这条假通过一次。
 
 口径要求（NB3 00:50 升级为通用规则）：**先证明被测对象有被测量的余地**（滚动量、节点数、可选段数），否则记 `inconclusive` / `n/a`，不写 PASS。
