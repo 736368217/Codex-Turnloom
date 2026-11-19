@@ -12,7 +12,7 @@
 
 3. **裸解包起不来**：`turnloom-2.2.5-server.zip` 直接解压跑 `node server.js` 会缺 `qrcode-terminal` 等依赖，必须 `npm ci --omit=dev`。升级脚本会做这一步，但冒烟测试若直接裸跑会得到假红。**验收**：冒烟脚本固定成「解包 → npm ci → 起服务 → 读 health」，或在包里显式声明依赖。
 
-3b. **测试流量写进生产日志**：36 个测试文件会 `spawn` 一个 `server.js`，其中只有 `desktop-release.test.cjs` 与 `server-logging.test.js` 设了 `TURNLOOM_LOG_DIR`；其余都落到 `%LOCALAPPDATA%\CodexPocket\logs\server-YYYYMMDD.log`。实测今天那份日志里最后 800 行有 86 条测试请求（`http-approval-thread` 的 409/403、401、`/api/threads` 502），混在真实流量里。**后果**：「上传日志」给 Human 看的包里，会有一批看起来像真实故障的 4xx/5xx。**验收**：测试 spawn 时默认注入临时 `TURNLOOM_LOG_DIR`（或 `server.js` 在 `NODE_TEST_CONTEXT` 下默认写临时目录），并加一条断言：跑完测试后生产日志目录的字节数不变。
+3b. ✅ **已完成（`5c68386`，2026-11-19 21:30）**：`resolveLogDir()` 在 `NODE_TEST_CONTEXT` 存在时返回临时目录（`node --test` 给测试进程及其 spawn 的子进程都打这个标记），显式 `TURNLOOM_LOG_DIR` 仍优先、生产路径不变；`test/log-hygiene` 两层判据带负向对照。**我的独立复核**：跑 `http-approval-route` + `app-release` 共 8 个用例，生产日志里 `http-approval-thread` 计数 486 → 486（零增长）。
 
 ## B. 模型后端能力
 
