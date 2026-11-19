@@ -7,6 +7,7 @@ import { haptic, requestQrScan } from '../lib/nativeBridge';
 import { parseMachinePairingPayload, manualPairing, type MachinePairing } from '../lib/machinePairing';
 import { connectWithPairing, useSessionState, setConnectionError, switchHarness, unpair, stopConnecting } from '../state/sessionStore';
 import { openSheet } from '../state/sheetStore';
+import CupertinoSheetHost from '../components/CupertinoSheetHost';
 import { runUpdateCheck } from '../lib/updateChannel';
 
 export default function ConnectScreen({ onRevalidate }: { onRevalidate?: () => void }) {
@@ -186,5 +187,8 @@ export default function ConnectScreen({ onRevalidate }: { onRevalidate?: () => v
         </section>
       </div>
     </main>
+    {/* This screen renders its own Konsta <App>, outside AppShell. Without a host
+        here, 「查看并安装」 opened the update sheet into nothing. */}
+    <CupertinoSheetHost />
   </App>;
 }
