@@ -241,6 +241,10 @@ function QuoteSheet({ open, onClose, onPick }: {
   const [query, setQuery] = useState('');
   const [skills, setSkills] = useState<SkillEntry[]>([]);
   const [plugins, setPlugins] = useState<PluginEntry[]>([]);
+  // "this host does not list them" is not "this machine has none": a relay answers
+  // 200 with `unavailable`/`codexHome:null`, a local host answers with a real path.
+  const [skillList, setSkillList] = useState<'idle' | 'ready' | 'unavailable'>('idle');
+  const [pluginList, setPluginList] = useState<'idle' | 'ready' | 'unavailable'>('idle');
   const [loading, setLoading] = useState(false);
   const loaded = useRef(false);
   const needle = query.trim().toLowerCase();
@@ -256,11 +260,27 @@ function QuoteSheet({ open, onClose, onPick }: {
       const [skillResult, pluginResult] = await Promise.all([getSkills(context), getPlugins(context)]);
       if (skillResult.ok) {
         const value = skillResult.data;
-        setSkills(Array.isArray(value) ? value : value.skills || []);
+        if (Array.isArray(value)) {
+          setSkills(value);
+          setSkillList('ready');
+        } else {
+          setSkills(value.skills || []);
+          setSkillList(value.unavailable || value.codexHome === null ? 'unavailable' : 'ready');
+        }
+      } else {
+        setSkillList('unavailable');
       }
       if (pluginResult.ok) {
         const value = pluginResult.data;
-        setPlugins(Array.isArray(value) ? value : value.plugins || []);
+        if (Array.isArray(value)) {
+          setPlugins(value);
+          setPluginList('ready');
+        } else {
+          setPlugins(value.plugins || []);
+          setPluginList(value.unavailable || value.codexHome === null ? 'unavailable' : 'ready');
+        }
+      } else {
+        setPluginList('unavailable');
       }
       setLoading(false);
     })();
@@ -304,7 +324,11 @@ function QuoteSheet({ open, onClose, onPick }: {
             <span className="tl-quote-preview">{row.preview || '（无预览）'}</span>
           </button>
         ))}
-        {tab === 'skill' && (loading && skillRows.length === 0 ? <p className="tl-quote-empty">正在读取技能…</p> : skillRows.length === 0 ? <p className="tl-quote-empty">没有可引用的技能</p> : null)}
+        {tab === 'skill' && (loading && skillRows.length === 0
+          ? <p className="tl-quote-empty">正在读取技能…</p>
+          : skillRows.length === 0
+            ? <p className="tl-quote-empty">{skillList === 'unavailable' ? '当前连接方式不列出技能' : '没有可引用的技能'}</p>
+            : null)}
         {tab === 'skill' && skillRows.map((row) => (
           <button key={`skill-${row.name}`} type="button" role="option" aria-selected={false} className="tl-quote-row tl-press"
             onClick={() => { haptic('selection'); onPick(`@技能 ${row.label}\nuri: ${row.uri || `skill://${row.name}`}\n`); }}>
@@ -312,7 +336,11 @@ function QuoteSheet({ open, onClose, onPick }: {
             <span className="tl-quote-preview">{row.note || row.uri}</span>
           </button>
         ))}
-        {tab === 'plugin' && (loading && pluginRows.length === 0 ? <p className="tl-quote-empty">正在读取插件…</p> : pluginRows.length === 0 ? <p className="tl-quote-empty">没有可引用的插件</p> : null)}
+        {tab === 'plugin' && (loading && pluginRows.length === 0
+          ? <p className="tl-quote-empty">正在读取插件…</p>
+          : pluginRows.length === 0
+            ? <p className="tl-quote-empty">{pluginList === 'unavailable' ? '当前连接方式不列出插件' : '没有可引用的插件'}</p>
+            : null)}
         {tab === 'plugin' && pluginRows.map((row) => (
           <button key={`plugin-${row.name}`} type="button" role="option" aria-selected={false} className="tl-quote-row tl-press"
             onClick={() => { haptic('selection'); onPick(`@插件 ${row.label}\nuri: ${row.uri || `plugin://${row.name}`}\n`); }}>

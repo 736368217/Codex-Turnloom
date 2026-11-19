@@ -487,8 +487,11 @@ export const getAppUpdate = (context: RequestContext): Promise<ApiResult<AppUpda
 /** 引用菜单的取数：技能/插件都只读，插件用 compact 形状（不带内联图标，4.7 KB）。 */
 export interface SkillEntry { name?: string; displayName?: string; description?: string; uri?: string }
 export interface PluginEntry { name?: string; displayName?: string; description?: string; marketplace?: string; uri?: string }
-export type SkillList = { skills?: SkillEntry[] } | SkillEntry[];
-export type PluginList = { plugins?: PluginEntry[] } | PluginEntry[];
+// A relay answers 200 with `unavailable:true` (or `codexHome:null`) when it cannot
+// list these; a local host answers with a real `codexHome` path. The UI must not
+// render the first case as "this machine has none".
+export type SkillList = { skills?: SkillEntry[]; codexHome?: string | null; unavailable?: boolean; reason?: string } | SkillEntry[];
+export type PluginList = { plugins?: PluginEntry[]; codexHome?: string | null; unavailable?: boolean; reason?: string } | PluginEntry[];
 export const getSkills = (context: RequestContext): Promise<ApiResult<SkillList>> => get(context, '/api/skills');
 export const getPlugins = (context: RequestContext): Promise<ApiResult<PluginList>> => get(context, '/api/plugins', { compact: 1 });
 
