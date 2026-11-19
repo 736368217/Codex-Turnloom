@@ -40,6 +40,9 @@ const EVAL_RAW = arg("eval", "");
 const EVAL = EVAL_RAW.startsWith("@") ? readFileSync(EVAL_RAW.slice(1), "utf8") : EVAL_RAW;
 const CSS_RAW = arg("css", "");
 const CANDIDATE_CSS = CSS_RAW.startsWith("@") ? readFileSync(CSS_RAW.slice(1), "utf8") : CSS_RAW;
+// `--fail-api /api/app/update` makes the injected bridge answer that path with
+// status 0 (transport failure), for "the check failed quietly" states.
+const FAIL_API = arg("fail-api", "");
 const PORT = Number(arg("port", "9333"));
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -47,7 +50,8 @@ const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 // ---------------------------------------------------------------------------
 // Injected native bridge (the only difference from a real Android WebView)
 // ---------------------------------------------------------------------------
-function bridgeSource({ seed, fixture, machineName }) {
+function bridgeSource({ seed, fixture, machineName, failApi }) {
+  const failMatch = failApi ? JSON.stringify(String(failApi)) : "null";
   const machine = seed ? JSON.stringify({
     machineId: "qa-visual-machine",
     machineName,
@@ -87,6 +91,13 @@ function bridgeSource({ seed, fixture, machineName }) {
     request(requestId, payloadJson) {
       let payload = {};
       try { payload = JSON.parse(payloadJson) || {}; } catch { payload = {}; }
+      // --fail-api: make one endpoint look like a transport failure (status 0), so
+      // "check failed quietly" states can be exercised without touching the fixture.
+      const failOn = ${failMatch};
+      if (failOn && String(payload.url || "").includes(failOn)) {
+        setTimeout(() => window.__turnloomNativeHttpResult(requestId, JSON.stringify({ status: 0, body: "", error: "qa-fail-api" })), 30);
+        return;
+      }
       const init = { method: payload.method || "GET", headers: payload.headers || {} };
       if (typeof payload.body === "string") init.body = payload.body;
       fetch(payload.url, init)
@@ -362,6 +373,7 @@ async function runScenario(cdp, scenario, view, outDir) {
       seed: scenario.seed !== false,
       fixture: FIXTURE,
       machineName: "QA 工作站",
+      failApi: FAIL_API,
     }),
   });
   try {

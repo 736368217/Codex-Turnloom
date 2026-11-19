@@ -95,11 +95,13 @@ export function UpdatePanel() {
 
   // The source line is the acceptance surface for the fallback chain: it prints who
   // actually answered, so "无需更新" can never be read as a public-channel answer.
+  // The port is dropped — it says nothing at a glance and pushes the line past 320px.
+  const shortHost = (value?: string | null) => (value ? value.replace(/:\d+$/, '') : '电脑');
   const sourceLine = (() => {
-    if (source === 'public') return `来源 · 公网 ${host || PUBLIC_HOST_FALLBACK}`;
+    if (source === 'public') return `来源 · 公网 ${host ? shortHost(host) : PUBLIC_HOST_FALLBACK}`;
     if (source === 'server') {
       // 2.2.3 only answers "who answered". 无清单/清单异常/传输失败的细分留给 publicReason（2.2.4）。
-      return publicError ? `来源 · 公网不可达 → 电脑端 ${host || '电脑'}` : `来源 · 电脑端 ${host || '电脑'}`;
+      return publicError ? `来源 · 公网不可达 → 电脑端 ${shortHost(host)}` : `来源 · 电脑端 ${shortHost(host)}`;
     }
     return '来源 · —';
   })();
@@ -117,7 +119,7 @@ export function UpdatePanel() {
         </div>
         <div
           data-qa="update-source"
-          style={{ fontSize: 12, lineHeight: '17px', color: COLORS.labelSecondary, marginTop: 4, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
+          style={{ fontSize: 12, lineHeight: '17px', color: COLORS.labelSecondary, marginTop: 4, overflowWrap: 'anywhere' }}
         >
           {sourceLine}
         </div>
