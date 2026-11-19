@@ -155,15 +155,15 @@
 
   <div class="kicker">Turnloom · 设计轮</div>
   <h1>把「切换」做成一件看得懂的事</h1>
-  <div class="meta">2026-11-20 00:42 第二稿 · 依据 2.2.5 已发布构建（94）与仓库当前实现 · 本页只做设计与规范，不改已发布包 · 第二稿按数据契约补了「单平台 / 不探活 / 无逐行地址」三处降级态</div>
+  <div class="meta">2026-11-20 00:45 第三稿 · 依据随包 2.2.5（<code>index-CC0SxfnI.js</code> 784,932 B / <code>18b7bbf</code>）与仓库当前实现 · 只做设计与规范，不改已发布包 · 第三稿补：固定区/滚动区分界、11px 最小字号、命中带实测</div>
 
   <div class="lede">
     <h2>先说结论</h2>
     <ol>
       <li><b>「按时间/按项目」不是回退了，是从来没做成图1那样。</b>发布版里是两个各自填充的药丸（选中变黑），不是一条 track 里滑动的 thumb。提交 <code>dc07ebb</code> 只改了 CSS 的排布，把它变成「可横滑的药丸条」——字面上满足了「胶囊、可滑」，视觉上不是图1。我当时验收看的是「两个视图各 5 行、44px 命中」，没有对着图1 比控件本身，这是我的漏项。</li>
       <li><b>「监控」这个 tab 不必要。</b>它四块内容里，三块在别处已经存在且同源（连接状态=头部徽标、会话数=列表长度、运行中=列表状态点）；唯一有行动价值的是「停止运行中的任务」，而那件事应该在你看到那个任务的地方做。</li>
-      <li><b>设备层级要三级，而且一次只露一层</b>：电脑 → 平台（Codex / PI）→ 该平台下的入口。现在的「切换电脑上的服务」把第二、三层平铺成一个列表，看不出它们属于哪台电脑。</li>
-      <li><b>删一个 tab、并两处、加一层动画。</b>底栏从 3 变 2；头部四行压成一张设备卡；会话行从四个元素收到两行。</li>
+      <li><b>设备层级要三级，而且一次只露一层</b>：电脑 → 平台（Codex / PI）→ 该平台下的 harness（服务入口）。现在的「切换电脑上的服务」把第二、三层平铺成一个列表，看不出它们属于哪台电脑。</li>
+      <li><b>删一个 tab、并两处、加一层动画。</b>底栏从 3 变 2；会话页头部加一张常驻设备卡；会话行从三块（状态图标 / 标题+时间 / 预览）收到两行，项目进 meta。</li>
     </ol>
   </div>
 
@@ -185,7 +185,7 @@
         <td><b>视图切换</b></td>
         <td>两个独立药丸，选中项黑底白字（<code>.tl-filter-chip.is-active</code>）</td>
         <td>必要性高（要切视图）；易读性差：实心黑与 iOS 语义冲突，也读不出「这是一个开关的两侧」</td>
-        <td><span class="verdict v-change">改成图1</span> 单条 track + 滑动 thumb，300ms 跟手动画</td>
+        <td><span class="verdict v-change">改成图1</span> 单条 track + 滑动 thumb，300ms 跟手动画；控件移出滚动容器</td>
       </tr>
       <tr>
         <td><b>会话页头部</b></td>
@@ -197,7 +197,7 @@
         <td><b>切换服务抽屉</b></td>
         <td>平铺的 <code>TapRow</code> 列表，标题「切换电脑上的服务」</td>
         <td>必要性高；<b>层级缺失</b>：看不出这些服务在哪台电脑下，也看不出换过去以后会话、模型会跟着变</td>
-        <td><span class="verdict v-change">三级隶属</span> 电脑卡 → 平台 → 入口，选谁才露谁</td>
+        <td><span class="verdict v-change">三级隶属</span> 电脑卡 → 平台 → harness，选谁才露谁</td>
       </tr>
       <tr>
         <td><b>会话行</b></td>
@@ -209,7 +209,7 @@
         <td><b>搜索框</b></td>
         <td>常驻 44px</td>
         <td>必要性中（49 条会话确实要搜）；便利性中：常驻占了首屏最贵的一条</td>
-        <td><span class="verdict v-keep">保留但收起</span> 滚动收成图标，下拉展开</td>
+        <td><span class="verdict v-keep">留在滚动区顶部</span> 滚下去自然收起、回到顶部再现；不常驻、不做浮动图标</td>
       </tr>
       <tr>
         <td><b>设置里的运行信息 / 更新</b></td>
@@ -319,7 +319,7 @@
           </div>
         </div>
       </div>
-      <p class="note">头四行并成一张卡：电脑名 + 平台 + 在线点 + 模型 chip。分段是单条 track，thumb 只做 <code>translateX</code>，不重排文字。</p>
+      <p class="note">头四行并成一张卡：电脑名 + 平台 + 在线点 + 模型 chip。分段是单条 track，thumb 只做 <code>translateX</code>，不重排文字。<b>分段固定在滚动容器之外</b>（搜索留在滚动区顶部，回顶部就能用）——2.2.5 的 rail 在 <code>.tl-thread-scroll</code> 里，Vera 实测 <code>scrollTop=600</code> 时 rail 从 y=100 变 y=-500；翻到列表中段想切视图必须先滚回顶部，换样式解决不了，必须换位置。</p>
     </div>
   </div>
 
@@ -330,8 +330,19 @@
     <li><b>命中区不变</b>：track 高 44，两个 cell 各占一半，拇指在轨道内移动——按下哪里就切哪个，没有「跟手位移改变点击几何」的老问题。</li>
   </ul>
 
-  <h2>3 · 设备层级：电脑 → 平台 → 入口</h2>
-  <p>按图2 的隶属关系，一次只露一层：点电脑才露它的平台，点平台才露它下面的入口。下面的原型可以点：点另一台电脑会收起当前分支、展开新的；点平台会展开入口，带一点错位延迟，让人看清「这几个属于上面那一个」。</p>
+  <h3>控件必须钉住，不能跟着列表一起滚走</h3>
+  <p>实测随包 2.2.5：<code>.tl-thread-filters</code> 在 <code>.tl-thread-scroll</code> <b>内部</b>，<code>scrollTop=600</code> 时 rail 从 <code>y=100</code> 掉到 <code>y=-500</code>，390/360/320 三档一致。也就是说会话有 49 条时，想切「按时间/按项目」得先滚回顶部——<b>换一条灰轨道加 thumb 并不能解决这件事</b>，所以这一轮把分界一起定死：</p>
+  <table>
+    <thead><tr><th>区</th><th>放什么</th></tr></thead>
+    <tbody>
+      <tr><td><b>固定区</b>（不滚）</td><td>标题行（44，含「+」）＋ 分段控件（44）；两者贴在安全区下沿，列表从它们下面开始滚</td></tr>
+      <tr><td><b>滚动区</b></td><td>搜索框（在顶部，滚下去自然收起）→ 置顶组 → 会话列表 → 加载控件</td></tr>
+    </tbody>
+  </table>
+  <p class="note">代价是固定区长期占掉约 88px 加安全区；换来的是列表在任何位置都能一键切视图。搜索留在滚动区顶部而不是常驻，是 iOS 的分工——它低频、回顶部就能用，不需要新 JS，也不用长住 44px。</p>
+
+  <h2>3 · 设备层级：电脑 → 平台 → harness（入口）</h2>
+  <p>按图2 的隶属关系，一次只露一层：点电脑才露它的平台，点平台才露它下面的 harness。下面的原型可以点：点另一台电脑会收起当前分支、展开新的；点平台会展开 harness，带一点错位延迟，让人看清「这几个属于上面那一个」。</p>
 
   <div class="frames">
     <div class="frame-col" style="max-width:400px">
@@ -339,7 +350,7 @@
       <div class="phone">
         <div class="statusbar"><span>9:41</span><span>●●● ⌁ ▮</span></div>
         <div class="ph" style="padding-bottom:18px">
-          <div class="hub-title">设备 <span>2 台已配对 · 目标形态</span></div>
+          <div class="hub-title">设备 <span>2 台已配对 · 示例</span></div>
 
           <div class="devstack">
             <button class="devcard on" data-dev="win" type="button">
@@ -396,9 +407,18 @@
                 </div>
               </div>
             </div>
+
+            <div style="display:flex;align-items:center;gap:11px;margin-top:8px;padding:11px 12px;border:1.5px dashed rgba(0,122,255,.32);border-radius:14px;background:rgba(0,122,255,.045);color:var(--blue)">
+              <div style="width:38px;height:38px;border-radius:11px;display:grid;place-items:center;background:#fff;font-size:20px;box-shadow:0 1px 2px rgba(0,0,0,.05)">+</div>
+              <div style="flex:1;min-width:0">
+                <div style="font-size:13px;font-weight:650">添加一台电脑</div>
+                <div style="font-size:11px;color:var(--label2);margin-top:2px">扫码或输入地址 · 复用现有配对流程</div>
+              </div>
+              <span style="font-size:11px;font-weight:700;color:var(--blue)">2.2.6</span>
+            </div>
           </div>
 
-          <p class="note" style="margin:14px 0 0;text-align:center">点上面两张电脑卡切换 · 点平台展开入口</p>
+          <p class="note" style="margin:14px 0 0;text-align:center">点上面两张电脑卡切换 · 点平台展开 harness · 添加电脑走配对 sheet</p>
         </div>
       </div>
     </div>
@@ -420,7 +440,7 @@
         </div>
         <div class="card">
           <h4>拟物只用在「电脑」这一层</h4>
-          <p>电脑卡里有一台小笔记本（屏 + 底座）；平台和入口都是纯卡片。拟物是层级线索，不是装饰：只有「这是一台机器」这个事实值得用图形说。</p>
+          <p>电脑卡里有一台小笔记本（屏 + 底座）；平台和 harness 都是纯卡片。拟物是层级线索，不是装饰：只有「这是一台机器」这个事实值得用图形说。</p>
         </div>
         <div class="card">
           <h4>单平台时，只有一张卡</h4>
@@ -428,13 +448,17 @@
         </div>
         <div class="card">
           <h4>不显示假绿灯</h4>
-          <p>非当前电脑<b>不做实时探活</b>（探测会翻全局请求作用域、打断当前机器的在途请求），所以它们不配红/绿灯，只写「上次使用 3 小时前」。入口行的「在线」也只是<b>发现那一刻</b>的快照，不写「实时」。</p>
+          <p>非当前电脑<b>不做实时探活</b>（探测会翻全局请求作用域、打断当前机器的在途请求），所以它们不配红/绿灯，只写「上次使用 3 小时前」。harness 行的「在线」也只是<b>发现那一刻</b>的快照，不写「实时」。</p>
+        </div>
+        <div class="card">
+          <h4>「配对另一台」放哪</h4>
+          <p>面板底部一行虚线卡 → <b>全屏</b>配对页，返回回到面板，配对成功不清已有列表。不放半屏抽屉：那一步要开相机扫码，塞进抽屉后权限弹窗和取景框都会挤。</p>
         </div>
       </div>
     </div>
   </div>
 
-  <p class="note"><b>原型按 2 台画，方便看切换；现状只持久化 1 台</b>（<code>PersistedMachine</code> 单对象，<code>sessionStore.ts:29-36</code>）。2.2.6 要落设备注册表 + 旧数据迁移；若这轮超盒，先做单机 + 数据驱动卡片，第二张卡等注册表。第三层是 <b>harness（服务入口）</b>，不是模型——模型选择仍在聊天右上角的面板里，别把两层混在一起。</p>
+  <p class="note"><b>原型按 2 台画；state 层已落</b>（<code>3d04843</code>：<code>machines[]</code>、旧单对象自动迁移、<code>switchMachine/forgetMachine</code>）。今天真机只有 1 台，所以默认看到一张电脑卡；第二台通过「添加一台电脑」的配对流程加入。第三层是 <b>harness（服务入口）</b>，不是模型——模型选择仍在聊天右上角的面板里，别把两层混在一起。</p>
 
   <h3>换设备/换平台时，哪些东西跟着变</h3>
   <dl class="kv">
@@ -479,10 +503,15 @@
       <tr><td>分段控件</td><td>track 高 <b>44</b>，内边距 3，圆角 999；thumb 白底 + <code>0 1px 2px rgba(0,0,0,.10)</code> + <code>0 0 0 .5px rgba(0,0,0,.03)</code>；位移 <code>translateX(index × 100%)</code></td></tr>
       <tr><td>分段动效</td><td><b>300ms</b>，<code>cubic-bezier(.32,.72,0,1)</code>；文字透明度 200ms；不缩放 thumb</td></tr>
       <tr><td>设备分支展开</td><td>高度 <b>340ms</b> 同曲线；脊柱 <code>scaleY</code> <b>300ms</b> 延迟 60ms；平台卡 <b>220ms</b>，错位 50ms</td></tr>
-      <tr><td>平台→入口展开</td><td>高度 <b>260ms</b>；入口行 <b>200ms</b>，错位 40ms</td></tr>
+      <tr><td>平台→harness 展开</td><td>高度 <b>260ms</b>；harness 行 <b>200ms</b>，错位 40ms</td></tr>
       <tr><td>设备卡选中态</td><td>边框 <code>rgba(0,122,255,.55)</code>、<code>translateY(-1px)</code>、升起的蓝色投影；未选中 <code>scale(.985)</code> + 透明度 .72；全部 220ms</td></tr>
-      <tr><td>命中区</td><td>电脑卡 ≥ 64；平台卡 ≥ 56；入口行 ≥ 44；分段 cell = track 的一半宽 × 44</td></tr>
+      <tr><td>命中区</td><td>电脑卡 ≥ 64；平台卡 ≥ 56；harness 行 ≥ 44；分段 cell = track 的一半宽 × 44</td></tr>
+      <tr><td>命中带</td><td>44 就是全部，不外扩：2.2.5 实测 chip 外 3px 已回滚动容器——别指望伪元素补面积</td></tr>
+      <tr><td>固定区</td><td>标题 44 + 分段 44 贴在安全区下沿；判据是 <code>scrollTop=600</code> 时分段仍在可视区</td></tr>
+      <tr><td>字号下限</td><td>正文最小 <b>11px</b>（2.2.5 现状即 11px、正文最低对比度 5.37:1），新设计不得再往下压</td></tr>
       <tr><td>降级</td><td><code>prefers-reduced-motion</code> 下关闭以上所有 transition（不是缩短）</td></tr>
+      <tr><td>控件位置</td><td>分段固定在列表滚动容器之外；搜索留在滚动区顶部；滚动到列表中段仍可切视图</td></tr>
+      <tr><td>最小字号</td><td><b>11px</b>（2.2.5 实测下限）；新设计不再往下压</td></tr>
     </tbody>
   </table>
 
@@ -491,10 +520,11 @@
     <p><code>docs/option-a/UI_SPEC.md</code> 增补两条，验收对着它查：</p>
     <ul class="tight">
       <li><b>分段控件</b>：必须是「一条 track + 一个 thumb」。禁止用两个各自填充的背景色表示选中（现状 <code>.tl-filter-chip.is-active</code> 的黑底药丸即为反例）。禁止用 <code>left</code>/<code>width</code> 做动画；只允许 <code>transform</code>。</li>
-      <li><b>设备层级</b>：必须是「电脑 → 平台 → 入口」三级；切换电脑时才渲染该电脑的平台，切换平台时才渲染入口。禁止把三层平铺进同一个列表（现状「切换电脑上的服务」抽屉即为反例）。</li>
+      <li><b>设备层级</b>：必须是「电脑 → 平台 → harness（入口）」三级；切换电脑时才渲染该电脑的平台，切换平台时才渲染 harness。禁止把三层平铺进同一个列表（现状「切换电脑上的服务」抽屉即为反例）。</li>
       <li><b>平台判别</b>：平台 = <code>harness.kind</code> + 显示名映射。新增/区分平台前，先确保 <code>deploy/machine.example.json</code> 里那一行的 <code>kind</code> 写对（PI 那行今天是 <code>codex</code>）。禁止在 UI 里按 <code>name</code> 字符串猜平台。</li>
+      <li><b>分段控件的位置</b>：必须放在滚动容器<b>之外</b>。放进 <code>.tl-thread-scroll</code> 就会随列表滚走（2.2.5 实测 <code>scrollTop=600</code> 时 rail 到 <code>y=-500</code>），这条与「长什么样」同等重要。</li>
     </ul>
-    <p class="note">这两条都能写成机器判据：DOM 里存在且只有一个 <code>[data-seg-thumb]</code>；点击第二个 cell 后 thumb 的 <code>getBoundingClientRect().left</code> 落在第二个 cell 内 ±1px；设备切换后 DOM 中平台节点的 <code>data-machine</code> 只有一个值。</p>
+    <p class="note">这些都能写成机器判据：DOM 里存在且只有一个 <code>[data-seg-thumb]</code>；点击第二个 cell 后 thumb 的 <code>getBoundingClientRect().left</code> 落在第二个 cell 内 ±1px；设备切换后 DOM 中平台节点的 <code>data-machine</code> 只有一个值。</p>
   </div>
 
   <h2>7 · 分工（2.2.6 / 95）</h2>
@@ -503,19 +533,20 @@
     <tbody>
       <tr><td><b>Iris</b></td><td>会话页：单 track 分段 + thumb 动画；头部设备卡；会话行两行化；运行条</td><td>390/360/320 无溢出；截图与本节原型一致</td></tr>
       <tr><td><b>Atlas</b></td><td>设备注册表：单机 → 设备列表 + 当前设备；每设备各自的平台/离线/上次同步；删监控 tab 的数据依赖归位</td><td>对 UI 暴露 <code>machines[] / switchMachine(id) / forgetMachine(id)</code>；键仍为 <code>turnloom.machine.v2</code>，值升到 <code>{version:3, activeMachineId, machines[]}</code>，旧单对象自动迁移；非活动机器不探活</td></tr>
-      <tr><td><b>Vera</b></td><td>上面的机器判据 + 真机三档截图（夹具 / 真数据 / 真机）</td><td>thumb 位移断言、无 <code>.tl-filter-chip</code>、设备分支单一、reduce-motion</td></tr>
+      <tr><td><b>Vera</b></td><td>上面的机器判据 + 真机三档截图（夹具 / 真数据 / 真机）</td><td>thumb 位移落在第二个 cell ±1px、无 <code>.tl-filter-chip</code>、设备分支单一、reduce-motion、<b>scrollTop=600 时分段仍在可视区</b>、命中带 44 不外扩</td></tr>
       <tr><td><b>Rhea</b></td><td>2.2.6 / 95 出包与签名</td><td>与 2.2.5 同证书；升级路径不变</td></tr>
     </tbody>
   </table>
 
   <h2>8 · 现状证据（给不信任结论的人）</h2>
+  <p class="note">本节的「现状」数字钉在随包 2.2.5（<code>index-CC0SxfnI.js</code> 784,932 B / <code>18b7bbf</code>）。<code>app/dist</code> 在 00:27 已被重建（<code>index-CE_TA6v0.js</code>），不是 2.2.5 基线；验收记录必须写 asset 文件名 + 字节数。</p>
   <table>
     <thead><tr><th>说法</th><th>证据</th></tr></thead>
     <tbody>
       <tr><td>分段控件仍是两个独立药丸</td><td><code>app/src/screens/ThreadsScreen.tsx:167-180</code> 渲染两个 <code>tl-filter-chip</code> 按钮；<code>globals.css:1535-1543</code> 里选中态是 <code>background: var(--tl-label-primary)</code>（黑底白字），没有 track，也没有 thumb</td></tr>
       <tr><td>「可滑动药丸条」只是排版</td><td><code>dc07ebb</code> 只改 <code>globals.css</code>（12+/4−）：<code>overflow-x:auto</code> + 44px 高 + 圆角。视觉上仍是两个各自填充的药丸</td></tr>
       <tr><td>服务切换是平铺列表</td><td><code>app/src/components/CupertinoSheetHost.tsx:40-62</code>：<code>session.harnesses.map(...)</code> 直接列 <code>TapRow</code>，没有电脑这一层</td></tr>
-      <tr><td>只有一台电脑能存</td><td><code>app/src/state/sessionStore.ts:29-36</code> <code>PersistedMachine</code> 是单对象；<code>STORAGE_KEY</code> 只存一份。多设备要加注册表</td></tr>
+      <tr><td>2.2.5 只存一台；现在已列表化</td><td>2.2.5：<code>PersistedMachine</code> 单对象（<code>sessionStore.ts:29-36</code>）。<code>3d04843</code> 起：<code>{version:3, activeMachineId, machines[]}</code>，旧单对象自动迁移，12 条单测覆盖</td></tr>
       <tr><td>监控页的三项与别处同源</td><td><code>MonitorsScreen.tsx:57-71</code> 的「运行中」来自 <code>data.threads</code>+<code>statusByThread</code>（列表同源）；连接状态与顶部连接横幅 <code>AppShell.tsx:48-61</code>、设置页 <code>SettingsScreen.tsx:219</code> 同源</td></tr>
       <tr><td>会话行是「状态图标 + 标题/时间 + 预览」</td><td><code>TaskStream.tsx:85-95</code>：左侧 <code>tl-thread-state</code> 图标、<code>tl-thread-top</code> 标题+时间、<code>tl-thread-preview</code>；<code>status</code> 只在归档时渲染，不是每行都有「已完成」胶囊</td></tr>
     </tbody>
