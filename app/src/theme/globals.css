@@ -1523,24 +1523,57 @@ button:focus-visible, a:focus-visible { outline: 2px solid var(--tl-blue); outli
   display: grid; place-items: center; border: 0; background: transparent; color: var(--tl-label-secondary);
 }
 
-/* A horizontally scrollable pill strip, not two centred buttons: the row keeps
-   growing as views are added, and the rail scrolls instead of wrapping. */
+/* iOS segmented control (2.2.6). One rail, one sliding thumb, two equal
+   cells — the 图1 shape at app scale: 44px track, 3px inset, 12px radius.
+   Content-sized and centred, because two full-width halves would read as a
+   big toggle instead of the compact App Store control the human pointed at.
+   `.tl-filter-chip` / `.is-active` stay as QA hooks only. */
+.tl-thread-head { flex: 0 0 auto; background: var(--tl-canvas); }
 .tl-thread-filters {
-  flex: 0 0 auto; display: flex; gap: 8px; padding: 2px 16px 12px;
-  justify-content: flex-start;
-  overflow-x: auto; overflow-y: hidden;
-  scrollbar-width: none; -webkit-overflow-scrolling: touch;
+  flex: 0 0 auto; display: flex; justify-content: center; padding: 0 16px 10px;
 }
-.tl-thread-filters::-webkit-scrollbar { display: none; }
-.tl-filter-chip {
-  position: relative; flex: 0 0 auto; height: 44px; padding: 0 20px;
-  border: 0; border-radius: 999px; background: var(--tl-surface);
-  color: #3C3C43; font-size: 14px; font-weight: 600; white-space: nowrap;
+.tl-segmented {
+  position: relative; display: inline-flex; align-items: stretch;
+  height: 44px; max-width: 100%; padding: 3px;
+  border-radius: 12px; background: rgba(118, 118, 128, .12);
 }
-/* 44px visible and 44px tappable — no pseudo-element needed at this size. */
-.tl-filter-chip::before { content: ''; position: absolute; inset: 0; }
-.tl-filter-chip.is-active { background: var(--tl-label-primary); color: #FFFFFF; }
-.tl-filter-chip:active { opacity: .72; }
+.tl-segmented-thumb {
+  position: absolute; top: 3px; bottom: 3px; left: 3px;
+  width: calc((100% - 6px) / var(--tl-seg-count, 2));
+  border-radius: 9px; background: #FFFFFF;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, .10), 0 3px 8px -4px rgba(0, 0, 0, .18), 0 0 0 .5px rgba(0, 0, 0, .03);
+  transform: translateX(calc(var(--tl-seg-index, 0) * 100%));
+  transition: transform 240ms cubic-bezier(.32, .72, 0, 1);
+  pointer-events: none;
+}
+.tl-segmented-item {
+  position: relative; z-index: 1; flex: 1 1 0;
+  min-width: 92px; height: 38px; padding: 0 12px;
+  display: inline-flex; align-items: center; justify-content: center;
+  border: 0; border-radius: 9px; background: transparent;
+  color: var(--tl-label-secondary);
+  font-size: 13px; line-height: 18px; font-weight: 600; letter-spacing: .1px;
+  white-space: nowrap; transition: color 160ms ease, opacity 150ms ease;
+}
+.tl-segmented-item[aria-selected="true"] { color: var(--tl-label-primary); }
+.tl-segmented-item:active { opacity: .55; }
+/* The cell draws 38px inside the 3px track inset; the hit band still spans the
+   full 44px track, measured with elementFromPoint rather than by box math. */
+.tl-segmented-item::before { content: ''; position: absolute; inset: -4px 0; }
+@media (prefers-reduced-motion: reduce) {
+  .tl-segmented-thumb { transition: none; }
+  .tl-thread-view { animation: none; }
+}
+
+/* Crossfade between the two views: 160ms, 4px rise, no layout jump. */
+@keyframes tl-view-fade {
+  from { opacity: 0; transform: translateY(4px); }
+  to { opacity: 1; transform: none; }
+}
+.tl-thread-view {
+  flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column;
+  animation: tl-view-fade 160ms ease-out both;
+}
 
 .tl-thread-list {
   flex: 1 0 auto; min-height: 0; display: flex; flex-direction: column;

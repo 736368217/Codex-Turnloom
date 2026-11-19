@@ -5,6 +5,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Search, Plus, X, ChevronDown, ChevronRight, Archive, ArchiveRestore, Copy } from 'lucide-react';
 import TaskStream, { titleOfThread } from '../components/TaskStream';
+import SegmentedControl from '../components/SegmentedControl';
 import { COLORS } from '../theme/optionATokens';
 import { useDataState, refreshThreads, loadMoreThreads } from '../state/dataStore';
 import { useTabState, setThreadsQuery, setThreadsView, openNewThread } from '../state/tabStore';
@@ -145,12 +146,21 @@ export default function ThreadsScreen() {
 
   return (
     <div className="tl-thread-screen">
-      <div className="tl-safe-top" style={{ flex: '0 0 auto' }}>
+      <div className="tl-safe-top tl-thread-head">
         <div className="tl-thread-nav">
           <h1>会话</h1>
           <button type="button" className="tl-press tl-nav-action" aria-label="新建会话" onClick={() => { haptic('selection'); openNewThread(); }}>
             <Plus size={24} />
           </button>
+        </div>
+        {/* 固定区：切视图不该被列表滚动带走（2.2.6）。搜索留在滚动区顶部。 */}
+        <div className="tl-thread-filters">
+          <SegmentedControl<View>
+            label="会话视图"
+            value={view}
+            options={[{ key: 'time', label: '按时间' }, { key: 'project', label: '按项目' }]}
+            onChange={setThreadsView}
+          />
         </div>
       </div>
 
@@ -164,20 +174,6 @@ export default function ThreadsScreen() {
             </button>
           )}
         </div>
-        <div className="tl-thread-filters" role="tablist" aria-label="会话视图">
-          {(['time', 'project'] as View[]).map((key) => (
-            <button
-              key={key}
-              type="button"
-              role="tab"
-              aria-selected={view === key}
-              className={`tl-filter-chip tl-press${view === key ? ' is-active' : ''}`}
-              onClick={() => { haptic('selection'); setThreadsView(key); }}
-            >
-              {key === 'time' ? '按时间' : '按项目'}
-            </button>
-          ))}
-        </div>
 
         {rows.length === 0 ? (
           <div style={{ flex: 1, minHeight: 0, display: 'flex', background: COLORS.surface }}>
@@ -187,41 +183,45 @@ export default function ThreadsScreen() {
               emptyDescription={query ? '换个关键词试试' : data.offline ? '暂时未同步到会话，请检查电脑端连接后刷新' : '点右上角 + 开始一个新会话'}
             />
           </div>
-        ) : view === 'time' ? (
-          <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column', background: COLORS.surface }}>
-            {pinnedGroup}
-            <TaskStream
-              threads={byTime}
-              statusByThread={data.statusByThread}
-              isArchived={archivedOf}
-              onLongPress={openThreadMenu}
-            />
-            {listControls}
-          </div>
         ) : (
-          <div style={{ flex: 1, minHeight: 0, overflowY: 'auto', background: COLORS.surface }}>
-            {pinnedGroup}
-            {orderedGroups.map((group) => {
-              const collapsedNow = isCollapsed(group.key);
-              return (
-                <div key={group.key}>
-                  <button type="button" className="tl-group-head tl-press" aria-expanded={!collapsedNow} onClick={() => toggleGroup(group.key)}>
-                    {collapsedNow ? <ChevronRight size={16} color={COLORS.labelSecondary} /> : <ChevronDown size={16} color={COLORS.labelSecondary} />}
-                    <span className="tl-group-name">{group.name}</span>
-                    <span className="tl-group-count">{group.rows.length}</span>
-                  </button>
-                  {!collapsedNow && (
-                    <TaskStream
-                      threads={group.rows}
-                      statusByThread={data.statusByThread}
-                      isArchived={archivedOf}
-                      onLongPress={openThreadMenu}
-                    />
-                  )}
-                </div>
-              );
-            })}
-            {listControls}
+          <div key={view} className="tl-thread-view">
+            {view === 'time' ? (
+              <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column', background: COLORS.surface }}>
+                {pinnedGroup}
+                <TaskStream
+                  threads={byTime}
+                  statusByThread={data.statusByThread}
+                  isArchived={archivedOf}
+                  onLongPress={openThreadMenu}
+                />
+                {listControls}
+              </div>
+            ) : (
+              <div style={{ flex: 1, minHeight: 0, overflowY: 'auto', background: COLORS.surface }}>
+                {pinnedGroup}
+                {orderedGroups.map((group) => {
+                  const collapsedNow = isCollapsed(group.key);
+                  return (
+                    <div key={group.key}>
+                      <button type="button" className="tl-group-head tl-press" aria-expanded={!collapsedNow} onClick={() => toggleGroup(group.key)}>
+                        {collapsedNow ? <ChevronRight size={16} color={COLORS.labelSecondary} /> : <ChevronDown size={16} color={COLORS.labelSecondary} />}
+                        <span className="tl-group-name">{group.name}</span>
+                        <span className="tl-group-count">{group.rows.length}</span>
+                      </button>
+                      {!collapsedNow && (
+                        <TaskStream
+                          threads={group.rows}
+                          statusByThread={data.statusByThread}
+                          isArchived={archivedOf}
+                          onLongPress={openThreadMenu}
+                        />
+                      )}
+                    </div>
+                  );
+                })}
+                {listControls}
+              </div>
+            )}
           </div>
         )}
       </div>
