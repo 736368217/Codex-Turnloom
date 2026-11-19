@@ -44,7 +44,7 @@ test('U1: thread list opens on project view; projects collapse, 未归类 stays 
   // 所以首屏仍有内容可点。视图持久在 tabStore，进出详情不重置。
   assert.match(store, /threadsView: 'project'/);
   assert.match(screen, /threadsView: view/);
-  assert.match(screen, /const isCollapsed = \(key: string\) => collapsed\[key\] \?\? !isUncategorized\(key\)/);
+  assert.match(screen, /const isCollapsed = \(key: string\) => collapsed\[key\] \?\? \(key === PINNED_KEY \? false : !isUncategorized\(key\)\)/);
   // 未归类永远排在最后（有项目的在上，无项目的在下）。
   assert.match(screen, /Number\(isUncategorized\(a\.key\)\) - Number\(isUncategorized\(b\.key\)\)/);
   assert.doesNotMatch(screen, /collapsed\[group\.key\] !== false/);
@@ -56,7 +56,7 @@ test('U2: tapping a project group toggles it on the first tap', () => {
   assert.doesNotMatch(screen, /\[key\]: !prev\[key\]/);
   // 2.2.4：默认折叠状态由 isCollapsed() 决定（项目组默认收起、未归类默认展开），
   // toggle 必须取它的反，而不是把 undefined 当成 false。
-  assert.match(screen, /const isCollapsed = \(key: string\) => collapsed\[key\] \?\? !isUncategorized\(key\)/);
+  assert.match(screen, /const isCollapsed = \(key: string\) => collapsed\[key\] \?\? \(key === PINNED_KEY \? false : !isUncategorized\(key\)\)/);
   assert.match(screen, /\[key\]: !isCollapsed\(key\)/);
 });
 
@@ -116,3 +116,4 @@ test('U7: list timestamps read updatedAtMs from the HTTP backend, not only updat
   assert.equal(formatThreadWhen({ updatedAtMs: new Date('2026-03-02T20:00:00+08:00').getTime() }, now), '3/2');
   assert.equal(formatThreadWhen({}, now), '');
 });
+

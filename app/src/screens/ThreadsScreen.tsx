@@ -11,7 +11,7 @@ import { useTabState, setThreadsQuery, setThreadsView, openNewThread } from '../
 import { currentRequestContext } from '../state/sessionStore';
 import { haptic, pushNativeBackLayer } from '../lib/nativeBridge';
 import { copyText } from '../lib/clipboard';
-import { isArchivedThread, groupThreadsByProject, threadUpdatedAtMs } from '../lib/threadProjection';
+import { isArchivedThread, groupThreadsByProject, threadUpdatedAtMs, partitionPinned } from '../lib/threadProjection';
 import { isLocallyArchived, setThreadArchived, subscribeThreadArchive } from '../lib/threadArchive';
 import { postThreadArchive } from '../lib/turnloomApi';
 
@@ -19,6 +19,8 @@ type View = 'project' | 'time';
 type Pending = { id: string; title: string; archived: boolean; stage: 'menu' | 'confirm' };
 
 const isUncategorized = (key: string) => key.startsWith('uncategorized:');
+/** 置顶组不是项目组，key 不能和 `project:` / `uncategorized:` 撞。 */
+const PINNED_KEY = 'pinned';
 
 export default function ThreadsScreen() {
   const data = useDataState();
@@ -43,19 +45,52 @@ export default function ThreadsScreen() {
   }, [data.threads, query, showArchived, archiveRevision]);
 
   const archivedCount = data.threads.filter(archivedOf).length;
-  const groups = groupThreadsByProject(rows);
-  const byTime = useMemo(() => [...rows].sort((a, b) => threadUpdatedAtMs(b) - threadUpdatedAtMs(a)), [rows]);
+  // 置顶组独立于两个视图：先摘出来，下面的项目组与时间列表就不会再渲染它。
+  const { pinned: pinnedRows, rest: plainRows } = useMemo(() => partitionPinned(rows), [rows]);
+  const groups = groupThreadsByProject(plainRows);
+  const byTime = useMemo(() => [...plainRows].sort((a, b) => threadUpdatedAtMs(b) - threadUpdatedAtMs(a)), [plainRows]);
   // Projects first, 未归类 last; a group is collapsed unless it is the uncategorized one.
+  // 置顶组默认展开，项目组默认收起。
   const orderedGroups = useMemo(
     () => [...groups].sort((a, b) => Number(isUncategorized(a.key)) - Number(isUncategorized(b.key))),
     [groups],
   );
-  const isCollapsed = (key: string) => collapsed[key] ?? !isUncategorized(key);
+  const isCollapsed = (key: string) => collapsed[key] ?? (key === PINNED_KEY ? false : !isUncategorized(key));
 
   const toggleGroup = (key: string) => {
     haptic('selection');
     setCollapsed((prev) => ({ ...prev, [key]: !isCollapsed(key) }));
   };
+
+  const openThreadMenu = (threadId: string) => {
+    const thread = data.threads.find((item) => item.id === threadId);
+    setPending({
+      id: threadId,
+      title: thread ? titleOfThread(thread) : threadId,
+      archived: thread ? archivedOf(thread) : false,
+      stage: 'menu',
+    });
+  };
+
+  const pinnedCollapsed = isCollapsed(PINNED_KEY);
+  // 0 条置顶时整组不渲染（不是隐藏的空标题）；置顶行已从 plainRows 里摘走。
+  const pinnedGroup = pinnedRows.length === 0 ? null : (
+    <div className="tl-pinned-group" data-qa="pinned-group">
+      <button type="button" className="tl-group-head tl-press" aria-expanded={!pinnedCollapsed} onClick={() => toggleGroup(PINNED_KEY)}>
+        {pinnedCollapsed ? <ChevronRight size={16} color={COLORS.labelSecondary} /> : <ChevronDown size={16} color={COLORS.labelSecondary} />}
+        <span className="tl-group-name">置顶</span>
+        <span className="tl-group-count">{pinnedRows.length}</span>
+      </button>
+      {!pinnedCollapsed && (
+        <TaskStream
+          threads={pinnedRows}
+          statusByThread={data.statusByThread}
+          isArchived={archivedOf}
+          onLongPress={openThreadMenu}
+        />
+      )}
+    </div>
+  );
 
   // Both layers (menu and confirm) close on Back and on a backdrop tap. A dialog that
   // only offers 取消 leaves the Android back button to exit the whole app.
@@ -154,19 +189,18 @@ export default function ThreadsScreen() {
           </div>
         ) : view === 'time' ? (
           <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column', background: COLORS.surface }}>
+            {pinnedGroup}
             <TaskStream
               threads={byTime}
               statusByThread={data.statusByThread}
               isArchived={archivedOf}
-              onLongPress={(threadId) => {
-                const thread = data.threads.find((item) => item.id === threadId);
-                setPending({ id: threadId, title: thread ? titleOfThread(thread) : threadId, archived: thread ? archivedOf(thread) : false, stage: 'menu' });
-              }}
+              onLongPress={openThreadMenu}
             />
             {listControls}
           </div>
         ) : (
           <div style={{ flex: 1, minHeight: 0, overflowY: 'auto', background: COLORS.surface }}>
+            {pinnedGroup}
             {orderedGroups.map((group) => {
               const collapsedNow = isCollapsed(group.key);
               return (
@@ -181,10 +215,7 @@ export default function ThreadsScreen() {
                       threads={group.rows}
                       statusByThread={data.statusByThread}
                       isArchived={archivedOf}
-                      onLongPress={(threadId) => {
-                        const thread = data.threads.find((item) => item.id === threadId);
-                        setPending({ id: threadId, title: thread ? titleOfThread(thread) : threadId, archived: thread ? archivedOf(thread) : false, stage: 'menu' });
-                      }}
+                      onLongPress={openThreadMenu}
                     />
                   )}
                 </div>

@@ -81,6 +81,36 @@ export function formatThreadWhen(thread: unknown, nowMs = Date.now()): string {
 }
 
 /**
+ * 会话是否置顶（Desktop 的 `sessions.pinned`）。
+ *
+ * 服务端 `threadListMetadata()` 已经归一化成布尔 `pinned`，但 App 也可能连
+ * `--backend http` 的宿主，那里给的是原始行（`isPinned` / `is_pinned` / 分组名
+ * `pinned`）。三种形状都认，explicit false 不再被后面的字段翻回来。
+ */
+export function isPinnedThread(thread: unknown): boolean {
+  const row = (thread || {}) as { pinned?: unknown; isPinned?: unknown; is_pinned?: unknown; sectionName?: unknown; section_name?: unknown };
+  const flag = row.pinned ?? row.isPinned ?? row.is_pinned;
+  if (flag === true || flag === 1 || flag === '1' || flag === 'true') return true;
+  if (flag === false || flag === 0 || flag === '0' || flag === 'false') return false;
+  const section = String(row.sectionName ?? row.section_name ?? '').trim().toLowerCase();
+  return section === 'pinned';
+}
+
+/**
+ * 把置顶会话从普通列表里摘出来：置顶组在最上面，且不在下面的项目组/时间
+ * 列表里重复出现（一个置顶会话同时属于某个项目，不摘就会渲染两次）。
+ * 两组各自保持入参顺序。
+ */
+export function partitionPinned<T>(threads: T[]): { pinned: T[]; rest: T[] } {
+  const pinned: T[] = [];
+  const rest: T[] = [];
+  for (const thread of threads || []) {
+    (isPinnedThread(thread) ? pinned : rest).push(thread);
+  }
+  return { pinned, rest };
+}
+
+/**
  * 会话按项目分组。顺序按首次出现，保持服务端原有的排序；
  * 没有 project 的会话归到「未归类项目」，不要丢弃。
  */

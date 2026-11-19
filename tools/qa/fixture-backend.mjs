@@ -83,6 +83,11 @@ const threads = [
 for (let i = 1; i <= 34; i += 1) {
   threads.push({ id: `qa-filler-${String(i).padStart(2, "0")}`, title: `填充会话 ${i}：检查列表滚动与点击目标`, status: { state: i % 3 === 0 ? "running" : "ended" }, updatedAtMs: now - i * 900_000, });
 }
+// QA_PINNED=2 marks the first N rows pinned (default 0). One fixture, two states:
+// without it the list must render no 置顶 group at all; with it the group leads
+// and its rows must not repeat in the project/time lists below.
+const pinnedCount = Number(process.env.QA_PINNED || 0);
+for (let i = 0; i < Math.min(pinnedCount, threads.length); i += 1) threads[i].pinned = true;
 
 const messagesByThread = {
   "qa-long": [

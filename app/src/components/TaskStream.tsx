@@ -56,6 +56,7 @@ function ThreadRow({
     <button
       type="button"
       className="tl-press tl-thread-row"
+      data-thread-id={thread.id}
       onClick={() => {
         if (fired.current) { fired.current = false; return; }
         haptic('selection');
