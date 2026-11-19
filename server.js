@@ -8827,7 +8827,11 @@ const server = http.createServer(async (req, res) => {
         return;
       }
       const bundle = buildLogBundle({ logDir: serverLogDir(), machine: MACHINE_NAME, secrets: logBundleSecrets() });
-      const key = `turnloom/logs/${String(MACHINE_NAME || "machine").replace(/[^A-Za-z0-9._-]+/g, "-")}/${bundle.name}`;
+      // R2 objects are readable without a token (verified), so the key carries 32
+      // random bits to keep it unguessable; the bundle itself is already
+      // allowlisted, so a leaked link still cannot show message text or codes.
+      const suffix = randomBytes(4).toString("hex");
+      const key = `turnloom/logs/${String(MACHINE_NAME || "machine").replace(/[^A-Za-z0-9._-]+/g, "-")}/${bundle.name.replace(/\.zip$/, "")}-${suffix}.zip`;
       try {
         const response = await fetch(`https://dl.736.de5.net/${key}`, {
           method: "PUT",
