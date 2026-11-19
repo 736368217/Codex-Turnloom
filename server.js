@@ -8395,12 +8395,28 @@ async function handleHttpBackendApi(req, res, url, profile = null) {
     }
 
     if (req.method === "GET" && pathname === "/api/plugins") {
-      sendJson(res, 200, { plugins: [], codexHome: null, codexHomeVersion: null });
+      // The phone reaches this bridge in the de/relay shape; returning [] used to
+      // make the reference menu claim "no plugins" on a machine that has 24.
+      try {
+        sendJson(res, 200, await backend.getPlugins({ compact: searchParams.get("compact") === "1" }));
+      } catch (error) {
+        sendJson(res, 200, {
+          plugins: [], codexHome: null, codexHomeVersion: null,
+          unavailable: true, reason: String(error?.message || "upstream-plugins-unavailable")
+        });
+      }
       return true;
     }
 
     if (req.method === "GET" && pathname === "/api/skills") {
-      sendJson(res, 200, { skills: [], codexHome: null, codexHomeVersion: null });
+      try {
+        sendJson(res, 200, await backend.getSkills());
+      } catch (error) {
+        sendJson(res, 200, {
+          skills: [], codexHome: null, codexHomeVersion: null,
+          unavailable: true, reason: String(error?.message || "upstream-skills-unavailable")
+        });
+      }
       return true;
     }
 

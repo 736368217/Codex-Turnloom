@@ -141,6 +141,25 @@ export class HttpBackendClient {
     return threads.find((thread) => thread.id === String(threadId)) || null;
   }
 
+  /** The reference menu's catalogues have to come from the host, not from []. */
+  async getPlugins({ compact = false } = {}) {
+    const data = await this.request("/plugins", { query: compact ? { compact: "1" } : null });
+    return {
+      plugins: Array.isArray(data?.plugins) ? data.plugins : [],
+      codexHome: data?.codexHome ?? null,
+      codexHomeVersion: data?.codexHomeVersion ?? null
+    };
+  }
+
+  async getSkills() {
+    const data = await this.request("/skills");
+    return {
+      skills: Array.isArray(data?.skills) ? data.skills : [],
+      codexHome: data?.codexHome ?? null,
+      codexHomeVersion: data?.codexHomeVersion ?? null
+    };
+  }
+
   async getMessages(threadId, { limit = 80, before = "" } = {}) {
     const data = await this.request(`/threads/${encodeURIComponent(threadId)}/messages`, {
       query: { limit, before }
