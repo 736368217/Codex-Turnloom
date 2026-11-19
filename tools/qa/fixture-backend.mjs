@@ -170,6 +170,10 @@ const server = http.createServer((req, res) => {
   req.on("data", (chunk) => { body += chunk; });
   req.on("end", () => {
     // 引用菜单的另外两档：形状照 Atlas 的真库（skills 带 uri，plugins 带 compact）。
+    // QA_CATALOG_FAIL=1 模拟「宿主没有这两个接口」（代理会包成 200 + unavailable:true）。
+    if (process.env.QA_CATALOG_FAIL && (path === "/skills" || path === "/plugins")) {
+      return json(res, 503, { error: "catalog-unavailable" });
+    }
     if (req.method === "GET" && path === "/skills") {
       return json(res, 200, {
         skills: [
