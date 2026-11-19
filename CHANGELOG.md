@@ -1,5 +1,50 @@
 # Changelog
 
+## 2.2.5 — 对话头部、模型面板与会话置顶（2026-11-19）
+
+对应两条 Task：#14 产品形态、#13 日志上传与控制台更新可见性。App `2.2.5`（versionCode `94`）。
+
+### 对话头部
+
+- **标题下显示隶属项目**：第二行 `项目：<name>`，会话没有项目时整行不出现、不占位；副行仍是运行状态（等待处理 / 运行中 / 空闲 / 长时间无输出）。
+- **当前模型在右上角**：从输入舱移到标题栏的 `ModelChip`（模型名 + 思考强度），点开同一张面板；强度不再竖排（390 下曾出现「最/高」两行）。
+- **`@` 与拍照/图片/附件平级**：引用入口从输入舱顶行移进工具行最左，命中区 44×44，视觉不变。
+
+### 模型面板
+
+- **只列「电脑端已加入」的模型**：服务端只返回 PI 的 `providers.enabled=1` × `config_json.models`（2.2.4 起的 `/api/health.models`），数组顺序即面板顺序；停用供应商整组不出现，未加入的模型一条不出现。渲染层不再 split `id`、不过滤、不重排。
+- **契约拆字段**：`provider` / `providerLabel` / `modelId` / `pinned`（有就透传并按宿主顺序排前），`efforts` / `defaultEffort` / `supportsImages` 保留。
+- **默认模型三级回退**：`thread.model` → `health.lastUsedModel`（**只有仍在当前集合里才用**）→ `defaultModel`。回退只在一个函数里实现（`resolveTurnPreference`），`runtimeStore` 只携带 `lastUsedModel`，取不到就是空串、不补默认值。
+- **唯一允许的集合外条目**：当前会话在用的模型已从电脑端移除时，面板在最前加**一条不可选的状态行**（`aria-disabled`，副标「电脑端未加入」），头部 chip 同步显示「已移除」。只此一种情况，历史用过的模型不累积——「不静默换模型」优先于「面板严格等于服务端数组」。
+- 供应商筛选条只在 ≥2 个真实供应商时出现，搜索框只在 >8 行时出现；3 条模型时面板就是标题 + 3 行 + 强度。
+
+### 会话列表
+
+- **置顶组**：`pinned`（`is_pinned` 或 section 名为 `pinned`）的会话在两个视图（按时间 / 按项目）最上方各出现一次，组内行从原分组摘除、不重复；0 条时整组不渲染（无空标题、无占位），默认展开。
+- 视图切换是**可横滑的胶囊条**（44px、贴搜索框下、隐藏滚动条），不是两枚居中按钮。
+
+### 日志上传与控制台
+
+- **`GET /api/admin/logs`**：把 `server-YYYYMMDD.log`（最近 2 个）+ `phone/*.jsonl` + `supervisor.log` 尾部 512 KiB 打成 store 模式 zip，首个成员恒为 `manifest.json`（`limits` / `files[sha256]` / `truncated+fromBytes` / `filesOmitted` / `droppedLines`）。
+- **脱敏是字段白名单**：只抄 `ts/source/level/method/path/status/ms/harness/threadId/code` 与手机诊断的 `at/kind/phase/path/code/status/appVersion/machine`；消息正文、备注、stack 根本不进包；已知密文再做一次字面替换。
+- **`POST /api/admin/logs/upload`**：打包后 PUT 到 R2 `turnloom/logs/<machine>/…-<8hex>.zip`（`X-Upload-Token`）。缺令牌回 `200 {ok:false,error:"upload-token-missing"}`，R2 拒收回 `502 {ok:false,error:"upload-failed",reason}`，两种情况本地日志都不动。
+- **supervisor 同一行折叠**：连续重复的自由文本行合成一行 + 次数（本机 292,608 B → 488 B / 8 行，`×2437`），正文仍不进包——隧道崩溃循环在包里变成可读事实。
+- 控制台「上传日志」「检查更新」两张卡片的代码路径已接；`scripts/package-server-upgrade.ps1` 打包前 `apksigner verify --print-certs` 比对证书指纹，不符即 fail。
+- 文档：`docs/LOGS.zh-CN.md`（日志位置、两种上传方式、包内结构、保留期限与本机 supervisor 的现场问题）。
+
+### 验证（2026-11-19，HEAD `c403fc6`）
+
+- `npm run verify:ci` PASS（Node 24 + Node 22 各一遍，含 `desktop:check`）；`node --test` 566 用例 / 564 通过 / 0 失败 / 2 跳过。
+- `npm run app:typecheck` exit 0；`npm run app:build` exit 0（`dist/assets/index-CC0SxfnI.js` 784.93 kB / gzip 228.98 kB）。
+- 真 bundle + 夹具：`tools/qa/check-model-sheet.mjs` 9/9 PASS（390/320 都是 `chip ⊂ panel`、行序照服务端、集合外 0 条、无重复）；`tools/qa/check-pinned-group.mjs` 9/9 PASS（0 条不渲染组、2 条组在首、两视图不丢不重）。
+- 真 PI 库（`CODEX_LAN_PI_NATIVE_QUEUE=1`，`--readonly`）：`/api/health.models` 恰好 2 行（`wbfd/hy4flash-free`、`wbfd/deepseek-v4.1-flash`），`provider/modelId/providerLabel` 均正确。
+
+### 已知边界
+
+- 手机连的那台 de 目前走 **Codex Desktop** 路径，面板会显示它的 4 个模型（`gpt-5.6-sol/terra/luna`、`gpt-5.5`）——这是正确行为，不是本版没生效；要显示 PI 已加入的模型，需要后端切到 PI（`CODEX_LAN_PI_NATIVE_QUEUE=1` 或控制台「IPC 管道」填 `\\\\.\\pipe\\pidesktop-codex-ipc`），且**切换前必须确认 PI 桥在**，否则发送会直接报错。本版不带这个开关（排在 2.2.6）。
+- 控制台「上传日志」「检查更新」在本机 Electron 窗口内的真人点击未验（代码路径与端点已验）；de 升到 2.2.4/2.2.5 后控制台的更新可见性未验。
+- 公网入口 `https://121.40.69.97:18789` 当日不可达：VPS 主机密钥与 `known_hosts:9` 不一致，隧道被 `StrictHostKeyChecking=yes` 拒绝，沿用局域网访问。与本版构建/分发无关。
+
 ## 未发布 — 桌面端可检测更新（2026-11-18）
 
 - **`/api/health` 报告自身版本**：新增 `version`、`buildSha`、`startedAt`（`VERSION.json` 优先，其次 `package.json`；`buildSha` 只取打包写入的值，绝不从 `.git` 猜）。控制台的 `healthSummary()` 一并带上，首页不点按钮也能显示本机服务版本。
