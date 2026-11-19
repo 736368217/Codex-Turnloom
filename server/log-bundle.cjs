@@ -262,11 +262,27 @@ function buildLogBundle({ logDir = resolveLogDir(), machine = "machine", now = n
       const cut = raw.indexOf("\n");
       raw = cut >= 0 ? raw.slice(cut + 1) : "";
     }
-    const kept = [];
+    // Collapse runs of the byte-identical line. The live box writes
+    // "Starting tunnel to <host>; remote port 18788" every ~7 s while the tunnel
+    // crash-loops, so a 512 KiB tail can be one repeated sentence — useless as
+    // evidence and misleading as "that is all the log says". Counting the run
+    // keeps the density (how often, from when to when) and still never copies
+    // the text.
+    const runs = [];
     for (const line of raw.split(/\r?\n/)) {
-      const match = /^(\d{4}-\d\d-\d\d \d\d:\d\d:\d\d) \[([A-Za-z0-9._-]+)\] /.exec(line.trim());
-      if (match) kept.push(`${match[1]} [${match[2]}] [text omitted]`);
+      const match = /^(\d{4}-\d\d-\d\d \d\d:\d\d:\d\d) \[([A-Za-z0-9._-]+)\] (.*)$/.exec(line.trim());
+      if (!match) continue;
+      const [, ts, source, body] = match;
+      const previous = runs[runs.length - 1];
+      if (previous && previous.source === source && previous.body === body) {
+        previous.count += 1;
+        previous.last = ts;
+      } else {
+        runs.push({ ts, source, body, count: 1, last: ts });
+      }
     }
+    const kept = runs.map(({ ts, source, count, last }) =>
+      `${ts} [${source}] [text omitted]${count > 1 ? ` ×${count} (until ${last})` : ""}`);
     if (kept.length) {
       const text = `${kept.join("\n")}\n`;
       entries.push({ path: "supervisor/supervisor.log", data: text });
@@ -280,7 +296,7 @@ function buildLogBundle({ logDir = resolveLogDir(), machine = "machine", now = n
     generatedAt: now.toISOString(),
     machine: safeMachine,
     fields: { server: SERVER_FIELDS, phone: PHONE_FIELDS },
-    note: "Only allowlisted fields are copied; message text, notes and stacks are dropped. supervisor.log keeps only timestamp/source.",
+    note: "Only allowlisted fields are copied; message text, notes and stacks are dropped. supervisor.log keeps only timestamp/source, and a run of identical lines becomes one line plus a count.",
     limits: { totalBytes: MAX_TOTAL_BYTES, serverFiles: MAX_SERVER_FILES, phoneFiles: MAX_FILES, supervisorTailBytes: SUPERVISOR_TAIL_BYTES },
     totalBytes,
     files,

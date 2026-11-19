@@ -136,6 +136,34 @@ test("日志包：被上限挡掉的文件必须在 manifest 里留名，截断�
   }
 });
 
+test("日志包：supervisor 连续重复行折叠成一行 + 次数，正文仍不进包", () => {
+  const logDir = fs.mkdtempSync(path.join(os.tmpdir(), "turnloom-logs-run-"));
+  try {
+    const repeat = `Starting tunnel to 121.40.69.97; remote port 18788 ${SECRET_MARKERS[0]}`;
+    const lines = [
+      `2026-11-19 14:27:01 [supervisor] ${repeat}`,
+      `2026-11-19 14:27:08 [supervisor] ${repeat}`,
+      `2026-11-19 14:27:15 [supervisor] ${repeat}`,
+      `2026-11-19 14:27:22 [supervisor] tunnel ready on port 18788`,
+      `2026-11-19 14:27:29 [supervisor] ${SECRET_MARKERS[1]}`,
+    ];
+    fs.writeFileSync(path.join(logDir, "supervisor.log"), `${lines.join("\n")}\n`);
+
+    const bundle = buildLogBundle({ logDir, machine: "run-box", now: new Date("2026-11-19T15:00:00Z") });
+    const entries = readZip(bundle.buffer);
+    const supervisor = entries.get("supervisor/supervisor.log");
+
+    assert.match(supervisor, /2026-11-19 14:27:01 \[supervisor\] \[text omitted\] ×3 \(until 2026-11-19 14:27:15\)/);
+    assert.match(supervisor, /2026-11-19 14:27:22 \[supervisor\] \[text omitted\]\n/, "a single line carries no count");
+    assert.equal(supervisor.split("\n").filter(Boolean).length, 3, "five lines collapse to three runs");
+    for (const marker of SECRET_MARKERS) {
+      assert.equal(supervisor.includes(marker), false, "collapsing must not drag the text along");
+    }
+  } finally {
+    fs.rmSync(logDir, { recursive: true, force: true });
+  }
+});
+
 test("日志包：超出单文件预算时按行切尾，并在 manifest 记 truncated/fromBytes", () => {
   const logDir = fs.mkdtempSync(path.join(os.tmpdir(), "turnloom-logs-cut-"));
   try {
