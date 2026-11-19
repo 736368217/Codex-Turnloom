@@ -309,15 +309,43 @@ interface PendingHttp {
 const pendingRequests = new Map<string, PendingHttp>();
 let httpSeq = 0;
 
-/** Accept only absolute http(s) /api/* URLs without userinfo or fragment. */
+/** R2 public update origin. HTTPS-only, default port: the manifest carries the APK sha. */
+export const PUBLIC_UPDATE_ORIGIN = 'https://dl.736.de5.net';
+export const PUBLIC_UPDATE_PREFIX = '/turnloom/';
+
+/**
+ * True only for the R2 update objects (manifest + APK): https, exact host,
+ * default port, `/turnloom/*`, no userinfo/fragment.
+ *
+ * Deliberately stricter than the paired-machine rule below: over plain http, or
+ * on another port, anyone in the path could replace manifest and APK together
+ * and the sha would still "match".
+ */
+export function isPublicUpdateUrl(raw: string): boolean {
+  if (typeof raw !== 'string' || !raw || raw.includes('\\')) return false;
+  try {
+    const url = new URL(raw);
+    if (url.protocol !== 'https:') return false;
+    if (url.hostname !== 'dl.736.de5.net') return false;
+    if (url.port !== '') return false;
+    if (url.username || url.password || url.hash) return false;
+    if (!url.pathname.startsWith(PUBLIC_UPDATE_PREFIX)) return false;
+    if (url.pathname.includes('..')) return false;
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/** Accept absolute http(s) /api/* URLs (paired machine) plus the public R2 update objects. */
 export function isAllowedApiUrl(raw: string): boolean {
+  if (typeof raw !== 'string' || raw.includes('\\')) return false;
   try {
     const url = new URL(raw);
     if (url.protocol !== 'http:' && url.protocol !== 'https:') return false;
     if (url.username || url.password || url.hash) return false;
-    if (!url.pathname.startsWith('/api/')) return false;
-    if (url.pathname.includes('..') || url.pathname.includes('\\')) return false;
-    return true;
+    if (url.pathname.includes('..')) return false;
+    return url.pathname.startsWith('/api/') || isPublicUpdateUrl(raw);
   } catch {
     return false;
   }

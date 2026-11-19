@@ -69,8 +69,10 @@ test('U4: an unpaired connect screen never touches the network on mount', () => 
   const mountEffect = screen.slice(screen.indexOf('只有已记住服务地址时才在挂载时自检'), screen.indexOf('async function connect('));
   assert.match(mountEffect, /if \(!session\.serverUrl\) return;/);
   assert.match(mountEffect, /void checkUpdate\(false\)/);
-  // 内置公开域只在用户显式点击时使用。
-  assert.match(screen, /const origin = manual \? \(remembered \|\| DEFAULT_UPDATE_ORIGIN\) : remembered;/);
+  // 2.2.3：更新只走公网 R2 清单（runUpdateCheck），连接页不再有"内置公开域"这条更新源。
+  assert.match(screen, /runUpdateCheck\(/);
+  assert.doesNotMatch(screen, /DEFAULT_UPDATE_ORIGIN|getPublicAppUpdate/);
+  assert.match(screen, /if \(!manual && !session\.serverUrl\) return;/);
   assert.match(screen, /检查应用更新（公开通道）/);
 });
 

@@ -7,11 +7,7 @@ import { haptic, requestQrScan } from '../lib/nativeBridge';
 import { parseMachinePairingPayload, manualPairing, type MachinePairing } from '../lib/machinePairing';
 import { connectWithPairing, useSessionState, setConnectionError, switchHarness, unpair, stopConnecting } from '../state/sessionStore';
 import { openSheet } from '../state/sheetStore';
-import { assessUpdate } from '../lib/appUpdate';
-import { getPublicAppUpdate } from '../lib/turnloomApi';
-
-// 未配对时没有记住的地址，退回内置入口（与发布通道一致）。
-const DEFAULT_UPDATE_ORIGIN = 'https://tl.z736.cc.cd';
+import { runUpdateCheck } from '../lib/updateChannel';
 
 export default function ConnectScreen({ onRevalidate }: { onRevalidate?: () => void }) {
   const session = useSessionState();
@@ -29,27 +25,22 @@ export default function ConnectScreen({ onRevalidate }: { onRevalidate?: () => v
   const [updateVersion, setUpdateVersion] = useState('');
 
   /**
-   * 连接页的更新检查：不依赖配对状态，也不需要有效机器码。
-   * 未配对时**不在挂载期间产生任何外联**（既没有记住的服务地址，也没有用户动作）；
-   * 只有用户显式点「检查应用更新（公开通道）」才用内置公开入口。
+   * 连接页的更新检查：只走公网 R2 那一段（配对后的两段链在设置页）。
+   * 未配对时**不在挂载期间产生任何外联**；只有用户显式点「检查应用更新」才联网。
    */
   async function checkUpdate(manual = false) {
     if (updateCheck === 'checking') return;
-    const remembered = session.serverUrl || serverUrl.trim();
-    const origin = manual ? (remembered || DEFAULT_UPDATE_ORIGIN) : remembered;
-    if (!origin) return;
+    if (!manual && !session.serverUrl) return;
     setUpdateCheck('checking');
     try {
-      const result = await getPublicAppUpdate(origin);
-      if (!result.ok) { setUpdateCheck('error'); return; }
-      const assessed = assessUpdate(result.data, {
-        versionCode: session.appVersionCode,
-        packageName: session.packageName,
+      const outcome = await runUpdateCheck({
+        installed: { versionCode: session.appVersionCode, packageName: session.packageName },
+        serverContext: null,
       });
-      if (assessed.state === 'available') {
-        setUpdateVersion(assessed.release?.versionName || '');
+      if (outcome.state === 'available') {
+        setUpdateVersion(outcome.release?.versionName || '');
         setUpdateCheck('available');
-      } else if (assessed.state === 'current') {
+      } else if (outcome.state === 'current') {
         setUpdateCheck('current');
       } else {
         setUpdateCheck(manual ? 'error' : 'idle');

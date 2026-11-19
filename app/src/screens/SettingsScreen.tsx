@@ -7,11 +7,12 @@ import { COLORS } from '../theme/optionATokens';
 import { useSessionState, setOfflineCacheEnabled, currentRequestContext } from '../state/sessionStore';
 import { useDataState, clearOfflineCache, refreshAll } from '../state/dataStore';
 import { openSheet } from '../state/sheetStore';
-import { haptic, hasNativeUpdater, startUpdateDownload, cancelUpdate, installUpdate } from '../lib/nativeBridge';
-import { getAppUpdate, type RequestContext } from '../lib/turnloomApi';
-import { assessUpdate, absoluteApkUrl } from '../lib/appUpdate';
+import { haptic, hasNativeUpdater, startUpdateDownload, cancelUpdate, installUpdate, isPublicUpdateUrl } from '../lib/nativeBridge';
+import type { RequestContext } from '../lib/turnloomApi';
+import { absoluteApkUrl } from '../lib/appUpdate';
+import { runUpdateCheck } from '../lib/updateChannel';
 import { uploadDiagnostics } from '../lib/diagnostics';
-import { useUpdate, updateStore, setState, setMessage, setRelease, setRequestId } from '../state/updateStore';
+import { useUpdate, updateStore, setState, setMessage, setRelease, setRequestId, setChannel } from '../state/updateStore';
 
 export function UpdatePanel() {
   const session = useSessionState();
@@ -21,27 +22,33 @@ export function UpdatePanel() {
   const check = async (force = false): Promise<void> => {
     if (['checking', 'downloading', 'ready'].includes(updateStore.getState().state)) return;
     if (!force && updateStore.getState().state === 'cancelled') return;
-    const context = currentRequestContext();
-    if (!context) return;
     const now = Date.now();
     if (!force && now - lastCheckRef.current < 60_000) return;
     lastCheckRef.current = now;
+    const prev = updateStore.getState();
     setState('checking');
     setMessage('正在检查新版本…');
     setRelease(null);
-    const result = await getAppUpdate(context);
-    if (!result.ok) {
+    const outcome = await runUpdateCheck({
+      installed: { versionCode: session.appVersionCode, packageName: session.packageName },
+      serverContext: currentRequestContext(),
+    });
+    setChannel({ source: outcome.source, host: outcome.host, publicError: outcome.publicError });
+    if (outcome.state === 'error') {
+      // A background check that fails must stay quiet: no red line, no "检查失败"
+      // for a request nobody asked for. Only a manual check reports the failure.
+      if (!force) {
+        const keep = ['available', 'ready', 'downloading', 'cancelled'].includes(prev.state);
+        updateStore.setState({ state: keep ? prev.state : 'idle', message: keep ? prev.message : '', release: keep ? prev.release : null });
+        return;
+      }
       setState('error');
-      setMessage(result.offline || result.status === 0 ? '暂时无法连接电脑，请稍后重试' : '无法获取更新信息，请稍后重试');
+      setMessage(outcome.message);
       return;
     }
-    const assessment = assessUpdate(result.data, {
-      versionCode: session.appVersionCode,
-      packageName: session.packageName,
-    });
-    setState(assessment.state === 'checking' ? 'error' : assessment.state);
-    setMessage(assessment.message);
-    setRelease(assessment.release);
+    setState(outcome.state === 'checking' ? 'error' : outcome.state);
+    setMessage(outcome.message);
+    setRelease(outcome.release);
   };
 
   // Cold foreground check: no modal, no automatic download.
@@ -62,10 +69,12 @@ export function UpdatePanel() {
     }
     const context: RequestContext | null = currentRequestContext();
     if (!context) return;
+    const isPublic = isPublicUpdateUrl(release.apkUrl);
     const url = absoluteApkUrl(context.target.origin, release.apkUrl);
     if (!url) { setState('error'); setMessage('安装包地址无效，请重新检查更新'); return; }
     const id = startUpdateDownload({
-      url, token: context.target.token, sha256: release.sha256,
+      // The machine token never travels to R2: a public download carries none.
+      url, token: isPublic ? '' : context.target.token, sha256: release.sha256,
       versionCode: release.versionCode, packageName: release.packageName,
     });
     if (!id) { setState('error'); setMessage('无法开始下载，请稍后重试'); return; }
@@ -91,7 +100,7 @@ export function UpdatePanel() {
             <div style={{ height: 7, borderRadius: 999, background: COLORS.fillSecondary, overflow: 'hidden' }}>
               <div style={{ height: '100%', width: `${percent || 8}%`, background: COLORS.blue, transition: 'width .2s ease' }} />
             </div>
-            <div style={{ fontSize: 11, color: COLORS.labelSecondary, marginTop: 6 }}>{progress.total > 0 ? `${percent}% · ${Math.round(progress.received / 1024)} / ${Math.round(progress.total / 1024)} KB` : '正在连接电脑…'}</div>
+            <div style={{ fontSize: 11, color: COLORS.labelSecondary, marginTop: 6 }}>{progress.total > 0 ? `${percent}% · ${Math.round(progress.received / 1024)} / ${Math.round(progress.total / 1024)} KB` : '正在连接下载源…'}</div>
           </div>
         )}
       </div>

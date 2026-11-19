@@ -9,7 +9,7 @@
  */
 
 import {
-  nativeHttpRequest, cancelAllNativeRequests, hasNativeHttp,
+  nativeHttpRequest, cancelAllNativeRequests, hasNativeHttp, isPublicUpdateUrl,
   type NativeRequestHandle,
 } from './nativeBridge';
 import { normalizeBaseUrl } from './machinePairing';
@@ -507,6 +507,47 @@ export async function getPublicAppUpdate(serverUrl: string, timeoutMs = 10_000):
     return { ok: true, status: result.status, data: body as AppUpdateInfo, offline: false };
   }
   return { ok: false, status: result.status, error: 'update-unavailable', offline: false };
+}
+
+/** R2 manifest shape (written by scripts/publish-r2.ps1, consumed by 2.2.3+). */
+export interface PublicUpdateManifest {
+  version?: string;
+  versionCode?: number;
+  apk?: string;
+  size?: number;
+  sha256?: string;
+  notes?: string;
+  publishedAt?: string;
+}
+
+/**
+ * Public update check #2: the R2 static manifest. No token, no pairing.
+ *
+ * The URL is checked in JS *before* the bridge so a whitelist rejection is
+ * reported as `invalid-public-url` instead of collapsing into `status 0 / offline`
+ * (which would make our own allowlist look like "the network is down").
+ */
+export async function getPublicUpdateManifest(
+  url: string,
+  timeoutMs = 10_000,
+): Promise<ApiResult<PublicUpdateManifest>> {
+  if (!isPublicUpdateUrl(url)) return { ok: false, status: 0, error: 'invalid-public-url', offline: false };
+  const handle = nativeHttpRequest({
+    url,
+    method: 'GET',
+    headers: { Accept: 'application/json' },
+    timeoutMs,
+  });
+  const result = await handle.promise;
+  if (result.status === 0) return { ok: false, status: 0, error: result.error || 'OFFLINE', offline: true };
+  let body: unknown = null;
+  if (result.body) {
+    try { body = JSON.parse(result.body); } catch { body = null; }
+  }
+  if (result.status >= 200 && result.status < 300) {
+    return { ok: true, status: result.status, data: (body || {}) as PublicUpdateManifest, offline: false };
+  }
+  return { ok: false, status: result.status, error: 'manifest-unavailable', offline: false };
 }
 
 export const postQueueCancel = (context: RequestContext, body: { threadId?: string; itemId?: string; edit?: boolean }): Promise<ApiResult<QueueItem>> => post(context, API_ENDPOINTS.queueCancel, body);

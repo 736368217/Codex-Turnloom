@@ -1,12 +1,24 @@
 import { createStore, useStore } from './store';
 import type { AppUpdateInfo } from '../lib/turnloomApi';
 export type UpdatePhase = 'idle' | 'checking' | 'available' | 'current' | 'unavailable' | 'error' | 'downloading' | 'ready' | 'cancelled';
-export const updateStore = createStore({ state: 'idle' as UpdatePhase, message: '', release: null as AppUpdateInfo | null, progress: { received: 0, total: 0 }, requestId: '' });
+export type UpdateSource = 'public' | 'server' | null;
+export const updateStore = createStore({
+  state: 'idle' as UpdatePhase,
+  message: '',
+  release: null as AppUpdateInfo | null,
+  progress: { received: 0, total: 0 },
+  requestId: '',
+  // Which leg answered the last check. The panel prints it; it never guesses URLs.
+  source: null as UpdateSource,
+  host: '',
+  publicError: '',
+});
 export const setState = (state: UpdatePhase) => updateStore.setState({ state });
 export const setMessage = (message: string) => updateStore.setState({ message });
 export const setRelease = (release: AppUpdateInfo | null) => updateStore.setState({ release });
 export const setProgress = (progress: { received: number; total: number }) => updateStore.setState({ progress });
 export const setRequestId = (requestId: string) => updateStore.setState({ requestId });
+export const setChannel = (channel: { source: UpdateSource; host: string; publicError: string }) => updateStore.setState(channel);
 export const useUpdate = () => useStore(updateStore);
 
 // Remains subscribed when settings is unmounted by Tab or foreground changes.
