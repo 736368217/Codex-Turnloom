@@ -124,3 +124,4 @@ Rename-Item "$env:LOCALAPPDATA\CodexPocket\logs\supervisor.log" supervisor.log.o
 | 包里没有某天的 server 日志 | 只取最近 2 个文件；更早的在本地已按 3 天轮转删掉 |
 | 包里 supervisor 只有时间戳 | 设计如此：正文不进包 |
 | 想知道某个 4xx 的原因 | `code` 字段 + 同一时刻 `docs/PROTOCOL.zh-CN.md` 的错误码表 |
+| 日志里成片出现 `409 approval_request_unavailable`、`403 write_disabled`、`GET /api/threads 502`、`401 unauthorized`，且带 `threadId: "http-approval-thread"` | **这是测试流量，不是故障**。2026-11-19 之前的测试进程没有隔离日志目录，把请求写进了生产日志（`server-20261119.log` 里就能看到几百条）。`5c68386` 起已修（`NODE_TEST_CONTEXT` 下写临时目录），但**已经写进去的不会消失**。按 `threadId=http-approval-thread` 这类特征排除即可；不要为了日志干净去删改当天文件——真故障也在同一个文件里。 |
