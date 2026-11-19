@@ -242,25 +242,35 @@ async function shot(cdp, file, attempts = 3) {
 // Konsta renders the tab buttons with role="link", so address them by label.
 const TAB = (label) => `.tl-tabbar [aria-label="${label}"]`;
 
+// 2.2.2 IA: the landing screen IS the conversation list (`HomeScreen` is gone),
+// the list is `.tl-thread-*` and the 按时间/按项目 switch is `.tl-filter-chip`.
 const SCENARIOS = [
-  { name: "home", steps: [{ waitFor: ".tl-card" }, { wait: 1000 }] },
-  { name: "threads", steps: [{ click: TAB("会话") }, { waitFor: ".tl-view-switch" }, { wait: 700 }] },
-  { name: "threads-time", steps: [{ click: TAB("会话") }, { clickText: "按时间" }, { wait: 600 }] },
+  { name: "landing", steps: [{ waitFor: ".tl-thread-filters" }, { wait: 1000 }] },
+  {
+    name: "threads-project",
+    steps: [
+      { click: TAB("会话") },
+      { waitFor: ".tl-filter-chip" },
+      { clickText: "按项目" },
+      { waitFor: ".tl-group-head" },
+      { wait: 700 },
+    ],
+  },
   {
     name: "threads-archive-confirm",
     steps: [
       { click: TAB("会话") },
-      { waitFor: ".tl-card button.tl-press" },
+      { waitFor: "button.tl-thread-row" },
       { wait: 700 },
-      { longPress: ".tl-card button.tl-press" },
+      { longPress: "button.tl-thread-row" },
       { waitFor: ".tl-confirm-card" },
       { wait: 400 },
     ],
   },
-  {
-    name: "banner-401",
-    steps: [{ waitFor: ".tl-conn-banner" }, { wait: 900 }],
-  },
+  // The 401 banner only exists while the fixture answers 401 (`-Fail 401`).
+  ...(process.env.QA_VISUAL_FAIL
+    ? [{ name: "banner-401", steps: [{ waitFor: ".tl-conn-banner" }, { wait: 900 }] }]
+    : []),
   { name: "monitors", steps: [{ click: TAB("监控") }, { wait: 700 }] },
   { name: "settings", steps: [{ click: TAB("设置") }, { wait: 700 }] },
   {
@@ -305,12 +315,18 @@ const SCENARIOS = [
     ],
   },
   {
-    name: "sheet-newtask",
-    steps: [{ click: TAB("会话") }, { click: '[aria-label="新建任务"]' }, { waitFor: "[data-vaul-drawer]" }, { wait: 800 }],
+    // 2.2.2: "+" opens a blank conversation page, not a sheet.
+    name: "chat-blank",
+    steps: [
+      { click: TAB("会话") },
+      { click: '[aria-label="新建会话"]' },
+      { waitFor: ".tl-chat-blank-orb" },
+      { wait: 900 },
+    ],
   },
   {
     name: "sheet-harness",
-    steps: [{ clickText: "切换电脑上的服务" }, { waitFor: "[data-vaul-drawer]" }, { wait: 800 }],
+    steps: [{ click: TAB("设置") }, { waitForText: "切换电脑上的服务" }, { clickText: "切换电脑上的服务" }, { waitFor: "[data-vaul-drawer]" }, { wait: 800 }],
   },
   {
     name: "sheet-diagnostics",
