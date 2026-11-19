@@ -108,7 +108,7 @@ test('IA6: a blank chat never polls and creates the thread on first send', () =>
   assert.match(detail, /newThread = false \}: \{ threadId: string; title: string; newThread\?: boolean \}/);
   assert.match(detail, /const composerThreadId = newThread \? '__new__' : threadId/);
   assert.match(detail, /if \(!context \|\| newThread\) return;/);
-  assert.match(detail, /const id = await createThread\(context, \{ \.\.\.payload \}\)/);
+  assert.match(detail, /const id = await createThread\(context, \{ \.\.\.payload[^}]*\}\)/);
   assert.match(detail, /openDetail\(id, text\.slice\(0, 48\) \|\| '新会话'\)/);
   assert.match(detail, /autoFocus=\{newThread\}/);
   assert.match(detail, /tl-chat-list--blank/);
@@ -129,3 +129,5 @@ test('IA8: ConnectScreen is the only unpaired entry', () => {
   assert.doesNotMatch(read('screens/ThreadsScreen.tsx'), /ConnectScreen/);
   assert.doesNotMatch(read('screens/SettingsScreen.tsx'), /ConnectScreen/);
 });
+
+

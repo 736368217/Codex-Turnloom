@@ -3330,6 +3330,59 @@ async function getAccountInfo() {
   return promise;
 }
 
+const THREAD_PREVIEW_MAX_CHARS = 120;
+const THREAD_PREVIEW_CACHE_MS = 30_000;
+const THREAD_PREVIEW_MAX_ROWS = 60;
+const threadPreviewCache = new Map();
+
+function previewTextFromMessage(message) {
+  const text = String(message?.content || "").replace(/\s+/g, " ").trim();
+  if (!text) return "";
+  return text.length > THREAD_PREVIEW_MAX_CHARS ? `${text.slice(0, THREAD_PREVIEW_MAX_CHARS)}…` : text;
+}
+
+/**
+ * The last human/assistant sentence of a thread, or "".
+ * Never returns a thread id or a path: callers must treat "" as "no preview"
+ * instead of falling back to the id (that fallback is what rendered UUIDs).
+ */
+async function threadPreviewFromRollout(row) {
+  const resolved = row.rolloutPath ? safeResolveRolloutFile(row.rolloutPath, row.id) : null;
+  if (!resolved || !existsSync(resolved.path)) return "";
+  const parsed = await parseRollout(resolved.path, { limit: 4, preferTail: true });
+  const messages = (parsed.messages || []).filter(
+    (message) => message.kind === "message" && (message.role === "user" || message.role === "assistant")
+  );
+  for (let index = messages.length - 1; index >= 0; index -= 1) {
+    const text = previewTextFromMessage(messages[index]);
+    if (text) return text;
+  }
+  return "";
+}
+
+/** Fill empty previews for one page only; 500 rows per request would be too much IO. */
+async function threadsWithPreview(rows) {
+  const now = Date.now();
+  const limit = Math.min(rows.length, THREAD_PREVIEW_MAX_ROWS);
+  const out = rows.slice();
+  for (let index = 0; index < limit; index += 1) {
+    const row = out[index];
+    if (row.preview) continue;
+    const key = `${row.id}:${Number(row.updatedAtMs) || 0}`;
+    const cached = threadPreviewCache.get(key);
+    if (cached && now - cached.at < THREAD_PREVIEW_CACHE_MS) {
+      out[index] = { ...row, preview: cached.text };
+      continue;
+    }
+    let text = "";
+    try { text = await threadPreviewFromRollout(row); } catch { text = ""; }
+    if (threadPreviewCache.size > 2000) threadPreviewCache.clear();
+    threadPreviewCache.set(key, { text, at: now });
+    out[index] = { ...row, preview: text };
+  }
+  return out;
+}
+
 async function getThreads({ preserveIds = [] } = {}) {
   const preserveKey = [...new Set(preserveIds.map((id) => String(id || "").trim()).filter(Boolean))].sort().join(",");
   const cacheKey = `${activeCodexHome()}|${preserveKey}`;
@@ -5274,6 +5327,52 @@ async function requestHostOperation(operation, args, { confirm = false, timeoutM
   const payload = response?.result ?? response ?? {};
   if (payload?.ok === false) throw new Error(payload?.error || `host ${operation} failed`);
   return payload?.result ?? payload;
+}
+
+/** PI 的唯一模型源：providers + config_json.models；顺序即 PI 自己的顺序。 */
+async function piModelConfiguration() {
+  // PI 是唯一模型源：供应商顺序 = 启用供应商的创建顺序，模型顺序 = provider.config_json.models。
+  // 目录 slug 必须是「供应商名/模型 id」，宿主/桥只认 (providerId, modelId)。
+  try {
+    const dbPath = path.join(PI_DATA_ROOT, "pi.sqlite");
+    if (!existsSync(dbPath)) return null;
+    const rows = await runSqlJsonFromDb(
+      dbPath,
+      `SELECT id, name, default_model_id AS defaultModelId, config_json AS configJson, created_at AS createdAt
+         FROM providers WHERE enabled = 1 ORDER BY created_at ASC, name ASC;`
+    );
+    const models = [];
+    let defaultModel = "";
+    for (const row of Array.isArray(rows) ? rows : []) {
+      let config = {};
+      try { config = JSON.parse(row.configJson || "{}"); } catch { config = {}; }
+      const list = Array.isArray(config.models) ? config.models : [];
+      const providerName = String(row.name || "").trim();
+      if (!providerName) continue;
+      for (const entry of list) {
+        const modelId = String(entry?.id || "").trim();
+        if (!modelId) continue;
+        models.push({
+          id: `${providerName}/${modelId}`,
+          label: modelId,
+          provider: providerName,
+          efforts: Array.isArray(entry.thinkingLevels) ? entry.thinkingLevels.map(String) : [],
+          defaultEffort: String(entry.defaultThinkingLevel || ""),
+          supportsImages: entry.supportsImages === true,
+        });
+      }
+      const defaultId = String(row.defaultModelId || "").trim();
+      if (!defaultModel && defaultId && list.some((entry) => String(entry?.id || "") === defaultId)) {
+        defaultModel = `${providerName}/${defaultId}`;
+      }
+    }
+    if (!models.length) return null;
+    if (!defaultModel) defaultModel = models[0].id;
+    const selected = models.find((model) => model.id === defaultModel) || models[0];
+    return { models, defaultModel, defaultEffort: selected.defaultEffort || "" };
+  } catch {
+    return null;
+  }
 }
 
 /** PI 会话当前真正生效的 (provider, model, 思考强度)，直接从 pi.sqlite 读。 */
@@ -8587,7 +8686,9 @@ const server = http.createServer(async (req, res) => {
       if (!requireAuthorized(req, res, url)) return;
       keepIpcWarm();
       const homeState = await refreshCodexHomeContext({ force: true, source: "health" });
-      const modelConfiguration = await loadCodexModelConfiguration(homeState.home);
+      // PI 接管时模型面板只显示 PI 的供应商/候选（顺序也照 PI），Codex 目录不混进来。
+      const piConfiguration = PI_NATIVE_QUEUE ? await piModelConfiguration() : null;
+      const modelConfiguration = piConfiguration || await loadCodexModelConfiguration(homeState.home);
       const usedModels = await usedModelIds(homeState.home);
       const release = await currentAppRelease();
       sendJson(res, 200, {
@@ -8981,7 +9082,7 @@ const server = http.createServer(async (req, res) => {
         cursor: url.searchParams.get("cursor")
       });
       const body = {
-        threads: page.threads,
+        threads: await threadsWithPreview(page.threads),
         ...(limit ? { total: page.total, nextCursor: page.nextCursor } : {}),
         codexHome: homeState.home,
         codexHomeVersion: homeState.version

@@ -37,15 +37,16 @@ function load(file) {
   return mod.exports;
 }
 
-test('U1: thread list opens on newest conversations, not on collapsed project groups', () => {
+test('U1: thread list opens on project view; projects collapse, 未归类 stays open', () => {
   const screen = read('screens/ThreadsScreen.tsx');
   const store = read('state/tabStore.ts');
-  // 首屏默认「按时间」，否则「按项目」+ 全折叠时一行会话都看不到。
-  // 视图在 tabStore 里持久（进出详情不重置），不再由屏幕局部 state 决定。
-  assert.match(store, /threadsView: 'time'/);
+  // 2.2.4 的产品决定：默认「按项目」；项目组默认收起、未归类默认展开，
+  // 所以首屏仍有内容可点。视图持久在 tabStore，进出详情不重置。
+  assert.match(store, /threadsView: 'project'/);
   assert.match(screen, /threadsView: view/);
-  // 分组默认展开：折叠态必须是显式的 true，而不是「不是 false」。
-  assert.match(screen, /const collapsedNow = collapsed\[group\.key\] === true/);
+  assert.match(screen, /const isCollapsed = \(key: string\) => collapsed\[key\] \?\? !isUncategorized\(key\)/);
+  // 未归类永远排在最后（有项目的在上，无项目的在下）。
+  assert.match(screen, /Number\(isUncategorized\(a\.key\)\) - Number\(isUncategorized\(b\.key\)\)/);
   assert.doesNotMatch(screen, /collapsed\[group\.key\] !== false/);
 });
 
@@ -53,7 +54,10 @@ test('U2: tapping a project group toggles it on the first tap', () => {
   const screen = read('screens/ThreadsScreen.tsx');
   // 旧实现 `!prev[key]` 把 undefined 变成 true，第一次点击仍保持折叠。
   assert.doesNotMatch(screen, /\[key\]: !prev\[key\]/);
-  assert.match(screen, /\[key\]: prev\[key\] !== true/);
+  // 2.2.4：默认折叠状态由 isCollapsed() 决定（项目组默认收起、未归类默认展开），
+  // toggle 必须取它的反，而不是把 undefined 当成 false。
+  assert.match(screen, /const isCollapsed = \(key: string\) => collapsed\[key\] \?\? !isUncategorized\(key\)/);
+  assert.match(screen, /\[key\]: !isCollapsed\(key\)/);
 });
 
 test('U3: monitor rows offer a real stop action instead of a dead "view / stop" hint', () => {
