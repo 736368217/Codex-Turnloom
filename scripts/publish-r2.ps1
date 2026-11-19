@@ -35,6 +35,11 @@ param(
     [string]$BaseUrl = 'https://dl.736.de5.net',
     [string]$TokenFile = '',
     [int64]$MaxBytes = 5368709120,
+    # 项目签名（turnloom-debug.keystore，可覆盖 2.1.3–2.2.x）。发错 key 的 APK 装不上手机，
+    # 所以这一条是失败关闭的：找不到 apksigner 或指纹不符都不发布。
+    [string]$ExpectedCertSha256 = '2feb63c511cd725795cadc8fa890f9cbc754fe59c0bbfe0787ac33f94f44fa9c',
+    [string]$AndroidHome = '',
+    [switch]$SkipSignatureCheck,
     [switch]$DryRun,
     [switch]$SkipReadback
 )
@@ -61,6 +66,57 @@ if ($Version -notmatch '^[A-Za-z0-9][A-Za-z0-9._+-]*$') { Fail "version must loo
 if ($VersionCode -le 0) { Fail "VersionCode is required (integer > 0)" }
 
 $apkItem = Get-Item -LiteralPath $Apk
+
+# ------------------------------------------------------- 签名/身份预检（失败关闭）--
+function Find-BuildTool([string]$name) {
+    $roots = @()
+    if ($AndroidHome) { $roots += $AndroidHome }
+    if ($env:ANDROID_HOME) { $roots += $env:ANDROID_HOME }
+    if ($env:ANDROID_SDK_ROOT) { $roots += $env:ANDROID_SDK_ROOT }
+    $roots += (Join-Path $env:USERPROFILE 'tools\android-sdk')
+    foreach ($root in $roots) {
+        $bt = Join-Path $root 'build-tools'
+        if (-not (Test-Path -LiteralPath $bt)) { continue }
+        $dir = Get-ChildItem -LiteralPath $bt -Directory | Sort-Object Name -Descending | Select-Object -First 1
+        if (-not $dir) { continue }
+        $candidate = Join-Path $dir.FullName $name
+        if (Test-Path -LiteralPath $candidate) { return $candidate }
+    }
+    return ''
+}
+
+if (-not $SkipSignatureCheck) {
+    $apkSigner = Find-BuildTool 'apksigner.bat'
+    if (-not $apkSigner) { $apkSigner = Find-BuildTool 'apksigner' }
+    if (-not $apkSigner) { Fail "apksigner not found (set -AndroidHome). Publishing an unverified APK is refused; pass -SkipSignatureCheck to override." }
+    $certs = (& $apkSigner verify --print-certs $apkItem.FullName 2>&1 | Out-String)
+    if ($LASTEXITCODE -ne 0) { Fail "apksigner verify failed: $certs" }
+    if ($certs -notmatch [regex]::Escape($ExpectedCertSha256)) {
+        Fail "APK is not signed with the project key. Expected $ExpectedCertSha256. Cert output: $certs"
+    }
+    Ok "signature matches the project key (2feb63c5…)"
+
+    $aapt2 = Find-BuildTool 'aapt2.exe'
+    if (-not $aapt2) { $aapt2 = Find-BuildTool 'aapt2' }
+    if ($aapt2) {
+        $badging = (& $aapt2 dump badging $apkItem.FullName 2>&1 | Out-String)
+        if ($badging -match "versionCode='(\d+)'") {
+            if ([int]$Matches[1] -ne $VersionCode) { Fail "APK versionCode is $($Matches[1]), but -VersionCode is $VersionCode" }
+        } else { Fail "could not read versionCode from the APK" }
+        if ($badging -match "versionName='([^']+)'") {
+            if ($Matches[1] -ne $Version) { Fail "APK versionName is $($Matches[1]), but -Version is $Version" }
+        } else { Fail "could not read versionName from the APK" }
+        if ($badging -match "package: name='([^']+)'") {
+            if ($Matches[1] -ne 'com.codex.turnloom.app') { Fail "APK package is $($Matches[1]), expected com.codex.turnloom.app" }
+        }
+        Ok "identity matches $Version ($VersionCode)"
+    } else {
+        Write-Host "warning : aapt2 not found, version identity not checked" -ForegroundColor Yellow
+    }
+} else {
+    Write-Host "warning : signature check skipped by request" -ForegroundColor Yellow
+}
+
 $sha = Get-Sha256Hex $apkItem.FullName
 $size = $apkItem.Length
 $apkKey = "$Project/Codex-Turnloom-$Version.apk"
