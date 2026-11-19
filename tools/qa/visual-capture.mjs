@@ -38,6 +38,8 @@ const ONLY = arg("only", "").split(",").filter(Boolean);
 const DUMP = arg("dump", "");
 const EVAL_RAW = arg("eval", "");
 const EVAL = EVAL_RAW.startsWith("@") ? readFileSync(EVAL_RAW.slice(1), "utf8") : EVAL_RAW;
+const CSS_RAW = arg("css", "");
+const CANDIDATE_CSS = CSS_RAW.startsWith("@") ? readFileSync(CSS_RAW.slice(1), "utf8") : CSS_RAW;
 const PORT = Number(arg("port", "9333"));
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -366,6 +368,12 @@ async function runScenario(cdp, scenario, view, outDir) {
     await cdp.send("Page.navigate", { url: BASE });
     await sleep(800);
     await evaluate(cdp, "window.__turnloomBack = () => false");
+    // `--css @file` injects a candidate stylesheet after navigation so a token or
+    // surface change can be A/B'd without editing the app (screenshots stay comparable).
+    if (CANDIDATE_CSS) {
+      await evaluate(cdp, `(() => { const s = document.createElement('style'); s.dataset.qaCandidate = '1'; s.textContent = ${JSON.stringify(CANDIDATE_CSS)}; document.head.appendChild(s); return true; })()`);
+      await sleep(120);
+    }
     for (const step of scenario.steps) {
       if (step.waitFor) await waitForSelector(cdp, step.waitFor);
       if (step.waitForText) await waitForText(cdp, step.waitForText, step.textSelector || "button");
