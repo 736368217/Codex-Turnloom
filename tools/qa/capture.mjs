@@ -247,9 +247,9 @@ const BRIDGE_SHIM = `(() => {
     // 更新场景必须用真实身份：validateAppUpdate 只认 com.codex.turnloom.app，
     // 且 hasNativeUpdater 要求 updatesAvailable=true，否则下载入口不会出现。
     getAppInfo: () => JSON.stringify({ label: 'Turnloom QA', version: '2.2.2', versionCode: 91,
-      packageName: (QA_UPDATE_PUBLIC || QA_UPDATE_SERVER) ? 'com.codex.turnloom.app' : 'dev.turnloom.qa',
+      packageName: (QA_UPDATE_PUBLIC || QA_UPDATE_SERVER || QA_UPDATE_LIVE) ? 'com.codex.turnloom.app' : 'dev.turnloom.qa',
       cameraAvailable: false,
-      updatesAvailable: Boolean(QA_UPDATE_PUBLIC || QA_UPDATE_SERVER) }),
+      updatesAvailable: Boolean(QA_UPDATE_PUBLIC || QA_UPDATE_SERVER || QA_UPDATE_LIVE) }),
     haptic: () => {},
     setLightBars: () => {},
     openExternalUrl: () => true,
@@ -735,7 +735,7 @@ async function runViewport(browser, viewport, report) {
     await shot(page, dir, "17-settings", report);
     // 更新面板在「检查更新 ›」抽屉里；只有开了 QA_UPDATE_* 才多拍一张，
     // 免得默认截图集和基线对照多出一屏。
-    if (process.env.QA_UPDATE_PUBLIC || process.env.QA_UPDATE_SERVER) {
+    if (process.env.QA_UPDATE_PUBLIC || process.env.QA_UPDATE_SERVER || process.env.QA_UPDATE_LIVE) {
       await clickText(page, "检查更新", { selector: "button", optional: true });
       await sleep(900);
       await shot(page, dir, "17b-update-panel", report);
@@ -841,4 +841,6 @@ main().catch(async (error) => {
   if (USE_STACK) stopStack();
   process.exit(1);
 });
+
+
 
