@@ -466,7 +466,7 @@ try {
         generatedAt   = (Get-Date).ToString('o'); startedAt = $startedAt.ToString('o')
         result        = 'ok'; route = 'dom-shell'; buildType = $BuildType
         # shared/app-release.cjs treats a manifest without a channel as a release
-        # build (it then demands assembleRelease) — name the channel explicitly.
+        # build (it then demands assembleRelease) - name the channel explicitly.
         channel       = $(if ($BuildType -eq 'debug') { 'debug' } else { 'release' })
         packageName   = $configuredPackage
         versionName   = $versionName; versionCode = $versionCode; apkName = $apkName
