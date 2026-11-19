@@ -1493,14 +1493,22 @@ button:focus-visible, a:focus-visible { outline: 2px solid var(--tl-blue); outli
   display: grid; place-items: center; border: 0; background: transparent; color: var(--tl-label-secondary);
 }
 
-.tl-thread-filters { flex: 0 0 auto; display: flex; gap: 10px; padding: 2px 16px 14px; justify-content: center; }
+/* A horizontally scrollable pill strip, not two centred buttons: the row keeps
+   growing as views are added, and the rail scrolls instead of wrapping. */
+.tl-thread-filters {
+  flex: 0 0 auto; display: flex; gap: 8px; padding: 2px 16px 12px;
+  justify-content: flex-start;
+  overflow-x: auto; overflow-y: hidden;
+  scrollbar-width: none; -webkit-overflow-scrolling: touch;
+}
+.tl-thread-filters::-webkit-scrollbar { display: none; }
 .tl-filter-chip {
-  position: relative; height: 40px; padding: 0 22px;
+  position: relative; flex: 0 0 auto; height: 44px; padding: 0 20px;
   border: 0; border-radius: 999px; background: var(--tl-surface);
   color: #3C3C43; font-size: 14px; font-weight: 600; white-space: nowrap;
 }
-/* The visible pill stays 40px; the touch target is 44px. */
-.tl-filter-chip::before { content: ''; position: absolute; inset: -2px 0; }
+/* 44px visible and 44px tappable — no pseudo-element needed at this size. */
+.tl-filter-chip::before { content: ''; position: absolute; inset: 0; }
 .tl-filter-chip.is-active { background: var(--tl-label-primary); color: #FFFFFF; }
 .tl-filter-chip:active { opacity: .72; }
 
