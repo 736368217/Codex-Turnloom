@@ -9075,7 +9075,15 @@ const server = http.createServer(async (req, res) => {
     }
     if (req.method === "GET" && url.pathname === "/api/plugins") {
       if (!requireAuthorized(req, res, url)) return;
-      sendJson(res, 200, await getPlugins());
+      const payload = await getPlugins();
+      // The mention menu needs names, not 24 inline data-URL icons (362 KB vs 8 KB).
+      if (url.searchParams.get("compact") === "1") {
+        payload.plugins = (payload.plugins || []).map((plugin) => {
+          const { iconDataUrl, ...rest } = plugin;
+          return rest;
+        });
+      }
+      sendJson(res, 200, payload);
       return;
     }
     if (req.method === "GET" && url.pathname === "/api/skills") {
