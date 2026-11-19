@@ -141,6 +141,11 @@ export class HttpBackendClient {
     return threads.find((thread) => thread.id === String(threadId)) || null;
   }
 
+  /** The model catalogue belongs to the host; never answer with a local default. */
+  async getHealth() {
+    return await this.request("/health");
+  }
+
   /** The reference menu's catalogues have to come from the host, not from []. */
   async getPlugins({ compact = false } = {}) {
     const data = await this.request("/plugins", { query: compact ? { compact: "1" } : null });

@@ -1269,6 +1269,7 @@
     $("#btn-pause-logs")?.addEventListener("click", () => setLogPaused(!state.paused));
     $("#btn-open-logs")?.addEventListener("click", () => openPathSafe("logs", "日志目录"));
     $("#btn-export-logs")?.addEventListener("click", exportLogs);
+    $("#btn-upload-logs")?.addEventListener("click", uploadLogs);
     $$("[data-log-filter]").forEach((button) => {
       button.addEventListener("click", () => {
         state.logFilter = button.dataset.logFilter || "all";
@@ -1566,6 +1567,7 @@
     $("#btn-open-config")?.addEventListener("click", () => openPathSafe("config", "配置目录"));
     $("#btn-settings-open-logs")?.addEventListener("click", () => openPathSafe("logs", "日志目录"));
     $("#btn-settings-export-logs")?.addEventListener("click", exportLogs);
+    $("#btn-settings-upload-logs")?.addEventListener("click", uploadLogs);
     bindDevicesCard();
 
     $$("#settings-form [data-setting]").forEach((control) => {
@@ -2476,6 +2478,28 @@
     }
   }
 
+  /**
+   * 上传日志：服务端只抄 allowlist 字段（路由/状态/错误码），消息正文与
+   * access code 不进包；这里只负责触发和把结果说清。
+   */
+  async function uploadLogs() {
+    const buttons = [$("#btn-upload-logs"), $("#btn-settings-upload-logs")].filter(Boolean);
+    for (const button of buttons) button.disabled = true;
+    showToast("正在打包并上传日志…", "info", 4000);
+    try {
+      const result = await api.uploadLogs();
+      if (result?.ok) {
+        showToast(`日志已上传：${result.key || ""}（${result.files || 0} 个文件）`, "success", 6000);
+      } else {
+        showToast(result?.error || "上传日志失败", "error", 6000);
+      }
+    } catch (error) {
+      showToast(`上传日志失败：${error?.message || error}`, "error", 6000);
+    } finally {
+      for (const button of buttons) button.disabled = false;
+    }
+  }
+
   /* ------------------------------------------------------------------ */
   /* Toasts / modal                                                      */
   /* ------------------------------------------------------------------ */
@@ -3029,6 +3053,7 @@
         await downloadDemoImage(demoQrDataUrl(), "Codex-Turnloom-demo.png");
         return { ok: true, filePath: "Codex-Turnloom-demo.png" };
       },
+      uploadLogs: async () => ({ ok: true, key: "turnloom/logs/demo/demo.zip", files: 2 }),
       exportLogs: async () => {
         const text = demo.logs.map((line) => `[${line.date}] [${line.level.toUpperCase()}] [${line.source}] ${line.message}`).join("\r\n");
         downloadBlob(new Blob([text], { type: "text/plain;charset=utf-8" }), "Codex-Turnloom-logs-demo.txt");
@@ -3198,3 +3223,4 @@
     }
   }
 })();
+

@@ -50,6 +50,7 @@ async function startUpstream() {
       return send({ plugins: compact ? plugins.map(({ iconDataUrl, ...rest }) => rest) : plugins, codexHome: "C:\\pi-home", codexHomeVersion: "v1" });
     }
     if (url.pathname === "/api/skills") return send({ skills, codexHome: "C:\\pi-home", codexHomeVersion: "v1" });
+    if (url.pathname === "/api/health") return send({ ok: true, models: [{ id: "wbfd/alpha", provider: "wbfd", modelId: "alpha", providerLabel: "wbfd", efforts: ["high"], defaultEffort: "high", supportsImages: true, pinned: false }], defaultModel: "wbfd/alpha", defaultEffort: "high", lastUsedModel: "wbfd/alpha" });
     res.writeHead(404, { "content-type": "application/json" });
     res.end(JSON.stringify({ error: "not found" }));
   });
@@ -123,6 +124,18 @@ test("http-backend 透明转发 /api/skills 与 /api/plugins（含 compact 与 t
   assert.equal(pluginCall.token, UPSTREAM_TOKEN, "the bridge token must reach the upstream");
 });
 
+test("http-backend 的健康检查把宿主的模型目录带过来，而不是本地 FALLBACK", async (t) => {
+  const upstream = await startUpstream();
+  t.after(upstream.stop);
+  const bridge = await startBridge(upstream.baseUrl);
+  t.after(bridge.stop);
+  const health = await getJson(bridge.baseUrl, "/api/health");
+  assert.equal(health.status, 200, bridge.log());
+  assert.deepEqual((health.body.models || []).map((m) => m.id), ["wbfd/alpha"]);
+  assert.equal(health.body.defaultModel, "wbfd/alpha");
+  assert.equal(health.body.lastUsedModel, "wbfd/alpha");
+});
+
 test("上游不可达时返回 unavailable，而不是假装“没有技能”", async (t) => {
   const dead = await freePort();
   const bridge = await startBridge(`http://127.0.0.1:${dead}/api`);
@@ -135,3 +148,4 @@ test("上游不可达时返回 unavailable，而不是假装“没有技能”",
     assert.ok(result.body.plugins || result.body.skills, `${pathname} must still carry an empty array`);
   }
 });
+

@@ -33,6 +33,7 @@ const appRelease = require("./shared/app-release.cjs");
 const sendFiles = require("./shared/send-files.cjs");
 const desktopRelease = require("./shared/desktop-release.cjs");
 const requestLog = require("./server/request-log.cjs");
+const { buildLogBundle } = require("./server/log-bundle.cjs");
 
 const modulePath = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(modulePath);
@@ -196,6 +197,28 @@ function logFatalError(label, error) {
 /** Host log directory; resolved per call so a test can point TURNLOOM_LOG_DIR at a temp dir. */
 function serverLogDir() {
   return requestLog.resolveLogDir();
+}
+
+/** Values that must never appear inside an uploaded log bundle. */
+function logBundleSecrets() {
+  const secrets = new Set([ACCESS_TOKEN]);
+  for (const name of ["CODEX_LAN_TOKEN", "CODEX_LAN_PASSWORD", "TURNLOOM_LOG_UPLOAD_TOKEN"]) {
+    const value = String(process.env[name] || "").trim();
+    if (value) secrets.add(value);
+  }
+  if (typeof BACKEND_TOKEN === "string" && BACKEND_TOKEN) secrets.add(BACKEND_TOKEN);
+  return [...secrets].filter((value) => value && value.length >= 4);
+}
+
+/** Upload credential: env first, then the operator's Desktop drop file. */
+function logUploadToken() {
+  const fromEnv = String(process.env.TURNLOOM_LOG_UPLOAD_TOKEN || "").trim();
+  if (fromEnv) return fromEnv;
+  try {
+    return String(readFileSync(path.join(os.homedir(), "Desktop", "认证", "r2-upload-token.txt"), "utf8")).trim();
+  } catch {
+    return "";
+  }
 }
 
 /**
@@ -5251,6 +5274,22 @@ async function usedModelIds(home) {
     return [];
   }
 }
+
+/** The model of the most recently updated thread that has one; "" when none. */
+async function lastUsedThreadModel(home) {
+  try {
+    const dbPath = path.join(path.resolve(home), "state_5.sqlite");
+    const rows = await runSqlJsonAttempt(
+      `SELECT model AS id FROM threads
+        WHERE model IS NOT NULL AND trim(model) <> ''
+        ORDER BY updated_at_ms DESC LIMIT 1`,
+      dbPath
+    );
+    return Array.isArray(rows) && rows[0] ? String(rows[0].id || "").trim() : "";
+  } catch {
+    return "";
+  }
+}
 function normalizeTurnSettings({ model, effort } = {}, modelConfiguration = activeModelConfiguration) {
   const models = Array.isArray(modelConfiguration?.models) && modelConfiguration.models.length
     ? modelConfiguration.models
@@ -5363,13 +5402,17 @@ async function piModelConfiguration() {
       for (const entry of list) {
         const modelId = String(entry?.id || "").trim();
         if (!modelId) continue;
+        const pinned = entry?.pinned === true || entry?.pin === true || Boolean(entry?.pinnedAt);
         models.push({
           id: `${providerName}/${modelId}`,
-          label: modelId,
           provider: providerName,
+          providerLabel: providerName,
+          modelId,
+          label: modelId,
           efforts: Array.isArray(entry.thinkingLevels) ? entry.thinkingLevels.map(String) : [],
           defaultEffort: String(entry.defaultThinkingLevel || ""),
           supportsImages: entry.supportsImages === true,
+          pinned,
         });
       }
       const defaultId = String(row.defaultModelId || "").trim();
@@ -5378,9 +5421,11 @@ async function piModelConfiguration() {
       }
     }
     if (!models.length) return null;
-    if (!defaultModel) defaultModel = models[0].id;
-    const selected = models.find((model) => model.id === defaultModel) || models[0];
-    return { models, defaultModel, defaultEffort: selected.defaultEffort || "" };
+    // PI 的数组顺序就是面板顺序；有 pinned 的置前，其余保持相对顺序。
+    const ordered = [...models.filter((model) => model.pinned), ...models.filter((model) => !model.pinned)];
+    if (!defaultModel) defaultModel = ordered[0].id;
+    const selected = ordered.find((model) => model.id === defaultModel) || ordered[0];
+    return { models: ordered, defaultModel, defaultEffort: selected.defaultEffort || "" };
   } catch {
     return null;
   }
@@ -8244,21 +8289,26 @@ async function handleHttpBackendApi(req, res, url, profile = null) {
   const branchMatch = pathname.match(/^\/api\/threads\/([^/]+)\/branch$/);
   try {
     if (req.method === "GET" && pathname === "/api/health") {
+      // de 这一跳的模型目录必须来自宿主：之前返回 FALLBACK_CODEX_MODELS，
+      // 手机面板于是一直显示 Codex 全量目录，PI 里没加入的模型也在。
+      const upstreamHealth = await backend.getHealth().catch(() => null);
       sendJson(res, 200, {
         ok: true,
         backend: { kind: "http", url: backend.baseUrl, profile: profile?.id || null },
         profile: profile ? { id: profile.id, label: profile.label, backend: profile.backend } : null,
-        codexHome: null,
-        codexHomeVersion: null,
+        codexHome: upstreamHealth?.codexHome ?? null,
+        codexHomeVersion: upstreamHealth?.codexHomeVersion ?? null,
         codexHomeSource: "http",
         codexHomeFixed: false,
         codexHomeChangedAt: null,
         codexIpcSocket: null,
         authRequired: AUTH_REQUIRED,
         allowWrite: ALLOW_WRITE,
-        models: FALLBACK_CODEX_MODELS,
-        defaultModel: DEFAULT_CODEX_MODEL,
-        defaultEffort: DEFAULT_CODEX_EFFORT,
+        models: Array.isArray(upstreamHealth?.models) && upstreamHealth.models.length ? upstreamHealth.models : FALLBACK_CODEX_MODELS,
+        defaultModel: String(upstreamHealth?.defaultModel || DEFAULT_CODEX_MODEL),
+        defaultEffort: String(upstreamHealth?.defaultEffort || DEFAULT_CODEX_EFFORT),
+        lastUsedModel: String(upstreamHealth?.lastUsedModel || ""),
+        usedModelIds: Array.isArray(upstreamHealth?.usedModelIds) ? upstreamHealth.usedModelIds : [],
         now: new Date().toISOString(),
         ...healthVersionFields(),
         ...appRelease.legacyHealthFields(await currentAppRelease())
@@ -8739,6 +8789,7 @@ const server = http.createServer(async (req, res) => {
         sqliteDriver: sqliteDriverInfo(),
         models: modelConfiguration.models,
         usedModelIds: usedModels,
+        lastUsedModel: await lastUsedThreadModel(homeState.home),
         defaultModel: modelConfiguration.defaultModel,
         defaultEffort: modelConfiguration.defaultEffort,
         now: new Date().toISOString(),
@@ -8750,6 +8801,44 @@ const server = http.createServer(async (req, res) => {
     if (req.method === "GET" && url.pathname === "/api/admin/diagnostics") {
       if (!requireAuthorized(req, res, url)) return;
       sendJson(res, 200, await buildThreadDiagnostics());
+      return;
+    }
+    if (req.method === "GET" && url.pathname === "/api/admin/logs") {
+      if (!requireAuthorized(req, res, url)) return;
+      const bundle = buildLogBundle({
+        logDir: serverLogDir(),
+        machine: MACHINE_NAME,
+        secrets: logBundleSecrets(),
+      });
+      res.writeHead(200, {
+        "content-type": "application/zip",
+        "content-disposition": `attachment; filename="${bundle.name}"`,
+        "content-length": String(bundle.buffer.length),
+        "cache-control": "no-store",
+      });
+      res.end(bundle.buffer);
+      return;
+    }
+    if (req.method === "POST" && url.pathname === "/api/admin/logs/upload") {
+      if (!requireAuthorized(req, res, url)) return;
+      const token = logUploadToken();
+      if (!token) {
+        sendJson(res, 200, { ok: false, error: "upload-token-missing", hint: "set TURNLOOM_LOG_UPLOAD_TOKEN or place Desktop\\认证\\r2-upload-token.txt" });
+        return;
+      }
+      const bundle = buildLogBundle({ logDir: serverLogDir(), machine: MACHINE_NAME, secrets: logBundleSecrets() });
+      const key = `turnloom/logs/${String(MACHINE_NAME || "machine").replace(/[^A-Za-z0-9._-]+/g, "-")}/${bundle.name}`;
+      try {
+        const response = await fetch(`https://dl.736.de5.net/${key}`, {
+          method: "PUT",
+          headers: { "X-Upload-Token": token, "content-type": "application/zip" },
+          body: bundle.buffer,
+        });
+        if (!response.ok) throw new Error(`R2 returned ${response.status}`);
+        sendJson(res, 200, { ok: true, key, bytes: bundle.buffer.length, files: bundle.files.length, droppedLines: bundle.droppedLines });
+      } catch (error) {
+        sendJson(res, 502, { ok: false, error: "upload-failed", reason: String(error?.message || error) });
+      }
       return;
     }
     if (req.method === "GET" && url.pathname === "/api/debug/events") {

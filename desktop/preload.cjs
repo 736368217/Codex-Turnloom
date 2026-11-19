@@ -32,6 +32,7 @@ const api = {
   checkUpdate: () => ipcRenderer.invoke("desktop:checkUpdate"),
   detectBridge: () => ipcRenderer.invoke("devices:detect"),
   exportLogs: () => ipcRenderer.invoke("logs:export"),
+  uploadLogs: () => ipcRenderer.invoke("logs:upload"),
   openPath: (kind) => ipcRenderer.invoke("shell:openPath", kind),
   openExternal: (url) => ipcRenderer.invoke("shell:openExternal", url),
   openPreview: () => ipcRenderer.invoke("shell:openPreview"),
