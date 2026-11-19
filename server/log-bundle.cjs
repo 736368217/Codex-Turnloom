@@ -15,11 +15,14 @@
 const fs = require("node:fs");
 const { existsSync } = require("node:fs");
 const path = require("node:path");
+const { createHash } = require("node:crypto");
 const { resolveLogDir } = require("./request-log.cjs");
 
 const MAX_FILES = 24;
+const MAX_SERVER_FILES = 2;
 const MAX_FILE_BYTES = 8 * 1024 * 1024;
-const MAX_TOTAL_BYTES = 24 * 1024 * 1024;
+const MAX_TOTAL_BYTES = 8 * 1024 * 1024;
+const SUPERVISOR_TAIL_BYTES = 512 * 1024;
 
 /** Request-log fields that are safe: timing, route, status, codes. */
 const SERVER_FIELDS = ["ts", "source", "level", "method", "path", "status", "ms", "harness", "threadId", "code"];
@@ -154,10 +157,18 @@ function listByMtime(dir, filter) {
     .sort((a, b) => b.mtimeMs - a.mtimeMs);
 }
 
+function digest(text) {
+  return createHash("sha256").update(String(text), "utf8").digest("hex");
+}
+
 function readScrubbed(file, fields, secrets, budget) {
   let raw;
   try { raw = fs.readFileSync(file, "utf8"); } catch { return { text: "", kept: 0, dropped: 0 }; }
-  if (raw.length > budget) raw = raw.slice(raw.length - budget);
+  if (raw.length > budget) {
+    raw = raw.slice(raw.length - budget);
+    const cut = raw.indexOf("\n");
+    raw = cut >= 0 ? raw.slice(cut + 1) : "";
+  }
   const lines = raw.split(/\r?\n/);
   const kept = [];
   let dropped = 0;
@@ -182,13 +193,13 @@ function buildLogBundle({ logDir = resolveLogDir(), machine = "machine", now = n
   let budget = MAX_TOTAL_BYTES;
   let droppedLines = 0;
 
-  const serverFiles = listByMtime(logDir, (name) => /^server-.*\.log$/.test(name)).slice(0, MAX_FILES);
+  const serverFiles = listByMtime(logDir, (name) => /^server-\d{8}\.log$/.test(name)).slice(0, MAX_SERVER_FILES);
   for (const file of serverFiles) {
     const text = readScrubbed(file.full, SERVER_FIELDS, secrets, Math.min(MAX_FILE_BYTES, budget));
     if (!text.text) { droppedLines += text.dropped; continue; }
     budget -= text.text.length;
     entries.push({ path: `server/${file.name}`, data: text.text });
-    files.push({ path: `server/${file.name}`, bytes: Buffer.byteLength(text.text) });
+    files.push({ path: `server/${file.name}`, bytes: Buffer.byteLength(text.text), sha256: digest(text.text) });
     droppedLines += text.dropped;
   }
 
@@ -198,17 +209,39 @@ function buildLogBundle({ logDir = resolveLogDir(), machine = "machine", now = n
     if (!text.text) { droppedLines += text.dropped; continue; }
     budget -= text.text.length;
     entries.push({ path: `phone/${file.name}`, data: text.text });
-    files.push({ path: `phone/${file.name}`, bytes: Buffer.byteLength(text.text) });
+    files.push({ path: `phone/${file.name}`, bytes: Buffer.byteLength(text.text), sha256: digest(text.text) });
     droppedLines += text.dropped;
   }
 
-  // The console supervisor log is free text ("Starting tunnel to <host>; …"), so
-  // only the timestamp/level/source are copied; the message is dropped.
+  // The console supervisor log is free text ("Starting tunnel to <host>; …") and
+  // grows without bound (4.7 MB on the live box). Keep the last 512 KB, cut on a
+  // line boundary, and copy only timestamp/source — the message becomes
+  // "[text omitted]". Truncation is recorded as a fact in the manifest.
   const supervisor = path.join(logDir, "supervisor.log");
   if (existsSync(supervisor)) {
     let raw = "";
-    try { raw = fs.readFileSync(supervisor, "utf8"); } catch { raw = ""; }
-    if (raw.length > MAX_FILE_BYTES) raw = raw.slice(raw.length - MAX_FILE_BYTES);
+    let fromBytes = 0;
+    let truncated = false;
+    try {
+      const stat = fs.statSync(supervisor);
+      const start = Math.max(0, stat.size - SUPERVISOR_TAIL_BYTES);
+      truncated = start > 0;
+      const handle = fs.openSync(supervisor, "r");
+      try {
+        const length = stat.size - start;
+        const buffer = Buffer.alloc(length);
+        fs.readSync(handle, buffer, 0, length, start);
+        raw = buffer.toString("utf8");
+        fromBytes = start;
+      } finally {
+        fs.closeSync(handle);
+      }
+    } catch { raw = ""; }
+    if (truncated) {
+      // Never start with half a line: drop up to the first newline.
+      const cut = raw.indexOf("\n");
+      raw = cut >= 0 ? raw.slice(cut + 1) : "";
+    }
     const kept = [];
     for (const line of raw.split(/\r?\n/)) {
       const match = /^(\d{4}-\d\d-\d\d \d\d:\d\d:\d\d) \[([A-Za-z0-9._-]+)\] /.exec(line.trim());
@@ -217,16 +250,19 @@ function buildLogBundle({ logDir = resolveLogDir(), machine = "machine", now = n
     if (kept.length) {
       const text = `${kept.join("\n")}\n`;
       entries.push({ path: "supervisor/supervisor.log", data: text });
-      files.push({ path: "supervisor/supervisor.log", bytes: Buffer.byteLength(text) });
+      files.push({ path: "supervisor/supervisor.log", bytes: Buffer.byteLength(text), sha256: digest(text), truncated, fromBytes });
     }
   }
 
+  const totalBytes = entries.reduce((sum, entry) => sum + Buffer.byteLength(entry.data), 0);
   const manifest = {
     product: "codex-turnloom",
     generatedAt: now.toISOString(),
     machine: safeMachine,
     fields: { server: SERVER_FIELDS, phone: PHONE_FIELDS },
-    note: "Only allowlisted fields are copied; message text, notes and stacks are dropped.",
+    note: "Only allowlisted fields are copied; message text, notes and stacks are dropped. supervisor.log keeps only timestamp/source.",
+    limits: { totalBytes: MAX_TOTAL_BYTES, serverFiles: MAX_SERVER_FILES, supervisorTailBytes: SUPERVISOR_TAIL_BYTES },
+    totalBytes,
     files,
     droppedLines,
   };
@@ -236,4 +272,7 @@ function buildLogBundle({ logDir = resolveLogDir(), machine = "machine", now = n
 }
 
 module.exports = { buildLogBundle, zipStore, scrubLine, redactSecrets, crc32, SERVER_FIELDS, PHONE_FIELDS };
+
+
+
 
