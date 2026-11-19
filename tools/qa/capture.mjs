@@ -512,7 +512,14 @@ async function runViewport(browser, viewport, report) {
         focused: document.activeElement === input, composer: Boolean(input),
         text: (document.body.innerText || '').slice(0, 80),
         main: box(main), blank: box(blank), orb: box(orb),
-        center: { blank: center(document.querySelector('.tl-chat-blank')), orb: center(orb) },
+        center: {
+          // 容器的宽度就是整列，量容器中心永远等于 0；真正要看的是内容块（orb/标题/说明）
+          // 各自的中心与列中心差多少——Human 截图里歪的是内容，不是容器。
+          block: center(document.querySelector('.tl-chat-blank')),
+          orb: center(orb),
+          title: center(document.querySelector('.tl-chat-blank-title')),
+          copy: center(document.querySelector('.tl-chat-blank-copy')),
+        },
       };
     })()`);
     await shot(page, dir, "11a-new-chat", report);
