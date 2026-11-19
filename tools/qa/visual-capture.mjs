@@ -270,7 +270,7 @@ const SCENARIOS = [
     ],
   },
   {
-    name: "threads-archive-confirm",
+    name: "threads-menu",
     steps: [
       { click: TAB("会话") },
       { waitFor: "button.tl-thread-row" },
@@ -278,6 +278,29 @@ const SCENARIOS = [
       { longPress: "button.tl-thread-row" },
       { waitFor: ".tl-confirm-card" },
       { wait: 400 },
+    ],
+  },
+  {
+    name: "threads-archive-confirm",
+    steps: [
+      { click: TAB("会话") },
+      { waitFor: "button.tl-thread-row" },
+      { wait: 700 },
+      { longPress: "button.tl-thread-row" },
+      { waitFor: ".tl-confirm-card" },
+      { wait: 300 },
+      { clickText: "归档会话" },
+      { waitForText: "归档后默认不再显示" },
+      { wait: 400 },
+    ],
+  },
+  {
+    name: "threads-time",
+    steps: [
+      { click: TAB("会话") },
+      { waitFor: ".tl-filter-chip" },
+      { clickText: "按时间" },
+      { wait: 700 },
     ],
   },
   // The 401 banner only exists while the fixture answers 401 (`-Fail 401`).

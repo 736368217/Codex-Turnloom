@@ -1,5 +1,5 @@
 import { useEffect, useRef } from 'react';
-import { MessageSquare } from 'lucide-react';
+import { Activity, AlertTriangle, Check, Clock, MessageSquare } from 'lucide-react';
 import type { ThreadSummary } from '../lib/turnloomApi';
 import { haptic } from '../lib/nativeBridge';
 import { projectThread, formatThreadWhen, type ThreadStatusProjection } from '../lib/threadProjection';
@@ -12,17 +12,31 @@ export function toneOfThread(thread: ThreadSummary, statusByThread: StatusMap = 
   return projectThread(thread, statusByThread).tone;
 }
 
-export function titleOfThread(thread: ThreadSummary): string {
-  return String(thread.title || thread.name || thread.preview || thread.id || '未命名会话');
+const UUID_LIKE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const UUID_PREFIX = /^[0-9a-f]{8}-[0-9a-f]{4}-/i;
+
+/**
+ * The second line is a sentence the human wrote, never an identifier.
+ * A missing preview must leave the line empty: showing a thread id (or a path)
+ * there is the bug this exists to prevent — the fixture used to invent previews,
+ * which hid it on the real device.
+ */
+export function previewOfThread(thread: ThreadSummary): string {
+  const raw = String(thread.preview || '').trim();
+  if (!raw) return '';
+  const id = String(thread.id || '').trim();
+  if (id && raw === id) return '';
+  if (UUID_LIKE.test(raw) || (UUID_PREFIX.test(raw) && raw.length <= 40)) return '';
+  if (/^(?:[a-zA-Z]:[\\/]|\/|~[\\/]|\.{1,2}[\\/])/.test(raw)) return '';
+  return raw;
 }
 
-const TONES = ['blue', 'green', 'orange', 'purple', 'teal'] as const;
-/** Deterministic flat tint: the same thread keeps the same avatar color. */
-function toneOfAvatar(thread: ThreadSummary): typeof TONES[number] {
-  const title = titleOfThread(thread);
-  let hash = 0;
-  for (const char of title) hash = (hash * 31 + char.codePointAt(0)!) >>> 0;
-  return TONES[hash % TONES.length];
+export function titleOfThread(thread: ThreadSummary): string {
+  const explicit = String(thread.title || thread.name || '').trim();
+  if (explicit) return explicit;
+  const preview = previewOfThread(thread);
+  if (preview) return preview;
+  return '未命名会话';
 }
 
 /** 长按 550ms 触发（归档这种危险动作只走长按，不占地方也不会误触）。 */
@@ -41,16 +55,20 @@ function ThreadRow({
   const fired = useRef(false);
   const tone = toneOfThread(thread, statusByThread);
   const title = titleOfThread(thread);
-  const initial = Array.from(title.trim())[0] || '会';
-  const status = tone === 'running'
-    ? <span className="tl-thread-status tl-thread-status--running">运行中</span>
+  const preview = previewOfThread(thread);
+  // The left slot used to be a decorative initial. It carries state now, which is the
+  // only thing that earns 40px of every row.
+  const stateIcon = tone === 'running'
+    ? <Activity size={18} aria-hidden="true" />
     : tone === 'waiting'
-      ? <span className="tl-thread-status tl-thread-status--waiting">待处理</span>
+      ? <Clock size={18} aria-hidden="true" />
       : tone === 'error'
-        ? <span className="tl-thread-status" style={{ background: 'rgba(255,59,48,.12)', color: '#C0392B' }}>错误</span>
-        : archived
-          ? <span className="tl-thread-status" style={{ background: 'rgba(142,142,147,.14)', color: '#636366' }}>已归档</span>
-          : null;
+        ? <AlertTriangle size={18} aria-hidden="true" />
+        : <Check size={18} aria-hidden="true" />;
+  const stateLabel = tone === 'running' ? '运行中' : tone === 'waiting' ? '等待审批' : tone === 'error' ? '出错' : archived ? '已归档' : '空闲';
+  const status = archived && tone === 'done'
+    ? <span className="tl-thread-status" style={{ background: 'rgba(142,142,147,.14)', color: '#636366' }}>已归档</span>
+    : null;
 
   const clear = () => {
     if (timer.current) clearTimeout(timer.current);
@@ -87,13 +105,15 @@ function ThreadRow({
         onLongPress(String(thread.id || ''));
       }}
     >
-      <span className="tl-thread-avatar" data-tone={toneOfAvatar(thread)} aria-hidden="true">{initial}</span>
+      <span className="tl-thread-state" data-tone={tone} title={stateLabel} aria-label={stateLabel} role="img">
+        {stateIcon}
+      </span>
       <span className="tl-thread-main">
         <span className="tl-thread-top">
           <span className="tl-thread-title">{title}</span>
           <span className="tl-thread-time">{formatThreadWhen(thread)}</span>
         </span>
-        <span className="tl-thread-preview">{String(thread.preview || thread.cwd || thread.id || '')}</span>
+        {preview && <span className="tl-thread-preview">{preview}</span>}
       </span>
       <span className="tl-thread-tail">{status}</span>
     </button>

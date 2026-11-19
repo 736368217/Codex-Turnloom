@@ -21,7 +21,7 @@ export interface TabState {
 
 export const tabStore = createStore<TabState>({
   activeTab: 'threads', detailThreadId: null, detailTitle: '', composing: false,
-  threadsQuery: '', threadsFilter: 'all', threadsView: 'time',
+  threadsQuery: '', threadsFilter: 'all', threadsView: 'project',
 });
 
 export function setActiveTab(tab: TabKey): void {

@@ -1374,6 +1374,21 @@ button:focus-visible, a:focus-visible { outline: 2px solid var(--tl-blue); outli
 .tl-confirm-body { margin-top: 6px; font-size: 14px; line-height: 20px; color: var(--tl-label-primary); overflow-wrap: anywhere; }
 .tl-confirm-note { margin-top: 6px; font-size: 12px; line-height: 17px; color: var(--tl-label-secondary); }
 .tl-confirm-actions { display: flex; gap: 8px; margin-top: 14px; }
+/* Action sheet rows (2.2.4): tap to act, and the whole sheet closes on backdrop tap. */
+.tl-confirm-row {
+  display: flex; align-items: center; gap: 10px; width: 100%;
+  min-height: 48px; margin-top: 8px; padding: 0 14px;
+  border: 0; border-radius: 12px; background: var(--tl-fill-secondary);
+  color: var(--tl-label-primary); font-size: 15px; font-weight: 500; text-align: left;
+}
+.tl-confirm-row:active { background: #E7E7EC; }
+.tl-toast {
+  position: fixed; left: 50%; bottom: calc(84px + env(safe-area-inset-bottom, 0px));
+  transform: translateX(-50%);
+  padding: 8px 14px; border-radius: 999px;
+  background: rgba(28, 28, 30, .88); color: #FFFFFF; font-size: 13px; line-height: 18px;
+  pointer-events: none; z-index: 60;
+}
 .tl-confirm-actions button {
   flex: 1 1 0;
   display: flex;
@@ -1431,14 +1446,14 @@ button:focus-visible, a:focus-visible { outline: 2px solid var(--tl-blue); outli
   display: grid; place-items: center; border: 0; background: transparent; color: var(--tl-label-secondary);
 }
 
-.tl-thread-filters { flex: 0 0 auto; display: flex; gap: 8px; padding: 0 16px 12px; }
+.tl-thread-filters { flex: 0 0 auto; display: flex; gap: 10px; padding: 2px 16px 14px; justify-content: center; }
 .tl-filter-chip {
-  position: relative; height: 32px; padding: 0 14px;
+  position: relative; height: 40px; padding: 0 22px;
   border: 0; border-radius: 999px; background: var(--tl-surface);
-  color: #3C3C43; font-size: 13px; font-weight: 600; white-space: nowrap;
+  color: #3C3C43; font-size: 14px; font-weight: 600; white-space: nowrap;
 }
-/* The visible pill stays 32px; the touch target is 44px. */
-.tl-filter-chip::before { content: ''; position: absolute; inset: -6px 0; }
+/* The visible pill stays 40px; the touch target is 44px. */
+.tl-filter-chip::before { content: ''; position: absolute; inset: -2px 0; }
 .tl-filter-chip.is-active { background: var(--tl-label-primary); color: #FFFFFF; }
 .tl-filter-chip:active { opacity: .72; }
 
@@ -1464,11 +1479,16 @@ button:focus-visible, a:focus-visible { outline: 2px solid var(--tl-blue); outli
   display: grid; place-items: center; background: #8E8E93;
   color: #FFFFFF; font-size: 16px; line-height: 1; font-weight: 700;
 }
-.tl-thread-avatar[data-tone="blue"] { background: #0A84FF; }
-.tl-thread-avatar[data-tone="green"] { background: #34C759; }
-.tl-thread-avatar[data-tone="orange"] { background: #FF9F0A; }
-.tl-thread-avatar[data-tone="purple"] { background: #8E5CF7; }
-.tl-thread-avatar[data-tone="teal"] { background: #30B0C7; }
+/* The left slot carries state, not decoration (2.2.4): icon + tint, no initial. */
+.tl-thread-state {
+  width: 40px; height: 40px; flex: 0 0 40px; border-radius: 10px;
+  display: grid; place-items: center;
+  background: var(--tl-fill-secondary); color: var(--tl-label-secondary);
+}
+.tl-thread-state[data-tone="running"] { background: rgba(10, 132, 255, .12); color: #0A84FF; }
+.tl-thread-state[data-tone="waiting"] { background: rgba(255, 159, 10, .14); color: #B26A00; }
+.tl-thread-state[data-tone="error"] { background: rgba(255, 59, 48, .12); color: #C0392B; }
+.tl-thread-state[data-tone="done"] { background: rgba(142, 142, 147, .12); color: #8E8E93; }
 .tl-thread-main { flex: 1; min-width: 0; }
 .tl-thread-top { display: flex; align-items: baseline; gap: 8px; }
 .tl-thread-title {
@@ -1557,7 +1577,7 @@ button:focus-visible, a:focus-visible { outline: 2px solid var(--tl-blue); outli
 /* Blank chat (new thread): the message area is the empty state, not a
    one-line note pinned under the header. */
 .tl-chat-list.tl-chat-list--blank {
-  display: flex; flex-direction: column; height: 100%; min-height: 0;
+  display: flex; flex-direction: column; align-items: center; height: 100%; min-height: 0;
   margin: 0; padding: 24px 28px 12px;
   border-radius: 0; background: transparent; box-shadow: none;
 }

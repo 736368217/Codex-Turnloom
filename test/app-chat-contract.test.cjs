@@ -443,7 +443,7 @@ test('screen wiring: header back only, two picker buttons, one primary, no fake 
   // thread on its first message with the same composer payload (images/files).
   const detail = read('app/src/screens/ChatDetailScreen.tsx');
   assert.match(detail, /newThread \? '__new__' : threadId/);
-  assert.match(detail, /createThread\(context, \{ \.\.\.payload[^}]*\}\)/);
+  assert.match(detail, /createThread\(context, \{ \.\.\.payload[^)]*\}\)/);
   assert.match(detail, /buildSendPayload\(\{[\s\S]*attachments/);
 });
 

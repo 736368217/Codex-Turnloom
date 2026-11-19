@@ -3,25 +3,30 @@
  * 归档只走长按，避免误触；列表白底铺满到 TabBar，行间分隔线由 CSS 负责。
  */
 import { useEffect, useMemo, useState } from 'react';
-import { Search, Plus, X, ChevronDown, ChevronRight, Archive, ArchiveRestore } from 'lucide-react';
+import { Search, Plus, X, ChevronDown, ChevronRight, Archive, ArchiveRestore, Copy } from 'lucide-react';
 import TaskStream, { titleOfThread } from '../components/TaskStream';
 import { COLORS } from '../theme/optionATokens';
 import { useDataState, refreshThreads, loadMoreThreads } from '../state/dataStore';
 import { useTabState, setThreadsQuery, setThreadsView, openNewThread } from '../state/tabStore';
 import { currentRequestContext } from '../state/sessionStore';
-import { haptic } from '../lib/nativeBridge';
+import { haptic, pushNativeBackLayer } from '../lib/nativeBridge';
+import { copyText } from '../lib/clipboard';
 import { isArchivedThread, groupThreadsByProject, threadUpdatedAtMs } from '../lib/threadProjection';
 import { isLocallyArchived, setThreadArchived, subscribeThreadArchive } from '../lib/threadArchive';
 import { postThreadArchive } from '../lib/turnloomApi';
 
 type View = 'project' | 'time';
+type Pending = { id: string; title: string; archived: boolean; stage: 'menu' | 'confirm' };
+
+const isUncategorized = (key: string) => key.startsWith('uncategorized:');
 
 export default function ThreadsScreen() {
   const data = useDataState();
   const { threadsQuery, threadsView: view } = useTabState();
   const [showArchived, setShowArchived] = useState(false);
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
-  const [pending, setPending] = useState<{ id: string; title: string; archived: boolean } | null>(null);
+  const [pending, setPending] = useState<Pending | null>(null);
+  const [notice, setNotice] = useState('');
   const [archiveRevision, setArchiveRevision] = useState(0);
   const context = currentRequestContext();
   const query = threadsQuery.trim().toLowerCase();
@@ -40,11 +45,33 @@ export default function ThreadsScreen() {
   const archivedCount = data.threads.filter(archivedOf).length;
   const groups = groupThreadsByProject(rows);
   const byTime = useMemo(() => [...rows].sort((a, b) => threadUpdatedAtMs(b) - threadUpdatedAtMs(a)), [rows]);
+  // Projects first, 未归类 last; a group is collapsed unless it is the uncategorized one.
+  const orderedGroups = useMemo(
+    () => [...groups].sort((a, b) => Number(isUncategorized(a.key)) - Number(isUncategorized(b.key))),
+    [groups],
+  );
+  const isCollapsed = (key: string) => collapsed[key] ?? !isUncategorized(key);
 
   const toggleGroup = (key: string) => {
     haptic('selection');
-    setCollapsed((prev) => ({ ...prev, [key]: prev[key] !== true }));
+    setCollapsed((prev) => ({ ...prev, [key]: !isCollapsed(key) }));
   };
+
+  // Both layers (menu and confirm) close on Back and on a backdrop tap. A dialog that
+  // only offers 取消 leaves the Android back button to exit the whole app.
+  useEffect(() => {
+    if (!pending) return;
+    const pop = pushNativeBackLayer(() => setPending(null));
+    const onKey = (event: KeyboardEvent) => { if (event.key === 'Escape') setPending(null); };
+    window.addEventListener('keydown', onKey);
+    return () => { pop(); window.removeEventListener('keydown', onKey); };
+  }, [pending]);
+
+  useEffect(() => {
+    if (!notice) return;
+    const timer = setTimeout(() => setNotice(''), 1800);
+    return () => clearTimeout(timer);
+  }, [notice]);
 
   const doArchive = async (threadId: string, archived: boolean) => {
     setThreadArchived(threadId, archived);
@@ -133,15 +160,15 @@ export default function ThreadsScreen() {
               isArchived={archivedOf}
               onLongPress={(threadId) => {
                 const thread = data.threads.find((item) => item.id === threadId);
-                setPending({ id: threadId, title: thread ? titleOfThread(thread) : threadId, archived: thread ? archivedOf(thread) : false });
+                setPending({ id: threadId, title: thread ? titleOfThread(thread) : threadId, archived: thread ? archivedOf(thread) : false, stage: 'menu' });
               }}
             />
             {listControls}
           </div>
         ) : (
           <div style={{ flex: 1, minHeight: 0, overflowY: 'auto', background: COLORS.surface }}>
-            {groups.map((group) => {
-              const collapsedNow = collapsed[group.key] === true;
+            {orderedGroups.map((group) => {
+              const collapsedNow = isCollapsed(group.key);
               return (
                 <div key={group.key}>
                   <button type="button" className="tl-group-head tl-press" aria-expanded={!collapsedNow} onClick={() => toggleGroup(group.key)}>
@@ -156,7 +183,7 @@ export default function ThreadsScreen() {
                       isArchived={archivedOf}
                       onLongPress={(threadId) => {
                         const thread = data.threads.find((item) => item.id === threadId);
-                        setPending({ id: threadId, title: thread ? titleOfThread(thread) : threadId, archived: thread ? archivedOf(thread) : false });
+                        setPending({ id: threadId, title: thread ? titleOfThread(thread) : threadId, archived: thread ? archivedOf(thread) : false, stage: 'menu' });
                       }}
                     />
                   )}
@@ -169,21 +196,61 @@ export default function ThreadsScreen() {
       </div>
 
       {pending && (
-        <div className="tl-confirm-backdrop" role="dialog" aria-modal="true" aria-label="确认归档">
+        <div
+          className="tl-confirm-backdrop"
+          role="dialog"
+          aria-modal="true"
+          aria-label={pending.stage === 'menu' ? '会话操作' : '确认归档'}
+          onClick={(event) => { if (event.target === event.currentTarget) setPending(null); }}
+        >
           <div className="tl-confirm-card">
-            <div className="tl-confirm-title">{pending.archived ? '取消归档' : '归档会话'}</div>
-            <div className="tl-confirm-body">{pending.title}</div>
-            <div className="tl-confirm-note">{pending.archived ? '取消后会重新出现在列表里。' : '归档后默认不再显示，可在「显示归档会话」里找回。'}</div>
-            <div className="tl-confirm-actions">
-              <button type="button" className="tl-confirm-cancel" onClick={() => setPending(null)}>取消</button>
-              <button type="button" className="tl-confirm-ok" onClick={() => { void doArchive(pending.id, !pending.archived); }}>
-                {pending.archived ? <ArchiveRestore size={15} /> : <Archive size={15} />}
-                {pending.archived ? '恢复' : '归档'}
-              </button>
-            </div>
+            {pending.stage === 'menu' ? (
+              <>
+                <div className="tl-confirm-title">{pending.title}</div>
+                <button
+                  type="button"
+                  className="tl-confirm-row tl-press"
+                  onClick={async () => {
+                    haptic('selection');
+                    const ok = await copyText(pending.id);
+                    setPending(null);
+                    setNotice(ok ? '已复制会话 ID' : '复制失败，请重试');
+                  }}
+                >
+                  <Copy size={16} />
+                  复制会话 ID
+                </button>
+                <button
+                  type="button"
+                  className="tl-confirm-row tl-press"
+                  onClick={() => { haptic('warning'); setPending({ ...pending, stage: 'confirm' }); }}
+                >
+                  {pending.archived ? <ArchiveRestore size={16} /> : <Archive size={16} />}
+                  {pending.archived ? '取消归档' : '归档会话'}
+                </button>
+                <div className="tl-confirm-actions">
+                  <button type="button" className="tl-confirm-cancel" onClick={() => setPending(null)}>取消</button>
+                </div>
+              </>
+            ) : (
+              <>
+                <div className="tl-confirm-title">{pending.archived ? '取消归档' : '归档会话'}</div>
+                <div className="tl-confirm-body">{pending.title}</div>
+                <div className="tl-confirm-note">{pending.archived ? '取消后会重新出现在列表里。' : '归档后默认不再显示，可在「显示归档会话」里找回。'}</div>
+                <div className="tl-confirm-actions">
+                  <button type="button" className="tl-confirm-cancel" onClick={() => setPending({ ...pending, stage: 'menu' })}>返回</button>
+                  <button type="button" className="tl-confirm-ok" onClick={() => { void doArchive(pending.id, !pending.archived); }}>
+                    {pending.archived ? <ArchiveRestore size={15} /> : <Archive size={15} />}
+                    {pending.archived ? '恢复' : '归档'}
+                  </button>
+                </div>
+              </>
+            )}
           </div>
         </div>
       )}
+
+      {notice && <div className="tl-toast" role="status">{notice}</div>}
     </div>
   );
 }
