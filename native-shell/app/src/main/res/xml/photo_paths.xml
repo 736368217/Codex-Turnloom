@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Only getCacheDir()/photos is reachable through the .photofiles provider.
+  The camera app is handed a single-file write grant for the capture output;
+  no other path, and no external storage, is exposed.
+-->
+<paths>
+    <cache-path name="photos" path="photos/" />
+</paths>

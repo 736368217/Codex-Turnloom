@@ -1,9 +1,14 @@
 package com.codex.turnloom.app;
 
+import android.Manifest;
+import android.content.ClipData;
 import android.content.ContentResolver;
 import android.content.Context;
 import android.content.Intent;
+import android.content.pm.PackageManager;
 import android.database.Cursor;
+import android.graphics.Bitmap;
+import android.graphics.BitmapFactory;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Handler;
@@ -12,11 +17,14 @@ import android.provider.MediaStore;
 import android.provider.OpenableColumns;
 import android.util.Base64;
 
+import androidx.core.content.FileProvider;
+
 import org.json.JSONArray;
 import org.json.JSONException;
 import org.json.JSONObject;
 
 import java.io.ByteArrayOutputStream;
+import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
 import java.util.ArrayList;
@@ -41,7 +49,17 @@ final class AttachmentPicker {
 
     interface Launcher {
         void launch(Intent intent, int requestCode);
+
+        /** Ask the Activity for one runtime permission; the answer comes back via callback. */
+        void requestPermission(String permission, int requestCode);
     }
+
+    /** `<applicationId>.photofiles` — the camera app receives write access to one file through it. */
+    static final String PHOTO_AUTHORITY_SUFFIX = ".photofiles";
+    private static final int REQ_CAMERA_PERMISSION = 0x70a1;
+    /** Long edge kept before JPEG encoding; 1600px is ~1.5 MB at q85 and keeps ARGB memory bounded. */
+    private static final int MAX_PHOTO_EDGE = 1600;
+    private static final int PHOTO_QUALITY = 85;
 
     private static final int BUFFER_BYTES = 8192;
 
@@ -53,6 +71,10 @@ final class AttachmentPicker {
     /** Ownership and worker handles are touched only on the UI thread. */
     private final AttachmentPickSession session = new AttachmentPickSession();
     private Future<?> activeRead;
+    /** One camera request may be waiting on the system permission dialog. */
+    private String pendingCameraRequestId;
+    /** Output file handed to the camera app for the in-flight capture. */
+    private File pendingPhotoFile;
     private volatile boolean destroyed = false;
 
     AttachmentPicker(Context context, Launcher launcher, Deliverer deliverer) {
@@ -91,6 +113,10 @@ final class AttachmentPicker {
         if (session.busy()) {
             deliverer.deliverAttachments(requestId, BridgeContract.attachmentErrorJson(
                     BridgeContract.ATTACH_PICKER_BUSY));
+            return;
+        }
+        if (BridgeContract.ATTACH_KIND_CAMERA.equals(kind)) {
+            startCamera(requestId);
             return;
         }
         // 「图片」走系统相册（Android 13+ 用系统照片选择器，旧版本用 GET_CONTENT image/*），
@@ -149,6 +175,10 @@ final class AttachmentPicker {
         AttachmentPickSession.Request request = session.acceptResult(requestCode);
         if (request == null) return;
         String requestId = request.id;
+        if (BridgeContract.ATTACH_KIND_CAMERA.equals(request.kind)) {
+            handleCameraResult(request, resultCode);
+            return;
+        }
         if (resultCode != android.app.Activity.RESULT_OK) {
             session.finish(request);
             deliverer.deliverAttachments(requestId,
@@ -169,6 +199,197 @@ final class AttachmentPicker {
             return;
         }
         activeRead = pool.submit(() -> readAttachments(request, uris));
+    }
+
+    // ---- camera capture -------------------------------------------------
+
+    private boolean hasCameraPermission() {
+        return context.checkSelfPermission(Manifest.permission.CAMERA)
+                == PackageManager.PERMISSION_GRANTED;
+    }
+
+    /** Ask for CAMERA first; the capture starts from onRequestPermissionsResult. */
+    private void startCamera(String requestId) {
+        if (hasCameraPermission()) {
+            beginCapture(requestId);
+            return;
+        }
+        if (pendingCameraRequestId != null) {
+            deliverer.deliverAttachments(requestId, BridgeContract.attachmentErrorJson(
+                    BridgeContract.ATTACH_PICKER_BUSY));
+            return;
+        }
+        pendingCameraRequestId = requestId;
+        try {
+            launcher.requestPermission(Manifest.permission.CAMERA, REQ_CAMERA_PERMISSION);
+        } catch (RuntimeException e) {
+            pendingCameraRequestId = null;
+            deliverer.deliverAttachments(requestId, BridgeContract.attachmentErrorJson(
+                    BridgeContract.ATTACH_CAMERA_PERMISSION_DENIED));
+        }
+    }
+
+    /** Called from the Activity once the CAMERA prompt is answered. */
+    void onRequestPermissionsResult(int requestCode, int[] grantResults) {
+        if (requestCode != REQ_CAMERA_PERMISSION || destroyed) return;
+        String requestId = pendingCameraRequestId;
+        pendingCameraRequestId = null;
+        if (requestId == null) return;
+        boolean granted = grantResults != null && grantResults.length > 0
+                && grantResults[0] == PackageManager.PERMISSION_GRANTED;
+        if (!granted) {
+            deliverer.deliverAttachments(requestId, BridgeContract.attachmentErrorJson(
+                    BridgeContract.ATTACH_CAMERA_PERMISSION_DENIED));
+            return;
+        }
+        beginCapture(requestId);
+    }
+
+    private void beginCapture(String requestId) {
+        if (destroyed) {
+            deliverer.deliverAttachments(requestId, BridgeContract.attachmentErrorJson(
+                    BridgeContract.ATTACH_PICKER_UNAVAILABLE));
+            return;
+        }
+        AttachmentPickSession.Request request =
+                session.begin(requestId, BridgeContract.ATTACH_KIND_CAMERA);
+        if (request == null) {
+            deliverer.deliverAttachments(requestId, BridgeContract.attachmentErrorJson(
+                    BridgeContract.ATTACH_PICKER_UNAVAILABLE));
+            return;
+        }
+        Intent intent = new Intent(MediaStore.ACTION_IMAGE_CAPTURE);
+        if (intent.resolveActivity(context.getPackageManager()) == null) {
+            session.finish(request);
+            deliverer.deliverAttachments(requestId, BridgeContract.attachmentErrorJson(
+                    BridgeContract.ATTACH_CAMERA_UNAVAILABLE));
+            return;
+        }
+        final File photo;
+        try {
+            File dir = new File(context.getCacheDir(), "photos");
+            if (!dir.isDirectory() && !dir.mkdirs()) throw new IOException("photo-dir");
+            photo = new File(dir, "IMG_" + System.currentTimeMillis() + ".jpg");
+        } catch (RuntimeException | IOException e) {
+            session.finish(request);
+            deliverer.deliverAttachments(requestId, BridgeContract.attachmentErrorJson(
+                    BridgeContract.ATTACH_READ_FAILED));
+            return;
+        }
+        try {
+            // The camera app writes through this single-file grant; nothing else is exposed.
+            Uri output = FileProvider.getUriForFile(context,
+                    context.getPackageName() + PHOTO_AUTHORITY_SUFFIX, photo);
+            intent.putExtra(MediaStore.EXTRA_OUTPUT, output);
+            intent.setClipData(ClipData.newRawUri("photo", output));
+            intent.addFlags(Intent.FLAG_GRANT_WRITE_URI_PERMISSION
+                    | Intent.FLAG_GRANT_READ_URI_PERMISSION);
+            pendingPhotoFile = photo;
+            launcher.launch(intent, request.code);
+        } catch (Exception e) {
+            pendingPhotoFile = null;
+            deleteQuietly(photo);
+            session.finish(request);
+            deliverer.deliverAttachments(requestId, BridgeContract.attachmentErrorJson(
+                    BridgeContract.ATTACH_CAMERA_UNAVAILABLE));
+        }
+    }
+
+    private void handleCameraResult(AttachmentPickSession.Request request, int resultCode) {
+        File photo = pendingPhotoFile;
+        pendingPhotoFile = null;
+        if (resultCode != android.app.Activity.RESULT_OK
+                || photo == null || !photo.isFile() || photo.length() == 0) {
+            deleteQuietly(photo);
+            session.finish(request);
+            deliverer.deliverAttachments(request.id,
+                    BridgeContract.attachmentsResultJson("cancelled", null, null));
+            return;
+        }
+        activeRead = pool.submit(() -> readCapturedPhoto(request, photo));
+    }
+
+    private void readCapturedPhoto(AttachmentPickSession.Request request, File photo) {
+        String result;
+        try {
+            byte[] bytes = compressPhoto(photo);
+            JSONArray items = new JSONArray();
+            items.put(new JSONObject(BridgeContract.attachmentItemJson(
+                    photo.getName(), "image/jpeg", bytes.length,
+                    "data:image/jpeg;base64," + Base64.encodeToString(bytes, Base64.NO_WRAP))));
+            result = BridgeContract.attachmentsResultJson("success", items, null);
+        } catch (PickerException e) {
+            result = BridgeContract.attachmentErrorJson(e.code);
+        } catch (Exception e) {
+            result = BridgeContract.attachmentErrorJson(BridgeContract.ATTACH_READ_FAILED);
+        } finally {
+            deleteQuietly(photo);
+        }
+        if (Thread.currentThread().isInterrupted() || destroyed) return;
+        final String payload = result;
+        mainHandler.post(() -> {
+            if (!destroyed && session.finish(request)) {
+                activeRead = null;
+                deliverer.deliverAttachments(request.id, payload);
+            }
+        });
+    }
+
+    /** Decode with a bounded sample size, then re-encode JPEG under the attachment cap. */
+    private static byte[] compressPhoto(File photo) throws PickerException {
+        BitmapFactory.Options bounds = new BitmapFactory.Options();
+        bounds.inJustDecodeBounds = true;
+        BitmapFactory.decodeFile(photo.getAbsolutePath(), bounds);
+        if (bounds.outWidth <= 0 || bounds.outHeight <= 0) fail(BridgeContract.ATTACH_READ_FAILED);
+        int sample = 1;
+        int longest = Math.max(bounds.outWidth, bounds.outHeight);
+        while (longest / (sample * 2) >= MAX_PHOTO_EDGE) sample *= 2;
+        BitmapFactory.Options options = new BitmapFactory.Options();
+        options.inSampleSize = sample;
+        Bitmap bitmap = BitmapFactory.decodeFile(photo.getAbsolutePath(), options);
+        if (bitmap == null) fail(BridgeContract.ATTACH_READ_FAILED);
+        try {
+            Bitmap scaled = bitmap;
+            int width = bitmap.getWidth();
+            int height = bitmap.getHeight();
+            if (Math.max(width, height) > MAX_PHOTO_EDGE) {
+                float ratio = (float) MAX_PHOTO_EDGE / Math.max(width, height);
+                scaled = Bitmap.createScaledBitmap(bitmap,
+                        Math.max(1, Math.round(width * ratio)),
+                        Math.max(1, Math.round(height * ratio)), true);
+            }
+            try {
+                byte[] bytes = encodeJpeg(scaled, PHOTO_QUALITY);
+                if (bytes.length > BridgeContract.MAX_ATTACHMENT_FILE_BYTES) {
+                    bytes = encodeJpeg(scaled, 60);
+                }
+                if (bytes.length > BridgeContract.MAX_ATTACHMENT_FILE_BYTES) {
+                    fail(BridgeContract.ATTACH_FILE_TOO_LARGE);
+                }
+                return bytes;
+            } finally {
+                if (scaled != bitmap) scaled.recycle();
+            }
+        } finally {
+            bitmap.recycle();
+        }
+    }
+
+    private static byte[] encodeJpeg(Bitmap bitmap, int quality) throws PickerException {
+        ByteArrayOutputStream out = new ByteArrayOutputStream(BUFFER_BYTES);
+        if (!bitmap.compress(Bitmap.CompressFormat.JPEG, quality, out)) {
+            fail(BridgeContract.ATTACH_READ_FAILED);
+        }
+        return out.toByteArray();
+    }
+
+    private static void deleteQuietly(File file) {
+        if (file == null) return;
+        try {
+            file.delete();
+        } catch (RuntimeException ignored) {
+            // A leftover cache file is not worth failing the request over.
+        }
     }
 
     private static List<Uri> selectedUris(Intent data) {

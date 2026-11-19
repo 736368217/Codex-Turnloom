@@ -141,7 +141,14 @@ public class MainActivity extends Activity {
         s.setMediaPlaybackRequiresUserGesture(true);
 
         attachmentPicker = new AttachmentPicker(this,
-                (intent, requestCode) -> startActivityForResult(intent, requestCode),
+                new AttachmentPicker.Launcher() {
+                    @Override public void launch(Intent intent, int requestCode) {
+                        startActivityForResult(intent, requestCode);
+                    }
+                    @Override public void requestPermission(String permission, int requestCode) {
+                        requestPermissions(new String[]{permission}, requestCode);
+                    }
+                },
                 this::deliverAttachmentsResult);
         httpClient = new NativeHttpClient(this, this::deliverHttpResult);
         updateManager = new UpdateManager(this, new UpdateManager.Deliverer() {
@@ -309,6 +316,14 @@ public class MainActivity extends Activity {
                     boolean handled = value != null && value.trim().equals("true");
                     if (!handled) moveTaskToBack(true);
                 });
+    }
+
+    @Override
+    public void onRequestPermissionsResult(int requestCode, String[] permissions, int[] grantResults) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults);
+        if (attachmentPicker != null) {
+            attachmentPicker.onRequestPermissionsResult(requestCode, grantResults);
+        }
     }
 
     @Override

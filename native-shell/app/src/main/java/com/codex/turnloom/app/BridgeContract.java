@@ -35,6 +35,11 @@ final class BridgeContract {
     static final String ATTACH_INVALID_KIND = "invalid-kind";
     static final String ATTACH_PICKER_BUSY = "picker-busy";
     static final String ATTACH_PICKER_UNAVAILABLE = "picker-unavailable";
+    static final String ATTACH_CAMERA_UNAVAILABLE = "camera-unavailable";
+    static final String ATTACH_CAMERA_PERMISSION_DENIED = "camera-permission-denied";
+    static final String ATTACH_KIND_IMAGE = "image";
+    static final String ATTACH_KIND_FILE = "file";
+    static final String ATTACH_KIND_CAMERA = "camera";
     static final String ATTACH_TOO_MANY_FILES = "too-many-files";
     static final String ATTACH_FILE_TOO_LARGE = "file-too-large";
     static final String ATTACH_TOTAL_TOO_LARGE = "attachments-too-large";
@@ -411,7 +416,8 @@ final class BridgeContract {
     }
 
     static boolean validAttachmentKind(String kind) {
-        return "image".equals(kind) || "file".equals(kind);
+        return ATTACH_KIND_IMAGE.equals(kind) || ATTACH_KIND_FILE.equals(kind)
+                || ATTACH_KIND_CAMERA.equals(kind);
     }
 
     /** Only RFC-safe MIME tokens are allowed to enter a data URL. */

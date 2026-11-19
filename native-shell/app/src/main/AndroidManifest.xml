@@ -11,6 +11,15 @@
 
     <uses-feature android:name="android.hardware.camera" android:required="false" />
 
+    <!-- Android 11+ package visibility: resolveActivity(ACTION_IMAGE_CAPTURE)
+         returns null (and the capture button silently reports camera-unavailable)
+         unless the camera intent is declared here. -->
+    <queries>
+        <intent>
+            <action android:name="android.media.action.IMAGE_CAPTURE" />
+        </intent>
+    </queries>
+
     <application
         android:allowBackup="false"
         android:enableOnBackInvokedCallback="false"
@@ -49,5 +58,16 @@
             android:authorities="com.codex.turnloom.app.updatefiles"
             android:exported="false"
             android:grantUriPermissions="true" />
+
+        <!-- Write-once landing zone for a single camera capture (cache/photos). -->
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="com.codex.turnloom.app.photofiles"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/photo_paths" />
+        </provider>
     </application>
 </manifest>

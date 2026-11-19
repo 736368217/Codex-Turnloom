@@ -314,6 +314,16 @@ public class BridgeContractTest {
     }
 
     @Test
+    public void attachmentKindsCoverTheCameraChannel() {
+        assertTrue(BridgeContract.validAttachmentKind("image"));
+        assertTrue(BridgeContract.validAttachmentKind("file"));
+        assertTrue(BridgeContract.validAttachmentKind("camera"));
+        assertFalse(BridgeContract.validAttachmentKind("video"));
+        assertFalse(BridgeContract.validAttachmentKind(""));
+        assertFalse(BridgeContract.validAttachmentKind(null));
+    }
+
+    @Test
     public void originEqualityIncludesPortAndScheme() throws Exception {        BridgeContract.Origin a = BridgeContract.validateApiUrl(
                 "http://192.168.1.10:8787/api/health", true);
         BridgeContract.Origin b = BridgeContract.validateApiUrl(
