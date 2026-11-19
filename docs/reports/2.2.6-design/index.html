@@ -60,7 +60,7 @@
   .laptop .lid i{position:absolute;inset:4px;border-radius:2px;background:linear-gradient(150deg,rgba(0,122,255,.20),rgba(52,199,89,.16))}
   .laptop .base{height:3px;margin:2px -3px 0;border-radius:0 0 3px 3px;background:#D3D3DA}
   /* ---------- segmented (图1) ---------- */
-  .seg{position:relative;display:grid;grid-auto-flow:column;grid-auto-columns:1fr;height:44px;padding:3px;border-radius:999px;background:var(--track);margin:12px 0 10px;user-select:none}
+  .seg{position:relative;display:grid;grid-auto-flow:column;grid-auto-columns:minmax(88px,1fr);width:max-content;max-width:100%;height:44px;padding:3px;border-radius:999px;background:var(--track);margin:12px auto 10px;user-select:none}
   .seg-thumb{position:absolute;top:3px;left:3px;height:calc(100% - 6px);width:calc(50% - 3px);border-radius:999px;background:#fff;
     box-shadow:0 1px 2px rgba(0,0,0,.10),0 3px 8px -4px rgba(0,0,0,.18),0 0 0 .5px rgba(0,0,0,.03);
     transform:translateX(calc(var(--i,0) * 100%));transition:transform .30s cubic-bezier(.32,.72,0,1)}
@@ -500,7 +500,7 @@
   <table>
     <thead><tr><th>对象</th><th>数值</th></tr></thead>
     <tbody>
-      <tr><td>分段控件</td><td>track 高 <b>44</b>，内边距 3，圆角 999；thumb 白底 + <code>0 1px 2px rgba(0,0,0,.10)</code> + <code>0 0 0 .5px rgba(0,0,0,.03)</code>；位移 <code>translateX(index × 100%)</code></td></tr>
+      <tr><td>分段控件</td><td><b>紧凑居中</b>（cell 最小 88–92px、两个 cell 合计 ≈ 180–200px），不强制满宽；track 高 <b>44</b>，内边距 3，圆角 999；cell 绘制 38px、命中带仍是整条 44；thumb 白底 + <code>0 1px 2px rgba(0,0,0,.10)</code> + <code>0 0 0 .5px rgba(0,0,0,.03)</code>；位移 <code>translateX(index × 100%)</code></td></tr>
       <tr><td>分段动效</td><td><b>300ms</b>，<code>cubic-bezier(.32,.72,0,1)</code>；文字透明度 200ms；不缩放 thumb</td></tr>
       <tr><td>设备分支展开</td><td>高度 <b>340ms</b> 同曲线；脊柱 <code>scaleY</code> <b>300ms</b> 延迟 60ms；平台卡 <b>220ms</b>，错位 50ms</td></tr>
       <tr><td>平台→harness 展开</td><td>高度 <b>260ms</b>；harness 行 <b>200ms</b>，错位 40ms</td></tr>

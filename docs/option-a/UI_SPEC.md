@@ -170,7 +170,7 @@
 
 ### 分段控件（2.2.6 起，取代 `.tl-filter-chip` 双药丸）
 
-- 结构：**一条 track + 一个 thumb**。track `height: 44px; padding: 3px; border-radius: 999px; background: #E9E9EE`；thumb 绝对定位，`height: calc(100% - 6px); width: calc(50% - 3px); border-radius: 999px; background: #FFF`，附 `0 1px 2px rgba(0,0,0,.10)`、`0 3px 8px -4px rgba(0,0,0,.18)`、`0 0 0 .5px rgba(0,0,0,.03)`。
+- 结构：**一条 track + 一个 thumb**。track `height: 44px; padding: 3px; border-radius: 999px; background: #E9E9EE` 或 `rgba(118,118,128,.12)`；cell `min-width: 88px`、绘制高 38px（命中带仍是整条 44，可用 `::before { inset: -4px 0 }` 在轨道内补，**不得**越出轨道）；控件**紧凑居中**，不强制满宽。thumb 绝对定位，`height: calc(100% - 6px); width: calc((100% - 6px) / 选项数); border-radius: 999px; background: #FFF`，附 `0 1px 2px rgba(0,0,0,.10)`、`0 3px 8px -4px rgba(0,0,0,.18)`、`0 0 0 .5px rgba(0,0,0,.03)`。
 - 位移只用一个属性：`transform: translateX(index × 100%)`，`300ms cubic-bezier(.32,.72,0,1)`；文字透明度与字重 `200ms`。**禁止**用 `left`/`width` 做动画；**禁止**用两块各自填充的背景色表示选中（旧 `.tl-filter-chip.is-active` 的黑底药丸即为反例）。
 - 位置：**必须在滚动容器之外**（与标题行同属固定区）。反例：2.2.5 的 `.tl-thread-filters` 在 `.tl-thread-scroll` 内，`scrollTop=600` 时 rail 从 `y=100` 掉到 `y=-500`，翻到列表中段无法切视图。判据：`scrollTop=600` 时分段仍在可视区。
 - 命中：cell 宽 = 轨道一半、高 44；44 就是全部命中带，不外扩（2.2.5 实测 chip 外 3px 已回滚动容器，别指望伪元素补面积）。
