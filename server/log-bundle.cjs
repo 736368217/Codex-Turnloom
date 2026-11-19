@@ -13,6 +13,7 @@
  */
 
 const fs = require("node:fs");
+const { existsSync } = require("node:fs");
 const path = require("node:path");
 const { resolveLogDir } = require("./request-log.cjs");
 
@@ -201,6 +202,25 @@ function buildLogBundle({ logDir = resolveLogDir(), machine = "machine", now = n
     droppedLines += text.dropped;
   }
 
+  // The console supervisor log is free text ("Starting tunnel to <host>; …"), so
+  // only the timestamp/level/source are copied; the message is dropped.
+  const supervisor = path.join(logDir, "supervisor.log");
+  if (existsSync(supervisor)) {
+    let raw = "";
+    try { raw = fs.readFileSync(supervisor, "utf8"); } catch { raw = ""; }
+    if (raw.length > MAX_FILE_BYTES) raw = raw.slice(raw.length - MAX_FILE_BYTES);
+    const kept = [];
+    for (const line of raw.split(/\r?\n/)) {
+      const match = /^(\d{4}-\d\d-\d\d \d\d:\d\d:\d\d) \[([A-Za-z0-9._-]+)\] /.exec(line.trim());
+      if (match) kept.push(`${match[1]} [${match[2]}] [text omitted]`);
+    }
+    if (kept.length) {
+      const text = `${kept.join("\n")}\n`;
+      entries.push({ path: "supervisor/supervisor.log", data: text });
+      files.push({ path: "supervisor/supervisor.log", bytes: Buffer.byteLength(text) });
+    }
+  }
+
   const manifest = {
     product: "codex-turnloom",
     generatedAt: now.toISOString(),
@@ -216,3 +236,4 @@ function buildLogBundle({ logDir = resolveLogDir(), machine = "machine", now = n
 }
 
 module.exports = { buildLogBundle, zipStore, scrubLine, redactSecrets, crc32, SERVER_FIELDS, PHONE_FIELDS };
+

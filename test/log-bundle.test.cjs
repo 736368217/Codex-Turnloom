@@ -58,6 +58,7 @@ function seedLogs() {
     { at: "2026-11-19T07:01:10.000Z", kind: "health", path: "/api/health", status: 200, appVersion: "2.2.4", machine: "phone-a" },
   ];
   fs.writeFileSync(path.join(logDir, "phone", "phone-a-20261119.jsonl"), phoneLines.map((line) => JSON.stringify(line)).join("\n") + "\n");
+  fs.writeFileSync(path.join(logDir, "supervisor.log"), `2026-11-19 16:30:13 [supervisor] Starting tunnel with ${SECRET_MARKERS[0]}\n`);
   return logDir;
 }
 
@@ -66,7 +67,7 @@ test("日志包：只有 allowlist 字段进包，标记与 access code 0 命中
   try {
     const bundle = buildLogBundle({ logDir, machine: "phone-a", now: new Date("2026-11-19T07:05:00Z"), secrets: [ACCESS_CODE] });
     const entries = readZip(bundle.buffer);
-    assert.deepEqual([...entries.keys()].sort(), ["manifest.json", "phone/phone-a-20261119.jsonl", "server/server-20261119.log"].sort());
+    assert.deepEqual([...entries.keys()].sort(), ["manifest.json", "phone/phone-a-20261119.jsonl", "server/server-20261119.log", "supervisor/supervisor.log"].sort());
 
     for (const [name, text] of entries) {
       for (const marker of SECRET_MARKERS) {
@@ -87,10 +88,15 @@ test("日志包：只有 allowlist 字段进包，标记与 access code 0 命中
     assert.equal(phone.message, undefined, "phone message text must not be copied");
     assert.equal(phone.detail, undefined, "phone detail must not be copied");
 
+    const supervisor = entries.get("supervisor/supervisor.log");
+    assert.match(supervisor, /2026-11-19 16:30:13 \[supervisor\] \[text omitted\]/);
+    assert.equal(supervisor.includes(SECRET_MARKERS[0]), false);
+
     const manifest = JSON.parse(entries.get("manifest.json"));
     assert.equal(manifest.machine, "phone-a");
-    assert.equal(manifest.files.length, 2);
+    assert.equal(manifest.files.length, 3);
   } finally {
     fs.rmSync(logDir, { recursive: true, force: true });
   }
 });
+
