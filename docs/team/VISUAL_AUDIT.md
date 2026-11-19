@@ -94,15 +94,33 @@ powershell -NoProfile -ExecutionPolicy Bypass -File tools/qa/visual-run.ps1 `
 - 修法（已落地）：`ActionButton` 增加 `.tl-action`；`.tl-action:disabled` 改为中性填充 `#C7C7CC` + 白字、`opacity:1`——禁用是状态，不是变淡的副本。
 - 验证：`after/390x844@3-connect.png`。
 
-### 未修、需要下一轮（结构性问题，不在 `theme/**` 内能解决）
+### 未修 / 已闭合（2026-11-19 复核，2.2.2 与 2.2.4 之后）
 
-| 问题 | 证据 | 为什么不在本轮 | 建议 |
-|---|---|---|---|
-| 整个消息流被套在一张白卡里（`.tl-chat-list` 白底 16px 圆角 + 内边距），长对话像一张设置表单 | `after/390x844@3-chat-markdown.png` | 卡片容器跨 `ChatDetailScreen` 与 CSS，需和 @Vera 一起改 | 画布直铺气泡（`#F2F2F7` 底），只给「思考/工具/变更」保留白卡 |
-| 首页没有「继续上次」入口，0 运行任务时整页是状态 + 空态 + 快捷操作 | `after/390x844@3-home.png` | `HomeScreen` 属 @Vera | 最近 3 条会话或默认 Tab 改为「会话」 |
-| 监控页「运行中的会话」行内标签写「查看 / 停止」，但点击只进详情 | `after/390x844@3-monitors.png` | @Vera 已改成真停止，需回归确认 | 保持真停止或改文案 |
-| 连接页「应用更新」卡片与首页「检查应用更新」重复，且未配对时也占首屏 | `after/390x844@3-connect.png` | 属 `ConnectScreen` | 折叠为一行次要入口 |
-| 消息流里的代码块横向滚动、工具输出却自动换行，同一类等宽内容两种行为 | `after/390x844@3-chat-markdown-code.png` | 需要统一取舍（可复制性 vs 不溢出） | 统一为横向滚动 + 复制按钮 |
+| 问题 | 状态 | 说明 |
+|---|---|---|
+| 消息流套在一张白卡里（`.tl-chat-list` 白底 16px 圆角 + 12px 外边距） | **未修，方案已定** | 改「全幅白聊天表面」：白铺 `.tl-detail-body`（「加载更早消息」行在 body 里、body 底 padding 12→4）、list 去 margin/radius/shadow；气泡换 `--tl-bubble-assistant: #E9E9EB`（1.212:1，iMessage 同值；**不要用 `#E5E5EA`，那是 separator**）。@Vera 主实现，我复核 |
+| 首页没有「继续上次」入口 | **已随 2.2.2 IA 消失** | `HomeScreen` 删除，打开即会话列表；不再适用 |
+| 监控页行内「查看 / 停止」点了只进详情 | **已闭合** | 改成真停止，Vera 回归过 |
+| 连接页「应用更新」卡片重复且未配对占首屏 | **已闭合** | 更新入口收进设置，连接页只留未配对时的次要入口 |
+| 代码块横向滚动、工具输出自动换行，两类等宽内容行为不一致 | **未修** | 2.2.5，与「复制」一起统一 |
+| 监控「会话」指标用 CPU 图标、设置「版本」用 ⚠ 三角 | **未修（归我）** | `MonitorsScreen.tsx:59` `Cpu`→`MessageSquare`（`:58/107` 的 AlertTriangle 是错误语义，保留）；`SettingsScreen.tsx:222` `AlertTriangle`→`Info`，换完删 import |
+
+## 2026-11-19 · 2.2.4 落地（视觉与交互）
+
+这一轮改的是真机截图暴露的问题，都有量测，不再靠目测：
+
+| 项 | 结论 |
+|---|---|
+| 空会话块 | 根因是 `.tl-chat-blank` 被 260px max-width 卡在 stretch 列左侧；加 `align-items:center` 后 orb/title/copy 的 `cx` 与列中心差 **0**（改前 390 下偏左 37px） |
+| 列表第二行 | 预览只接受「人写的句子」：空、等于 id、UUID 形、路径形全部吃掉，空就不画这一行。规则搬到 `lib/threadPreview.ts`（.ts 模块，`TaskStream` 再导出），composer 也要用 |
+| 左侧头像 | 首字色块换成状态槽（运行中/等待/出错/空闲），右侧「运行中/待处理」胶囊随之去掉，只留「已归档」 |
+| 视图切换 | 「按时间 / 按项目」两枚 40px 胶囊（`::before` 撑到 44 命中）居中，默认**按项目**；项目组默认收起、未归类排最后且展开 |
+| 长按会话 | 打开动作表（复制会话 ID / 归档会话 / 取消）；动作表与归档确认都注册 `pushNativeBackLayer`，点空白也关。返回键不再直落桌面 |
+| 输入区 | 模型强度行移到输入框上方；新增拍照按钮（`pickAttachments(requestId,'camera')`）；`拍照/图片/附件/发送` 一行 |
+| 引用 | 三档：会话 / 技能 / 插件（插件用 `/api/plugins?compact=1`）。插入是纯文本块，不做假 mention；**空态分叉**：`unavailable` 或 `codexHome:null` → 「当前连接方式不列出技能/插件」，本地路径且 0 条才写「没有可引用的」 |
+| 命中带 | `.tl-model-trigger` / `.tl-quote-trigger` / 托盘移除 × / 引用搜索框，全部 44px 命中、视觉不变 |
+
+**取证件同步更新**（`tools/qa/visual-capture.mjs`）：场景名改为 `landing / threads-project / threads-menu / threads-archive-confirm / threads-time / chat-blank`；新增 `--css @file`（候选样式注入，做 A/B）与 `--fail-api <子串>`（假桥把该路径答成 status 0，演习"检查失败"）。`.tl-view-switch`、`.tl-thread-avatar`、`[aria-label="新建任务"]` 都已不存在，旧选择器别照抄。
 
 ---
 
