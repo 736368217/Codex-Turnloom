@@ -285,6 +285,27 @@ const server = http.createServer((req, res) => {
       }
       return json(res, 200, { ok: true });
     }
+    // 宿主侧 /health：http-backend 分支会把 models/defaultModel/lastUsedModel 透传给手机。
+    // 形状照 PI：id 已带 provider 前缀，另带 provider/modelId/label。
+    if (req.method === "GET" && path === "/health") {
+      return json(res, 200, {
+        ok: true,
+        version: "2.2.4",
+        models: [
+          {
+            id: "wbfd/hy4flash-free", provider: "wbfd", providerLabel: "wbfd", modelId: "hy4flash-free",
+            label: "hy4flash-free", efforts: ["high"], defaultEffort: "high", supportsImages: true, pinned: false,
+          },
+          {
+            id: "wbfd/deepseek-v4.1-flash", provider: "wbfd", providerLabel: "wbfd", modelId: "deepseek-v4.1-flash",
+            label: "deepseek-v4.1-flash", efforts: ["max"], defaultEffort: "max", supportsImages: true, pinned: false,
+          },
+        ],
+        defaultModel: "wbfd/hy4flash-free",
+        defaultEffort: "high",
+        lastUsedModel: "wbfd/deepseek-v4.1-flash",
+      });
+    }
     return json(res, 404, { error: `unhandled ${req.method} ${path}` });
   });
 });

@@ -20,6 +20,7 @@ const arg = (name, fallback) => {
 };
 
 const externalUrl = arg('url', '');
+const hostUrl = arg('http', '');
 const token = arg('token', 'qa-models');
 const port = Number(arg('port', '0')) || 8800 + Math.floor(Math.random() * 90);
 const root = path.resolve(import.meta.dirname, '..', '..');
@@ -59,7 +60,8 @@ let child = null;
 async function ensureServer() {
   if (externalUrl) return externalUrl;
   const base = `http://127.0.0.1:${port}`;
-  child = spawn(process.execPath, ['server.js', '--port', String(port), '--password', token], {
+  const extra = hostUrl ? ['--backend', 'http', '--backend-url', hostUrl] : [];
+  child = spawn(process.execPath, ['server.js', '--port', String(port), '--password', token, ...extra], {
     cwd: root,
     env: { ...process.env, CODEX_LAN_PI_NATIVE_QUEUE: '1' },
     stdio: 'ignore',
@@ -76,7 +78,14 @@ async function ensureServer() {
 
 let exitCode = 0;
 try {
-  const { expected, providers } = expectedFromPi();
+  // --http <host>：de 形态，期望值取宿主自己的 /health（不读 PI 库）。
+  const { expected, providers } = hostUrl
+    ? await (async () => {
+      const hostRes = await (await fetch(hostUrl.replace(/\/$/, '') + '/health')).json();
+      const rows = normalise(hostRes.models);
+      return { expected: rows.map((row) => row.id), providers: [...new Set(rows.map((row) => row.provider))] };
+    })()
+    : expectedFromPi();
   const base = await ensureServer();
   const health = await (await fetch(`${base}/api/health`, { headers: { 'x-access-token': token } })).json();
   const models = normalise(health.models);
