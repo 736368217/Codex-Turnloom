@@ -95,6 +95,65 @@ test("日志包：只有 allowlist 字段进包，标记与 access code 0 命中
     const manifest = JSON.parse(entries.get("manifest.json"));
     assert.equal(manifest.machine, "phone-a");
     assert.equal(manifest.files.length, 3);
+    assert.deepEqual(manifest.filesOmitted, [], "nothing was left out, so nothing must be listed");
+  } finally {
+    fs.rmSync(logDir, { recursive: true, force: true });
+  }
+});
+
+test("日志包：被上限挡掉的文件必须在 manifest 里留名，截断必须写 fromBytes", () => {
+  const logDir = fs.mkdtempSync(path.join(os.tmpdir(), "turnloom-logs-cap-"));
+  const phoneDir = path.join(logDir, "phone");
+  fs.mkdirSync(phoneDir, { recursive: true });
+  const line = (date) => JSON.stringify({ ts: `${date}T07:00:00.000Z`, source: "server", level: "info", method: "GET", path: "/api/health", status: 200, ms: 1 }) + "\n";
+  try {
+    // Three server days; only the two newest may be packed.
+    for (const [index, day] of ["20261117", "20261118", "20261119"].entries()) {
+      const file = path.join(logDir, `server-${day}.log`);
+      fs.writeFileSync(file, line(day));
+      fs.utimesSync(file, new Date(2026, 10, 17 + index, 8), new Date(2026, 10, 17 + index, 8));
+    }
+    // 25 phone files against a 24-file cap.
+    for (let index = 0; index < 25; index += 1) {
+      const file = path.join(phoneDir, `phone-${String(index).padStart(2, "0")}-20261119.jsonl`);
+      fs.writeFileSync(file, JSON.stringify({ at: "2026-11-19T07:00:00.000Z", kind: "health", status: 200 }) + "\n");
+      fs.utimesSync(file, new Date(2026, 10, 19, 7, index), new Date(2026, 10, 19, 7, index));
+    }
+
+    const bundle = buildLogBundle({ logDir, machine: "cap-box", now: new Date("2026-11-19T09:00:00Z") });
+    const entries = readZip(bundle.buffer);
+    const manifest = JSON.parse(entries.get("manifest.json"));
+    const omitted = manifest.filesOmitted.map((entry) => entry.path);
+
+    assert.deepEqual(omitted, ["server/server-20261117.log", "phone/phone-00-20261119.jsonl"]);
+    assert.equal(entries.has("server/server-20261117.log"), false, "an omitted file must not be inside the zip");
+    assert.equal(entries.has("phone/phone-00-20261119.jsonl"), false);
+    const oldest = manifest.filesOmitted.find((entry) => entry.path === "server/server-20261117.log");
+    assert.equal(oldest.bytes, fs.statSync(path.join(logDir, "server-20261117.log")).size, "the manifest must report the real size");
+    assert.equal(bundle.omitted.length, 2, "the caller sees the same omission count the manifest carries");
+  } finally {
+    fs.rmSync(logDir, { recursive: true, force: true });
+  }
+});
+
+test("日志包：超出单文件预算时按行切尾，并在 manifest 记 truncated/fromBytes", () => {
+  const logDir = fs.mkdtempSync(path.join(os.tmpdir(), "turnloom-logs-cut-"));
+  try {
+    const record = JSON.stringify({ ts: "2026-11-19T07:00:00.000Z", source: "server", level: "info", method: "GET", path: "/api/threads", status: 200, ms: 4 });
+    const file = path.join(logDir, "server-20261119.log");
+    fs.writeFileSync(file, `${Array.from({ length: 80000 }, () => record).join("\n")}\n`);
+    const size = fs.statSync(file).size;
+    assert.ok(size > 8 * 1024 * 1024, "the fixture must exceed the 8 MB per-file budget");
+
+    const bundle = buildLogBundle({ logDir, machine: "cut-box", now: new Date("2026-11-19T09:00:00Z") });
+    const entries = readZip(bundle.buffer);
+    const manifest = JSON.parse(entries.get("manifest.json"));
+    const entry = manifest.files.find((item) => item.path === "server/server-20261119.log");
+
+    assert.equal(entry.truncated, true, "truncation is a fact, not an omission");
+    assert.ok(entry.fromBytes > 0 && entry.fromBytes < size, `fromBytes must point into the original (got ${entry.fromBytes} of ${size})`);
+    const firstLine = entries.get("server/server-20261119.log").split("\n")[0];
+    assert.doesNotThrow(() => JSON.parse(firstLine), "the tail must start on a line boundary");
   } finally {
     fs.rmSync(logDir, { recursive: true, force: true });
   }

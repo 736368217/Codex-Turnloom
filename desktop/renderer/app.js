@@ -2489,7 +2489,8 @@
     try {
       const result = await api.uploadLogs();
       if (result?.ok) {
-        showToast(`日志已上传：${result.key || ""}（${result.files || 0} 个文件）`, "success", 6000);
+        const omitted = Number(result.omitted || 0);
+        showToast(`日志已上传：${result.key || ""}（${result.files || 0} 个文件${omitted > 0 ? `，另有 ${omitted} 个未带` : ""}）`, "success", 6000);
       } else {
         showToast(result?.error || "上传日志失败", "error", 6000);
       }

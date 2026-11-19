@@ -8845,7 +8845,7 @@ const server = http.createServer(async (req, res) => {
           body: bundle.buffer,
         });
         if (!response.ok) throw new Error(`R2 returned ${response.status}`);
-        sendJson(res, 200, { ok: true, key, bytes: bundle.buffer.length, files: bundle.files.length, droppedLines: bundle.droppedLines });
+        sendJson(res, 200, { ok: true, key, bytes: bundle.buffer.length, files: bundle.files.length, omitted: bundle.omitted.length, droppedLines: bundle.droppedLines });
       } catch (error) {
         sendJson(res, 502, { ok: false, error: "upload-failed", reason: String(error?.message || error) });
       }

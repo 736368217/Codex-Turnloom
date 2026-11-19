@@ -1001,7 +1001,7 @@ function registerIpc() {
       try { data = text ? JSON.parse(text) : null; } catch { data = null; }
       if (!response.ok) return { ok: false, status: response.status, error: data?.reason || data?.error || `上传失败（HTTP ${response.status}）` };
       if (!data?.ok) return { ok: false, status: response.status, error: data?.error === "upload-token-missing" ? "缺少上传凭据：请把 r2-upload-token.txt 放到 Desktop\\认证\\，或设置 TURNLOOM_LOG_UPLOAD_TOKEN。" : (data?.reason || data?.error || "上传失败") };
-      return { ok: true, key: data.key, bytes: data.bytes, files: data.files, droppedLines: data.droppedLines };
+      return { ok: true, key: data.key, bytes: data.bytes, files: data.files, omitted: data.omitted, droppedLines: data.droppedLines };
     } catch (error) {
       return { ok: false, error: error?.name === "AbortError" ? "上传超时" : (error?.message || String(error)) };
     } finally {

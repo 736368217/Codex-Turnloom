@@ -162,13 +162,20 @@ function digest(text) {
 }
 
 function readScrubbed(file, fields, secrets, budget) {
-  let raw;
-  try { raw = fs.readFileSync(file, "utf8"); } catch { return { text: "", kept: 0, dropped: 0 }; }
-  if (raw.length > budget) {
-    raw = raw.slice(raw.length - budget);
-    const cut = raw.indexOf("\n");
-    raw = cut >= 0 ? raw.slice(cut + 1) : "";
+  let buffer;
+  try { buffer = fs.readFileSync(file); } catch { return { text: "", kept: 0, dropped: 0, truncated: false, fromBytes: 0 }; }
+  // Cut on a byte offset so `fromBytes` is exact: a reader of the manifest can
+  // tell "this file starts at byte N of the original" instead of guessing how
+  // much text was dropped from the head.
+  let fromBytes = 0;
+  let truncated = false;
+  if (buffer.length > budget) {
+    fromBytes = Math.max(0, buffer.length - budget);
+    truncated = true;
+    const newline = buffer.indexOf(0x0a, fromBytes);
+    fromBytes = newline >= 0 ? newline + 1 : buffer.length;
   }
+  const raw = buffer.subarray(fromBytes).toString("utf8");
   const lines = raw.split(/\r?\n/);
   const kept = [];
   let dropped = 0;
@@ -178,7 +185,7 @@ function readScrubbed(file, fields, secrets, budget) {
     if (scrubbed) kept.push(scrubbed);
     else dropped += 1;
   }
-  return { text: kept.join("\n") + (kept.length ? "\n" : ""), kept: kept.length, dropped };
+  return { text: kept.join("\n") + (kept.length ? "\n" : ""), kept: kept.length, dropped, truncated, fromBytes };
 }
 
 /**
@@ -190,26 +197,39 @@ function buildLogBundle({ logDir = resolveLogDir(), machine = "machine", now = n
   const safeMachine = String(machine || "machine").replace(/[^A-Za-z0-9._-]+/g, "-").slice(0, 40) || "machine";
   const entries = [];
   const files = [];
+  const omitted = [];
   let budget = MAX_TOTAL_BYTES;
   let droppedLines = 0;
 
-  const serverFiles = listByMtime(logDir, (name) => /^server-\d{8}\.log$/.test(name)).slice(0, MAX_SERVER_FILES);
+  const allServerFiles = listByMtime(logDir, (name) => /^server-\d{8}\.log$/.test(name));
+  const serverFiles = allServerFiles.slice(0, MAX_SERVER_FILES);
+  for (const file of allServerFiles.slice(MAX_SERVER_FILES)) {
+    omitted.push({ path: `server/${file.name}`, bytes: file.size });
+  }
   for (const file of serverFiles) {
     const text = readScrubbed(file.full, SERVER_FIELDS, secrets, Math.min(MAX_FILE_BYTES, budget));
     if (!text.text) { droppedLines += text.dropped; continue; }
     budget -= text.text.length;
     entries.push({ path: `server/${file.name}`, data: text.text });
-    files.push({ path: `server/${file.name}`, bytes: Buffer.byteLength(text.text), sha256: digest(text.text) });
+    const entry = { path: `server/${file.name}`, bytes: Buffer.byteLength(text.text), sha256: digest(text.text) };
+    if (text.truncated) Object.assign(entry, { truncated: true, fromBytes: text.fromBytes });
+    files.push(entry);
     droppedLines += text.dropped;
   }
 
-  const phoneFiles = listByMtime(path.join(logDir, "phone"), (name) => /\.jsonl$/.test(name)).slice(0, MAX_FILES);
+  const allPhoneFiles = listByMtime(path.join(logDir, "phone"), (name) => /\.jsonl$/.test(name));
+  const phoneFiles = allPhoneFiles.slice(0, MAX_FILES);
+  for (const file of allPhoneFiles.slice(MAX_FILES)) {
+    omitted.push({ path: `phone/${file.name}`, bytes: file.size });
+  }
   for (const file of phoneFiles) {
     const text = readScrubbed(file.full, PHONE_FIELDS, secrets, Math.min(MAX_FILE_BYTES, budget));
     if (!text.text) { droppedLines += text.dropped; continue; }
     budget -= text.text.length;
     entries.push({ path: `phone/${file.name}`, data: text.text });
-    files.push({ path: `phone/${file.name}`, bytes: Buffer.byteLength(text.text), sha256: digest(text.text) });
+    const entry = { path: `phone/${file.name}`, bytes: Buffer.byteLength(text.text), sha256: digest(text.text) };
+    if (text.truncated) Object.assign(entry, { truncated: true, fromBytes: text.fromBytes });
+    files.push(entry);
     droppedLines += text.dropped;
   }
 
@@ -261,14 +281,17 @@ function buildLogBundle({ logDir = resolveLogDir(), machine = "machine", now = n
     machine: safeMachine,
     fields: { server: SERVER_FIELDS, phone: PHONE_FIELDS },
     note: "Only allowlisted fields are copied; message text, notes and stacks are dropped. supervisor.log keeps only timestamp/source.",
-    limits: { totalBytes: MAX_TOTAL_BYTES, serverFiles: MAX_SERVER_FILES, supervisorTailBytes: SUPERVISOR_TAIL_BYTES },
+    limits: { totalBytes: MAX_TOTAL_BYTES, serverFiles: MAX_SERVER_FILES, phoneFiles: MAX_FILES, supervisorTailBytes: SUPERVISOR_TAIL_BYTES },
     totalBytes,
     files,
+    // Files the caps left out. Named here on purpose: a reader must be able to
+    // tell "these are all the logs" from "these are the ones that fit".
+    filesOmitted: omitted,
     droppedLines,
   };
   entries.unshift({ path: "manifest.json", data: `${JSON.stringify(manifest, null, 2)}\n` });
   const name = `logs-${safeMachine}-${stamp}.zip`;
-  return { name, buffer: zipStore(entries, now), files, droppedLines };
+  return { name, buffer: zipStore(entries, now), files, omitted, droppedLines };
 }
 
 module.exports = { buildLogBundle, zipStore, scrubLine, redactSecrets, crc32, SERVER_FIELDS, PHONE_FIELDS };
