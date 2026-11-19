@@ -130,6 +130,17 @@ test('公网清单常量与公布值一致', { skip: hasManifestConst ? false : 
 });
 
 /**
+ * 未配对的手机也要能下公网包：`absoluteApkUrl` 对白名单绝对 URL 原样返回，
+ * 不依赖 origin。这条正是 NB 指出的「未配对 + 公网 → 点下载没反应」的行为根。
+ */
+test('未配对也能拿到公网 APK 的下载地址', { skip: hasPublicUrlCheck ? false : '待 Atlas 放行公网 APK 地址' }, () => {
+  assert.equal(updateLib.absoluteApkUrl('', PUBLIC_APK), PUBLIC_APK);
+  assert.equal(updateLib.absoluteApkUrl('https://dl.736.de5.net', PUBLIC_APK), PUBLIC_APK);
+  // 电脑端那条腿没有 origin 就拼不出地址，必须还是空串（不能假装成功）。
+  assert.equal(updateLib.absoluteApkUrl('', '/api/apk'), '');
+});
+
+/**
  * `startUpdateDownload` 在 URL 不被允许时返回 null —— 是**静默失败**：
  * 按钮点了没反应，日志里什么都没有。公网 APK 必须能拿到 requestId。
  */
