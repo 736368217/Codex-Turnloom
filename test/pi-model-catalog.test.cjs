@@ -38,6 +38,13 @@ async function seedPi(piData) {
       enabled INTEGER, config_json TEXT, created_at INTEGER);
   `);
   db.prepare("INSERT INTO providers VALUES (?, ?, ?, 1, ?, ?)").run(
+    "p0", "alpha", "alpha-one",
+    JSON.stringify({ models: [
+      { id: "alpha-one", thinkingLevels: ["low", "high"], defaultThinkingLevel: "low", supportsImages: false },
+    ] }),
+    500,
+  );
+  db.prepare("INSERT INTO providers VALUES (?, ?, ?, 1, ?, ?)").run(
     "p1", "wbfd", "hy4flash-free",
     JSON.stringify({ models: [
       { id: "hy4flash-free", thinkingLevels: ["high"], defaultThinkingLevel: "high", supportsImages: true },
@@ -100,12 +107,20 @@ test("PI 接管时模型只来自 PI，顺序与候选都照 PI", async () => {
   try {
     const health = await waitForHealth(server.baseUrl);
     const models = health.models || [];
-    assert.deepEqual(models.map((model) => model.id), ["wbfd/hy4flash-free", "wbfd/deepseek-v4.1-flash"]);
-    assert.deepEqual([...new Set(models.map((model) => model.provider))], ["wbfd"]);
-    assert.deepEqual(models[0].efforts, ["high"]);
-    assert.deepEqual(models[1].efforts, ["max"]);
-    assert.equal(health.defaultModel, "wbfd/hy4flash-free");
-    assert.equal(health.defaultEffort, "high");
+    // 两个**启用**供应商（alpha created_at 更早）时，顺序必须是 alpha 全部 → wbfd 全部，
+    // 不能被模型名/字典序交错重排（Vera 指出真实库只有一个供应商，这条用 fixture 补上）。
+    assert.deepEqual(models.map((model) => model.id), [
+      "alpha/alpha-one",
+      "wbfd/hy4flash-free",
+      "wbfd/deepseek-v4.1-flash",
+    ]);
+    assert.deepEqual([...new Set(models.map((model) => model.provider))], ["alpha", "wbfd"]);
+    assert.deepEqual(models[0].efforts, ["low", "high"]);
+    assert.deepEqual(models[1].efforts, ["high"]);
+    assert.deepEqual(models[2].efforts, ["max"]);
+    // 默认模型取「第一个启用供应商的默认模型」（alpha 更早）；单供应商时即 PI 自己那条。
+    assert.equal(health.defaultModel, "alpha/alpha-one");
+    assert.equal(health.defaultEffort, "low");
     // 停用的供应商（retired）一个模型都不该出现。
     assert.ok(!models.some((model) => model.id.startsWith("retired/")));
   } finally {
