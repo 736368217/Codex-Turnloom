@@ -8292,6 +8292,8 @@ async function handleHttpBackendApi(req, res, url, profile = null) {
       // de 这一跳的模型目录必须来自宿主：之前返回 FALLBACK_CODEX_MODELS，
       // 手机面板于是一直显示 Codex 全量目录，PI 里没加入的模型也在。
       const upstreamHealth = await backend.getHealth().catch(() => null);
+      const upstreamModels = Array.isArray(upstreamHealth?.models) && upstreamHealth.models.length ? upstreamHealth.models : FALLBACK_CODEX_MODELS;
+      const upstreamIds = new Set(upstreamModels.map((model) => String(model?.id || "")));
       sendJson(res, 200, {
         ok: true,
         backend: { kind: "http", url: backend.baseUrl, profile: profile?.id || null },
@@ -8304,11 +8306,11 @@ async function handleHttpBackendApi(req, res, url, profile = null) {
         codexIpcSocket: null,
         authRequired: AUTH_REQUIRED,
         allowWrite: ALLOW_WRITE,
-        models: Array.isArray(upstreamHealth?.models) && upstreamHealth.models.length ? upstreamHealth.models : FALLBACK_CODEX_MODELS,
-        defaultModel: String(upstreamHealth?.defaultModel || DEFAULT_CODEX_MODEL),
+        models: upstreamModels,
+        defaultModel: String(upstreamHealth?.defaultModel || upstreamModels[0]?.id || DEFAULT_CODEX_MODEL),
         defaultEffort: String(upstreamHealth?.defaultEffort || DEFAULT_CODEX_EFFORT),
-        lastUsedModel: String(upstreamHealth?.lastUsedModel || ""),
-        usedModelIds: Array.isArray(upstreamHealth?.usedModelIds) ? upstreamHealth.usedModelIds : [],
+        lastUsedModel: upstreamIds.has(String(upstreamHealth?.lastUsedModel || "")) ? String(upstreamHealth.lastUsedModel) : "",
+        usedModelIds: (Array.isArray(upstreamHealth?.usedModelIds) ? upstreamHealth.usedModelIds : []).filter((id) => upstreamIds.has(String(id))),
         now: new Date().toISOString(),
         ...healthVersionFields(),
         ...appRelease.legacyHealthFields(await currentAppRelease())
@@ -8767,6 +8769,8 @@ const server = http.createServer(async (req, res) => {
       const piConfiguration = PI_NATIVE_QUEUE ? await piModelConfiguration() : null;
       const modelConfiguration = piConfiguration || await loadCodexModelConfiguration(homeState.home);
       const usedModels = await usedModelIds(homeState.home);
+      const modelIds = new Set((modelConfiguration.models || []).map((model) => model.id));
+      const lastUsedThreadModelValue = await lastUsedThreadModel(homeState.home);
       const release = await currentAppRelease();
       sendJson(res, 200, {
         ok: true,
@@ -8788,8 +8792,10 @@ const server = http.createServer(async (req, res) => {
         statusMaxAgeMinutes: STATUS_OVERRIDE_MAX_AGE_MS / 60_000,
         sqliteDriver: sqliteDriverInfo(),
         models: modelConfiguration.models,
-        usedModelIds: usedModels,
-        lastUsedModel: await lastUsedThreadModel(homeState.home),
+        // A model the active catalogue does not contain must never become the
+        // default (Codex-side history can name one the PI panel does not list).
+        usedModelIds: usedModels.filter((id) => modelIds.has(id)),
+        lastUsedModel: modelIds.has(lastUsedThreadModelValue) ? lastUsedThreadModelValue : "",
         defaultModel: modelConfiguration.defaultModel,
         defaultEffort: modelConfiguration.defaultEffort,
         now: new Date().toISOString(),
@@ -9698,3 +9704,4 @@ export {
   threadsPage,
   weakEtagFor
 };
+

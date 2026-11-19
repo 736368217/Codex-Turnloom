@@ -56,6 +56,14 @@ async function seedPi(piData) {
   db.close();
 }
 
+async function seedCodexThreads(home) {
+  const { DatabaseSync } = await import("node:sqlite");
+  const db = new DatabaseSync(path.join(home, "state_5.sqlite"));
+  db.exec("CREATE TABLE threads (id TEXT PRIMARY KEY, model TEXT, updated_at_ms INTEGER);");
+  db.prepare("INSERT INTO threads VALUES (?, ?, ?)").run("t1", "gpt-6-astra", Date.now());
+  db.close();
+}
+
 async function startServer() {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "turnloom-pi-models-"));
   const appData = path.join(root, "appdata");
@@ -65,6 +73,7 @@ async function startServer() {
   fs.mkdirSync(home, { recursive: true });
   fs.writeFileSync(path.join(appData, "PI-Desktop", "storage-location.json"), JSON.stringify({ roots: { data: piData } }));
   await seedPi(piData);
+  await seedCodexThreads(home);
   const port = await freePort();
   const child = spawn(process.execPath, ["server.js", "--port", String(port), "--host", "127.0.0.1", "--token", TOKEN, "--codex-home", home], {
     cwd: ROOT,
@@ -122,8 +131,12 @@ test("PI 接管时模型只来自 PI，顺序与候选都照 PI", async () => {
     assert.equal(health.defaultModel, "alpha/alpha-one");
     assert.equal(health.defaultEffort, "low");
     // 停用的供应商（retired）一个模型都不该出现。
+    // Codex 侧历史里的模型不在 PI 集合内，不能当 lastUsedModel（否则新会话默认值是脏的）。
+    assert.equal(health.lastUsedModel, "");
+    assert.ok(!health.models.some((model) => model.id === "gpt-6-astra"));
     assert.ok(!models.some((model) => model.id.startsWith("retired/")));
   } finally {
     await server.stop();
   }
 });
+
