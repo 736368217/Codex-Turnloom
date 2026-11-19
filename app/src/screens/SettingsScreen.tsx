@@ -98,8 +98,8 @@ export function UpdatePanel() {
   const sourceLine = (() => {
     if (source === 'public') return `来源 · 公网 ${host || PUBLIC_HOST_FALLBACK}`;
     if (source === 'server') {
-      const reason = publicError === 'public-http' ? '公网无清单' : publicError === 'public-schema' ? '公网清单异常' : '公网不可达';
-      return publicError ? `来源 · ${reason} → 电脑端 ${host || '电脑'}` : `来源 · 电脑端 ${host || '电脑'}`;
+      // 2.2.3 only answers "who answered". 无清单/清单异常/传输失败的细分留给 publicReason（2.2.4）。
+      return publicError ? `来源 · 公网不可达 → 电脑端 ${host || '电脑'}` : `来源 · 电脑端 ${host || '电脑'}`;
     }
     return '来源 · —';
   })();
