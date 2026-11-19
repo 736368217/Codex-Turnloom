@@ -41,3 +41,7 @@
 11. **旧计划任务迁移**：这台机器上「Codex Pocket Supervisor」仍是 8787 与隧道的托管体，每 ~59 秒触发，写 `supervisor.log`。正确顺序是「新托管装好并确认能用 → 再结束旧任务」，不能反过来。**需要 Human 一句授权**，因为会让服务短暂失去看管。证据：`docs/LOGS.zh-CN.md` §4.1。
 
 12. **隧道主机密钥**：`~/.ssh/known_hosts:9` 记的 `121.40.69.97` 与服务器现用 ED25519 不一致，`StrictHostKeyChecking=yes` 导致每 7 秒拒连、公网入口不可达。等 Human 确认「是否重装/换钥」后再改：备份 `known_hosts` → 删第 9 行 → `schtasks /Run` 以 SYSTEM 身份重拉 → 看 `tunnel-error.log` 是否变成 `Permission denied (publickey)`（那才是服务器侧掉了这把钥匙）。证据：`thread:e32e124e` 18:54/18:57/19:04 三条。
+
+## F. Windows 控制台（本机从未安装过）
+
+13. **控制台的安装路径没有任何真机记录**：这台机器上没有 `node_modules\electron\dist\electron.exe`、没有计划任务 `Codex-Turnloom Console`、没有开始菜单快捷方式、也没有 `%LOCALAPPDATA%\electron`。`scripts/install-console.ps1` 第一步就校验 electron.exe，缺失直接 throw——所以 `npm run desktop:install` 现在起不来。**后果**：「上传日志」「检查更新」两张卡片只有代码路径与端点证据，**没有任何一次在真实托盘窗口里的点击**；2.2.5 验收里这一格因此写成「本机未安装控制台，未验」而不是「通过」。**验收**：在一台干净 Windows 上 `npm ci && npm run desktop:install` → 托盘出现、两张卡片可点、更新显示 `current 2.2.5 / 已是最新`、上传返回对象 key → `npm run desktop:uninstall` 后计划任务与快捷方式都不残留。证据：`thread:e32e124e` 21:27 Rhea 的只读排查。
