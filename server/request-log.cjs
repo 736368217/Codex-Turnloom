@@ -58,6 +58,11 @@ function localAppDataDir(env = process.env) {
 function resolveLogDir(env = process.env) {
   const explicit = String(env.TURNLOOM_LOG_DIR || env.CODEX_LAN_LOG_DIR || "").trim();
   if (explicit) return path.resolve(explicit);
+  // `node --test` marks every test process (and everything it spawns) with
+  // NODE_TEST_CONTEXT. A test that boots server.js must not append to the
+  // machine's real log: those lines end up in the operator's "upload logs"
+  // bundle and read like production 4xx/5xx that never happened.
+  if (env.NODE_TEST_CONTEXT) return path.join(os.tmpdir(), "turnloom-test-logs");
   return path.join(localAppDataDir(env), "CodexPocket", "logs");
 }
 
