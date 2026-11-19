@@ -402,6 +402,12 @@ async function clickText(page, text, { selector = "button, [role='tab'], [role='
 
 /** Rows are always visible in the time view; project view needs one tap. */
 async function ensureThreadsOpen(page) {
+  // 平铺的「按时间」在分组收起的状态下也能列全，先试它；不行再展开项目组。
+  const flat = await clickText(page, "按时间", { selector: "button", optional: true });
+  if (flat) {
+    await sleep(350);
+    if (await page.eval("Boolean(document.querySelector('.tl-thread-row'))")) return true;
+  }
   for (let attempt = 0; attempt < 3; attempt += 1) {
     const hasRows = await page.eval("Boolean(document.querySelector('.tl-thread-row'))");
     if (hasRows) return true;
