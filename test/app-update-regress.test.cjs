@@ -59,6 +59,8 @@ const { isAllowedApiUrl } = bridge;
 
 const PUBLIC_MANIFEST = 'https://dl.736.de5.net/turnloom/latest.json';
 const PUBLIC_APK = 'https://dl.736.de5.net/turnloom/Codex-Turnloom-2.2.3.apk';
+/** 实现未落地时整组跳过；`skip` 是表达式，导出一出现就自动生效，不靠人记着取消。 */
+const hasPublicUrlCheck = typeof bridge.isPublicUpdateUrl === 'function';
 
 test('公网地址：同后缀伪装域名必须拒绝', () => {
   // 扩白名单最容易踩的写法是 endsWith / includes，这条就是拦它的。
@@ -95,7 +97,7 @@ test('回归：电脑端既有 API 地址不受本次改动影响', () => {
   assert.equal(isAllowedApiUrl('https://tl.z736.cc.cd/api/app/update-public'), true);
 });
 
-test('公网地址：清单与 APK 两个绝对地址必须放行', { skip: '待 Atlas 落地 isAllowedApiUrl 公网白名单后启用' }, () => {
+test('公网地址：清单与 APK 两个绝对地址必须放行', { skip: hasPublicUrlCheck ? false : '待 Atlas 落地 isAllowedApiUrl 公网白名单后启用' }, () => {
   assert.equal(isAllowedApiUrl(PUBLIC_MANIFEST), true);
   assert.equal(isAllowedApiUrl(PUBLIC_APK), true);
 });
@@ -106,7 +108,6 @@ test('公网地址：清单与 APK 两个绝对地址必须放行', { skip: '待
  * 传输层那条（`nativeHttpRequest` 对白名单外地址不得返回 offline）等 Atlas 定下
  * 返回形状我再补——不先编一个他得迁就的结构。
  */
-const hasPublicUrlCheck = typeof bridge.isPublicUpdateUrl === 'function';
 test('公网判定：isPublicUpdateUrl 只认 R2 的清单与 APK', { skip: hasPublicUrlCheck ? false : '待 Atlas 导出 isPublicUpdateUrl' }, () => {
   assert.equal(bridge.isPublicUpdateUrl(PUBLIC_MANIFEST), true);
   assert.equal(bridge.isPublicUpdateUrl(PUBLIC_APK), true);
@@ -116,4 +117,49 @@ test('公网判定：isPublicUpdateUrl 只认 R2 的清单与 APK', { skip: hasP
   // 电脑端的相对路径不是公网地址，别把两者混成一个判断。
   assert.equal(bridge.isPublicUpdateUrl('/api/apk'), false);
   assert.equal(bridge.isPublicUpdateUrl('/api/app/update'), false);
+});
+
+/**
+ * 清单常量只该有一处来源：壳层（QA 假桥 / 发布脚本）和 App 读同一个字符串。
+ * 值由 @Atlas 在 thread 600 公布，这里把它钉住。
+ */
+const updateLib = load('lib/appUpdate.ts');
+const hasManifestConst = typeof updateLib.PUBLIC_UPDATE_MANIFEST === 'string';
+test('公网清单常量与公布值一致', { skip: hasManifestConst ? false : '待 Atlas 导出 PUBLIC_UPDATE_MANIFEST' }, () => {
+  assert.equal(updateLib.PUBLIC_UPDATE_MANIFEST, PUBLIC_MANIFEST);
+});
+
+/**
+ * `startUpdateDownload` 在 URL 不被允许时返回 null —— 是**静默失败**：
+ * 按钮点了没反应，日志里什么都没有。公网 APK 必须能拿到 requestId。
+ */
+test('公网 APK 能真正发起下载，不是静默失败', { skip: hasPublicUrlCheck ? false : '待 Atlas 放行公网 APK 地址' }, () => {
+  const downloads = [];
+  global.window = {
+    ...global.window,
+    __turnloomNativeHttpResult() {},
+    TurnloomNative: {
+      secureGet: () => null,
+      secureSet: () => true,
+      secureRemove: () => true,
+      getAppInfo: () => JSON.stringify({ version: '2.2.2', versionCode: 91, packageName: 'com.codex.turnloom.app', updatesAvailable: true }),
+      request() {},
+      cancelRequest() {},
+      downloadUpdate(requestId, optionsJson) { downloads.push({ requestId, options: JSON.parse(optionsJson) }); },
+      cancelUpdate() {},
+      installUpdate() { return true; },
+    },
+  };
+  const requestId = bridge.startUpdateDownload({
+    url: PUBLIC_APK,
+    token: '',
+    sha256: 'a'.repeat(64),
+    versionCode: 92,
+    packageName: 'com.codex.turnloom.app',
+  });
+  assert.match(String(requestId || ''), /^update-/, '公网 APK 被 allowlist 挡了会返回 null');
+  assert.equal(downloads.length, 1);
+  assert.equal(downloads[0].options.url, PUBLIC_APK);
+  // 公网下载不带电脑端令牌（R2 公共 GET）。
+  assert.equal(downloads[0].options.token, '');
 });

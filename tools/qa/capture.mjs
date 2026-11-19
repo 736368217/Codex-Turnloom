@@ -140,6 +140,59 @@ const BRIDGE_SHIM = `(() => {
   // This is what Android delivers when the socket dies or the read timer fires;
   // the server.js -> fixture path cannot produce it (server.js would return 502).
   const QA_BRIDGE_SEND_FAIL = ${JSON.stringify(String(process.env.QA_BRIDGE_SEND_FAIL || "").trim())};
+  // 2.2.3 update channel: the R2 manifest is public and the desktop fallback is a
+  // paired server, so both legs are answered here, at the native boundary the App
+  // really uses. Modes: ok | older | 404 | timeout | badschema.
+  const QA_UPDATE_PUBLIC = ${JSON.stringify(String(process.env.QA_UPDATE_PUBLIC || "").trim())};
+  const QA_UPDATE_SERVER = ${JSON.stringify(String(process.env.QA_UPDATE_SERVER || "").trim())};
+  const UPDATE_MANIFEST_URL = "https://dl.736.de5.net/turnloom/latest.json";
+  const UPDATE_APK_SHA = "e44c285d41ddc7e04a661f8c45b286f990190e2814c7e69fbd4328dd2fb7e156";
+  const publicManifest = (mode) => {
+    const versionCode = mode === "older" ? 91 : 92;
+    const version = mode === "older" ? "2.2.2" : "2.2.3";
+    return {
+      version,
+      versionCode,
+      apk: "turnloom/Codex-Turnloom-" + version + ".apk",
+      size: 2238347,
+      sha256: mode === "badschema" ? "not-a-sha" : UPDATE_APK_SHA,
+      publishedAt: "2026-11-19T05:00:00Z",
+      notes: mode === "older" ? "" : "公网更新通道上线",
+    };
+  };
+  const answerUpdate = (requestId, mode, payload) => {
+    const reply = (status, body, error) => {
+      window.__TLQA.requests.push({ requestId, url: payload.url, status, error: error || null, qaUpdate: mode });
+      setTimeout(() => window.__turnloomNativeHttpResult?.(requestId, JSON.stringify({ status, body, error })), 20);
+    };
+    if (!mode || mode === "ok" || mode === "older" || mode === "badschema") {
+      const manifest = publicManifest(mode === "ok" ? "ok" : mode);
+      return reply(200, JSON.stringify(manifest));
+    }
+    if (mode === "404") return reply(404, JSON.stringify({ error: "not found" }));
+    // Android 交付的读超时形状：status 0 + error，不是 HTTP 码。
+    return reply(0, "", "timeout");
+  };
+  const serverUpdate = (requestId, mode, payload) => {
+    const reply = (status, body, error) => {
+      window.__TLQA.requests.push({ requestId, url: payload.url, status, error: error || null, qaUpdate: mode });
+      setTimeout(() => window.__turnloomNativeHttpResult?.(requestId, JSON.stringify({ status, body, error })), 20);
+    };
+    if (mode === "ok") {
+      return reply(200, JSON.stringify({
+        available: true,
+        packageName: "com.codex.turnloom.app",
+        versionName: "2.2.3",
+        versionCode: 92,
+        apkUrl: "/api/apk",
+        sha256: UPDATE_APK_SHA,
+        sizeBytes: 2238347,
+        notes: "电脑端 fallback",
+      }));
+    }
+    if (mode === "404") return reply(404, JSON.stringify({ error: "not found" }));
+    return reply(0, "", "timeout");
+  };
   const store = {
     get: (k) => { try { return localStorage.getItem('tlqa::' + k); } catch { return null; } },
     set: (k, v) => { try { localStorage.setItem('tlqa::' + k, v); return true; } catch { return false; } },
@@ -154,6 +207,14 @@ const BRIDGE_SHIM = `(() => {
       if (QA_BRIDGE_SEND_FAIL && String(payload.url || '').endsWith('/api/send')) {
         window.__TLQA.requests.push({ requestId, url: payload.url, method: payload.method, status: 0, error: QA_BRIDGE_SEND_FAIL });
         setTimeout(() => window.__turnloomNativeHttpResult?.(requestId, JSON.stringify({ status: 0, body: '', error: QA_BRIDGE_SEND_FAIL })), 30);
+        return;
+      }
+      if (QA_UPDATE_PUBLIC && String(payload.url || '').split('?')[0] === UPDATE_MANIFEST_URL) {
+        answerUpdate(requestId, QA_UPDATE_PUBLIC, payload);
+        return;
+      }
+      if (QA_UPDATE_SERVER && /\\/api\\/app\\/update$/.test(String(payload.url || '').split('?')[0])) {
+        serverUpdate(requestId, QA_UPDATE_SERVER, payload);
         return;
       }
       const controller = new AbortController();
@@ -183,7 +244,12 @@ const BRIDGE_SHIM = `(() => {
     secureGet: (k) => store.get(k),
     secureSet: (k, v) => store.set(k, v),
     secureRemove: (k) => store.del(k),
-    getAppInfo: () => JSON.stringify({ label: 'Turnloom QA', version: '2.2.2', versionCode: 91, packageName: 'dev.turnloom.qa', cameraAvailable: false, updatesAvailable: false }),
+    // 更新场景必须用真实身份：validateAppUpdate 只认 com.codex.turnloom.app，
+    // 且 hasNativeUpdater 要求 updatesAvailable=true，否则下载入口不会出现。
+    getAppInfo: () => JSON.stringify({ label: 'Turnloom QA', version: '2.2.2', versionCode: 91,
+      packageName: (QA_UPDATE_PUBLIC || QA_UPDATE_SERVER) ? 'com.codex.turnloom.app' : 'dev.turnloom.qa',
+      cameraAvailable: false,
+      updatesAvailable: Boolean(QA_UPDATE_PUBLIC || QA_UPDATE_SERVER) }),
     haptic: () => {},
     setLightBars: () => {},
     openExternalUrl: () => true,
