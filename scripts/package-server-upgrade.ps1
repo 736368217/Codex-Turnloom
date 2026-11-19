@@ -30,6 +30,11 @@
   written with shared/app-release.cjs --stamp so the host advertises exactly
   these bytes. Omit to ship code only.
 
+.PARAMETER ExpectedCertSha256
+  Signing certificate the staged APK must carry. The check fails closed: a
+  missing apksigner, a malformed expected value, or a different certificate all
+  refuse to build the package (-SkipSignatureCheck overrides).
+
 .PARAMETER Force
   Overwrite an existing zip instead of failing.
 
@@ -43,6 +48,9 @@ param(
     [string]$OutDir = '',
     [string]$Apk = '',
     [string]$ApkManifest = '',
+    [string]$ExpectedCertSha256 = '2feb63c511cd725795cadc8fa890f9cbc754fe59c0bbfe0787ac33f94f44fa9c',
+    [string]$AndroidHome = '',
+    [switch]$SkipSignatureCheck,
     [switch]$Force
 )
 
@@ -51,6 +59,27 @@ Set-StrictMode -Version 2.0
 
 function Say([string]$Message) { Write-Host "[package-server] $Message" }
 function Fail([string]$Message) { throw "[package-server] $Message" }
+
+# build-tools\apksigner found from -AndroidHome, ANDROID_HOME / ANDROID_SDK_ROOT,
+# or the usual per-user install. Highest version wins.
+function Find-BuildTool([string]$Name) {
+    $roots = @()
+    if ($AndroidHome) { $roots += $AndroidHome }
+    if ($env:ANDROID_HOME) { $roots += $env:ANDROID_HOME }
+    if ($env:ANDROID_SDK_ROOT) { $roots += $env:ANDROID_SDK_ROOT }
+    $roots += (Join-Path $env:USERPROFILE 'tools\android-sdk')
+    foreach ($root in $roots) {
+        $buildTools = Join-Path $root 'build-tools'
+        if (-not (Test-Path -LiteralPath $buildTools)) { continue }
+        $dirs = Get-ChildItem -LiteralPath $buildTools -Directory |
+            Sort-Object { try { [version]$_.Name } catch { [version]'0.0.0' } } -Descending
+        foreach ($dir in $dirs) {
+            $candidate = Join-Path $dir.FullName $Name
+            if (Test-Path -LiteralPath $candidate) { return $candidate }
+        }
+    }
+    return ''
+}
 
 $repoRoot = Split-Path -Parent $PSScriptRoot
 if (-not (Test-Path -LiteralPath (Join-Path $repoRoot 'server.js') -PathType Leaf)) {
@@ -138,6 +167,26 @@ if ($Apk) {
     $node = (Get-Command node.exe -ErrorAction Stop).Source
     & $node (Join-Path $repoRoot 'shared\app-release.cjs') --verify --apk $stagedApk
     if ($LASTEXITCODE -ne 0) { Fail 'the staged APK sidecar does not verify' }
+
+    # Fail closed on the signing certificate: this zip is what an install
+    # downloads, so a wrong-key APK inside it would make every update fail with
+    # "package not installed". The value itself is validated, not just presence.
+    if ($SkipSignatureCheck) {
+        Say 'WARNING: APK signature check skipped by request'
+    } else {
+        if ($ExpectedCertSha256 -notmatch '^[0-9a-f]{64}$') {
+            Fail 'expected cert sha256 is missing or malformed; refusing to package (pass -SkipSignatureCheck to override)'
+        }
+        $apkSigner = Find-BuildTool 'apksigner.bat'
+        if (-not $apkSigner) { $apkSigner = Find-BuildTool 'apksigner' }
+        if (-not $apkSigner) { Fail 'apksigner not found (set -AndroidHome); refusing to package an unverified APK (pass -SkipSignatureCheck to override)' }
+        $certs = (& $apkSigner verify --print-certs $stagedApk 2>&1 | Out-String)
+        if ($LASTEXITCODE -ne 0) { Fail "apksigner verify failed: $certs" }
+        if ($certs -notmatch [regex]::Escape($ExpectedCertSha256)) {
+            Fail "APK is not signed with the project key. Expected $ExpectedCertSha256. Cert output: $certs"
+        }
+        Say 'signature matches the project key (2feb63c5...)'
+    }
     $apkStaged = 'public/downloads/Codex-Turnloom.apk'
     Say ("staged APK {0} bytes (sha256 {1})" -f (Get-Item -LiteralPath $stagedApk).Length, $stagedHash)
 }
