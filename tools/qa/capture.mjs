@@ -761,10 +761,17 @@ async function runViewport(browser, viewport, report) {
   }
 
   // --- monitors -----------------------------------------------------------
+  // 2.2.6 撤掉「监控」Tab（运行中入口回会话页、诊断进设置）。Tab 在就照旧拍，
+  // 不在就把这一步记成跳过——否则整条走查会在一个已经不存在的按钮上抛错。
   if (selected("monitors")) {
-    await clickSelector(page, "button[aria-label='监控']");
-    await sleep(700);
-    await shot(page, dir, "16-monitors", report);
+    const hasMonitors = await page.eval(`Boolean(document.querySelector('button[aria-label="监控"]'))`);
+    if (hasMonitors) {
+      await clickSelector(page, "button[aria-label='监控']");
+      await sleep(700);
+      await shot(page, dir, "16-monitors", report);
+    } else {
+      log("monitors: tab is gone (2.2.6) — screenshot skipped");
+    }
   }
 
   // --- settings -----------------------------------------------------------
@@ -800,10 +807,16 @@ async function runViewport(browser, viewport, report) {
     await shot(page, dir, "18-new-chat-sheet", report);
     await page.eval("window.__turnloomBack && window.__turnloomBack()");
     await sleep(500);
-    await clickSelector(page, "button[aria-label='监控']");
-    await sleep(600);
-    await clickText(page, "查看失败任务", { selector: "button", optional: true });
-    await sleep(700);
+    // 诊断抽屉的入口在 2.2.6 从「监控」搬到「设置」；两边都试，不用猜是哪一版。
+    await clickSelector(page, "button[aria-label='监控']", { optional: true });
+    await sleep(400);
+    const diagnosticsOpened = await clickText(page, "查看失败任务", { selector: "button", optional: true });
+    if (!diagnosticsOpened) {
+      await clickSelector(page, "button[aria-label='设置']", { optional: true });
+      await sleep(500);
+      await clickText(page, "查看失败任务", { selector: "button, [role='button']", optional: true });
+      await sleep(500);
+    }
     await shot(page, dir, "19-diagnostics-sheet", report);
     await page.eval("window.__turnloomBack && window.__turnloomBack()");
     await sleep(400);
