@@ -677,6 +677,9 @@ async function runViewport(browser, viewport, report) {
         // Same wording on both sides (shortModelName), so equality is the assertion.
         const chipInPanel = Boolean(selectedRow) && selectedRow.name === sheet.chipName;
         report.modelSheet.chipInPanel = chipInPanel;
+        // Persist it: the gate reads report.json, not the console. Keyed by
+        // viewport because the same report is reused for every size.
+        report.modelSheets = { ...(report.modelSheets || {}), [dir.split(path.sep).slice(-1)[0]]: report.modelSheet };
         log(`model sheet: ${JSON.stringify({ title: sheet.title, subtitle: sheet.subtitle, chip: sheet.chipText, rows: sheet.rows.map((row) => row.name), providers: sheet.providerChips, chipInPanel })}`
           + ` · overflow=${sheetFacts ? sheetFacts.horizontalOverflow : "n/a"}`);
       }
