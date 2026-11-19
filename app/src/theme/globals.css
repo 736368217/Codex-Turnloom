@@ -6,8 +6,15 @@
   border: 0; border-radius: 12px; background: var(--tl-fill-secondary);
   color: var(--tl-label-primary); font-size: 13px; font-weight: 600; overflow: hidden;
 }
-.tl-header-model-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.tl-header-model-effort { color: var(--tl-label-secondary); font-weight: 500; }
+.tl-header-model-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* The effort is one short token; it must never wrap into two lines next to a long name. */
+.tl-header-model-effort { flex: 0 0 auto; white-space: nowrap; color: var(--tl-label-secondary); font-weight: 500; }
+/* The desktop removed this model from the added set: say so, never swap silently. */
+.tl-header-model-removed {
+  flex: 0 0 auto; padding: 1px 5px; border-radius: 6px; white-space: nowrap;
+  background: rgba(255, 59, 48, .12); color: var(--tl-red);
+  font-size: 11px; font-weight: 600;
+}
 .tl-composer-top { display: none; }
 @tailwind base;
 @tailwind components;
@@ -1048,6 +1055,18 @@ button:focus-visible, a:focus-visible { outline: 2px solid var(--tl-blue); outli
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+/* Current selection the desktop no longer lists: a status row, not an option. */
+.tl-mp-model--offcatalog {
+  background: var(--tl-fill-secondary);
+  color: var(--tl-label-secondary);
+  cursor: default;
+}
+.tl-mp-pin {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  color: var(--tl-label-secondary);
 }
 .tl-mp-note {
   margin: 8px 2px;

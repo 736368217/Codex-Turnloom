@@ -19,10 +19,17 @@ export interface ThreadRuntimeStatus {
 }
 
 export interface ModelCatalogEntry {
+  /** Exact backend slug (`<provider>/<model>`), the only ID a send may carry. */
   id: string;
   label: string;
   /** Real provider group: the ID's prefix, or the backend's own kind. */
   provider: string;
+  /** Provider as the desktop shows it (2.2.5 contract); falls back to `provider`. */
+  providerLabel?: string;
+  /** Bare model id inside the provider (2.2.5 contract); the UI never splits `id`. */
+  modelId?: string;
+  /** The desktop pinned this model; the host already orders pinned rows first. */
+  pinned?: boolean;
   efforts: string[];
   defaultEffort: string;
   supportsImages: boolean | null;
@@ -30,9 +37,15 @@ export interface ModelCatalogEntry {
 
 export interface ModelCatalog {
   scope: string;
+  /** Exactly the models the desktop added and enabled, in the host's order. */
   models: ModelCatalogEntry[];
   defaultModel: string;
   defaultEffort: string;
+  /**
+   * Model of the most recent thread that had one, as served by the host. Carried
+   * verbatim: whether it may be used is decided only in `resolveTurnPreference`.
+   */
+  lastUsedModel: string;
 }
 
 export interface TurnPreference {
@@ -147,10 +160,15 @@ export function normalizeHealthCatalog(raw: unknown, scope: string): ModelCatalo
       const efforts = cleanEfforts(row.efforts);
       const defaultEffort = efforts.includes(stringValue(row.defaultEffort))
         ? stringValue(row.defaultEffort) : efforts[0] || '';
+      const provider = providerOf(id, row, fallbackProvider);
+      const slash = id.indexOf('/');
       return {
         id,
         label: stringValue(row.label) || id,
-        provider: providerOf(id, row, fallbackProvider),
+        provider,
+        providerLabel: stringValue(row.providerLabel) || provider,
+        modelId: stringValue(row.modelId) || (slash >= 0 ? id.slice(slash + 1) : id),
+        pinned: row.pinned === true || row.pin === true,
         efforts,
         defaultEffort,
         supportsImages: typeof row.supportsImages === 'boolean' ? row.supportsImages : null,
@@ -162,12 +180,17 @@ export function normalizeHealthCatalog(raw: unknown, scope: string): ModelCatalo
   const selected = models.find((entry) => entry.id === defaultModel);
   const defaultEffort = selected?.efforts.includes(stringValue(health.defaultEffort))
     ? stringValue(health.defaultEffort) : selected?.defaultEffort || '';
-  return { scope: String(scope || ''), models, defaultModel, defaultEffort };
+  // Carried as served: `resolveTurnPreference` checks membership, so an ID the
+  // catalogue no longer lists can never become a default here or in the store.
+  const lastUsedModel = stringValue(health.lastUsedModel);
+  return { scope: String(scope || ''), models, defaultModel, defaultEffort, lastUsedModel };
 }
 
 /**
- * Resolve a per-thread selection. A user's explicit per-thread choice wins;
- * the thread's own model is only the initial fallback before any override.
+ * Resolve a per-thread selection. A user's explicit per-thread choice wins; then
+ * the thread's own model; then the last model used on this machine — only if the
+ * active catalogue still lists it; then the catalogue default. This is the one
+ * place the fallback order lives (the store only carries `lastUsedModel`).
  */
 export function resolveTurnPreference(
   catalog: ModelCatalog | null | undefined,
@@ -197,9 +220,12 @@ export function resolveTurnPreference(
     threadModel,
     modelProvider(stringValue(threadModel)) || modelProvider(stringValue(catalog?.defaultModel)),
   );
+  // `lastUsedModel` 只有仍在当前集合里才可用：它可能来自已停用供应商或已移除模型。
+  const lastUsedEntry = byId(catalog?.lastUsedModel);
   // A saved per-thread choice is an intentional override; threadModel is only
   // the first-entry fallback before the user has picked anything.
-  const selected = savedModel || savedOverride || threadEntry || byId(catalog?.defaultModel) || models[0];
+  const selected = savedModel || savedOverride || threadEntry || lastUsedEntry
+    || byId(catalog?.defaultModel) || models[0];
   if (!selected) return { model: '', effort: '' };
   const savedEffort = selected.id === savedModelId ? stringValue(saved?.effort) : "";
   const healthDefaultEffort = stringValue(catalog?.defaultEffort);

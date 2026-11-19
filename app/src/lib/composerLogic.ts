@@ -3,10 +3,60 @@
  * No React/JSX here: every branch can be executed without a WebView.
  */
 import {
-  validateAttachments, plainBase64,
-  type ModelCatalog, type SendAttachment,
+  validateAttachments, plainBase64, type ModelCatalog, type ModelCatalogEntry, type SendAttachment,
 } from './chatContract';
 import type { NativeAttachmentResult } from './nativeBridge';
+
+export const ALL_PROVIDERS = '全部';
+
+export interface ModelPanelRow extends ModelCatalogEntry {
+  /**
+   * The current selection is not in the served catalogue (removed/disabled on the
+   * desktop). A status row only: it is never a selectable option.
+   */
+  offCatalog?: boolean;
+}
+
+/**
+ * The exact rows the picker shows: the served catalogue in the host's own order,
+ * plus one status row when — and only when — the current selection is no longer
+ * in it. Listing the current model keeps the header chip findable in the panel
+ * without ever re-introducing a full directory or a history of used models.
+ */
+export function panelRows(catalog: ModelCatalog | null, selectedModel: string): ModelPanelRow[] {
+  const rows: ModelPanelRow[] = (catalog?.models || []).map((entry) => ({ ...entry }));
+  const current = String(selectedModel || '').trim();
+  // Only a loaded catalogue can tell us the selection is gone; before that the
+  // panel says "reading" instead of accusing the desktop of removing anything.
+  if (!current || !rows.length || rows.some((entry) => entry.id === current)) return rows;
+  const slash = current.indexOf('/');
+  const provider = slash > 0 ? current.slice(0, slash) : '';
+  rows.unshift({
+    id: current,
+    // Empty label: the name is the bare model segment, not the full slug.
+    label: '',
+    provider,
+    providerLabel: provider,
+    modelId: slash >= 0 ? current.slice(slash + 1) : current,
+    pinned: false,
+    efforts: [],
+    defaultEffort: '',
+    supportsImages: null,
+    offCatalog: true,
+  });
+  return rows;
+}
+
+/** Provider filter and text search over already-built panel rows. */
+export function filterModelRows(rows: ModelPanelRow[], provider: string, query: string): ModelPanelRow[] {
+  const needle = String(query || '').trim().toLowerCase();
+  return rows.filter((entry) => {
+    if (provider && provider !== ALL_PROVIDERS && entry.provider !== provider) return false;
+    if (!needle) return true;
+    return `${entry.id} ${entry.label} ${entry.providerLabel || ''} ${entry.modelId || ''}`
+      .toLowerCase().includes(needle);
+  });
+}
 
 /** Resolve the exact backend model ID and an effort that this model really offers. */
 export function sheetPreference(
@@ -25,13 +75,8 @@ export function sheetPreference(
 
 /** Case-insensitive search over real IDs and friendly labels; no invented rows. */
 export function filterModels(catalog: ModelCatalog | null, query: string): ModelCatalog['models'] {
-  const models = catalog?.models || [];
-  const needle = String(query || '').trim().toLowerCase();
-  if (!needle) return models;
-  return models.filter((entry) => `${entry.id} ${entry.label}`.toLowerCase().includes(needle));
+  return filterModelRows(catalog?.models || [], ALL_PROVIDERS, query);
 }
-
-export const ALL_PROVIDERS = '全部';
 
 /** Providers present in the real catalog, in first-seen order. */
 export function providerOptions(catalog: ModelCatalog | null): string[] {
@@ -49,9 +94,7 @@ export function filterModelsByProvider(
   provider: string,
   query: string,
 ): ModelCatalog['models'] {
-  const rows = filterModels(catalog, query);
-  if (!provider || provider === ALL_PROVIDERS) return rows;
-  return rows.filter((entry) => entry.provider === provider);
+  return filterModelRows(catalog?.models || [], provider, query);
 }
 
 /**

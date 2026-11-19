@@ -184,3 +184,27 @@
 - `删除正常用户页面中的 ROUTE、Bridge 计数、占位能力说明及无用标语，保持蓝色原始环形 logo 和浅色界面。`（`SINGLE_APP_CONTRACT.md:14`）
 - `禁止再叫「纯原生 App / 非 WebView 原生」。`（`SINGLE_APP_CONTRACT.md:22`）
 - `全局单例 CupertinoSheetHost，所有二级交互 100% 用 Vaul 底部抽屉，禁止居中 Modal。`（`SINGLE_APP_CONTRACT.md:115`）
+
+## 6. 2.2.5 会话头部与模型面板（产品形态；不是机械提取）
+
+Human 15:43 的原始要求，写成可执行条款，避免下次再按字面做成「居中两枚按钮」或「目录浏览器」。
+
+### 会话头部
+- 第一行：左返回 + 会话标题；标题过长用省略号，不被右侧控件挤成两行。
+- 第二行：`项目：<name> · <状态>`；**没有项目时整段 `项目：…` 不出现**，只留状态（Codex 会话不硬塞「未归类」）。
+- 右上角模型 chip（`.tl-header-model`）：`min-height: 44px`、`max-width: 44%`，内容 = 模型短名 + 思考强度 + 下拉箭头。模型名可省略号，**强度是短 token，必须 `flex: 0 0 auto; white-space: nowrap`，不许折成两行**（390 上真出现过「最/高」竖排）。
+- chip 打开的就是模型面板，不存在第二个入口；输入框上方不再有模型行。
+
+### 模型面板（`ModelEffortSheet`）
+- 标题「模型」；副标「电脑端已加入的 N 个模型」（N 不含状态行）。语义是「切换我已加入的模型 + 强度」，不是「浏览目录」。
+- 行集合 = **服务端给的集合，数组顺序即面板顺序**（宿主已把 pinned 置前并保持组内相对顺序）。渲染层不再过滤、不再重排；`provider/providerLabel/modelId/label/pinned` 由契约提供，UI 不 split `id`。
+- 供应商筛选条只在 ≥2 个真实供应商时出现；搜索框只在 >8 行（或已有输入）时出现。3 个模型的常见形态下两者都不出现，面板只有标题 + 3 行 + 强度。
+- 置顶行右侧显示 pin 图标（`aria-label`/`title` 为「已置顶」）。
+- **唯一允许的集合外条目**：当前会话模型已不在服务端集合（电脑端移除/停用）时，列表最前加一条**状态行**——`aria-disabled="true"`、不可点、副标「电脑端未加入」，chip 同步显示红色「已移除」徽标。只许一条，不许把历史用过的模型累积成列表。
+- 普通发送不因打开面板而带 `model`；只有用户显式改选才发 `model`/`effort`。
+
+### 默认模型（单一真源）
+- 回退顺序只写在 `resolveTurnPreference`：`thread.model`（按 suffix + provider 归一）→ `catalog.lastUsedModel`（**必须在集合内**）→ `catalog.defaultModel`。
+- `runtimeStore`/`normalizeHealthCatalog` 只携带 `lastUsedModel`，取不到就是 `""`，不在别处补默认值。
+- 断言：`chip ⊂ panel` —— 用同一份 `normalizeHealthCatalog` 产物与面板同一个 `panelRows()`，解析出的模型必须在面板里能找到（`test/app-model-panel.test.cjs`）。
+

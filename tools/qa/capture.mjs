@@ -645,11 +645,41 @@ async function runViewport(browser, viewport, report) {
     report.codeBlock = codeOverflow;
     log(`code block: ${JSON.stringify(codeOverflow)}`);
 
-    // Model & effort sheet from the composer.
+    // Model sheet opens from the header chip (2.2.5); the old composer trigger is gone.
     if (selected("sheets")) {
-      await clickSelector(page, ".tl-model-trigger", { optional: true });
+      await clickSelector(page, ".tl-header-model", { optional: true });
       await sleep(700);
-      await shot(page, dir, "10-model-sheet", report);
+      const sheetFacts = await shot(page, dir, "10-model-sheet", report);
+      // E2E cross-check of the pure assertion: the chip's model must be a panel row.
+      report.modelSheet = await page.eval(`(() => {
+        const drawer = document.querySelector('[data-vaul-drawer]');
+        const chip = document.querySelector('.tl-header-model');
+        if (!drawer) return null;
+        const rows = Array.from(drawer.querySelectorAll('[role="option"]')).map((el) => ({
+          name: (el.querySelector('.tl-mp-model-name')?.textContent || '').trim(),
+          meta: (el.querySelector('.tl-mp-model-meta')?.textContent || '').trim(),
+          selected: el.getAttribute('aria-selected') === 'true',
+          disabled: el.getAttribute('aria-disabled') === 'true',
+          pinned: Boolean(el.querySelector('.tl-mp-pin')),
+        }));
+        return {
+          title: (drawer.querySelector('.tl-sheet-title')?.textContent || '').trim(),
+          subtitle: (drawer.querySelector('.tl-sheet-subtitle')?.textContent || '').trim(),
+          chipName: (chip?.querySelector('.tl-header-model-name')?.textContent || '').trim(),
+          chipText: (chip?.textContent || '').trim(),
+          providerChips: Array.from(drawer.querySelectorAll('.tl-mp-provider')).map((el) => (el.textContent || '').trim()),
+          rows,
+        };
+      })()`);
+      if (report.modelSheet) {
+        const sheet = report.modelSheet;
+        const selectedRow = sheet.rows.find((row) => row.selected);
+        // Same wording on both sides (shortModelName), so equality is the assertion.
+        const chipInPanel = Boolean(selectedRow) && selectedRow.name === sheet.chipName;
+        report.modelSheet.chipInPanel = chipInPanel;
+        log(`model sheet: ${JSON.stringify({ title: sheet.title, subtitle: sheet.subtitle, chip: sheet.chipText, rows: sheet.rows.map((row) => row.name), providers: sheet.providerChips, chipInPanel })}`
+          + ` · overflow=${sheetFacts ? sheetFacts.horizontalOverflow : "n/a"}`);
+      }
       await page.eval("window.__turnloomBack ? window.__turnloomBack() : null");
       await sleep(500);
     }

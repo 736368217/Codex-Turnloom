@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type CSSProperties, type FormEvent, type ReactNode } from 'react';
-import { ArrowUp, AtSign, Camera, Check, ChevronDown, Image as ImageIcon, Paperclip, Search, Square, X } from 'lucide-react';
+import { ArrowUp, AtSign, Camera, Check, ChevronDown, Image as ImageIcon, Paperclip, Pin, Search, Square, X } from 'lucide-react';
 import VaulSheet from './VaulSheet';
 import { titleOfThread, previewOfThread } from '../lib/threadPreview';
 import { useDataState } from '../state/dataStore';
@@ -7,11 +7,12 @@ import { COLORS } from '../theme/optionATokens';
 import {
   resolveTurnPreference, supportsImages, effortLabel, isRunning, sendModelFields, plainBase64,
   EFFORT_LABEL,
-  type ModelCatalog, type ModelCatalogEntry, type SendAttachment,
+  type ModelCatalog, type SendAttachment,
 } from '../lib/chatContract';
 import {
-  ALL_PROVIDERS, sheetPreference, providerOptions, filterModelsByProvider,
+  ALL_PROVIDERS, sheetPreference, providerOptions, panelRows, filterModelRows,
   shortModelName, pickerTrayForResult, pickerErrorMessage,
+  type ModelPanelRow,
 } from '../lib/composerLogic';
 import { pickAttachments, haptic, type NativeAttachmentResult } from '../lib/nativeBridge';
 import { compressImageForUpload } from '../lib/imageUpload';
@@ -52,18 +53,23 @@ interface ModelSheetProps {
 }
 
 /**
- * One picker for provider → search → model → effort. The effort control is a
- * sticky segmented row above the sheet edge so it stays reachable with 270+
- * real PI models; nothing is duplicated into the composer chrome.
+ * One picker for provider → search → model → effort. Rows are exactly the models
+ * the desktop added (served in its own order, pinned first); the only extra row is
+ * the current selection when it is no longer in that set — a disabled status row,
+ * never a selectable option. No full directory, no history of used models.
  */
 export function ModelEffortSheet({ open, onClose, catalog, selected, onSelect }: ModelSheetProps) {
   const [query, setQuery] = useState('');
   const [provider, setProvider] = useState(ALL_PROVIDERS);
   const providers = providerOptions(catalog);
-  const rows = filterModelsByProvider(catalog, provider, query);
-  const current: ModelCatalogEntry | undefined = catalog?.models.find((entry) => entry.id === selected.model)
-    || catalog?.models[0];
-  const efforts = current?.efforts || [];
+  const multiProvider = providers.length > 2;
+  const rows = panelRows(catalog, selected.model);
+  const visible = filterModelRows(rows, provider, query);
+  const current: ModelPanelRow | undefined = rows.find((entry) => entry.id === selected.model) || rows[0];
+  const efforts = current && !current.offCatalog ? current.efforts : [];
+  // A three-model PI list does not need a search box; a 270-row Codex list does.
+  const showSearch = rows.length > 8 || Boolean(query);
+  const loaded = Boolean(catalog?.models.length);
 
   // A provider that no longer exists must not leave an empty list.
   useEffect(() => {
@@ -71,40 +77,67 @@ export function ModelEffortSheet({ open, onClose, catalog, selected, onSelect }:
   }, [provider, providers.join('|')]);
 
   return (
-    <VaulSheet open={open} onOpenChange={(next) => { if (!next) onClose(); }} title="模型与思考强度" subtitle="筛选供应商，再选择模型与强度">
-      <div className="tl-mp-providers" role="group" aria-label="供应商">
-        {providers.map((name) => (
-          <button key={name} type="button" className="tl-press tl-mp-provider" aria-pressed={name === provider}
-            onClick={() => { haptic('selection'); setProvider(name); }}>
-            {name}
-          </button>
-        ))}
-      </div>
-      <div className="tl-mp-search">
-        <Search size={16} color={COLORS.labelSecondary} aria-hidden="true" />
-        <input aria-label="搜索模型" type="search" value={query} placeholder="搜索模型名称或 ID"
-          onChange={(event) => setQuery(event.target.value)} />
-        {query && <button type="button" aria-label="清除搜索" onClick={() => setQuery('')}><X size={15} /></button>}
-      </div>
+    <VaulSheet open={open} onOpenChange={(next) => { if (!next) onClose(); }} title="模型"
+      subtitle={loaded ? `电脑端已加入的 ${catalog?.models.length} 个模型` : '正在读取模型目录'}>
+      {multiProvider && (
+        <div className="tl-mp-providers" role="group" aria-label="供应商">
+          {providers.map((name) => (
+            <button key={name} type="button" className="tl-press tl-mp-provider" aria-pressed={name === provider}
+              onClick={() => { haptic('selection'); setProvider(name); }}>
+              {name}
+            </button>
+          ))}
+        </div>
+      )}
+      {showSearch && (
+        <div className="tl-mp-search">
+          <Search size={16} color={COLORS.labelSecondary} aria-hidden="true" />
+          <input aria-label="搜索模型" type="search" value={query} placeholder="搜索模型名称或 ID"
+            onChange={(event) => setQuery(event.target.value)} />
+          {query && <button type="button" aria-label="清除搜索" onClick={() => setQuery('')}><X size={15} /></button>}
+        </div>
+      )}
       <div className="tl-mp-list" role="listbox" aria-label="模型">
-        {!catalog?.models.length && <p className="tl-mp-note">正在读取模型目录，或电脑端尚未提供模型列表。</p>}
-        {Boolean(catalog?.models.length) && !rows.length && <p className="tl-mp-note">没有匹配的模型</p>}
-        {rows.map((entry) => (
-          <button key={entry.id} type="button" role="option" aria-selected={entry.id === selected.model}
-            className="tl-press tl-mp-model" onClick={() => {
-              const next = sheetPreference(catalog, selected, entry.id);
-              haptic('selection');
-              onSelect(next.model, next.effort);
-            }}>
-            <span className="tl-mp-model-text">
-              <span className="tl-mp-model-name">{shortModelName(entry)}</span>
-              <span className="tl-mp-model-meta">{entry.id}{entry.supportsImages === false ? ' · 仅文字' : ''}</span>
-            </span>
-            {entry.id === selected.model && <Check size={18} color={COLORS.blue} />}
-          </button>
-        ))}
+        {!loaded && <p className="tl-mp-note">正在读取模型目录，或电脑端尚未提供模型列表。</p>}
+        {loaded && !visible.length && <p className="tl-mp-note">没有匹配的模型</p>}
+        {visible.map((entry) => {
+          const active = entry.id === selected.model;
+          const meta = [
+            entry.offCatalog ? '电脑端未加入' : '',
+            multiProvider ? (entry.providerLabel || entry.provider) : '',
+            !entry.offCatalog && entry.supportsImages === false ? '仅文字' : '',
+          ].filter(Boolean).join(' · ');
+          if (entry.offCatalog) {
+            // A status row: the current conversation still runs this model, but the
+            // desktop no longer offers it. It is not a choice, so it cannot be picked.
+            return (
+              <div key={entry.id} role="option" aria-selected={active} aria-disabled="true"
+                className="tl-mp-model tl-mp-model--offcatalog">
+                <span className="tl-mp-model-text">
+                  <span className="tl-mp-model-name">{shortModelName(entry)}</span>
+                  <span className="tl-mp-model-meta">{meta}</span>
+                </span>
+              </div>
+            );
+          }
+          return (
+            <button key={entry.id} type="button" role="option" aria-selected={active}
+              className="tl-press tl-mp-model" onClick={() => {
+                const next = sheetPreference(catalog, selected, entry.id);
+                haptic('selection');
+                onSelect(next.model, next.effort);
+              }}>
+              <span className="tl-mp-model-text">
+                <span className="tl-mp-model-name">{shortModelName(entry)}</span>
+                {meta && <span className="tl-mp-model-meta">{meta}</span>}
+              </span>
+              {entry.pinned && <span className="tl-mp-pin" title="已置顶"><Pin size={14} /></span>}
+              {active && <Check size={18} color={COLORS.blue} />}
+            </button>
+          );
+        })}
       </div>
-      {current && (
+      {current && !current.offCatalog && (
         <div className="tl-mp-effort" role="group" aria-label={EFFORT_LABEL}>
           <div className="tl-mp-effort-label">{EFFORT_LABEL}</div>
           {efforts.length > 1 ? (
@@ -231,17 +264,21 @@ export type ComposerFieldsApi = ReturnType<typeof useComposerFields>;
 export function ModelChip({ fields }: { fields: ComposerFieldsApi }) {
   const { catalog, preference } = fields;
   const entry = catalog?.models.find((row) => row.id === preference.model);
-  const name = shortModelName(entry) || '选择模型';
+  // A saved choice the desktop has since removed stays visible (never silently
+  // swapped) and says so, exactly like its status row in the panel.
+  const removed = Boolean(preference.model) && Boolean(catalog?.models.length) && !entry;
+  const name = shortModelName(entry || { id: preference.model, label: '' }) || '选择模型';
   const effort = effortLabel(preference.effort);
   return (
     <button
       type="button"
       className="tl-press tl-header-model"
-      aria-label={`模型与思考强度：${name}${effort ? ` · ${effort}` : ''}`}
+      aria-label={`模型与思考强度：${name}${removed ? '（电脑端未加入）' : ''}${effort ? ` · ${effort}` : ''}`}
       aria-haspopup="dialog"
       onClick={() => { haptic('selection'); fields.setSheetOpen(true); }}
     >
       <span className="tl-header-model-name">{name}</span>
+      {removed && <span className="tl-header-model-removed">已移除</span>}
       {effort && <span className="tl-header-model-effort">{effort}</span>}
       <ChevronDown size={12} color={COLORS.labelSecondary} aria-hidden="true" />
     </button>
