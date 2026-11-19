@@ -41,6 +41,13 @@ final class BridgeContract {
     static final String ATTACH_READ_FAILED = "read-failed";
     static final String ATTACH_INVALID_MIME = "invalid-mime-type";
     static final String APP_PACKAGE = "com.codex.turnloom.app";
+    /**
+     * Public, token-less update CDN (Cloudflare Worker + R2). Only HTTPS on this
+     * exact host, only under the /turnloom/ prefix; the pairing code is never
+     * sent there.
+     */
+    static final String PUBLIC_UPDATE_HOST = "dl.736.de5.net";
+    static final String PUBLIC_UPDATE_PATH_PREFIX = "/turnloom/";
 
     static final class Origin {
         final String scheme;
@@ -225,6 +232,56 @@ final class BridgeContract {
         return value != null && value.matches("[a-fA-F0-9]{64}");
     }
 
+    /**
+     * Recognise the public update CDN. Returns null when the URL does not name
+     * that host (the caller falls back to the paired-machine rules); malformed
+     * URLs on that host fail closed instead of falling through.
+     */
+    private static Origin publicUpdateOrigin(String raw) throws ValidationException {
+        if (raw == null || raw.isEmpty() || raw.length() > 4096 || hasControlChars(raw)) return null;
+        final URI uri;
+        try {
+            uri = new URI(raw);
+        } catch (Exception e) {
+            return null;
+        }
+        String host = uri.getHost();
+        if (host == null || !host.equalsIgnoreCase(PUBLIC_UPDATE_HOST)) return null;
+        String scheme = uri.getScheme() == null ? "" : uri.getScheme().toLowerCase(Locale.ROOT);
+        if (!scheme.equals("https")) throw new ValidationException("INVALID_SCHEME");
+        if (uri.isOpaque() || uri.getRawUserInfo() != null || uri.getRawFragment() != null) {
+            throw new ValidationException("INVALID_URL");
+        }
+        int port = uri.getPort();
+        if (port != -1 && port != 443) throw new ValidationException("INVALID_PORT");
+        String path = uri.getRawPath();
+        // A legacy /api/ path on this host keeps its paired-machine semantics.
+        if (path != null && path.startsWith("/api/")) return null;
+        if (path == null || !path.startsWith(PUBLIC_UPDATE_PATH_PREFIX)
+                || path.length() <= PUBLIC_UPDATE_PATH_PREFIX.length()
+                || path.contains("..") || path.contains("\\") || path.contains("//") || path.contains("%")) {
+            throw new ValidationException("INVALID_PATH");
+        }
+        String query = uri.getRawQuery();
+        if (query != null && (hasControlChars(query)
+                || query.toLowerCase(Locale.ROOT).contains("token"))) {
+            throw new ValidationException("INVALID_QUERY");
+        }
+        String authority = port == -1 ? host : host + ":" + port;
+        return new Origin("https", host.toLowerCase(Locale.ROOT), 443, authority);
+    }
+
+    /**
+     * Reads (update manifest fetch, APK download) may target either the paired
+     * machine's /api/* or the public token-less CDN under
+     * {@link #PUBLIC_UPDATE_HOST}.
+     */
+    static Origin validateReadUrl(String raw) throws ValidationException {
+        Origin published = publicUpdateOrigin(raw);
+        if (published != null) return published;
+        return validateApiUrl(raw, true);
+    }
+
     static Map<String, String> parseHeaders(JSONObject raw) throws ValidationException {
         Map<String, String> out = new HashMap<>();
         if (raw == null || raw == JSONObject.NULL) return out;
@@ -263,11 +320,14 @@ final class BridgeContract {
         try {
             JSONObject o = new JSONObject(requestJson);
             String rawUrl = o.optString("url", "");
-            Origin origin = validateApiUrl(rawUrl, true);
             String method = o.optString("method", "GET");
             if (!method.equals("GET") && !method.equals("POST")) {
                 throw new ValidationException("INVALID_METHOD");
             }
+            // The public CDN is read-only: GET for the manifest, never a POST.
+            Origin origin = method.equals("GET")
+                    ? validateReadUrl(rawUrl)
+                    : validateApiUrl(rawUrl, true);
             Object headersRaw = o.opt("headers");
             if (headersRaw != null && !(headersRaw instanceof JSONObject)) {
                 throw new ValidationException("INVALID_HEADERS");
@@ -304,9 +364,17 @@ final class BridgeContract {
         try {
             JSONObject o = new JSONObject(optionsJson);
             String rawUrl = o.optString("url", "");
-            Origin origin = validateApiUrl(rawUrl, true);
+            Origin origin = validateReadUrl(rawUrl);
             String token = o.optString("token", "");
-            if (token.isEmpty() || token.length() > 256 || hasControlChars(token)) {
+            boolean publicCdn = origin.host.equals(PUBLIC_UPDATE_HOST);
+            if (publicCdn) {
+                // The public CDN is anonymous: never forward the pairing code to it,
+                // whatever the page passed.
+                token = "";
+            } else if (token.isEmpty()) {
+                throw new ValidationException("INVALID_TOKEN");
+            }
+            if (token.length() > 256 || hasControlChars(token)) {
                 throw new ValidationException("INVALID_TOKEN");
             }
             String sha = o.optString("sha256", "");

@@ -183,8 +183,138 @@ public class BridgeContractTest {
     }
 
     @Test
-    public void originEqualityIncludesPortAndScheme() throws Exception {
-        BridgeContract.Origin a = BridgeContract.validateApiUrl(
+    public void publicCdnUpdateDescriptorsAreTokenlessButStillValidated() throws Exception {
+        JSONObject ok = new JSONObject();
+        ok.put("url", "https://dl.736.de5.net/turnloom/Codex-Turnloom-2.2.3.apk");
+        ok.put("sha256", SHA);
+        ok.put("versionCode", 92);
+        ok.put("packageName", "com.codex.turnloom.app");
+        BridgeContract.UpdateRequest req = BridgeContract.parseUpdateRequest(ok.toString());
+        assertEquals("", req.token);
+        assertEquals("dl.736.de5.net", req.origin.host);
+        assertEquals(443, req.origin.port);
+        assertEquals(92L, req.versionCode);
+
+        // A page that forwards the pairing code anyway must not send it to the CDN.
+        ok.put("token", "pairing-secret");
+        assertEquals("", BridgeContract.parseUpdateRequest(ok.toString()).token);
+
+        // Everything except the URL/token shape is unchanged.
+        JSONObject noSha = new JSONObject(ok.toString());
+        noSha.remove("sha256");
+        expectCode("INVALID_SHA256", () -> {
+            try {
+                BridgeContract.parseUpdateRequest(noSha.toString());
+            } catch (BridgeContract.ValidationException e) {
+                throw new RuntimeException(e);
+            }
+        });
+        JSONObject wrongPackage = new JSONObject(ok.toString());
+        wrongPackage.put("packageName", "com.evil.app");
+        expectCode("INVALID_PACKAGE_NAME", () -> {
+            try {
+                BridgeContract.parseUpdateRequest(wrongPackage.toString());
+            } catch (BridgeContract.ValidationException e) {
+                throw new RuntimeException(e);
+            }
+        });
+
+        // The paired machine still refuses an empty token.
+        JSONObject paired = new JSONObject(ok.toString());
+        paired.remove("token");
+        paired.put("url", "http://192.168.1.10:8787/api/apk");
+        expectCode("INVALID_TOKEN", () -> {
+            try {
+                BridgeContract.parseUpdateRequest(paired.toString());
+            } catch (BridgeContract.ValidationException e) {
+                throw new RuntimeException(e);
+            }
+        });
+    }
+
+    @Test
+    public void publicCdnUrlsFailClosedOutsideTheWhitelistedShape() {
+        expectCode("INVALID_PATH", () -> {
+            try {
+                BridgeContract.parseUpdateRequest(updateJson("https://dl.736.de5.net/other/app.apk"));
+            } catch (BridgeContract.ValidationException e) {
+                throw new RuntimeException(e);
+            }
+        });
+        expectCode("INVALID_PATH", () -> {
+            try {
+                BridgeContract.parseUpdateRequest(updateJson("https://dl.736.de5.net/turnloom/../app.apk"));
+            } catch (BridgeContract.ValidationException e) {
+                throw new RuntimeException(e);
+            }
+        });
+        expectCode("INVALID_PATH", () -> {
+            try {
+                BridgeContract.parseUpdateRequest(updateJson("https://dl.736.de5.net.evil.com/turnloom/app.apk"));
+            } catch (BridgeContract.ValidationException e) {
+                throw new RuntimeException(e);
+            }
+        });
+        expectCode("INVALID_URL", () -> {
+            try {
+                BridgeContract.parseUpdateRequest(updateJson("https://dl.736.de5.net@evil.com/turnloom/app.apk"));
+            } catch (BridgeContract.ValidationException e) {
+                throw new RuntimeException(e);
+            }
+        });
+        expectCode("INVALID_SCHEME", () -> {
+            try {
+                BridgeContract.parseUpdateRequest(updateJson("http://dl.736.de5.net/turnloom/app.apk"));
+            } catch (BridgeContract.ValidationException e) {
+                throw new RuntimeException(e);
+            }
+        });
+        expectCode("INVALID_QUERY", () -> {
+            try {
+                BridgeContract.parseUpdateRequest(updateJson("https://dl.736.de5.net/turnloom/app.apk?token=x"));
+            } catch (BridgeContract.ValidationException e) {
+                throw new RuntimeException(e);
+            }
+        });
+    }
+
+    @Test
+    public void publicCdnReadsAreGetOnly() throws Exception {
+        JSONObject get = new JSONObject();
+        get.put("url", "https://dl.736.de5.net/turnloom/latest.json");
+        get.put("method", "GET");
+        BridgeContract.HttpRequest req = BridgeContract.parseHttpRequest(get.toString());
+        assertEquals("dl.736.de5.net", req.origin.host);
+        assertEquals("GET", req.method);
+
+        JSONObject post = new JSONObject(get.toString());
+        post.put("method", "POST");
+        post.put("body", "{}");
+        expectCode("INVALID_PATH", () -> {
+            try {
+                BridgeContract.parseHttpRequest(post.toString());
+            } catch (BridgeContract.ValidationException e) {
+                throw new RuntimeException(e);
+            }
+        });
+    }
+
+    private static String updateJson(String url) {
+        try {
+            JSONObject o = new JSONObject();
+            o.put("url", url);
+            o.put("token", "");
+            o.put("sha256", SHA);
+            o.put("versionCode", 92);
+            o.put("packageName", "com.codex.turnloom.app");
+            return o.toString();
+        } catch (Exception e) {
+            throw new RuntimeException(e);
+        }
+    }
+
+    @Test
+    public void originEqualityIncludesPortAndScheme() throws Exception {        BridgeContract.Origin a = BridgeContract.validateApiUrl(
                 "http://192.168.1.10:8787/api/health", true);
         BridgeContract.Origin b = BridgeContract.validateApiUrl(
                 "http://192.168.1.10:8787/api/apk", true);

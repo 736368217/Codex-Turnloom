@@ -163,7 +163,9 @@ final class NativeHttpPolicy {
             if (!canonical.equals(new URI(canonical).normalize().toString())) {
                 throw new BridgeContract.ValidationException("INVALID_REDIRECT");
             }
-            BridgeContract.Origin next = BridgeContract.validateApiUrl(canonical, true);
+            BridgeContract.Origin next = origin.host.equals(BridgeContract.PUBLIC_UPDATE_HOST)
+                    ? BridgeContract.validateReadUrl(canonical)
+                    : BridgeContract.validateApiUrl(canonical, true);
             if (!origin.equals(next)) {
                 throw new BridgeContract.ValidationException("CROSS_ORIGIN_REDIRECT");
             }

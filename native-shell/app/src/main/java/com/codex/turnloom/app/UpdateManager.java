@@ -217,7 +217,10 @@ final class UpdateManager {
                 conn.setRequestMethod("GET");
                 conn.setRequestProperty("Accept", "application/vnd.android.package-archive");
                 conn.setRequestProperty("Accept-Encoding", "identity");
-                conn.setRequestProperty("x-access-token", req.token);
+                // Public (token-less) CDN downloads must not leak the pairing code.
+                if (!req.token.isEmpty()) {
+                    conn.setRequestProperty("x-access-token", req.token);
+                }
                 if (resumeFrom > 0) {
                     conn.setRequestProperty("Range", "bytes=" + resumeFrom + "-");
                 }
