@@ -155,7 +155,7 @@
 
   <div class="kicker">Turnloom · 设计轮</div>
   <h1>把「切换」做成一件看得懂的事</h1>
-  <div class="meta">2026-11-20 · 依据 2.2.5 已发布构建（94）与仓库当前实现 · 本页只做设计与规范，不改已发布包</div>
+  <div class="meta">2026-11-20 00:42 第二稿 · 依据 2.2.5 已发布构建（94）与仓库当前实现 · 本页只做设计与规范，不改已发布包 · 第二稿按数据契约补了「单平台 / 不探活 / 无逐行地址」三处降级态</div>
 
   <div class="lede">
     <h2>先说结论</h2>
@@ -179,7 +179,7 @@
         <td><b>底部「监控」tab</b></td>
         <td>四组卡片：运行态摘要三宫格（运行中/错误/会话）、距上次同步倒计时、连接状态、运行中的会话+停止、错误与告警、刷新按钮</td>
         <td>必要性低：三项与别处同源，会出现两处不一致；便利性低：为了停一个任务要先切 tab；易读性中：三个数字没有单位、没有阈值，「3」到底多不多没人知道</td>
-        <td><span class="verdict v-cut">删掉这个 tab</span> 内容三处归位，见第 4 节</td>
+        <td><span class="verdict v-cut">删掉这个 tab</span> 内容三处归位，见第 4 节。数据侧零独有字段，<code>threadsFilter:'running'</code> 已经存在，运行中胶囊直接复用</td>
       </tr>
       <tr>
         <td><b>视图切换</b></td>
@@ -188,10 +188,10 @@
         <td><span class="verdict v-change">改成图1</span> 单条 track + 滑动 thumb，300ms 跟手动画</td>
       </tr>
       <tr>
-        <td><b>头部四层</b></td>
-        <td>产品小标 + 「工作台」大标题 + 在线徽标 + 服务站按钮（内含电脑名 · host）</td>
-        <td>必要性低：「工作台」不含任何信息，产品小标在设置页已有；四层挤在约 96px 高里</td>
-        <td><span class="verdict v-merge">并成一张设备卡</span> 电脑名 + 平台 + 状态灯，点开层级</td>
+        <td><b>会话页头部</b></td>
+        <td>只有「会话」标题 + 新建 +；当前电脑/平台埋在设置里，不在首屏</td>
+        <td>必要性高（换设备、确认在哪台机器时要看）；便利性低：要进设置才知道；易读性中：看不出隶属关系</td>
+        <td><span class="verdict v-change">加常驻设备卡</span> 电脑名 + 平台 + 在线灯 + 模型 chip；点开三级层级</td>
       </tr>
       <tr>
         <td><b>切换服务抽屉</b></td>
@@ -201,9 +201,9 @@
       </tr>
       <tr>
         <td><b>会话行</b></td>
-        <td>标题 + 项目 + 状态胶囊 + 时间，四个元素挤一行</td>
-        <td>易读性差：320 宽时状态胶囊挤掉标题；「已完成」胶囊没有行动价值却占位</td>
-        <td><span class="verdict v-change">两行</span> 标题 + 一行 meta；只有「运行中 / 待审批」出现彩色标签</td>
+        <td>状态图标 + 标题/时间 + 预览；没有项目名，状态含义要靠猜</td>
+        <td>必要性高；易读性中：图标无文字、项目上下文缺失；320 下标题仍被预览挤压</td>
+        <td><span class="verdict v-change">两行</span> 标题 + 时间/项目 meta；只有「运行中 / 待审批 / 出错」出彩色标签</td>
       </tr>
       <tr>
         <td><b>搜索框</b></td>
@@ -217,6 +217,36 @@
         <td>必要性高：这是出问题时唯一能自助的地方</td>
         <td><span class="verdict v-keep">保留</span> 并把「错误与告警」并进来</td>
       </tr>
+      <tr>
+        <td><b>聊天头部</b></td>
+        <td>标题 + 项目副标题 + 右上模型 chip</td>
+        <td>必要性高；chip 44px；无项目时不占位</td>
+        <td><span class="verdict v-keep">保留</span></td>
+      </tr>
+      <tr>
+        <td><b>输入区</b></td>
+        <td>@ / 拍照 / 图片 / 附件 / 发送，@ 在工具行最左</td>
+        <td>必要性高；全部 44px；单手可达</td>
+        <td><span class="verdict v-keep">保留</span></td>
+      </tr>
+      <tr>
+        <td><b>模型面板</b></td>
+        <td>按后端集合渲染；&gt;8 行出搜索；16 行可滚</td>
+        <td>必要性高；行 44px；集合外状态行只一条、不可选</td>
+        <td><span class="verdict v-keep">保留</span>；2.2.6 按 <code>modelsSource</code> 分叉副标题（PI 已加入 / Codex 全部可用）</td>
+      </tr>
+      <tr>
+        <td><b>连接页</b></td>
+        <td>扫码 / 手动地址 / 公开更新入口</td>
+        <td>必要性高：首次配对唯一入口；未配对也能检查更新</td>
+        <td><span class="verdict v-keep">保留</span></td>
+      </tr>
+      <tr>
+        <td><b>置顶会话组</b></td>
+        <td>列表最上方，仅在有 pinned 时渲染</td>
+        <td>必要性中；0 条不占位；行 44px</td>
+        <td><span class="verdict v-keep">保留</span></td>
+      </tr>
     </tbody>
   </table>
 
@@ -225,31 +255,23 @@
 
   <div class="frames">
     <div class="frame-col">
-      <div class="frame-cap">现状（2.2.5 / 94）</div>
+      <div class="frame-cap">现状（2.2.5 / 94）· 会话页，设备信息不在这一层</div>
       <div class="phone">
         <div class="statusbar"><span>9:41</span><span>●●● ⌁ ▮</span></div>
         <div class="ph">
           <div style="padding:10px 0 4px">
-            <div style="font-size:11px;color:var(--label2);letter-spacing:.4px">CODEX TURNLOOM</div>
-            <div style="display:flex;align-items:center"><div style="font-size:26px;font-weight:700;letter-spacing:-.5px">工作台</div>
-              <span style="margin-left:auto;font-size:11px;font-weight:700;color:#186A3B;background:#E3F7E8;border-radius:999px;padding:4px 10px">在线</span></div>
-            <div style="display:flex;align-items:center;gap:8px;background:#fff;border-radius:13px;padding:9px 12px;margin-top:8px;box-shadow:0 1px 3px rgba(0,0,0,.05)">
-              <div class="laptop"><div class="lid"><i></i></div><div class="base"></div></div>
-              <div style="flex:1;min-width:0">
-                <div style="font-size:14px;font-weight:600">Windows · 书房</div>
-                <div style="font-size:11px;color:var(--label2)">10.0.2.2:8787 · 3 个服务</div>
-              </div>
-              <span style="color:var(--label3);font-size:12px">⌄</span>
-            </div>
+            <div style="display:flex;align-items:center"><div style="font-size:26px;font-weight:700;letter-spacing:-.5px">会话</div>
+              <span style="margin-left:auto;width:30px;height:30px;border-radius:50%;background:var(--blue);color:#fff;display:grid;place-items:center;font-size:20px;line-height:1">+</span></div>
+            <div style="display:flex;align-items:center;gap:6px;background:rgba(118,118,128,.12);border-radius:10px;padding:8px 10px;margin-top:8px;color:var(--label2);font-size:12px">⌕　搜索会话</div>
           </div>
           <div style="display:flex;gap:8px;padding:10px 0 12px">
-            <span style="height:38px;padding:0 18px;border-radius:999px;background:#fff;display:flex;align-items:center;font-size:13px;font-weight:600;color:#3C3C43">按时间</span>
-            <span style="height:38px;padding:0 18px;border-radius:999px;background:#000;color:#fff;display:flex;align-items:center;font-size:13px;font-weight:600">按项目</span>
+            <span style="height:44px;padding:0 18px;border-radius:999px;background:#fff;display:flex;align-items:center;font-size:13px;font-weight:600;color:#3C3C43">按时间</span>
+            <span style="height:44px;padding:0 18px;border-radius:999px;background:#000;color:#fff;display:flex;align-items:center;font-size:13px;font-weight:600">按项目</span>
           </div>
           <div class="rows">
-            <div class="row"><div class="body"><div class="t">车机固件回滚方案</div><div class="m">车机 · 12 分钟前</div></div><span class="tag tag-run">运行中</span></div>
-            <div class="row"><div class="body"><div class="t">HUD 动画时序</div><div class="m">车机 · 1 小时前</div></div><span class="tag" style="background:#F2F2F7;color:#636366">已完成</span></div>
-            <div class="row"><div class="body"><div class="t">conmfyUI 采样器对比</div><div class="m">conmfyUI · 昨天</div></div><span class="tag" style="background:#F2F2F7;color:#636366">已完成</span></div>
+            <div class="row"><span style="width:20px;flex:0 0 20px;display:grid;place-items:center;color:#C7C7CC">✓</span><div class="body"><div class="t">排查 OpenWrt 502 网关</div><div class="m">我访问我的 openwrt 路由器显示 5…</div></div><span class="tt">昨天</span></div>
+            <div class="row"><span style="width:20px;flex:0 0 20px;display:grid;place-items:center;color:#C7C7CC">✓</span><div class="body"><div class="t">调研飞牛 NAS 公网部署方案</div><div class="m">我拥有阿里云服务器，希望在这台电…</div></div><span class="tt">昨天</span></div>
+            <div class="row"><span style="width:20px;flex:0 0 20px;display:grid;place-items:center;color:#C7C7CC">✓</span><div class="body"><div class="t">修复 zcode 模型空响应</div><div class="m">我本地 zcode 软件坏了，不知道是不…</div></div><span class="tt">2 天前</span></div>
           </div>
           <div class="tabbar2">
             <div class="on"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>会话</div>
@@ -317,7 +339,7 @@
       <div class="phone">
         <div class="statusbar"><span>9:41</span><span>●●● ⌁ ▮</span></div>
         <div class="ph" style="padding-bottom:18px">
-          <div class="hub-title">设备 <span>2 台已配对</span></div>
+          <div class="hub-title">设备 <span>2 台已配对 · 目标形态</span></div>
 
           <div class="devstack">
             <button class="devcard on" data-dev="win" type="button">
@@ -336,26 +358,23 @@
 
                   <button class="plat on" data-plat="codex" style="--k:0" type="button">
                     <span class="kind">Codex Desktop</span>
-                    <span class="meta">16 个模型</span>
+                    <span class="meta">1 个入口 · 在线</span>
                     <span class="caret">›</span>
                   </button>
                   <div class="harness open" data-harness="codex">
                     <div class="inner2">
-                      <div class="hrow" style="--k:0">gpt-6-astra <span class="pill">上次用</span></div>
-                      <div class="hrow" style="--k:1">gpt-6.1-sol <span class="pill off">默认</span></div>
-                      <div class="hrow" style="--k:2">gpt-5.4-codex <span class="pill off">可选</span></div>
+                      <div class="hrow" style="--k:0">codex-desktop · 本机服务 <span class="pill">当前</span></div>
                     </div>
                   </div>
 
                   <button class="plat" data-plat="pi" style="--k:1" type="button">
                     <span class="kind">PI-Desktop</span>
-                    <span class="meta">2 个入口</span>
+                    <span class="meta">1 个入口 · 快照在线</span>
                     <span class="caret">›</span>
                   </button>
                   <div class="harness" data-harness="pi">
                     <div class="inner2">
-                      <div class="hrow" style="--k:0">wbfd / hy4flash-free <span class="pill">已加入</span></div>
-                      <div class="hrow" style="--k:1">wbfd / deepseek-v4.1-flash <span class="pill">已加入</span></div>
+                      <div class="hrow" style="--k:0">pidesktop · 本机服务 <span class="pill off">可切换</span></div>
                     </div>
                   </div>
                 </div>
@@ -366,7 +385,7 @@
               <div class="laptop"><div class="lid"><i></i></div><div class="base"></div></div>
               <div class="txt">
                 <div class="nm">MacBook · 工位</div>
-                <div class="sub">离线 · 上次同步 3 小时前</div>
+                <div class="sub">离线 · 示例第二台</div>
               </div>
             </button>
             <div class="branch" data-branch="mac">
@@ -403,17 +422,40 @@
           <h4>拟物只用在「电脑」这一层</h4>
           <p>电脑卡里有一台小笔记本（屏 + 底座）；平台和入口都是纯卡片。拟物是层级线索，不是装饰：只有「这是一台机器」这个事实值得用图形说。</p>
         </div>
+        <div class="card">
+          <h4>单平台时，只有一张卡</h4>
+          <p>今天真机上只发现得到 <b>1 个</b> harness（直连 server、单 profile），所以装上会看到一张平台卡——那是数据现状，不是页面坏了。脊柱照画、卡片照展开；第二张卡要等网关配出两个 harness（BACKLOG 11）。</p>
+        </div>
+        <div class="card">
+          <h4>不显示假绿灯</h4>
+          <p>非当前电脑<b>不做实时探活</b>（探测会翻全局请求作用域、打断当前机器的在途请求），所以它们不配红/绿灯，只写「上次使用 3 小时前」。入口行的「在线」也只是<b>发现那一刻</b>的快照，不写「实时」。</p>
+        </div>
       </div>
     </div>
   </div>
+
+  <p class="note"><b>原型按 2 台画，方便看切换；现状只持久化 1 台</b>（<code>PersistedMachine</code> 单对象，<code>sessionStore.ts:29-36</code>）。2.2.6 要落设备注册表 + 旧数据迁移；若这轮超盒，先做单机 + 数据驱动卡片，第二张卡等注册表。第三层是 <b>harness（服务入口）</b>，不是模型——模型选择仍在聊天右上角的面板里，别把两层混在一起。</p>
 
   <h3>换设备/换平台时，哪些东西跟着变</h3>
   <dl class="kv">
     <dt>会话列表</dt><dd>跟着设备+平台的作用域走（现在是 <code>machineId::harnessId</code>，缓存已经按这个键存，不用改数据模型）</dd>
     <dt>模型 chip</dt><dd>跟着当前平台：Codex 显示「可用 N 个」，PI 显示「已加入 N 个」（<code>modelsSource</code>，2.2.6 一起做）</dd>
     <dt>新会话默认模型</dt><dd>按「这台电脑 × 这个平台」记上次用的那个，不再跨设备串味</dd>
-    <dt>离线状态</dt><dd>每台电脑各自一个点；当前设备离线时，头部那张卡直接变色，不再切 tab 才发现</dd>
+    <dt>离线状态</dt><dd>只有<b>当前</b>设备有灯：离线时头部那张卡直接变色，不用切 tab 才发现；其余设备写「上次使用 N 分钟前」，因为对它们探活会打断当前机器的在途请求</dd>
   </dl>
+
+  <h3>数据能绑什么（按当前契约核过）</h3>
+  <p>平台不是实体，是 <code>harness.kind</code> + 显示名映射（<code>codex</code>→Codex Desktop、<code>pi</code>→PI-Desktop）。不新增 <code>platform</code> 字段：那要同时改 <code>shared/machine-pairing.cjs</code>、app 镜像和测试，2.2.6 收益不够。但有一处必须先修：<code>deploy/machine.example.json:36</code> 里 PI 那行的 <code>kind</code> 现在写的是 <code>codex</code>，不改就永远分不出两个平台。</p>
+  <table>
+    <thead><tr><th>界面元素</th><th>可绑字段</th><th>缺口 / 处理</th></tr></thead>
+    <tbody>
+      <tr><td>电脑卡</td><td><code>machines[]</code> 的 name/host/harnessCount/lastUsedAt；当前那台另用 <code>session.online</code></td><td>非当前机器没有在线状态 → <b>不画红绿灯</b>，写「上次使用 N 分钟前」</td></tr>
+      <tr><td>平台卡</td><td><code>kind</code> → 显示名、该 kind 的 harness 数</td><td>今天真机只回 1 个 harness → <b>单卡是常态</b>；PI 的 kind 需一行文档修正</td></tr>
+      <tr><td>入口行</td><td><code>name</code>、<code>defaultHarness</code>、<code>online</code>（发现时刻快照）、是否当前</td><td><b>逐行地址拿不到</b>（discovery 不外发端口），不要编；「在线」写明是快照</td></tr>
+      <tr><td>运行中胶囊</td><td><code>threadsFilter:'running'</code> 已有，复用即可</td><td>无缺口：点开复用现成的运行中筛选，不必新接口</td></tr>
+      <tr><td>错误入口</td><td><code>openSheet('diagnostics')</code> 已有</td><td>无缺口</td></tr>
+    </tbody>
+  </table>
 
   <h2>4 · 监控页：删掉，内容三处归位</h2>
   <p>不是「做得不好看」，是它作为一页没有独立存在的理由。它每一块都能被一个更早看到它的地方接管：</p>
@@ -450,6 +492,7 @@
     <ul class="tight">
       <li><b>分段控件</b>：必须是「一条 track + 一个 thumb」。禁止用两个各自填充的背景色表示选中（现状 <code>.tl-filter-chip.is-active</code> 的黑底药丸即为反例）。禁止用 <code>left</code>/<code>width</code> 做动画；只允许 <code>transform</code>。</li>
       <li><b>设备层级</b>：必须是「电脑 → 平台 → 入口」三级；切换电脑时才渲染该电脑的平台，切换平台时才渲染入口。禁止把三层平铺进同一个列表（现状「切换电脑上的服务」抽屉即为反例）。</li>
+      <li><b>平台判别</b>：平台 = <code>harness.kind</code> + 显示名映射。新增/区分平台前，先确保 <code>deploy/machine.example.json</code> 里那一行的 <code>kind</code> 写对（PI 那行今天是 <code>codex</code>）。禁止在 UI 里按 <code>name</code> 字符串猜平台。</li>
     </ul>
     <p class="note">这两条都能写成机器判据：DOM 里存在且只有一个 <code>[data-seg-thumb]</code>；点击第二个 cell 后 thumb 的 <code>getBoundingClientRect().left</code> 落在第二个 cell 内 ±1px；设备切换后 DOM 中平台节点的 <code>data-machine</code> 只有一个值。</p>
   </div>
@@ -459,7 +502,7 @@
     <thead><tr><th>谁</th><th>做什么</th><th>完成判据</th></tr></thead>
     <tbody>
       <tr><td><b>Iris</b></td><td>会话页：单 track 分段 + thumb 动画；头部设备卡；会话行两行化；运行条</td><td>390/360/320 无溢出；截图与本节原型一致</td></tr>
-      <tr><td><b>Atlas</b></td><td>设备注册表：单机 → 设备列表 + 当前设备；每设备各自的平台/离线/上次同步；删监控 tab 的数据依赖归位</td><td>切换设备后 <code>scope</code> 变化、缓存不串；旧配对数据可迁移</td></tr>
+      <tr><td><b>Atlas</b></td><td>设备注册表：单机 → 设备列表 + 当前设备；每设备各自的平台/离线/上次同步；删监控 tab 的数据依赖归位</td><td>对 UI 暴露 <code>machines[] / switchMachine(id) / forgetMachine(id)</code>；键仍为 <code>turnloom.machine.v2</code>，值升到 <code>{version:3, activeMachineId, machines[]}</code>，旧单对象自动迁移；非活动机器不探活</td></tr>
       <tr><td><b>Vera</b></td><td>上面的机器判据 + 真机三档截图（夹具 / 真数据 / 真机）</td><td>thumb 位移断言、无 <code>.tl-filter-chip</code>、设备分支单一、reduce-motion</td></tr>
       <tr><td><b>Rhea</b></td><td>2.2.6 / 95 出包与签名</td><td>与 2.2.5 同证书；升级路径不变</td></tr>
     </tbody>
@@ -473,8 +516,8 @@
       <tr><td>「可滑动药丸条」只是排版</td><td><code>dc07ebb</code> 只改 <code>globals.css</code>（12+/4−）：<code>overflow-x:auto</code> + 44px 高 + 圆角。视觉上仍是两个各自填充的药丸</td></tr>
       <tr><td>服务切换是平铺列表</td><td><code>app/src/components/CupertinoSheetHost.tsx:40-62</code>：<code>session.harnesses.map(...)</code> 直接列 <code>TapRow</code>，没有电脑这一层</td></tr>
       <tr><td>只有一台电脑能存</td><td><code>app/src/state/sessionStore.ts:29-36</code> <code>PersistedMachine</code> 是单对象；<code>STORAGE_KEY</code> 只存一份。多设备要加注册表</td></tr>
-      <tr><td>监控页的三项与别处同源</td><td><code>MonitorsScreen.tsx:57-71</code> 的「运行中」来自 <code>data.threads</code>+<code>statusByThread</code>（列表同源）；连接状态与 <code>MachineHubHeader.tsx:44-46</code> 的徽标同源</td></tr>
-      <tr><td>会话行四个元素</td><td><code>TaskStream.tsx:45-46,95</code>：状态胶囊在 <code>tl-thread-tail</code>，与标题、项目、时间同处一行</td></tr>
+      <tr><td>监控页的三项与别处同源</td><td><code>MonitorsScreen.tsx:57-71</code> 的「运行中」来自 <code>data.threads</code>+<code>statusByThread</code>（列表同源）；连接状态与顶部连接横幅 <code>AppShell.tsx:48-61</code>、设置页 <code>SettingsScreen.tsx:219</code> 同源</td></tr>
+      <tr><td>会话行是「状态图标 + 标题/时间 + 预览」</td><td><code>TaskStream.tsx:85-95</code>：左侧 <code>tl-thread-state</code> 图标、<code>tl-thread-top</code> 标题+时间、<code>tl-thread-preview</code>；<code>status</code> 只在归档时渲染，不是每行都有「已完成」胶囊</td></tr>
     </tbody>
   </table>
 
