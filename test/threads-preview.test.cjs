@@ -19,6 +19,7 @@ const ROOT = path.join(__dirname, "..");
 const TOKEN = "threads-preview-probe";
 const THREAD_WITH_HISTORY = "preview-thread-history";
 const THREAD_WITHOUT_HISTORY = "preview-thread-empty";
+const THREAD_WITH_STORED_PREVIEW = "preview-thread-stored";
 
 function freePort() {
   return new Promise((resolve, reject) => {
@@ -59,6 +60,7 @@ async function seedHome(home) {
   const insert = db.prepare("INSERT INTO threads (id, title, rollout_path, created_at_ms, updated_at_ms, archived, preview, cwd) VALUES (?, ?, ?, ?, ?, 0, '', ?)");
   insert.run(THREAD_WITH_HISTORY, "有历史的会话", path.relative(home, rollout), now - 1000, now, home);
   insert.run(THREAD_WITHOUT_HISTORY, "没有历史的会话", "", now - 2000, now - 10, home);
+  db.prepare("INSERT INTO threads (id, title, rollout_path, created_at_ms, updated_at_ms, archived, preview, cwd) VALUES (?, ?, ?, ?, ?, 0, ?, ?)").run(THREAD_WITH_STORED_PREVIEW, "已有预览的会话", "", now - 3000, now - 20, ["第一行", "第二行 " + "长".repeat(200)].join(String.fromCharCode(10)), home);
   db.close();
 }
 
@@ -111,6 +113,12 @@ test("会话列表的 preview 是最后一句，不是 id；没有历史时为�
     const withoutHistory = rows.get(THREAD_WITHOUT_HISTORY);
     assert.ok(withoutHistory, "无历史的会话也要在列表里");
     assert.equal(withoutHistory.preview, "");
+    // Codex 自己写进库的 preview 也要被归一：单行、120 字、不留换行。
+    const stored = rows.get(THREAD_WITH_STORED_PREVIEW);
+    assert.ok(stored, "已有预览的会话必须在列表里");
+    assert.doesNotMatch(stored.preview, /\n/);
+    assert.ok(stored.preview.startsWith("第一行 第二行 长"));
+    assert.ok(stored.preview.length <= 121, `preview too long: ${stored.preview.length}`);
     // 硬规则：preview 里永远不许出现 id 或路径。
     for (const row of body.threads) {
       assert.notEqual(row.preview, row.id);
@@ -121,3 +129,5 @@ test("会话列表的 preview 是最后一句，不是 id；没有历史时为�
     await server.stop();
   }
 });
+
+

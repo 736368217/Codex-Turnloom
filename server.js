@@ -3367,7 +3367,13 @@ async function threadsWithPreview(rows) {
   const out = rows.slice();
   const resolveRow = async (index) => {
     const row = out[index];
-    if (row.preview) return;
+    // A preview Codex already stored is still normalised here: the contract is
+    // "single line, ≤120 chars" for every row, not only for the ones we fill.
+    const stored = previewTextFromMessage({ content: row.preview });
+    if (stored) {
+      out[index] = { ...row, preview: stored };
+      return;
+    }
     const key = `${row.id}:${Number(row.updatedAtMs) || 0}`;
     const cached = threadPreviewCache.get(key);
     if (cached && now - cached.at < THREAD_PREVIEW_CACHE_MS) {
