@@ -83,7 +83,14 @@ test('IA4: the list owns "+" and is full-bleed, with no dashboard chrome', () =>
   assert.doesNotMatch(threads, /openSheet\('newTask'\)|openSheet\("newTask"\)/);
   assert.match(threads, /className="tl-thread-screen"/);
   assert.match(threads, /className="tl-thread-scroll"/);
-  assert.match(threads, /className="tl-thread-filters"/);
+  // 2.2.6: the segmented control is pinned outside the scroll container, so the
+  // view switch survives a scrolled list. The behaviour probe (check-redesign)
+  // still measures the rendered position; this only guards the source shape.
+  const headAt = threads.indexOf('className="tl-safe-top tl-thread-head"');
+  const segAt = threads.indexOf('<SegmentedControl');
+  const scrollAt = threads.indexOf('className="tl-thread-scroll"');
+  assert.ok(headAt > 0 && segAt > headAt && scrollAt > segAt, 'segmented control must sit in the fixed header, before the scroll container');
+  assert.doesNotMatch(threads, /className="tl-filter-chip tl-press/);
   assert.match(stream, /className="tl-thread-list"/);
   assert.match(stream, /className="tl-press tl-thread-row"/);
   assert.doesNotMatch(threads, /MachineHubHeader|StatusCard/);

@@ -46,7 +46,7 @@ export default function SegmentedControl<T extends string>({
 
   return (
     <div className="tl-segmented" role="tablist" aria-label={label} style={vars}>
-      <span className="tl-segmented-thumb" aria-hidden="true" />
+      <span className="tl-segmented-thumb" data-seg-thumb aria-hidden="true" />
       {options.map((option) => {
         const active = option.key === value;
         return (

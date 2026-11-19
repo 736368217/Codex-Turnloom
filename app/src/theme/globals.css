@@ -1524,9 +1524,11 @@ button:focus-visible, a:focus-visible { outline: 2px solid var(--tl-blue); outli
 }
 
 /* iOS segmented control (2.2.6). One rail, one sliding thumb, two equal
-   cells — the 图1 shape at app scale: 44px track, 3px inset, 12px radius.
-   Content-sized and centred, because two full-width halves would read as a
-   big toggle instead of the compact App Store control the human pointed at.
+   cells — the 图1 shape at app scale: 44px capsule track, 3px inset, capsule
+   thumb (图1 measured 296x52 with a 19px top-row inset = r26 = half height,
+   so it is a capsule, not a rounded rect). Content-sized and centred,
+   because two full-width halves would read as a big toggle instead of the
+   compact App Store control the human pointed at.
    `.tl-filter-chip` / `.is-active` stay as QA hooks only. */
 .tl-thread-head { flex: 0 0 auto; background: var(--tl-canvas); }
 .tl-thread-filters {
@@ -1535,25 +1537,25 @@ button:focus-visible, a:focus-visible { outline: 2px solid var(--tl-blue); outli
 .tl-segmented {
   position: relative; display: inline-flex; align-items: stretch;
   height: 44px; max-width: 100%; padding: 3px;
-  border-radius: 12px; background: rgba(118, 118, 128, .12);
+  border-radius: 999px; background: rgba(118, 118, 128, .12);
 }
 .tl-segmented-thumb {
   position: absolute; top: 3px; bottom: 3px; left: 3px;
   width: calc((100% - 6px) / var(--tl-seg-count, 2));
-  border-radius: 9px; background: #FFFFFF;
+  border-radius: 999px; background: #FFFFFF;
   box-shadow: 0 1px 2px rgba(0, 0, 0, .10), 0 3px 8px -4px rgba(0, 0, 0, .18), 0 0 0 .5px rgba(0, 0, 0, .03);
   transform: translateX(calc(var(--tl-seg-index, 0) * 100%));
-  transition: transform 240ms cubic-bezier(.32, .72, 0, 1);
+  transition: transform 300ms cubic-bezier(.32, .72, 0, 1);
   pointer-events: none;
 }
 .tl-segmented-item {
   position: relative; z-index: 1; flex: 1 1 0;
   min-width: 92px; height: 38px; padding: 0 12px;
   display: inline-flex; align-items: center; justify-content: center;
-  border: 0; border-radius: 9px; background: transparent;
+  border: 0; border-radius: 999px; background: transparent;
   color: var(--tl-label-secondary);
   font-size: 13px; line-height: 18px; font-weight: 600; letter-spacing: .1px;
-  white-space: nowrap; transition: color 160ms ease, opacity 150ms ease;
+  white-space: nowrap; transition: color 200ms ease, opacity 150ms ease;
 }
 .tl-segmented-item[aria-selected="true"] { color: var(--tl-label-primary); }
 .tl-segmented-item:active { opacity: .55; }
