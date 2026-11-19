@@ -168,6 +168,27 @@
 - 抽屉前置提示 `.tl-conn-banner`：`background: #FFF4E5; color: #8A5300; border-radius: 12px`（`globals.css:1141-1152`）。
 - 审批状态：`.tl-approval-reject { background: #fff0ee; color: #b42318; }`；`.tl-approval-approve { background: #e8f8ee; color: #1e7e34; }`；`.tl-approval-resolved { color: #1e7e34; }`（`globals.css:1179-1182`）。
 
+### 分段控件（2.2.6 起，取代 `.tl-filter-chip` 双药丸）
+
+- 结构：**一条 track + 一个 thumb**。track `height: 44px; padding: 3px; border-radius: 999px; background: #E9E9EE`；thumb 绝对定位，`height: calc(100% - 6px); width: calc(50% - 3px); border-radius: 999px; background: #FFF`，附 `0 1px 2px rgba(0,0,0,.10)`、`0 3px 8px -4px rgba(0,0,0,.18)`、`0 0 0 .5px rgba(0,0,0,.03)`。
+- 位移只用一个属性：`transform: translateX(index × 100%)`，`300ms cubic-bezier(.32,.72,0,1)`；文字透明度与字重 `200ms`。**禁止**用 `left`/`width` 做动画；**禁止**用两块各自填充的背景色表示选中（旧 `.tl-filter-chip.is-active` 的黑底药丸即为反例）。
+- 位置：**必须在滚动容器之外**（与标题行同属固定区）。反例：2.2.5 的 `.tl-thread-filters` 在 `.tl-thread-scroll` 内，`scrollTop=600` 时 rail 从 `y=100` 掉到 `y=-500`，翻到列表中段无法切视图。判据：`scrollTop=600` 时分段仍在可视区。
+- 命中：cell 宽 = 轨道一半、高 44；44 就是全部命中带，不外扩（2.2.5 实测 chip 外 3px 已回滚动容器，别指望伪元素补面积）。
+- `prefers-reduced-motion: reduce` 下关闭上述 transition（不是缩短）。
+
+### 设备层级（2.2.6 起）
+
+- 三级隶属：**电脑 → 平台 → 入口（harness）**。切换电脑时才渲染该电脑的平台；切换平台时才渲染该平台的入口。禁止把三层平铺进同一个列表（旧「切换电脑上的服务」抽屉即为反例）。
+- 平台不是实体，是 `harness.kind` + 显示名映射（`codex` → Codex Desktop，`pi` → PI-Desktop）。禁止按 `name` 字符串猜平台；新增平台前先确认 `deploy/machine.example.json` 中该行 `kind` 正确。
+- 非当前电脑**不做实时探活**：不画在线/离线灯，只给「上次使用 N 分钟前」。入口行的在线状态是**发现时刻的快照**，文案不得写「实时」。
+- 入口行不显示逐行地址（discovery 不外发端口）。
+- 命中区：电脑卡 ≥ 64，平台卡 ≥ 56，入口行 ≥ 44。
+- 设备卡常驻会话页头部（电脑名 + 平台 + 状态 + 模型 chip，点开层级面板）；底栏因此只保留 会话 / 设置 两项。
+
+### 字号下限
+
+- 正文最小 **11px**（2.2.5 现状即 11px、正文最低对比度 5.37:1）。新设计不得再往下压；新增 11px 文本须实测对比度 ≥ 4.5:1。
+
 ## 5. 禁止项（摘自 token 注释与 SINGLE_APP_CONTRACT.md）
 
 - `Light mode is HARD LOCKED. No dark variant, no black canvas, no desktop centered preview shell.`（`globals.css:8-9`）
