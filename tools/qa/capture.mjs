@@ -256,7 +256,28 @@ const BRIDGE_SHIM = `(() => {
     downloadUpdate: (requestId, optionsJson) => { window.__TLQA.requests.push({ requestId, url: 'native:downloadUpdate', options: optionsJson }); },
     cancelUpdate: () => {},
     installUpdate: () => {},
-    pickAttachments: () => 'unavailable',
+    // 相机三态（Rhea 4f6062c）：返回形状与相册一致，错误码另算。
+    // QA_CAMERA=ok|cancelled|denied|busy；不设时保持原来的 picker-unavailable。
+    pickAttachments(requestId, kind) {
+      const mode = ${JSON.stringify(String(process.env.QA_CAMERA || "").trim())};
+      if (!mode) return 'unavailable';
+      const shoot = () => {
+        try {
+          const canvas = document.createElement('canvas');
+          canvas.width = 320; canvas.height = 240;
+          const ctx = canvas.getContext('2d');
+          ctx.fillStyle = '#3b82f6'; ctx.fillRect(0, 0, 320, 240);
+          ctx.fillStyle = '#ffffff'; ctx.font = '20px sans-serif'; ctx.fillText('QA', 20, 40);
+          return canvas.toDataURL('image/jpeg', 0.85);
+        } catch { return ''; }
+      };
+      const reply = (payload) => setTimeout(() => window.__turnloomNativeAttachmentsResult?.(requestId, JSON.stringify(payload)), 30);
+      if (mode === 'ok') reply({ status: 'success', kind: kind || 'camera', items: [{ name: 'IMG_' + Date.now() + '.jpg', mimeType: 'image/jpeg', sizeBytes: 12000, dataUrl: shoot() }] });
+      else if (mode === 'cancelled') reply({ status: 'cancelled', items: [] });
+      else if (mode === 'denied') reply({ status: 'error', items: [], error: 'camera-permission-denied' });
+      else reply({ status: 'error', items: [], error: 'picker-busy' });
+      return '';
+    },
     cancelAttachmentPick: () => {},
   };
 })();`;
@@ -527,6 +548,21 @@ async function runViewport(browser, viewport, report) {
       };
     })()`);
     await shot(page, dir, "11a-new-chat", report);
+    // 相机三态：拍照成功要进附件托盘；取消不留痕；拒绝/占用要出可读文案。
+    if (process.env.QA_CAMERA) {
+      await clickSelector(page, "button[aria-label='拍照']", { optional: true });
+      await sleep(900);
+      await shot(page, dir, `12-camera-${process.env.QA_CAMERA}`, report);
+      report.camera = await page.eval(`(() => {
+        const composer = document.querySelector('.tl-composer');
+        return {
+          images: composer ? composer.querySelectorAll('img').length : 0,
+          text: (composer ? composer.innerText : '').replace(/\\s+/g, ' ').slice(0, 120),
+          alerts: Array.from(document.querySelectorAll('[role="alert"]')).map((el) => (el.textContent || '').trim().slice(0, 60)),
+        };
+      })()`);
+      log(`camera(${process.env.QA_CAMERA}): ${JSON.stringify(report.camera)}`);
+    }
     await page.fill("textarea.tl-composer-input", "这是一条新会话的测试消息");
     await clickSelector(page, "button[aria-label='发送']", { optional: true });
     await sleep(1600);
