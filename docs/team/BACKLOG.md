@@ -16,6 +16,8 @@
 
 4. **`piNativeQueue` 开关 + `modelsSource`**：目前切 PI 只能靠环境变量 `CODEX_LAN_PI_NATIVE_QUEUE=1` 或控制台「IPC 管道」填 `\\.\pipe\pidesktop-codex-ipc`，安装器/控制台/打包脚本一处都不注入（已 grep 确认）。建议：`config.json` 增开关、supervisor 启动时注入、`/api/health` 增 `modelsSource: "pi"|"codex"` 让手机端能认出后端（现在只能靠模型 id 猜）。**前置**：切换前必须确认 PI 桥在（`pipeReady` / `scripts/verify-pi-bridge.ps1`），否则 `enqueueSend` 的 `requestNativeQueue("push")` 直接把错误抛给手机。证据：`thread:2cd3ffab` 19:04–19:06 三条。
 
+4b. **面板副标题按来源分叉**：现在真机上写的是「电脑端**已加入**的 16 个模型」，而 Codex 路径下 16 条是**完整目录**，没有「加入」这个概念——用户会以为自己加过 16 个。`modelsSource` 落地后一起改：PI → 「电脑端已加入的 N 个模型」，Codex → 「电脑端可用的 N 个模型」。证据：Vera 20:36 真机截图（`v225-panel.png`）。
+
 ## C. 聊天页视觉收口（Human 反复提的那一类）
 
 5. **消息流套在一张白卡里**：`.tl-chat-list` 现在是白底 16px 圆角 + 12px 外边距，看起来像「聊天装在卡片里」。方案已定：白铺 `.tl-detail-body`（「加载更早消息」行留在 body 内、body 底 padding 12→4），list 去 margin/圆角/阴影；助手气泡换 `--tl-bubble-assistant: #E9E9EB`（**不要用 `#E5E5EA`，那是分隔线**）。证据：`docs/team/VISUAL_AUDIT.md:101`。
