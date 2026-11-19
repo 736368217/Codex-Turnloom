@@ -1,0 +1,626 @@
+/**
+ * 2.2.6 重设计的验收器：分段控件的「滑动」必须能被量出来，而不是靠眼看。
+ *
+ *   node tools/qa/check-redesign.mjs               # 夹具自证 + 真 bundle（UI 未落地 → SKIP）
+ *   node tools/qa/check-redesign.mjs --fixture-only
+ *   node tools/qa/check-redesign.mjs --require     # UI 必须在；缺了算失败（发版门禁用）
+ *   node tools/qa/check-redesign.mjs --out .scratch/qa/redesign
+ *
+ * 为什么先有验收器：图 1 要的是「药丸滑过去」，瞬移和滑动在截图上完全一样。
+ * 所以判据走时间轴 —— 切换后逐帧采样指示器的 x，要求它在中途被看见。
+ *
+ * 契约（不绑定类名，只绑用户看得见的东西）：
+ *   1. 视图切换是 role="tablist"，里面是 role="tab"，文字是「按时间」「按项目」；
+ *   2. tablist 里有一个绝对定位的指示器，命中 data-seg-thumb / .tl-seg-pill /
+ *      .tl-seg-thumb / class 里带 thumb|indicator|pill 的任一选择器；
+ *      没有指示器 = 这一版还是两个独立按钮（2.2.5 的 .tl-filter-chip），记为 SKIP。
+ *
+ * 自证：同一个测量函数跑两份夹具（240ms transition 与 0ms 瞬移），
+ * 滑动夹具必须 PASS、瞬移夹具必须被同一条判据判 FAIL —— 否则测的是空气。
+ */
+import { spawn } from "node:child_process";
+import fs from "node:fs";
+import net from "node:net";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+import { CDP } from "./cdp.mjs";
+
+const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
+const APP = path.join(ROOT, "app");
+const argv = process.argv.slice(2);
+const flag = (name, fallback = "") => {
+  const index = argv.indexOf(`--${name}`);
+  return index >= 0 && argv[index + 1] && !argv[index + 1].startsWith("--") ? argv[index + 1] : fallback;
+};
+const has = (name) => argv.includes(`--${name}`);
+const OUT = path.resolve(ROOT, flag("out", ".scratch/qa/redesign"));
+const REQUIRE = has("require");
+const FIXTURE_ONLY = has("fixture-only");
+
+const lines = [];
+const log = (line) => { lines.push(line); console.log(line); };
+let failures = 0;
+// 夹具里那份「瞬移」实现本来就该被判失败；用这个开关把「预期失败」和真失败分开，
+// 否则日志里躺着几条 FAIL，读的人会以为验收挂了。
+let expectingFailure = false;
+let expectedFailHits = 0;
+const check = (ok, label, detail = "") => {
+  if (expectingFailure) {
+    if (!ok) { expectedFailHits += 1; log(`EXPECTED-FAIL ${label}${detail ? ` · ${detail}` : ""}`); }
+    else log(`PASS(应失败) ${label}${detail ? ` · ${detail}` : ""}`);
+    return;
+  }
+  log(`${ok ? "PASS" : "FAIL"} ${label}${detail ? ` · ${detail}` : ""}`);
+  if (!ok) failures += 1;
+};
+const skip = (label, detail = "") => log(`SKIP ${label}${detail ? ` · ${detail}` : ""}`);
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+const round = (value, digits = 1) => Math.round(value * 10 ** digits) / 10 ** digits;
+
+function freePort() {
+  return new Promise((resolve, reject) => {
+    const probe = net.createServer();
+    probe.once("error", reject);
+    probe.listen(0, "127.0.0.1", () => {
+      const { port } = probe.address();
+      probe.close(() => resolve(port));
+    });
+  });
+}
+
+async function waitForHttp(url, timeoutMs = 20_000) {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    try { const response = await fetch(url); if (response.ok) return; } catch { /* not up yet */ }
+    await sleep(120);
+  }
+  throw new Error(`preview did not answer: ${url}`);
+}
+
+/* ---------------------------------------------------------------- fixtures */
+
+/** The same DOM contract as the real control, so the measurement is proven
+ *  against a page whose behaviour is known: `slide` transitions, `snap` jumps. */
+function fixtureHtml(mode) {
+  const transition = mode === "snap" ? "none" : "transform 240ms cubic-bezier(.22,1,.36,1), width 240ms cubic-bezier(.22,1,.36,1)";
+  return `<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<style>
+  body { margin: 0; background: #f2f2f7; font: 600 14px -apple-system, "Segoe UI", sans-serif; }
+  .track { position: relative; display: inline-flex; margin: 40px 16px; padding: 3px; border-radius: 999px; background: #efeff4; }
+  .thumb { position: absolute; top: 3px; bottom: 3px; left: 0; border-radius: 999px; background: #fff;
+           box-shadow: 0 3px 8px rgba(0,0,0,.12); transition: ${transition}; }
+  .seg { position: relative; z-index: 1; min-width: 88px; min-height: 44px; padding: 0 18px; border: 0;
+         border-radius: 999px; background: transparent; color: #8e8e93; font: inherit; }
+  .seg[aria-selected="true"] { color: #1c1c1e; }
+</style>
+<div class="track" role="tablist" aria-label="会话视图">
+  <span class="thumb" data-seg-thumb aria-hidden="true"></span>
+  <button class="seg" role="tab" aria-selected="true">按时间</button>
+  <button class="seg" role="tab" aria-selected="false">按项目</button>
+</div>
+<script>
+  const track = document.querySelector('.track');
+  const thumb = document.querySelector('.thumb');
+  const segs = [...track.querySelectorAll('[role="tab"]')];
+  function place() {
+    const active = segs.find((el) => el.getAttribute('aria-selected') === 'true');
+    thumb.style.width = active.offsetWidth + 'px';
+    thumb.style.transform = 'translateX(' + active.offsetLeft + 'px)';
+  }
+  segs.forEach((seg) => seg.addEventListener('click', () => {
+    segs.forEach((el) => el.setAttribute('aria-selected', String(el === seg)));
+    place();
+  }));
+  addEventListener('resize', place);
+  place();
+</script>`;
+}
+
+/* ------------------------------------------------------------ measurement */
+
+/**
+ * Click the segment whose text is `toText` and record the indicator's x on
+ * every animation frame until it settles. Runs inside the page.
+ */
+const traceSwitch = ({ fromText, toText }) => `(async () => {
+  const text = (el) => (el.textContent || '').trim();
+  const lists = [...document.querySelectorAll('[role="tablist"]')];
+  const list = lists.find((el) => /按时间|按项目/.test(el.textContent || ''));
+  if (!list) return JSON.stringify({ error: 'no-tablist' });
+  const tabs = [...list.querySelectorAll('[role="tab"]')];
+  const to = tabs.find((el) => text(el) === ${JSON.stringify(toText)});
+  const thumb = list.querySelector('[data-seg-thumb], .tl-seg-pill, .tl-seg-thumb, [class*="thumb" i], [class*="indicator" i], [class*="pill" i]');
+  if (!thumb) return JSON.stringify({ error: 'no-thumb', tabs: tabs.map(text) });
+  if (!tabs.length) return JSON.stringify({ error: 'no-tabs' });
+  if (!to) return JSON.stringify({ error: 'no-target', tabs: tabs.map(text) });
+  const before = { thumbs: thumb.getBoundingClientRect().toJSON(), list: list.getBoundingClientRect().toJSON() };
+  const startLeft = before.thumbs.left;
+  const t0 = performance.now();
+  to.click();
+  const frames = [];
+  await new Promise((resolve) => {
+    const tick = () => {
+      const now = performance.now();
+      const rect = thumb.getBoundingClientRect();
+      frames.push({ t: Math.round(now - t0), x: Math.round((rect.left - startLeft) * 10) / 10, w: Math.round(rect.width) });
+      if (now - t0 < 700) requestAnimationFrame(tick); else resolve();
+    };
+    requestAnimationFrame(tick);
+  });
+  const active = tabs.find((el) => el.getAttribute('aria-selected') === 'true');
+  const thumbRect = thumb.getBoundingClientRect();
+  const targetRect = to.getBoundingClientRect();
+  const activeRect = (active || to).getBoundingClientRect();
+  return JSON.stringify({
+    frames,
+    startLeft: Math.round(startLeft * 10) / 10,
+    targetOffset: Math.round((targetRect.left - startLeft) * 10) / 10,
+    coverDx: Math.round((thumbRect.left - activeRect.left) * 10) / 10,
+    coverDw: Math.round(thumbRect.width - activeRect.width),
+    // 指示器必须完整落在选中段落的盒子里；留 1–2px 内缩是 iOS 的正常样子，
+    // 但不能越出边界（越界就是「选中块跑到隔壁」）。
+    insideLeft: Math.round((thumbRect.left - targetRect.left) * 10) / 10,
+    insideRight: Math.round((targetRect.right - thumbRect.right) * 10) / 10,
+    // 中心对齐才是「看起来对」：允许 1–2px 内缩（iOS 的 thumb 本来就比段落窄一点），
+    // 但中心偏了就是偏了。
+    centerDx: Math.round(((thumbRect.left + thumbRect.width / 2) - (activeRect.left + activeRect.width / 2)) * 10) / 10,
+    thumbHeight: Math.round(thumbRect.height),
+    tabHeight: Math.round(to.getBoundingClientRect().height),
+    selected: active ? text(active) : '',
+    tabs: tabs.map(text),
+    trackRight: Math.round(list.getBoundingClientRect().right),
+    viewport: window.innerWidth,
+    docWidth: document.scrollingElement.scrollWidth,
+    thumbCount: list.querySelectorAll('[data-seg-thumb], .tl-seg-pill, .tl-seg-thumb, [class*="thumb" i], [class*="indicator" i], [class*="pill" i]').length,
+  });
+})()`;
+
+/** Judge one trace. Returns facts, not opinions. */
+function judge(trace, { expectSlide }) {
+  const total = trace.targetOffset;
+  const direction = total < 0 ? -1 : 1;
+  // 归一化到「朝目标方向走了多少」：向左切时 x 是负的，直接比大小会把每一帧都判成越界。
+  const progress = (x) => x * direction;
+  // 位移区间用「实际走过的距离」而不是「段落边缘差」：指示器本来就在段落里内缩 1–2px，
+  // 用边缘差会把静止后的帧也算成「还在路上」。
+  const span = Math.abs(trace.frames[trace.frames.length - 1].x);
+  const travelled = trace.frames.filter((frame) => {
+    const walked = progress(frame.x);
+    return walked > 0.5 && walked < span - 0.5;
+  });
+  const moving = trace.frames.filter((frame, index) => index > 0
+    && Math.abs(progress(frame.x) - progress(trace.frames[index - 1].x)) > 0.5);
+  const monotonic = travelled.every((frame, index, all) => index === 0 || progress(frame.x) >= progress(all[index - 1].x) - 0.5);
+  // A strong ease-out spends its last 5% below the per-frame noise floor, so the
+  // honest duration is 5%→95% of the travel, not first→last pixel.
+  const at = (ratio) => {
+    const hit = trace.frames.find((frame) => progress(frame.x) >= span * ratio);
+    return hit ? hit.t : null;
+  };
+  const t05 = at(0.05);
+  const t95 = at(0.95);
+  const duration = t05 !== null && t95 !== null ? Math.max(0, t95 - t05) : 0;
+  return {
+    transitFrames: travelled.length,
+    movingFrames: moving.length,
+    durationMs: duration,
+    monotonic,
+    finalDelta: round(trace.frames[trace.frames.length - 1].x - total),
+    total,
+    direction,
+    expectSlide,
+  };
+}
+
+/** Put the control on `text` and let any crossfade settle, so a trace always
+ *  starts from a known resting state (otherwise clicking an already-selected
+ *  segment measures a 0px "travel" and every judgement is vacuous). */
+async function selectTab(page, text) {
+  const clicked = await page.eval(`(() => {
+    const list = [...document.querySelectorAll('[role="tablist"]')].find((el) => /按时间|按项目/.test(el.textContent || ''));
+    const tab = list && [...list.querySelectorAll('[role="tab"]')].find((el) => (el.textContent || '').trim() === ${JSON.stringify(text)});
+    if (!tab) return false;
+    tab.click();
+    return true;
+  })()`);
+  await sleep(420);
+  return clicked;
+}
+
+async function measure(page, { fromText, toText, expectSlide, label }) {
+  if (!await selectTab(page, fromText)) {
+    skip(label, `没有找到「${fromText}」`);
+    return { ok: false, absent: true };
+  }
+  const raw = await page.eval(traceSwitch({ fromText, toText }));
+  let trace;
+  try { trace = JSON.parse(raw); } catch { trace = { error: `unreadable trace: ${String(raw).slice(0, 120)}` }; }
+  if (trace.error) {
+    skip(label, `trace unavailable: ${trace.error}`);
+    return { ok: false, absent: trace.error === "no-thumb" || trace.error === "no-tablist", trace };
+  }
+  const facts = judge(trace, { expectSlide });
+  log(`${label} · ${JSON.stringify(facts)}`);
+  check(trace.insideLeft >= -0.5 && trace.insideRight >= -0.5, `${label}: 指示器完整落在选中段落内`,
+    `内缩 left=${trace.insideLeft} right=${trace.insideRight}`);
+  check(Math.abs(trace.centerDx) <= 1.5, `${label}: 静止时指示器中心对准选中标签`, `centerΔ=${trace.centerDx}px widthΔ=${trace.coverDw}px`);
+  if (expectSlide) {
+    check(facts.transitFrames >= 3, `${label}: 过渡中被采到 ≥3 帧（是滑动不是瞬移）`, `frames=${facts.transitFrames}`);
+    check(facts.monotonic, `${label}: 位移单调，不来回抖`);
+    check(facts.durationMs >= 60 && facts.durationMs <= 500, `${label}: 可见位移时长 60–500ms`,
+      `${facts.durationMs}ms（5%→95%，不是 CSS 里的 duration）`);
+  } else {
+    check(facts.transitFrames <= 1, `${label}: 减动效时 1 帧内落位`, `frames=${facts.transitFrames}`);
+  }
+  return { ok: true, facts, trace };
+}
+
+async function restFacts(page) {
+  return page.eval(`(() => {
+    const text = (el) => (el.textContent || '').trim();
+    const list = [...document.querySelectorAll('[role="tablist"]')].find((el) => /按时间|按项目/.test(el.textContent || ''));
+    if (!list) return JSON.stringify({ error: 'no-tablist' });
+    const thumb = list.querySelector('[data-seg-thumb], .tl-seg-pill, .tl-seg-thumb, [class*="thumb" i], [class*="indicator" i], [class*="pill" i]');
+    if (!thumb) return JSON.stringify({ error: 'no-thumb' });
+    const tabs = [...list.querySelectorAll('[role="tab"]')].map((el) => {
+      const rect = el.getBoundingClientRect();
+      return { label: text(el), selected: el.getAttribute('aria-selected') === 'true',
+        left: Math.round(rect.left), right: Math.round(rect.right), h: Math.round(rect.height) };
+    });
+    const rect = thumb.getBoundingClientRect();
+    const style = getComputedStyle(thumb);
+    return JSON.stringify({
+      tabs,
+      thumb: { left: Math.round(rect.left), width: Math.round(rect.width), h: Math.round(rect.height),
+        radius: style.borderRadius, background: style.backgroundColor, position: style.position,
+        // 设计基线写的是 thumb 300ms；量出来的是声明值，不是观感值。
+        transitionMs: Math.round((parseFloat(String(style.transitionDuration).split(",")[0]) || 0) * 1000),
+        transitionProps: style.transitionProperty },
+      track: { right: Math.round(list.getBoundingClientRect().right), h: Math.round(list.getBoundingClientRect().height),
+        radius: getComputedStyle(list).borderRadius,
+        background: getComputedStyle(list).backgroundColor },
+      viewport: window.innerWidth,
+      docWidth: document.scrollingElement.scrollWidth,
+    });
+  })()`);
+}
+
+/* ------------------------------------------------------------------- main */
+
+const browserScript = `(() => {
+  const store = new Map();
+  const base = "http://127.0.0.1:8899";
+  store.set("turnloom.machine.v2", JSON.stringify({
+    machineId: "qa-redesign-machine", machineName: "DE 工作站", serverUrl: base,
+    machineToken: "qa-machine-token",
+    harnesses: [
+      { id: "codex", name: "Codex Desktop", token: "qa-codex-token", kind: "codex", defaultHarness: true, online: true },
+      { id: "pi", name: "PI-Desktop", token: "qa-pi-token", kind: "pi", online: true },
+    ],
+    defaultHarnessId: "codex",
+  }));
+  const threads = [
+    { id: "qa-r-a", title: "重设计：分段控件", status: { state: "running", thinking: true }, updatedAtMs: 1700000000000 },
+    { id: "qa-r-b", title: "重设计：设备页", project: { key: "project:ui", name: "UI" }, status: { state: "ended" }, updatedAtMs: 1699999000000 },
+    { id: "qa-r-c", title: "重设计：撤掉监控 Tab", status: { state: "failed" }, updatedAtMs: 1699998000000 },
+    // 再补 9 行，只为让列表真的能滚：控件是否跟着滚走要用滚动的位移量来判。
+    ...[1, 2, 3, 4, 5, 6, 7, 8, 9].map((n) => ({
+      id: "qa-r-fill-" + n, title: "填充会话 " + n, project: { key: "project:ui", name: "UI" },
+      status: { state: "ended" }, updatedAtMs: 1699990000000 - n * 100000,
+    })),
+  ];
+  window.TurnloomNative = {
+    secureGet(key) { return store.has(key) ? store.get(key) : null; },
+    secureSet(key, value) { store.set(key, String(value)); return true; },
+    secureRemove(key) { store.delete(key); return true; },
+    haptic() {}, setLightBars() {}, scanQr() {},
+    getAppInfo() {
+      return JSON.stringify({ label: "Codex-Turnloom", version: "2.2.6", versionCode: 95, packageName: "com.codex.turnloom.app", cameraAvailable: false, updatesAvailable: true });
+    },
+    request(requestId, payloadJson) {
+      let payload = {};
+      try { payload = JSON.parse(payloadJson) || {}; } catch { payload = {}; }
+      // 停止运行中会话是这轮唯一「从监控页搬到会话页」的动作，必须能看见请求发出去。
+      window.__qaRequests = window.__qaRequests || [];
+      window.__qaRequests.push({ url: String(payload.url || ""), method: String(payload.method || "GET") });
+      const reply = (status, body) => setTimeout(() => window.__turnloomNativeHttpResult?.(requestId, JSON.stringify({ status, body })), 15);
+      const route = String(payload.url || "").replace(/^https?:\\/\\/[^/]+/, "").split("?")[0];
+      if (route === "/api/threads") return reply(200, JSON.stringify({ threads, total: threads.length, nextCursor: null }));
+      if (route === "/api/health") return reply(200, JSON.stringify({ version: "2.2.6", appVersion: "2.2.6", appVersionCode: 95 }));
+      if (route === "/api/interrupt") return reply(200, JSON.stringify({ ok: true }));
+      if (route === "/api/harnesses") return reply(200, JSON.stringify({
+        ok: true, protocol: "codex-turnloom", version: 2, machineId: "qa-redesign-machine", machineName: "DE 工作站",
+        defaultHarnessId: "codex",
+        harnesses: [
+          { id: "codex", name: "Codex Desktop", token: "qa-codex-token", kind: "codex", defaultHarness: true, online: true },
+          { id: "pi", name: "PI-Desktop", token: "qa-pi-token", kind: "pi", online: true },
+        ],
+      }));
+      return reply(404, JSON.stringify({ error: "qa-stub" }));
+    },
+    cancelRequest() {}, downloadUpdate() {}, cancelUpdate() {}, installUpdate() {},
+  };
+})();`;
+
+let preview = null;
+let browser = null;
+
+async function withFixturePage(page, mode, body) {
+  const file = path.join(OUT, `fixture-${mode}.html`);
+  fs.mkdirSync(OUT, { recursive: true });
+  fs.writeFileSync(file, fixtureHtml(mode), "utf8");
+  await page.navigate(`file:///${file.replace(/\\/g, "/")}`);
+  await sleep(150);
+  return body();
+}
+
+const HAS_VIEW_TABLIST = `(() => Boolean([...document.querySelectorAll('[role="tablist"]')].find((el) => /按时间|按项目/.test(el.textContent || ''))))()`;
+
+const PAIR_SCRIPT = `(() => {
+  const url = document.querySelector('#connection-url');
+  const code = document.querySelector('#connection-code');
+  if (!url || !code) return 'no-form';
+  const set = (el, value) => {
+    const setter = Object.getOwnPropertyDescriptor(el.constructor.prototype, 'value').set;
+    setter.call(el, value);
+    el.dispatchEvent(new Event('input', { bubbles: true }));
+  };
+  set(url, 'http://127.0.0.1:8899');
+  set(code, 'qa-code');
+  const submit = document.querySelector('.tl-connect-submit');
+  if (!submit) return 'no-submit';
+  submit.click();
+  return 'submitted';
+})()`;
+
+/** 每次导航都会拿到一份全新的 stub store，所以「直接恢复会话」这一步不保证；
+ *  进不去就走手动配对表单，再等外壳出现。返回一句能写进报告的事实。 */
+async function bootInto(base, label) {
+  const waitForShell = async (ms) => {
+    const deadline = Date.now() + ms;
+    while (Date.now() < deadline) {
+      if (await browser.eval(HAS_VIEW_TABLIST).catch(() => false)) return true;
+      await sleep(150);
+    }
+    return false;
+  };
+  await browser.navigate(base);
+  if (await waitForShell(4_000)) return `${label}: 直接恢复会话`;
+  const paired = await browser.eval(PAIR_SCRIPT).catch((error) => `eval-error:${error.message}`);
+  if (paired !== "submitted") return `${label}: 配对入口不可用（${paired}）`;
+  return (await waitForShell(25_000)) ? `${label}: 手动配对后进入` : `${label}: 配对后仍未进入`;
+}
+
+async function main() {
+  const cdpPort = Number(flag("cdp-port", "0")) || await freePort();
+  browser = await new CDP({ port: cdpPort, width: 390, height: 844, scale: 3 }).launch();
+
+  // ---- 1. 夹具自证：同一个测量函数必须能区分滑动与瞬移 ------------------
+  log("== 夹具自证 ==");
+  await withFixturePage(browser, "slide", async () => {
+    await measure(browser, { fromText: "按时间", toText: "按项目", expectSlide: true, label: "fixture/slide" });
+  });
+  expectingFailure = true;
+  expectedFailHits = 0;
+  await withFixturePage(browser, "snap", async () => {
+    await measure(browser, { fromText: "按时间", toText: "按项目", expectSlide: true, label: "fixture/snap" });
+  });
+  expectingFailure = false;
+  check(expectedFailHits > 0, "夹具自证：瞬移夹具被同一条判据判失败（判据有牙齿）", `expectedFails=${expectedFailHits}`);
+
+  if (!FIXTURE_ONLY) {
+    const distIndex = path.join(APP, "dist", "index.html");
+    if (has("build")) {
+      // 发版门禁用：先把当前源码打成 bundle，免得量的是上一轮的 dist。
+      log("building app/dist from source …");
+      await new Promise((resolve, reject) => {
+        const child = spawn(process.execPath, [path.join(APP, "node_modules/vite/bin/vite.js"), "build"], { cwd: APP, stdio: "ignore", windowsHide: true });
+        child.on("exit", (code) => (code === 0 ? resolve() : reject(new Error(`vite build exited ${code}`))));
+        child.on("error", reject);
+      });
+    }
+    if (!fs.existsSync(distIndex)) {
+      skip("app bundle", "app/dist 不存在 —— 先 npm run app:build");
+    } else {
+      log(`bundle: app/dist built ${new Date(fs.statSync(distIndex).mtimeMs).toISOString()}${has("build") ? " (just rebuilt)" : ""}`);
+      // Vera 00:37 的教训：同一个 report.json 混进过别人 00:27 的 WIP build。
+      // 证据里必须钉住 asset 文件名与字节数，否则「我这边过了」过的是别的包。
+      const distHtml = fs.readFileSync(distIndex, "utf8");
+      const assetName = (distHtml.match(/assets\/(index-[A-Za-z0-9_-]+\.js)/) || [])[1] || "(unknown)";
+      const assetPath = path.join(APP, "dist", "assets", assetName);
+      log(`asset: ${assetName} · ${fs.existsSync(assetPath) ? fs.statSync(assetPath).size : "?"} B`);
+      log("== 真 bundle ==");
+      const port = await freePort();
+      preview = spawn(process.execPath, [
+        path.join(APP, "node_modules/vite/bin/vite.js"), "preview",
+        "--port", String(port), "--strictPort", "--host", "127.0.0.1",
+      ], { cwd: APP, stdio: "ignore", windowsHide: true });
+      const base = `http://127.0.0.1:${port}/`;
+      await waitForHttp(base);
+      await browser.send("Page.addScriptToEvaluateOnNewDocument", { source: browserScript });
+
+      const viewports = [390, 360, 320];
+      for (const width of viewports) {
+        await browser.setViewport(width, 844, 2);
+        await browser.clearStorage(base);
+        log(await bootInto(base, `${width}px`));
+
+        const label = `${width}px`;
+        const segmentPresent = await browser.eval(`Boolean(document.querySelector('[role="tablist"]'))`);
+        const thumbPresent = await browser.eval(`(() => {
+          const list = [...document.querySelectorAll('[role="tablist"]')].find((el) => /按时间|按项目/.test(el.textContent || ''));
+          if (!list) return false;
+          return Boolean(list.querySelector('[data-seg-thumb], .tl-seg-pill, .tl-seg-thumb, [class*="thumb" i], [class*="indicator" i], [class*="pill" i]'));
+        })()`);
+        if (!segmentPresent || !thumbPresent) {
+          const why = !segmentPresent ? "没有 role=tablist" : "tablist 里没有滑动指示器（仍是 .tl-filter-chip 两个独立按钮）";
+          if (REQUIRE) check(false, `${label}: 分段控件未落地`, why);
+          else skip(`${label}: 分段控件未落地`, why);
+          continue;
+        }
+
+        // 列表默认落在「按项目」（分组收起），平铺的「按时间」才看得全行；
+        // 滚动探针与后面的采样都从那里开始。
+        await selectTab(browser, "按时间");
+        const restFactsRaw = JSON.parse(await restFacts(browser));
+        log(`${label} · rest · ${JSON.stringify(restFactsRaw)}`);
+        // 盒子高不等于可点：38px 的按钮躺在 44px 的轨道里，上下的 padding 属于轨道，
+        // 点在那里不会选中。用 elementFromPoint 量「整条 44px 带子算不算这一段」。
+        const band = JSON.parse(await browser.eval(`(() => {
+          const list = [...document.querySelectorAll('[role="tablist"]')].find((el) => /按时间|按项目/.test(el.textContent || ''));
+          const tabs = [...list.querySelectorAll('[role="tab"]')];
+          const track = list.getBoundingClientRect();
+          const out = tabs.map((tab) => {
+            const rect = tab.getBoundingClientRect();
+            const cx = Math.round(rect.left + rect.width / 2);
+            const probes = [track.top + 1, track.top + track.height / 2, track.bottom - 1].map((y) => {
+              const hit = document.elementFromPoint(cx, y);
+              return Boolean(hit && (hit === tab || tab.contains(hit) || hit.closest('[role="tab"]') === tab));
+            });
+            return { label: (tab.textContent || '').trim(), boxH: Math.round(rect.height), probes };
+          });
+          return JSON.stringify({ trackH: Math.round(track.height), out });
+        })()`));
+        check(band.out.every((tab) => tab.probes.every(Boolean)), `${label}: 整条 44px 命中带都归这一段`,
+          band.out.map((tab) => `${tab.label}:h${tab.boxH}:${tab.probes.map((hit) => (hit ? 1 : 0)).join("")}`).join(" "));
+        check(Math.abs(restFactsRaw.thumb.transitionMs - 300) <= 1, `${label}: thumb 过渡 300ms（报告基线）`,
+          `${restFactsRaw.thumb.transitionMs}ms · ${restFactsRaw.thumb.transitionProps}`);
+        // 基线（NB3 00:48 裁定）：胶囊 999/999，不是圆角矩形。等价判据是半径 ≥ 自身高度的一半。
+        const radiusPx = (value) => parseFloat(String(value)) || 0;
+        check(radiusPx(restFactsRaw.track.radius) >= restFactsRaw.track.h / 2 - 0.5
+          && radiusPx(restFactsRaw.thumb.radius) >= restFactsRaw.thumb.h / 2 - 0.5,
+          `${label}: 轨道与 thumb 都是胶囊（半径 ≥ 高度一半）`,
+          `track=${restFactsRaw.track.radius}/${restFactsRaw.track.h}px thumb=${restFactsRaw.thumb.radius}/${restFactsRaw.thumb.h}px`);
+        check(restFactsRaw.docWidth <= restFactsRaw.viewport + 0.5 && restFactsRaw.track.right <= restFactsRaw.viewport + 0.5,
+          `${label}: 无横向溢出`, `doc=${restFactsRaw.docWidth} viewport=${restFactsRaw.viewport} track.right=${restFactsRaw.track.right}`);
+        check(restFactsRaw.thumb.position === "absolute", `${label}: 指示器是绝对定位的独立层`, restFactsRaw.thumb.position);
+        check(restFactsRaw.thumb.h >= 32 && restFactsRaw.thumb.h <= restFactsRaw.track.h - 2,
+          `${label}: 指示器高度落在轨道内`, `thumb=${restFactsRaw.thumb.h} track=${restFactsRaw.track.h}`);
+
+        // Vera 判据 5：控件在滚动容器里，翻到列表中段就切不了视图。量位移，不靠看。
+        // 不猜滚动宿主：把最后一行滚进视野，再看控件跟着走了多少。
+        const pinBefore = JSON.parse(await browser.eval(`(() => {
+          const list = [...document.querySelectorAll('[role="tablist"]')].find((el) => /按时间|按项目/.test(el.textContent || ''));
+          if (!list) return JSON.stringify({ error: 'no-tablist' });
+          const before = Math.round(list.getBoundingClientRect().top);
+          const rows = [...document.querySelectorAll('[data-thread-id]')];
+          const last = rows[rows.length - 1];
+          if (last) last.scrollIntoView({ block: 'end', behavior: 'instant' });
+          const moved = [];
+          for (const el of document.querySelectorAll('*')) {
+            if (el.scrollTop > 0) moved.push(String(el.className || el.tagName).slice(0, 40) + ':' + Math.round(el.scrollTop));
+          }
+          return JSON.stringify({ before, rows: rows.length, moved, docY: Math.round(window.scrollY) });
+        })()`));
+        await sleep(300);
+        const pinAfter = await browser.eval(`(() => {
+          const list = [...document.querySelectorAll('[role="tablist"]')].find((el) => /按时间|按项目/.test(el.textContent || ''));
+          return list ? Math.round(list.getBoundingClientRect().top) : null;
+        })()`);
+        if (pinBefore.error) {
+          skip(`${label}: 控件是否随列表滚走`, pinBefore.error);
+        } else {
+          // NB3 00:50：先证明被测对象有被测量的余地。列表只挪了 20px 就断言「控件没动」
+          // 是空话，记 inconclusive，不记 PASS。
+          const scrolledPx = Math.max(pinBefore.docY || 0, ...(pinBefore.moved || []).map((entry) => Number(String(entry).split(":").pop()) || 0));
+          if (scrolledPx < 100) {
+            skip(`${label}: 控件不随列表滚走`, `inconclusive：列表实际只滚了 ${scrolledPx}px（rows=${pinBefore.rows}）`);
+          } else {
+            check(pinAfter !== null && Math.abs(pinAfter - pinBefore.before) <= 1,
+              `${label}: 控件不随列表滚走（Vera 判据 5）`,
+              `top ${pinBefore.before} → ${pinAfter}，列表滚了 ${scrolledPx}px`);
+          }
+        }
+        await browser.eval(`(() => {
+          window.scrollTo({ top: 0, behavior: 'instant' });
+          for (const el of document.querySelectorAll('*')) if (el.scrollTop > 0) el.scrollTop = 0;
+        })()`);
+        await sleep(200);
+
+        await measure(browser, { fromText: "按时间", toText: "按项目", expectSlide: true, label: `${label} 按时间→按项目` });
+        await measure(browser, { fromText: "按项目", toText: "按时间", expectSlide: true, label: `${label} 按项目→按时间` });
+        await browser.screenshot(path.join(OUT, `segmented-${width}.png`));
+      }
+
+      // ---- 撤监控 Tab 的门禁：会话页必须能「不打开会话就停止」运行中的会话 --
+      // 监控页唯一独占的动作就是这一条。先删 Tab 后补入口 = 真机少一个能用的动作，
+      // 所以只要「N 运行中」入口出现了，就同时要求监控 Tab 已经不在了。
+      await browser.setViewport(390, 844, 2);
+      await browser.clearStorage(base);
+      log(await bootInto(base, "running-stop"));
+      await selectTab(browser, "按时间");
+      const runningEntry = await browser.eval(`(() => {
+        const nodes = [...document.querySelectorAll('button, [role="button"], [role="tab"]')];
+        const hit = nodes.find((el) => /(\\d+)\\s*运行中|运行中\\s*\\d+/.test((el.textContent || "").trim()));
+        return hit ? (hit.textContent || "").trim().slice(0, 24) : null;
+      })()`);
+      if (!runningEntry) {
+        skip("运行中入口", "会话页还没有「N 运行中」入口（监控页尚未撤，门禁暂不触发）");
+      } else {
+        log(`运行中入口 · 「${runningEntry}」`);
+        check(/\b1\b/.test(runningEntry), "运行中入口的计数 = 夹具里运行中的条数", runningEntry);
+        const monitorTab = await browser.eval(`Boolean(document.querySelector('button[aria-label="监控"]'))`);
+        check(!monitorTab, "监控 Tab 已撤（只在运行中入口已落地时才要求）");
+        await browser.eval(`(() => {
+          const nodes = [...document.querySelectorAll('button, [role="button"], [role="tab"]')];
+          const hit = nodes.find((el) => /(\\d+)\\s*运行中|运行中\\s*\\d+/.test((el.textContent || "").trim()));
+          hit?.click();
+        })()`);
+        await sleep(600);
+        const stopControl = await browser.eval(`(() => {
+          const nodes = [...document.querySelectorAll('button, [role="button"]')];
+          const stop = nodes.find((el) => /停止/.test(el.getAttribute('aria-label') || '') || /^停止$/.test((el.textContent || "").trim()));
+          if (!stop) return 'missing';
+          stop.click();
+          return (stop.textContent || '').trim().slice(0, 12) || 'clicked';
+        })()`);
+        await sleep(900);
+        const interrupt = JSON.parse(await browser.eval(`JSON.stringify((window.__qaRequests || []).filter((r) => /\\/api\\/interrupt/.test(r.url)))`));
+        check(stopControl !== "missing", "运行中列表里有可点的停止入口", String(stopControl));
+        check(interrupt.length > 0, "点停止真的发出 /api/interrupt", `requests=${interrupt.length}`);
+      }
+      await browser.screenshot(path.join(OUT, "running-entry-390.png"));
+
+      // ---- reduced motion: the same tap must land in one frame -----------
+      await browser.setViewport(390, 844, 2);
+      await browser.clearStorage(base);
+      log(await bootInto(base, "reduced-motion"));
+      await browser.send("Emulation.setEmulatedMedia", { features: [{ name: "prefers-reduced-motion", value: "reduce" }] });
+      await sleep(250);
+      if (await browser.eval(`(() => {
+        const list = [...document.querySelectorAll('[role="tablist"]')].find((el) => /按时间|按项目/.test(el.textContent || ''));
+        return Boolean(list && list.querySelector('[data-seg-thumb], .tl-seg-pill, .tl-seg-thumb, [class*="thumb" i]'));
+      })()`)) {
+        await measure(browser, { fromText: "按时间", toText: "按项目", expectSlide: false, label: "reduced-motion" });
+      } else if (REQUIRE) {
+        check(false, "reduced-motion: 分段控件未落地");
+      } else {
+        skip("reduced-motion", "分段控件未落地");
+      }
+      await browser.send("Emulation.setEmulatedMedia", { features: [] });
+
+      // ---- device tab: only report what exists, no verdict yet -----------
+      await browser.clearStorage(base);
+      log(await bootInto(base, "device-probe"));
+      const deviceProbe = await browser.eval(`(() => {
+        const tabs = [...document.querySelectorAll('[role="tab"], .tl-tabbar button')].map((el) => (el.textContent || '').trim());
+        return JSON.stringify({ tabs, hasDeviceTab: tabs.includes('设备'), hasMonitorTab: tabs.includes('监控') });
+      })()`);
+      log(`tab bar · ${deviceProbe}`);
+    }
+  }
+}
+
+try {
+  await main();
+} catch (error) {
+  check(false, "harness", error.message);
+  try { log(`page text: ${String(await browser?.eval("document.body.innerText.slice(0, 300)")).replace(/\s+/g, " ")}`); } catch { /* page gone */ }
+} finally {
+  try { await browser?.close(); } catch { /* ignore */ }
+  try { preview?.kill(); } catch { /* ignore */ }
+  await sleep(150);
+}
+
+log(failures === 0 ? "RESULT: PASS" : `RESULT: FAIL (${failures})`);
+process.exit(failures === 0 ? 0 : 1);

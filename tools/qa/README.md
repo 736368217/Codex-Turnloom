@@ -12,6 +12,20 @@ node tools/qa/capture.mjs --only threads,chat --dump   # 只跑部分屏；--dum
 
 输出：每个视口一个目录（`<out>/390x844/01-connect.png` …），加上 `report.json`（每屏的横向溢出、越界元素、<44px 交互元素、TabBar/输入舱几何、请求日志、审批请求体）。
 
+## 2.2.6 重设计：分段控件的行为验收
+
+```powershell
+node tools/qa/check-redesign.mjs             # 夹具自证 + 真实 app/dist（控件未落地则 SKIP）
+node tools/qa/check-redesign.mjs --build     # 先按当前源码重建 app/dist 再量，免得量到上一轮产物
+node tools/qa/check-redesign.mjs --require   # 控件必须在；缺失算失败（出包门禁用）
+```
+
+判据全部可量，不靠眼看：切换时逐帧采样指示器位移（过渡中 ≥3 帧落在 A、B 之间且单调）；静止时指示器落在选中段内、中心差 ≤1px；轨道整条 44px 带用 `elementFromPoint` 逐点验证归属（按钮盒 38px 也不等于只有 38px 可点）；列表滚动时控件不移动（Vera 判据 5）；`prefers-reduced-motion: reduce` 下 1 帧落位；390/360/320 无横向溢出；thumb 过渡 300ms。输出里钉死 `asset` 文件名与字节数——同一份 `report.json` 混过两个 build，这件事必须可追。
+
+判据先在夹具上自证：240ms 过渡那份必须过，0ms 瞬移那份必须被判失败（`EXPECTED-FAIL`，不计入结论）。判据没牙齿时这一步会先红。
+
+契约：视图切换是 `role="tablist"` + `role="tab"`（文字「按时间」「按项目」），指示器命中 `[data-seg-thumb]` / `.tl-seg-pill` / `.tl-seg-thumb` / class 含 `thumb|indicator|pill` 之一。换 DOM 不用改脚本，保住这两条即可。
+
 ## 2.2.1 发送链路：故障 E2E 与真实照片压缩
 
 ```powershell
