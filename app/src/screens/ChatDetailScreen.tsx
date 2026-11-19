@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from 'react';
-import { ChevronDown, ChevronRight, ChevronLeft, Brain, Terminal, FileDiff, Loader2, Check, X, Sparkles } from 'lucide-react';
+import { ChevronDown, ChevronRight, ChevronLeft, Brain, Terminal, FileDiff, Folder, Loader2, Check, X, Sparkles } from 'lucide-react';
 import { ComposerFields, ChatPrimaryButton, useComposerFields, requestIdForIdentity } from '../components/ChatComposer';
 import MarkdownMessage from '../components/MarkdownMessage';
+import VaulSheet from '../components/VaulSheet';
 import { COLORS } from '../theme/optionATokens';
 import { messageText, isRunning, supportsImages,
   buildSendPayload, sendRequestIdentity, type ThreadRuntimeStatus,
@@ -15,7 +16,7 @@ import { closeDetail, openDetail } from '../state/tabStore';
 import { currentRequestContext } from '../state/sessionStore';
 import { clearComposerInputs } from '../state/composerStore';
 import { getThreadStatus } from '../state/runtimeStore';
-import type { ThreadMessage } from '../lib/turnloomApi';
+import { getProjects, type ProjectInfo, type ThreadMessage } from '../lib/turnloomApi';
 
 /** Secondary cards are rendered only when the host actually sent real rows. */
 function CollapsibleLog({ title, icon, lines }: { title: string; icon: ReactNode; lines: string[] }) {
@@ -134,6 +135,12 @@ export default function ChatDetailScreen({ threadId, title, newThread = false }:
   const running = isRunning(status);
   const fields = useComposerFields(scope, composerThreadId, threadModel);
   const [submitting, setSubmitting] = useState(false);
+  // New chat: the first message is filed into a project. Defaults to the most
+  // recent project the user has talked to, but "未归类" is always one tap away.
+  const [projects, setProjects] = useState<ProjectInfo[]>([]);
+  const [projectId, setProjectId] = useState('');
+  const [projectSheet, setProjectSheet] = useState(false);
+  const projectDefaulted = useRef(false);
   const bodyRef = useRef<HTMLElement>(null);
   const history = newThread ? undefined : data.messagePages[threadId];
   const loadHistory = async () => {
@@ -158,6 +165,34 @@ export default function ChatDetailScreen({ threadId, title, newThread = false }:
     void refresh();
     return () => { stopped = true; clearTimeout(timer); };
   }, [threadId, newThread, context?.scope, context?.generation]);
+
+  // Project choices come from the host's own /api/projects; a failure only
+  // hides the list, it never blocks sending (未归类 remains valid).
+  useEffect(() => {
+    if (!context || !newThread) return;
+    let cancelled = false;
+    void getProjects(context).then((result) => {
+      if (cancelled || !result.ok) return;
+      const rows = Array.isArray(result.data?.projects) ? result.data.projects : [];
+      setProjects(rows);
+    });
+    return () => { cancelled = true; };
+  }, [context?.scope, context?.generation, newThread]);
+
+  // Default to the project of the most recent conversation, once.
+  useEffect(() => {
+    if (!newThread || projectDefaulted.current || !data.threads.length) return;
+    projectDefaulted.current = true;
+    const recent = [...data.threads]
+      .filter((row) => row.projectId)
+      .sort((a, b) => Number(b.updatedAt || 0) - Number(a.updatedAt || 0))[0];
+    if (recent?.projectId) setProjectId(String(recent.projectId));
+  }, [newThread, data.threads]);
+
+  const projectName = useMemo(
+    () => projects.find((project) => String(project.id || '') === projectId)?.name || '未归类',
+    [projects, projectId],
+  );
 
   // 打开会话先看最新消息：首次渲染贴底；之后只要用户还在底部附近，就跟新消息走。
   const stickToBottom = useRef(true);
@@ -215,7 +250,7 @@ export default function ChatDetailScreen({ threadId, title, newThread = false }:
     const payload = buildSendPayload({
       message: text, clientRequestId: '', model: fields.send.model, effort: fields.send.effort, attachments,
     });
-    const identity = sendRequestIdentity({ ...payload, threadId: newThread ? '' : threadId, newThread });
+    const identity = sendRequestIdentity({ ...payload, threadId: newThread ? '' : threadId, newThread, projectId: newThread ? projectId : undefined });
     payload.clientRequestId = requestIdForIdentity(identity);
     setSubmitting(true);
     fields.setBusy(true);
@@ -223,7 +258,7 @@ export default function ChatDetailScreen({ threadId, title, newThread = false }:
     if (newThread) {
       // First message creates the real thread; the draft lives under the
       // placeholder composer slot until the host returns an id.
-      const id = await createThread(context, { ...payload });
+      const id = await createThread(context, { ...payload, projectId: projectId || undefined });
       setSubmitting(false);
       fields.setBusy(false);
       if (id) {
@@ -281,7 +316,7 @@ export default function ChatDetailScreen({ threadId, title, newThread = false }:
           <div style={{ flex: 1, minWidth: 0 }}>
             <div style={{ fontSize: 17, fontWeight: 600, color: COLORS.labelPrimary, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{title || (newThread ? '新会话' : '会话详情')}</div>
             <div style={{ fontSize: 11, lineHeight: '15px', color: COLORS.labelSecondary }}>
-              {newThread ? '输入第一条消息开始会话' : status?.interactionRequired ? '等待电脑端处理' : running ? '运行中' : '空闲'}
+              {newThread ? `项目：${projectName} · 输入第一条消息开始会话` : status?.interactionRequired ? '等待电脑端处理' : running ? '运行中' : '空闲'}
               {!newThread && status?.staleTurn ? ' · 长时间无输出' : ''}
             </div>
           </div>
@@ -302,6 +337,17 @@ export default function ChatDetailScreen({ threadId, title, newThread = false }:
               <div className="tl-chat-blank-orb" aria-hidden="true"><Sparkles size={26} /></div>
               <div className="tl-chat-blank-title">开始一个新会话</div>
               <p className="tl-chat-blank-copy">消息直接发给电脑上的 agent，第一条发送成功后会话会出现在列表里。</p>
+              <button
+                type="button"
+                className="tl-press"
+                aria-label={`选择项目，当前 ${projectName}`}
+                onClick={() => { haptic('selection'); setProjectSheet(true); }}
+                style={{ display: 'inline-flex', alignItems: 'center', gap: 6, minHeight: 44, marginTop: 12, padding: '0 14px', border: `.5px solid ${COLORS.separator}`, borderRadius: 999, background: COLORS.surface, color: COLORS.labelPrimary, fontSize: 13, fontWeight: 500 }}
+              >
+                <Folder size={14} color={COLORS.labelSecondary} />
+                <span>项目：{projectName}</span>
+                <ChevronDown size={14} color={COLORS.labelSecondary} />
+              </button>
             </div>
           ) : messages.length === 0 ? (
             <div role="status" style={{ fontSize: 13, lineHeight: '19px', color: COLORS.labelSecondary, padding: '8px 4px' }}>
@@ -369,6 +415,43 @@ export default function ChatDetailScreen({ threadId, title, newThread = false }:
         <ComposerFields fields={fields} enterKeyHint={running ? 'done' : 'send'} autoFocus={newThread}
           primary={<ChatPrimaryButton scope={scope} threadId={composerThreadId} fields={fields} onStop={stopRunning} />} />
       </form>
+
+      <VaulSheet open={projectSheet} onOpenChange={setProjectSheet} title="选择项目" subtitle="第一条消息会归档到这个项目">
+        <div style={{ padding: '4px 16px 20px', display: 'flex', flexDirection: 'column' }}>
+          <button
+            type="button"
+            className="tl-press"
+            onClick={() => { haptic('selection'); setProjectId(''); setProjectSheet(false); }}
+            style={{ display: 'flex', alignItems: 'center', gap: 10, minHeight: 44, padding: '0 4px', border: 0, borderBottom: `.5px solid ${COLORS.separator}`, background: 'transparent', color: COLORS.labelPrimary, textAlign: 'left', fontSize: 14 }}
+          >
+            <Folder size={16} color={COLORS.labelSecondary} />
+            <span style={{ flex: 1 }}>未归类</span>
+            {!projectId && <Check size={16} color={COLORS.blue} />}
+          </button>
+          {projects.filter((project) => project.id).map((project) => {
+            const id = String(project.id);
+            const selected = id === projectId;
+            return (
+              <button
+                key={id}
+                type="button"
+                className="tl-press"
+                onClick={() => { haptic('selection'); setProjectId(id); setProjectSheet(false); }}
+                style={{ display: 'flex', alignItems: 'center', gap: 10, minHeight: 44, padding: '0 4px', border: 0, borderBottom: `.5px solid ${COLORS.separator}`, background: 'transparent', color: COLORS.labelPrimary, textAlign: 'left', fontSize: 14 }}
+              >
+                <Folder size={16} color={COLORS.labelSecondary} />
+                <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{project.name || '未命名项目'}</span>
+                {selected && <Check size={16} color={COLORS.blue} />}
+              </button>
+            );
+          })}
+          {!projects.length && (
+            <div style={{ padding: '12px 4px', fontSize: 13, lineHeight: '19px', color: COLORS.labelSecondary }}>
+              电脑端还没有可用项目；仍可直接发送到「未归类」。
+            </div>
+          )}
+        </div>
+      </VaulSheet>
     </div>
   );
 }
