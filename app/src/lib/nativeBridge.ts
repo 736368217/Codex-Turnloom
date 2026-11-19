@@ -70,7 +70,7 @@ export interface TurnloomNative {
   scanQr(requestId: string): void;
   getAppInfo(): string;
   setLightBars(): void;
-  pickAttachments?(requestId: string, kind: 'image' | 'file'): void | string;
+  pickAttachments?(requestId: string, kind: AttachmentKind): void | string;
   cancelAttachmentPick?(requestId: string): void;
   openExternalUrl?(url: string): boolean;
   request?(requestId: string, requestJson: string): void;
@@ -501,7 +501,7 @@ export function installUpdate(): boolean {
 // Attachment picker: a native Promise callback or a real browser file input
 // ---------------------------------------------------------------------------
 
-export type AttachmentKind = 'image' | 'file';
+export type AttachmentKind = 'image' | 'file' | 'camera';
 interface PendingAttachmentPick {
   resolve: (result: NativeAttachmentResult) => void;
   timer: ReturnType<typeof setTimeout> | null;
@@ -559,7 +559,7 @@ function readFileAsDataUrl(file: File): Promise<string> {
 }
 
 /** Browser fallback: a genuine OS file input, not a fabricated picker result. */
-function browserPick(kind: AttachmentKind, timeoutMs: number): Promise<NativeAttachmentResult> {
+function browserPick(kind: 'image' | 'file', timeoutMs: number): Promise<NativeAttachmentResult> {
   if (typeof document === 'undefined') {
     return Promise.resolve({ status: 'error', items: [], error: 'picker-unavailable' });
   }
@@ -613,7 +613,7 @@ export function pickAttachments(kind: AttachmentKind, timeoutMs = 600_000): Prom
   }
   let operation: Promise<NativeAttachmentResult>;
   if (!n || typeof n.pickAttachments !== 'function') {
-    operation = browserPick(kind, timeoutMs);
+    operation = browserPick(kind === 'camera' ? 'image' : kind, timeoutMs);
   } else {
     attachmentSeq += 1;
     const requestId = `attach-${Date.now()}-${attachmentSeq}`;

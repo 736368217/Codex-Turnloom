@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState, type CSSProperties, type FormEvent, type ReactNode } from 'react';
-import { ArrowUp, Check, ChevronDown, Image as ImageIcon, Paperclip, Search, Square, X } from 'lucide-react';
+import { ArrowUp, AtSign, Camera, Check, ChevronDown, Image as ImageIcon, Paperclip, Search, Square, X } from 'lucide-react';
 import VaulSheet from './VaulSheet';
+import { titleOfThread, previewOfThread } from '../lib/threadPreview';
+import { useDataState } from '../state/dataStore';
 import { COLORS } from '../theme/optionATokens';
 import {
   resolveTurnPreference, supportsImages, effortLabel, isRunning, sendModelFields, plainBase64,
@@ -132,9 +134,10 @@ export function ModelEffortSheet({ open, onClose, catalog, selected, onSelect }:
  */
 async function shrinkPickedImages(
   result: NativeAttachmentResult,
-  kind: 'image' | 'file',
+  kind: 'image' | 'file' | 'camera',
 ): Promise<NativeAttachmentResult> {
-  if (kind !== 'image' || result.status !== 'success' || !result.items?.length) return result;
+  // A camera capture is an image; only a file pick skips the shrink.
+  if (kind === 'file' || result.status !== 'success' || !result.items?.length) return result;
   const items: NonNullable<NativeAttachmentResult['items']> = [];
   for (const item of result.items) {
     const source: SendAttachment = {
@@ -185,7 +188,7 @@ export function useComposerFields(scope: string, threadId: string, threadModel?:
     setError('');
   };
 
-  const pick = async (kind: 'image' | 'file'): Promise<void> => {
+  const pick = async (kind: 'image' | 'file' | 'camera'): Promise<void> => {
     if (pickingRef.current) return;
     pickingRef.current = true;
     setPicking(true);
@@ -223,6 +226,44 @@ export function useComposerFields(scope: string, threadId: string, threadModel?:
 
 export type ComposerFieldsApi = ReturnType<typeof useComposerFields>;
 
+/**
+ * 「引用」：插入一段纯文本引用块。宿主不解析 `@thread:` 这类语法，所以这里**不是**可跳转的
+ * mention——菜单标题、副标题与插入内容都按「引用一段上下文」写，不给用户「会切换会话」的暗示。
+ */
+function QuoteSheet({ open, onClose, onPick }: {
+  open: boolean;
+  onClose: () => void;
+  onPick: (thread: { id: string; title: string; preview: string }) => void;
+}) {
+  const data = useDataState();
+  const [query, setQuery] = useState('');
+  const needle = query.trim().toLowerCase();
+  const rows = (data.threads || [])
+    .map((thread) => ({ id: String(thread.id || ''), title: titleOfThread(thread), preview: previewOfThread(thread) }))
+    .filter((row) => !needle || `${row.title} ${row.preview}`.toLowerCase().includes(needle))
+    .slice(0, 80);
+  return (
+    <VaulSheet open={open} onOpenChange={(next) => { if (!next) onClose(); }} title="引用会话" subtitle="插入一段纯文本上下文，不会跳转或切换会话">
+      <div className="tl-quote-search">
+        <Search size={15} aria-hidden="true" />
+        <input aria-label="搜索要引用的会话" type="search" value={query} placeholder="搜索会话"
+          onChange={(event) => setQuery(event.target.value)} />
+      </div>
+      <div className="tl-quote-list" role="listbox" aria-label="可引用的会话">
+        {rows.length === 0 && <p className="tl-quote-empty">没有可引用的会话</p>}
+        {rows.map((row) => (
+          <button key={row.id} type="button" role="option" aria-selected={false} className="tl-quote-row tl-press"
+            onClick={() => { haptic('selection'); onPick(row); }}>
+            <span className="tl-quote-title">{row.title}</span>
+            <span className="tl-quote-preview">{row.preview || '（无预览）'}</span>
+          </button>
+        ))}
+      </div>
+    </VaulSheet>
+  );
+}
+
+
 /** Composer chrome: one card, one primary action, quiet icon/text controls. */
 export function ComposerFields({ fields, primary, enterKeyHint = 'send', autoFocus = false }: {
   fields: ComposerFieldsApi;
@@ -236,10 +277,45 @@ export function ComposerFields({ fields, primary, enterKeyHint = 'send', autoFoc
   const name = shortModelName(entry) || '选择模型';
   const effort = effortLabel(preference.effort);
   const stateLabel = `${name}${effort ? ` · ${effort}` : ''}`;
+  const [quoteOpen, setQuoteOpen] = useState(false);
+  const inputRef = useRef<HTMLTextAreaElement>(null);
+  // The quote block is plain text at the caret: the agent reads it as context, nothing
+  // in the host turns it into a link or a conversation switch.
+  const insertQuote = (thread: { id: string; title: string; preview: string }) => {
+    const text = composer.text;
+    const el = inputRef.current;
+    const start = el && typeof el.selectionStart === 'number' ? el.selectionStart : text.length;
+    const end = el && typeof el.selectionEnd === 'number' ? el.selectionEnd : text.length;
+    const block = `@会话 ${thread.id.slice(0, 8)}「${thread.title}」\n> 最近：${thread.preview || '（无预览）'}\n`;
+    const next = `${text.slice(0, start)}${block}${text.slice(end)}`;
+    setComposerText(next);
+    setQuoteOpen(false);
+    requestAnimationFrame(() => {
+      const node = inputRef.current;
+      if (!node) return;
+      const caret = start + block.length;
+      node.focus();
+      node.setSelectionRange(caret, caret);
+    });
+  };
   return (
     <>
       <div className="tl-composer-card">
-        <textarea className="tl-composer-input tl-selectable" aria-label="消息" placeholder="发送消息…" rows={1} value={composer.text}
+        <div className="tl-composer-top">
+          <button type="button" className="tl-press tl-model-trigger" aria-label={`模型与思考强度：${stateLabel}`}
+            style={{ minHeight: 40 }}
+            aria-haspopup="dialog" onClick={() => setSheetOpen(true)}>
+            <span className="tl-model-trigger-name">{name}</span>
+            {effort && <span className="tl-model-trigger-effort">{effort}</span>}
+            <ChevronDown size={13} color={COLORS.labelSecondary} aria-hidden="true" />
+          </button>
+          <button type="button" className="tl-press tl-quote-trigger" aria-label="引用会话" title="引用会话"
+            aria-haspopup="dialog" onClick={() => { haptic('selection'); setQuoteOpen(true); }}>
+            <AtSign size={16} />
+            <span>引用</span>
+          </button>
+        </div>
+        <textarea ref={inputRef} className="tl-composer-input tl-selectable" aria-label="消息" placeholder="发送消息…" rows={1} value={composer.text}
           autoFocus={autoFocus}
           onChange={(event) => { setComposerText(event.target.value); fields.setError(''); }}
           onKeyDown={(event) => {
@@ -256,13 +332,16 @@ export function ComposerFields({ fields, primary, enterKeyHint = 'send', autoFoc
           }} enterKeyHint={enterKeyHint} />
         <AttachmentTray attachments={composer.attachments} onRemove={removeAttachment} />
         <div className="tl-composer-tools">
-          <button type="button" className="tl-press tl-model-trigger" aria-label={`模型与思考强度：${stateLabel}`}
-            style={{ minHeight: 44 }}
-            aria-haspopup="dialog" onClick={() => setSheetOpen(true)}>
-            <span className="tl-model-trigger-name">{name}</span>
-            {effort && <span className="tl-model-trigger-effort">{effort}</span>}
-            <ChevronDown size={13} color={COLORS.labelSecondary} aria-hidden="true" />
-          </button>
+          <button type="button" className="tl-press tl-composer-icon" aria-label="拍照" title="拍照"
+            disabled={fields.picking}
+            style={{ width: 44, minWidth: 44, height: 44, minHeight: 44 }}
+            onClick={() => {
+              if (imageSupport === false) {
+                setError('当前模型仅支持文字，请先切换支持图片的模型。');
+                return;
+              }
+              haptic('selection'); void pick('camera');
+            }}><Camera size={18} /></button>
           <button type="button" className="tl-press tl-composer-icon" aria-label="图片" title="图片"
             disabled={fields.picking}
             style={{ width: 44, minWidth: 44, height: 44, minHeight: 44 }}
@@ -285,6 +364,7 @@ export function ComposerFields({ fields, primary, enterKeyHint = 'send', autoFoc
       {error && <div role="alert" className="tl-composer-error">{error}</div>}
       <ModelEffortSheet open={sheetOpen} onClose={() => setSheetOpen(false)} catalog={catalog} selected={preference}
         onSelect={(model, effortValue) => select(model, effortValue)} />
+      <QuoteSheet open={quoteOpen} onClose={() => setQuoteOpen(false)} onPick={insertQuote} />
     </>
   );
 }

@@ -83,7 +83,7 @@ export interface PickerTrayOutcome {
  */
 export function pickerTrayForResult(input: {
   result: NativeAttachmentResult;
-  kind: 'image' | 'file';
+  kind: 'image' | 'file' | 'camera';
   originScope: string;
   originThread: string;
   selectedScope: string;
@@ -116,7 +116,8 @@ export function pickerTrayForResult(input: {
       sizeBytes: Number(item.sizeBytes) || Math.floor(data.length * 3 / 4),
       data,
       dataUrl: item.dataUrl,
-      kind: input.kind,
+      // A camera capture lands in the tray as an image attachment.
+      kind: input.kind === 'file' ? 'file' : 'image',
     };
   });
   const validation = validateAttachments(input.existing, incoming, input.imageSupport);
@@ -132,6 +133,8 @@ export function pickerErrorMessage(result: NativeAttachmentResult): string {
   if (result.status !== 'error') return '';
   switch (result.error) {
     case 'picker-busy': return '文件选择器已打开，请先完成或取消当前选择。';
+    case 'camera-permission-denied': return '没有相机权限，请在系统设置里允许后重试。';
+    case 'camera-unavailable': return '这台设备打不开相机，请改用相册或附件。';
     case 'picker-unavailable': return '此设备暂时无法打开文件选择器，请稍后重试。';
     case 'bridge-not-ready': return '附件功能尚未就绪，请稍后重试。';
     case 'permission-denied': return '没有读取所选文件的权限，请重新选择。';

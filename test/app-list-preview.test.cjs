@@ -18,7 +18,9 @@ const fs = require('node:fs');
 const path = require('node:path');
 
 const ROOT = path.resolve(__dirname, '..');
-const SOURCE = fs.readFileSync(path.join(ROOT, 'app', 'src', 'components', 'TaskStream.tsx'), 'utf8');
+const COMPONENT = fs.readFileSync(path.join(ROOT, 'app', 'src', 'components', 'TaskStream.tsx'), 'utf8');
+// The rules moved to a .ts module (2.2.4) so the composer can share them.
+const SOURCE = fs.readFileSync(path.join(ROOT, 'app', 'src', 'lib', 'threadPreview.ts'), 'utf8');
 
 const previewBody = (() => {
   const start = SOURCE.indexOf('export function previewOfThread');
@@ -40,10 +42,10 @@ test('四种不许出现的形状都有显式处理', () => {
 });
 
 test('行渲染是「有 preview 才画这一行」', () => {
-  assert.match(SOURCE, /\{preview && <span className="tl-thread-preview">/, '空的第二行不该占位');
+  assert.match(COMPONENT, /\{preview && <span className="tl-thread-preview">/, '空的第二行不该占位');
 });
 
 test('旧的回退链不许回来', () => {
-  assert.doesNotMatch(SOURCE, /thread\.preview \|\| thread\.cwd \|\| thread\.id/, '这是真机上显示 UUID 的原写法');
-  assert.doesNotMatch(SOURCE, /\{String\(thread\.preview \|\| thread\.cwd/, '同上');
+  assert.doesNotMatch(COMPONENT, /thread\.preview \|\| thread\.cwd \|\| thread\.id/, '这是真机上显示 UUID 的原写法');
+  assert.doesNotMatch(COMPONENT, /\{String\(thread\.preview \|\| thread\.cwd/, '同上');
 });
