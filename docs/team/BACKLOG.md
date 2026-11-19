@@ -12,6 +12,8 @@
 
 3. **裸解包起不来**：`turnloom-2.2.5-server.zip` 直接解压跑 `node server.js` 会缺 `qrcode-terminal` 等依赖，必须 `npm ci --omit=dev`。升级脚本会做这一步，但冒烟测试若直接裸跑会得到假红。**验收**：冒烟脚本固定成「解包 → npm ci → 起服务 → 读 health」，或在包里显式声明依赖。
 
+3b. **测试流量写进生产日志**：36 个测试文件会 `spawn` 一个 `server.js`，其中只有 `desktop-release.test.cjs` 与 `server-logging.test.js` 设了 `TURNLOOM_LOG_DIR`；其余都落到 `%LOCALAPPDATA%\CodexPocket\logs\server-YYYYMMDD.log`。实测今天那份日志里最后 800 行有 86 条测试请求（`http-approval-thread` 的 409/403、401、`/api/threads` 502），混在真实流量里。**后果**：「上传日志」给 Human 看的包里，会有一批看起来像真实故障的 4xx/5xx。**验收**：测试 spawn 时默认注入临时 `TURNLOOM_LOG_DIR`（或 `server.js` 在 `NODE_TEST_CONTEXT` 下默认写临时目录），并加一条断言：跑完测试后生产日志目录的字节数不变。
+
 ## B. 模型后端能力
 
 4. **`piNativeQueue` 开关 + `modelsSource`**：目前切 PI 只能靠环境变量 `CODEX_LAN_PI_NATIVE_QUEUE=1` 或控制台「IPC 管道」填 `\\.\pipe\pidesktop-codex-ipc`，安装器/控制台/打包脚本一处都不注入（已 grep 确认）。建议：`config.json` 增开关、supervisor 启动时注入、`/api/health` 增 `modelsSource: "pi"|"codex"` 让手机端能认出后端（现在只能靠模型 id 猜）。**前置**：切换前必须确认 PI 桥在（`pipeReady` / `scripts/verify-pi-bridge.ps1`），否则 `enqueueSend` 的 `requestNativeQueue("push")` 直接把错误抛给手机。证据：`thread:2cd3ffab` 19:04–19:06 三条。
