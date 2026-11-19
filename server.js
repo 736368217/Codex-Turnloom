@@ -34,6 +34,7 @@ const sendFiles = require("./shared/send-files.cjs");
 const desktopRelease = require("./shared/desktop-release.cjs");
 const requestLog = require("./server/request-log.cjs");
 const { buildLogBundle } = require("./server/log-bundle.cjs");
+const logUpload = require("./server/log-upload.cjs");
 
 const modulePath = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(modulePath);
@@ -8827,28 +8828,11 @@ const server = http.createServer(async (req, res) => {
     }
     if (req.method === "POST" && url.pathname === "/api/admin/logs/upload") {
       if (!requireAuthorized(req, res, url)) return;
-      const token = logUploadToken();
-      if (!token) {
-        sendJson(res, 200, { ok: false, error: "upload-token-missing", hint: "set TURNLOOM_LOG_UPLOAD_TOKEN or place Desktop\\认证\\r2-upload-token.txt" });
-        return;
-      }
+      // The three outcomes (no credential / R2 rejected / uploaded) live in
+      // server/log-upload.cjs so a test can pin them without a live R2.
       const bundle = buildLogBundle({ logDir: serverLogDir(), machine: MACHINE_NAME, secrets: logBundleSecrets() });
-      // R2 objects are readable without a token (verified), so the key carries 32
-      // random bits to keep it unguessable; the bundle itself is already
-      // allowlisted, so a leaked link still cannot show message text or codes.
-      const suffix = randomBytes(4).toString("hex");
-      const key = `turnloom/logs/${String(MACHINE_NAME || "machine").replace(/[^A-Za-z0-9._-]+/g, "-")}/${bundle.name.replace(/\.zip$/, "")}-${suffix}.zip`;
-      try {
-        const response = await fetch(`https://dl.736.de5.net/${key}`, {
-          method: "PUT",
-          headers: { "X-Upload-Token": token, "content-type": "application/zip" },
-          body: bundle.buffer,
-        });
-        if (!response.ok) throw new Error(`R2 returned ${response.status}`);
-        sendJson(res, 200, { ok: true, key, bytes: bundle.buffer.length, files: bundle.files.length, omitted: bundle.omitted.length, droppedLines: bundle.droppedLines });
-      } catch (error) {
-        sendJson(res, 502, { ok: false, error: "upload-failed", reason: String(error?.message || error) });
-      }
+      const result = await logUpload.uploadLogBundle({ token: logUploadToken(), bundle, machine: MACHINE_NAME });
+      sendJson(res, result.status, result.body);
       return;
     }
     if (req.method === "GET" && url.pathname === "/api/debug/events") {
