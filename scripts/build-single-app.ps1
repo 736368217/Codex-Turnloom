@@ -17,8 +17,9 @@ param(
     [string]$ApkSigner         = 'C:\Users\WIN10\AppData\Local\Android\Sdk\build-tools\35.0.0\apksigner.bat',
     [string]$Aapt2             = 'C:\Users\WIN10\AppData\Local\Android\Sdk\build-tools\35.0.0\aapt2.exe',
     [string]$Adb               = 'C:\Users\WIN10\AppData\Local\Android\Sdk\platform-tools\adb.exe',
-    [string]$Keystore          = 'C:\Users\WIN10\.android\debug.keystore',
-    [string]$KeyAlias          = 'androiddebugkey',
+    [string]$Keystore          = $(if ($env:TURNLOOM_KEYSTORE) { $env:TURNLOOM_KEYSTORE } else { Join-Path $env:USERPROFILE '.android\debug.keystore' }),
+    [string]$KeyAlias          = $(if ($env:TURNLOOM_KEY_ALIAS) { $env:TURNLOOM_KEY_ALIAS } else { 'androiddebugkey' }),
+    [string]$ExpectedCertSha256 = '2feb63c511cd725795cadc8fa890f9cbc754fe59c0bbfe0787ac33f94f44fa9c',
     [string]$OutDir            = 'D:\pi11\11\Codex-Turnloom\dist-app',
     [string]$StagedApkPath     = '',
     [string]$ReleaseNotes      = '',
@@ -222,6 +223,22 @@ try {
     Step 'apksigner-sign' 'ok' 'v1/v2/v3'
     Invoke-Tool -Tool $ApkSigner -ToolArgs @('verify','--verbose','--print-certs',$finalApk) -WorkDir $shellDir -Label 'apksigner-verify'
     Step 'apksigner-verify' 'ok' 'v2/v3'
+    $certDigest = ''
+    $certOutput = @(& $ApkSigner verify --print-certs $finalApk 2>&1)
+    if ($certOutput.Count -gt 0) {
+        $certJoined = ($certOutput | ForEach-Object { [string]$_ }) -join "`n"
+        if ($certJoined -match '(?i)certificate SHA-256 digest:\s*([0-9a-f]{64})') {
+            $certDigest = $Matches[1].ToLowerInvariant()
+        } elseif ($certJoined -match '(?i)certificate SHA-256 digest:\s*(([0-9a-f]{2}:){31}[0-9a-f]{2})') {
+            $certDigest = ($Matches[1] -replace ':', '').ToLowerInvariant()
+        }
+    }
+    if (-not $certDigest) { Fail 'Could not read the signing certificate digest from apksigner verify' }
+    Say ("signing cert sha256 = {0}" -f $certDigest)
+    if ($ExpectedCertSha256 -and $certDigest -ne $ExpectedCertSha256.ToLowerInvariant()) {
+        Fail "Signing certificate mismatch: got $certDigest, expected $ExpectedCertSha256. Restore native-shell/signing before shipping."
+    }
+    Step 'signing-identity' 'ok' $certDigest
     $identity = Assert-Badging -Apk $finalApk
     if ($identity.applicationId -ne $configuredPackage -or $identity.versionName -ne $versionName -or [string]$identity.versionCode -ne [string]$versionCode) {
         Fail "Badging identity disagrees with native build config: $($identity.applicationId)/$($identity.versionName)/$($identity.versionCode)"
