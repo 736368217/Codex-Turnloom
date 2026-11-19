@@ -8,7 +8,7 @@ import { messageText, isRunning, supportsImages,
   buildSendPayload, sendRequestIdentity, type ThreadRuntimeStatus,
 } from '../lib/chatContract';
 import { composerSubmitDecision } from '../lib/composerSubmit';
-import { haptic } from '../lib/nativeBridge';
+import { haptic, pushNativeBackLayer } from '../lib/nativeBridge';
 import {
   useDataState, dataStore, refreshMessages, loadOlderMessages, refreshChanges, sendMessage, interruptThread, resolveApproval, createThread,
 } from '../state/dataStore';
@@ -151,6 +151,11 @@ export default function ChatDetailScreen({ threadId, title, newThread = false }:
     await loadOlderMessages(context, threadId);
     requestAnimationFrame(() => { if (body && body === bodyRef.current) body.scrollTop = top + body.scrollHeight - height; });
   };
+
+  // 系统返回键/手势：详情页是最常用的二级页，必须自己吃掉这一层。
+  // 不注册的话 `handleNativeBack()` 找不到任何 layer/backHandler，返回 false，
+  // native 就 `moveTaskToBack(true)` —— 真机上表现成「按返回直接回桌面」。
+  useEffect(() => pushNativeBackLayer(() => { haptic('selection'); closeDetail(); }), []);
 
   useEffect(() => {
     if (!context || newThread) return;
