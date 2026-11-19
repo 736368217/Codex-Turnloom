@@ -548,7 +548,26 @@ async function runViewport(browser, viewport, report) {
       };
     })()`);
     await shot(page, dir, "11a-new-chat", report);
-    // 相机三态：拍照成功要进附件托盘；取消不留痕；拒绝/占用要出可读文案。
+    // 引用菜单：会话档是真数据（threads 在夹具里），技能/插件档在 --backend http 下
+    // 恒为空——那是产品侧的限制，这里同时记下来。
+    if (process.env.QA_QUOTE) {
+      await clickSelector(page, "button.tl-quote-trigger", { optional: true });
+      await sleep(700);
+      await shot(page, dir, "12b-quote-menu", report);
+      report.quoteTabs = await page.eval(`(() => Array.from(document.querySelectorAll('[data-vaul-drawer] button'))
+        .map((el) => (el.textContent || '').trim()).filter(Boolean).slice(0, 8))()`);
+      await page.eval(`(() => { const rows = Array.from(document.querySelectorAll('[data-vaul-drawer] button'));
+        const target = rows.find((el) => (el.textContent || '').includes('长 Markdown')) || rows.find((el) => (el.textContent || '').includes('填充会话 1'));
+        if (target) target.click(); })()`);
+      await sleep(600);
+      report.quoteInsert = await page.eval(`(() => {
+        const input = document.querySelector('textarea.tl-composer-input');
+        const value = input ? input.value : '';
+        return { value: value.slice(0, 120), lines: value.split('\\n').length, links: document.querySelectorAll('textarea a, .tl-composer a').length };
+      })()`);
+      await shot(page, dir, "12c-quote-inserted", report);
+      log(`quote insert: ${JSON.stringify(report.quoteInsert)}`);
+    }
     if (process.env.QA_CAMERA) {
       await clickSelector(page, "button[aria-label='拍照']", { optional: true });
       await sleep(900);
