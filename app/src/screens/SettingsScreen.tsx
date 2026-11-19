@@ -14,9 +14,11 @@ import { runUpdateCheck } from '../lib/updateChannel';
 import { uploadDiagnostics } from '../lib/diagnostics';
 import { useUpdate, updateStore, setState, setMessage, setRelease, setRequestId, setChannel } from '../state/updateStore';
 
+const PUBLIC_HOST_FALLBACK = 'dl.736.de5.net';
+
 export function UpdatePanel() {
   const session = useSessionState();
-  const { state, message, release, progress } = useUpdate();
+  const { state, message, release, progress, source, host, publicError } = useUpdate();
   const lastCheckRef = useRef(0);
 
   const check = async (force = false): Promise<void> => {
@@ -68,13 +70,19 @@ export function UpdatePanel() {
       return;
     }
     const context: RequestContext | null = currentRequestContext();
-    if (!context) return;
     const isPublic = isPublicUpdateUrl(release.apkUrl);
-    const url = absoluteApkUrl(context.target.origin, release.apkUrl);
+    // A public CDN download needs no paired machine; a computer-hosted one does.
+    // Returning early on a missing context used to kill the button silently.
+    if (!isPublic && !context) {
+      setState('error');
+      setMessage('这份安装包由电脑端提供，请先连接电脑再下载');
+      return;
+    }
+    const url = absoluteApkUrl(context ? context.target.origin : '', release.apkUrl);
     if (!url) { setState('error'); setMessage('安装包地址无效，请重新检查更新'); return; }
     const id = startUpdateDownload({
       // The machine token never travels to R2: a public download carries none.
-      url, token: isPublic ? '' : context.target.token, sha256: release.sha256,
+      url, token: isPublic ? '' : (context ? context.target.token : ''), sha256: release.sha256,
       versionCode: release.versionCode, packageName: release.packageName,
     });
     if (!id) { setState('error'); setMessage('无法开始下载，请稍后重试'); return; }
@@ -85,14 +93,33 @@ export function UpdatePanel() {
 
   const percent = progress.total > 0 ? Math.min(100, Math.round(progress.received / progress.total * 100)) : 0;
 
+  // The source line is the acceptance surface for the fallback chain: it prints who
+  // actually answered, so "无需更新" can never be read as a public-channel answer.
+  const sourceLine = (() => {
+    if (source === 'public') return `来源 · 公网 ${host || PUBLIC_HOST_FALLBACK}`;
+    if (source === 'server') {
+      const reason = publicError === 'public-http' ? '公网无清单' : publicError === 'public-schema' ? '公网清单异常' : '公网不可达';
+      return publicError ? `来源 · ${reason} → 电脑端 ${host || '电脑'}` : `来源 · 电脑端 ${host || '电脑'}`;
+    }
+    return '来源 · —';
+  })();
+  // No valid manifest this round => never claim 无需更新 (the bug this panel exists for).
+  const pillState = state === 'current' && !source ? 'idle' : state;
+
   return (
     <InsetGroup title="应用更新">
       <div className="tl-update-body" style={{ padding: '10px 16px 6px' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
           <span style={{ flex: 1, fontSize: 14, fontWeight: 600 }}>当前版本 {session.appVersion}</span>
-          <StatusPill tone={state === 'error' ? 'red' : state === 'available' || state === 'ready' ? 'blue' : 'neutral'}>
-            {state === 'checking' ? '检查中' : state === 'available' || state === 'downloading' || state === 'ready' ? '有更新' : state === 'error' ? '检查失败' : state === 'current' ? '无需更新' : state === 'cancelled' ? '已暂停' : state === 'unavailable' ? '暂无安装包' : '尚未检查'}
+          <StatusPill tone={pillState === 'error' ? 'red' : pillState === 'available' || pillState === 'ready' ? 'blue' : 'neutral'}>
+            {pillState === 'checking' ? '检查中' : pillState === 'available' || pillState === 'downloading' || pillState === 'ready' ? '有更新' : pillState === 'error' ? '检查失败' : pillState === 'current' ? '无需更新' : pillState === 'cancelled' ? '已暂停' : pillState === 'unavailable' ? '暂无安装包' : '尚未检查'}
           </StatusPill>
+        </div>
+        <div
+          data-qa="update-source"
+          style={{ fontSize: 12, lineHeight: '17px', color: COLORS.labelSecondary, marginTop: 4, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
+        >
+          {sourceLine}
         </div>
         {message && <div style={{ fontSize: 13, lineHeight: '19px', color: state === 'error' ? COLORS.red : COLORS.labelSecondary, marginTop: 6 }}>{message}</div>}
         {state === 'downloading' && (
