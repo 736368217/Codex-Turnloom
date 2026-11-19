@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from 'react';
 import { ChevronDown, ChevronRight, ChevronLeft, Brain, Terminal, FileDiff, Folder, Loader2, Check, X, Sparkles } from 'lucide-react';
-import { ComposerFields, ChatPrimaryButton, useComposerFields, requestIdForIdentity } from '../components/ChatComposer';
+import { ComposerFields, ChatPrimaryButton, ModelChip, useComposerFields, requestIdForIdentity } from '../components/ChatComposer';
 import MarkdownMessage from '../components/MarkdownMessage';
 import VaulSheet from '../components/VaulSheet';
 import { COLORS } from '../theme/optionATokens';
@@ -198,6 +198,11 @@ export default function ChatDetailScreen({ threadId, title, newThread = false }:
     () => projects.find((project) => String(project.id || '') === projectId)?.name || '未归类',
     [projects, projectId],
   );
+  // The thread's own project, not the new-chat chooser: the header prints it when it
+  // exists and simply omits the line when the conversation belongs to no project.
+  const ownProjectName = newThread
+    ? projectName
+    : (((data.threads.find((row) => row.id === threadId)?.project) as { name?: string } | undefined)?.name || '');
 
   // 打开会话先看最新消息：首次渲染贴底；之后只要用户还在底部附近，就跟新消息走。
   const stickToBottom = useRef(true);
@@ -320,11 +325,15 @@ export default function ChatDetailScreen({ threadId, title, newThread = false }:
           </button>
           <div style={{ flex: 1, minWidth: 0 }}>
             <div style={{ fontSize: 17, fontWeight: 600, color: COLORS.labelPrimary, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{title || (newThread ? '新会话' : '会话详情')}</div>
-            <div style={{ fontSize: 11, lineHeight: '15px', color: COLORS.labelSecondary }}>
-              {newThread ? `项目：${projectName} · 输入第一条消息开始会话` : status?.interactionRequired ? '等待电脑端处理' : running ? '运行中' : '空闲'}
+            <div style={{ fontSize: 11, lineHeight: '15px', color: COLORS.labelSecondary, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+              {[
+                ownProjectName ? `项目：${ownProjectName}` : '',
+                newThread ? '输入第一条消息开始会话' : status?.interactionRequired ? '等待电脑端处理' : running ? '运行中' : '空闲',
+              ].filter(Boolean).join(' · ')}
               {!newThread && status?.staleTurn ? ' · 长时间无输出' : ''}
             </div>
           </div>
+          <ModelChip fields={fields} />
           {running && <Loader2 size={17} className="tl-spin" color={COLORS.blue} aria-label="运行中" />}
         </div>
       </header>

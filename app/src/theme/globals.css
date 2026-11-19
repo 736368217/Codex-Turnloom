@@ -1,3 +1,14 @@
+/* Header model chip (2.2.5): the current provider model walks out of the composer and
+   into the title bar, where the human asked for it. */
+.tl-header-model {
+  display: inline-flex; align-items: center; gap: 4px;
+  max-width: 44%; min-height: 44px; padding: 0 8px;
+  border: 0; border-radius: 12px; background: var(--tl-fill-secondary);
+  color: var(--tl-label-primary); font-size: 13px; font-weight: 600; overflow: hidden;
+}
+.tl-header-model-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tl-header-model-effort { color: var(--tl-label-secondary); font-weight: 500; }
+.tl-composer-top { display: none; }
 @tailwind base;
 @tailwind components;
 @tailwind utilities;

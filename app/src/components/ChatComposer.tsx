@@ -227,6 +227,27 @@ export function useComposerFields(scope: string, threadId: string, threadModel?:
 
 export type ComposerFieldsApi = ReturnType<typeof useComposerFields>;
 
+/** The header's model chip: current provider model + effort, one tap to the sheet. */
+export function ModelChip({ fields }: { fields: ComposerFieldsApi }) {
+  const { catalog, preference } = fields;
+  const entry = catalog?.models.find((row) => row.id === preference.model);
+  const name = shortModelName(entry) || '选择模型';
+  const effort = effortLabel(preference.effort);
+  return (
+    <button
+      type="button"
+      className="tl-press tl-header-model"
+      aria-label={`模型与思考强度：${name}${effort ? ` · ${effort}` : ''}`}
+      aria-haspopup="dialog"
+      onClick={() => { haptic('selection'); fields.setSheetOpen(true); }}
+    >
+      <span className="tl-header-model-name">{name}</span>
+      {effort && <span className="tl-header-model-effort">{effort}</span>}
+      <ChevronDown size={12} color={COLORS.labelSecondary} aria-hidden="true" />
+    </button>
+  );
+}
+
 /**
  * 「引用」：插入一段纯文本引用块。宿主不解析 `@thread:` 这类语法，所以这里**不是**可跳转的
  * mention——菜单标题、副标题与插入内容都按「引用一段上下文」写，不给用户「会切换会话」的暗示。
@@ -363,10 +384,8 @@ export function ComposerFields({ fields, primary, enterKeyHint = 'send', autoFoc
   autoFocus?: boolean;
 }) {
   const { composer, catalog, preference, imageSupport, sheetOpen, setSheetOpen, error, setError, pick, removeAttachment, select } = fields;
-  const entry = catalog?.models.find((row) => row.id === preference.model);
-  const name = shortModelName(entry) || '选择模型';
-  const effort = effortLabel(preference.effort);
-  const stateLabel = `${name}${effort ? ` · ${effort}` : ''}`;
+  // The model trigger lives in the chat header now (ModelChip); the composer keeps
+  // only the textarea, the attachment row and the primary action.
   const [quoteOpen, setQuoteOpen] = useState(false);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   // The quote block is plain text at the caret: the agent reads it as context, nothing
@@ -390,20 +409,6 @@ export function ComposerFields({ fields, primary, enterKeyHint = 'send', autoFoc
   return (
     <>
       <div className="tl-composer-card">
-        <div className="tl-composer-top">
-          <button type="button" className="tl-press tl-model-trigger" aria-label={`模型与思考强度：${stateLabel}`}
-            style={{ minHeight: 40 }}
-            aria-haspopup="dialog" onClick={() => setSheetOpen(true)}>
-            <span className="tl-model-trigger-name">{name}</span>
-            {effort && <span className="tl-model-trigger-effort">{effort}</span>}
-            <ChevronDown size={13} color={COLORS.labelSecondary} aria-hidden="true" />
-          </button>
-          <button type="button" className="tl-press tl-quote-trigger" aria-label="引用会话" title="引用会话"
-            aria-haspopup="dialog" onClick={() => { haptic('selection'); setQuoteOpen(true); }}>
-            <AtSign size={16} />
-            <span>引用</span>
-          </button>
-        </div>
         <textarea ref={inputRef} className="tl-composer-input tl-selectable" aria-label="消息" placeholder="发送消息…" rows={1} value={composer.text}
           autoFocus={autoFocus}
           onChange={(event) => { setComposerText(event.target.value); fields.setError(''); }}
@@ -421,6 +426,10 @@ export function ComposerFields({ fields, primary, enterKeyHint = 'send', autoFoc
           }} enterKeyHint={enterKeyHint} />
         <AttachmentTray attachments={composer.attachments} onRemove={removeAttachment} />
         <div className="tl-composer-tools">
+          <button type="button" className="tl-press tl-quote-trigger" aria-label="引用会话、技能或插件" title="引用"
+            aria-haspopup="dialog" onClick={() => { haptic('selection'); setQuoteOpen(true); }}>
+            <AtSign size={18} />
+          </button>
           <button type="button" className="tl-press tl-composer-icon" aria-label="拍照" title="拍照"
             disabled={fields.picking}
             style={{ width: 44, minWidth: 44, height: 44, minHeight: 44 }}
