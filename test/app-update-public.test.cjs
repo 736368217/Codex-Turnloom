@@ -166,3 +166,16 @@ test('评估：包名不一致、清单版本不高于已装都不得提示更�
   const same = appUpdate.assessUpdate(release, { versionCode: 92, packageName: 'com.codex.turnloom.app' });
   assert.equal(same.state, 'current');
 });
+
+/**
+ * NB 在复核 2036fcb 时抓到的静默失败：download() 先要 context，未配对时点下载没反应。
+ * 这条钉住"公网分支不需要配对、且不携带令牌"的实现形状（与 app-usability 的 U 系列同法）。
+ */
+test('未配对 + 公网 release：下载入口不得被 context 挡住，且不带机器令牌', () => {
+  const src = fs.readFileSync(path.join(SRC, 'screens', 'SettingsScreen.tsx'), 'utf8');
+  const body = src.slice(src.indexOf('const download = '), src.indexOf('const percent'));
+  assert.match(body, /isPublicUpdateUrl\(release\.apkUrl\)/);
+  assert.match(body, /if \(!isPublic && !context\)/);
+  assert.match(body, /absoluteApkUrl\(context \? context\.target\.origin : ''/);
+  assert.match(body, /token: isPublic \? '' :/);
+});
