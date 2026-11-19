@@ -320,12 +320,16 @@ const MEASURE = `(() => {
   // 真机上那一整列 UUID 就是因为夹具自己编了 preview、把回退路径藏起来了。
   const listRows = Array.from(document.querySelectorAll('.tl-thread-row')).slice(0, 14).map((row) => {
     const title = ((row.querySelector('.tl-thread-title') || {}).textContent || '').trim();
-    const preview = ((row.querySelector('.tl-thread-preview') || {}).textContent || '').trim();
+    const rawPreview = (row.querySelector('.tl-thread-preview') || {}).textContent || '';
+    const preview = rawPreview.trim();
     return {
       title: title.slice(0, 20),
       preview: preview.slice(0, 36),
       looksLikeId: /^[0-9a-f]{8}-[0-9a-f]{4}-/i.test(preview),
       looksLikePath: /^[A-Za-z]:[\\/]|^\\//.test(preview),
+      // 契约（Atlas 8da7029）：单行、≤120 字。带换行会让列表行高低不齐。
+      hasNewline: /[\\r\\n]/.test(rawPreview),
+      tooLong: [...preview].length > 121,
       // 标题本身可能是从第一句推出来的，preview 与标题相同不算泄漏，只记下来。
       duplicatesTitle: preview !== '' && preview === title,
     };
@@ -338,7 +342,7 @@ const MEASURE = `(() => {
     offenders: offenders.slice(0, 12),
     smallTargets: smallTargets.slice(0, 20),
     listRows,
-    badPreviewRows: listRows.filter((row) => row.looksLikeId || row.looksLikePath).length,
+    badPreviewRows: listRows.filter((row) => row.looksLikeId || row.looksLikePath || row.hasNewline || row.tooLong).length,
     tabbar: barRect ? { top: Math.round(barRect.top), bottom: Math.round(barRect.bottom), height: Math.round(barRect.height) } : null,
     composer: composerRect ? { top: Math.round(composerRect.top), bottom: Math.round(composerRect.bottom) } : null,
     text: document.body.innerText.replace(/\\s+/g, ' ').slice(0, 400),
@@ -774,3 +778,4 @@ main().catch(async (error) => {
   if (USE_STACK) stopStack();
   process.exit(1);
 });
+

@@ -138,6 +138,9 @@ threads.forEach((thread, index) => {
   else if (index % 3 === 1) thread.projectId = "pidesktop";
 });
 
+// 「未归类」必须至少有一条真实样本：分组 UI 要求它排最后且默认展开。
+for (const thread of threads.slice(-2)) delete thread.projectId;
+
 const resolved = new Set();
 const approvalsSeen = [];
 const sendsSeen = [];
