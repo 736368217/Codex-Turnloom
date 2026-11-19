@@ -18,7 +18,7 @@ const PUBLIC_HOST_FALLBACK = 'dl.736.de5.net';
 
 export function UpdatePanel() {
   const session = useSessionState();
-  const { state, message, release, progress, source, host, publicError } = useUpdate();
+  const { state, message, release, progress, source, host, publicError, lastCheckedAt } = useUpdate();
   const lastCheckRef = useRef(0);
 
   const check = async (force = false): Promise<void> => {
@@ -28,6 +28,7 @@ export function UpdatePanel() {
     if (!force && now - lastCheckRef.current < 60_000) return;
     lastCheckRef.current = now;
     const prev = updateStore.getState();
+    const startedAt = Date.now();
     setState('checking');
     setMessage('正在检查新版本…');
     setRelease(null);
@@ -35,6 +36,13 @@ export function UpdatePanel() {
       installed: { versionCode: session.appVersionCode, packageName: session.packageName },
       serverContext: currentRequestContext(),
     });
+    // A manual tap that returns the same answer must still be visible as a check:
+    // hold 检查中 for at least half a second and stamp the time it finished.
+    if (force) {
+      const elapsed = Date.now() - startedAt;
+      if (elapsed < 500) await new Promise((resolve) => setTimeout(resolve, 500 - elapsed));
+    }
+    updateStore.setState({ lastCheckedAt: Date.now() });
     setChannel({ source: outcome.source, host: outcome.host, publicError: outcome.publicError });
     if (outcome.state === 'error') {
       // A background check that fails must stay quiet: no red line, no "检查失败"
@@ -121,7 +129,7 @@ export function UpdatePanel() {
           data-qa="update-source"
           style={{ fontSize: 12, lineHeight: '17px', color: COLORS.labelSecondary, marginTop: 4, overflowWrap: 'anywhere' }}
         >
-          {sourceLine}
+          {sourceLine}{lastCheckedAt && state !== 'checking' ? ` · ${new Date(lastCheckedAt).toTimeString().slice(0, 5)} 检查` : ''}
         </div>
         {message && <div style={{ fontSize: 13, lineHeight: '19px', color: state === 'error' ? COLORS.red : COLORS.labelSecondary, marginTop: 6 }}>{message}</div>}
         {state === 'downloading' && (

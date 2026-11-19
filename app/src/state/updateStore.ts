@@ -7,6 +7,9 @@ export const updateStore = createStore({
   message: '',
   release: null as AppUpdateInfo | null,
   progress: { received: 0, total: 0 },
+  // A check that lands on the same answer as the last one still has to look like it
+  // ran; the panel prints this timestamp so "无需更新" never reads as a dead button.
+  lastCheckedAt: 0,
   requestId: '',
   // Which leg answered the last check. The panel prints it; it never guesses URLs.
   source: null as UpdateSource,
