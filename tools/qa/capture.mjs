@@ -253,7 +253,7 @@ const BRIDGE_SHIM = `(() => {
     haptic: () => {},
     setLightBars: () => {},
     openExternalUrl: () => true,
-    downloadUpdate: () => {},
+    downloadUpdate: (requestId, optionsJson) => { window.__TLQA.requests.push({ requestId, url: 'native:downloadUpdate', options: optionsJson }); },
     cancelUpdate: () => {},
     installUpdate: () => {},
     pickAttachments: () => 'unavailable',
@@ -627,6 +627,23 @@ async function runViewport(browser, viewport, report) {
     await clickSelector(page, "button[aria-label='设置']");
     await sleep(700);
     await shot(page, dir, "17-settings", report);
+    // 更新面板在「检查更新 ›」抽屉里；只有开了 QA_UPDATE_* 才多拍一张，
+    // 免得默认截图集和基线对照多出一屏。
+    if (process.env.QA_UPDATE_PUBLIC || process.env.QA_UPDATE_SERVER) {
+      await clickText(page, "检查更新", { selector: "button", optional: true });
+      await sleep(900);
+      await shot(page, dir, "17b-update-panel", report);
+      // 冷启动与手动检查是两条不同的规矩（冷启动不许留红字），两张都要有。
+      await clickText(page, "手动检查更新", { selector: "button", optional: true });
+      await sleep(1200);
+      await shot(page, dir, "17c-update-manual", report);
+      // 「有更新」时必须真的能发起下载：URL 被 allowlist 挡掉会静默返回 null。
+      if (process.env.QA_UPDATE_TAP_DOWNLOAD) {
+        await clickText(page, "下载新版本", { selector: "button", optional: true });
+        await sleep(700);
+        await shot(page, dir, "17d-update-download", report);
+      }
+    }
   }
 
   // --- sheets -------------------------------------------------------------
