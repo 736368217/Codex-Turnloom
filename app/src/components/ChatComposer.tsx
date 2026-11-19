@@ -24,6 +24,7 @@ import {
 import { getModelCatalog, getThreadStatus } from '../state/runtimeStore';
 import { refreshAll } from '../state/dataStore';
 import { currentRequestContext } from '../state/sessionStore';
+import { getSkills, getPlugins, type SkillEntry, type PluginEntry } from '../lib/turnloomApi';
 
 function AttachmentTray({ attachments, onRemove }: { attachments: SendAttachment[]; onRemove: (id: string) => void }) {
   if (!attachments.length) return null;
@@ -233,29 +234,90 @@ export type ComposerFieldsApi = ReturnType<typeof useComposerFields>;
 function QuoteSheet({ open, onClose, onPick }: {
   open: boolean;
   onClose: () => void;
-  onPick: (thread: { id: string; title: string; preview: string }) => void;
+  onPick: (block: string) => void;
 }) {
   const data = useDataState();
+  const [tab, setTab] = useState<'thread' | 'skill' | 'plugin'>('thread');
   const [query, setQuery] = useState('');
+  const [skills, setSkills] = useState<SkillEntry[]>([]);
+  const [plugins, setPlugins] = useState<PluginEntry[]>([]);
+  const [loading, setLoading] = useState(false);
+  const loaded = useRef(false);
   const needle = query.trim().toLowerCase();
-  const rows = (data.threads || [])
+
+  // The menu is read-only and closes: one fetch per open is enough, cached afterwards.
+  useEffect(() => {
+    if (!open || loaded.current) return;
+    loaded.current = true;
+    const context = currentRequestContext();
+    if (!context) return;
+    setLoading(true);
+    void (async () => {
+      const [skillResult, pluginResult] = await Promise.all([getSkills(context), getPlugins(context)]);
+      if (skillResult.ok) {
+        const value = skillResult.data;
+        setSkills(Array.isArray(value) ? value : value.skills || []);
+      }
+      if (pluginResult.ok) {
+        const value = pluginResult.data;
+        setPlugins(Array.isArray(value) ? value : value.plugins || []);
+      }
+      setLoading(false);
+    })();
+  }, [open]);
+
+  const threads = (data.threads || [])
     .map((thread) => ({ id: String(thread.id || ''), title: titleOfThread(thread), preview: previewOfThread(thread) }))
     .filter((row) => !needle || `${row.title} ${row.preview}`.toLowerCase().includes(needle))
     .slice(0, 80);
+  const skillRows = skills
+    .map((row) => ({ name: row.name || '', label: row.displayName || row.name || '', note: row.description || '', uri: row.uri || '' }))
+    .filter((row) => !needle || `${row.label} ${row.note}`.toLowerCase().includes(needle))
+    .slice(0, 200);
+  const pluginRows = plugins
+    .map((row) => ({ name: row.name || '', label: row.displayName || row.name || '', note: row.description || row.marketplace || '', uri: row.uri || '' }))
+    .filter((row) => !needle || `${row.label} ${row.note}`.toLowerCase().includes(needle))
+    .slice(0, 60);
+
   return (
-    <VaulSheet open={open} onOpenChange={(next) => { if (!next) onClose(); }} title="引用会话" subtitle="插入一段纯文本上下文，不会跳转或切换会话">
+    <VaulSheet open={open} onOpenChange={(next) => { if (!next) onClose(); }} title="引用上下文" subtitle="插入一段纯文本，不会跳转或切换会话">
+      <div className="tl-quote-tabs" role="tablist" aria-label="引用类型">
+        {([['thread', '会话'], ['skill', '技能'], ['plugin', '插件']] as const).map(([key, label]) => (
+          <button key={key} type="button" role="tab" aria-selected={tab === key}
+            className={`tl-quote-tab tl-press${tab === key ? ' is-active' : ''}`}
+            onClick={() => { haptic('selection'); setTab(key); }}>
+            {label}
+          </button>
+        ))}
+      </div>
       <div className="tl-quote-search">
         <Search size={15} aria-hidden="true" />
-        <input aria-label="搜索要引用的会话" type="search" value={query} placeholder="搜索会话"
+        <input aria-label="搜索要引用的对象" type="search" value={query} placeholder={tab === 'thread' ? '搜索会话' : tab === 'skill' ? '搜索技能' : '搜索插件'}
           onChange={(event) => setQuery(event.target.value)} />
       </div>
-      <div className="tl-quote-list" role="listbox" aria-label="可引用的会话">
-        {rows.length === 0 && <p className="tl-quote-empty">没有可引用的会话</p>}
-        {rows.map((row) => (
+      <div className="tl-quote-list" role="listbox" aria-label="可引用的对象">
+        {tab === 'thread' && threads.length === 0 && <p className="tl-quote-empty">没有可引用的会话</p>}
+        {tab === 'thread' && threads.map((row) => (
           <button key={row.id} type="button" role="option" aria-selected={false} className="tl-quote-row tl-press"
-            onClick={() => { haptic('selection'); onPick(row); }}>
+            onClick={() => { haptic('selection'); onPick(`@会话 ${row.id.slice(0, 8)}「${row.title}」\n> 最近：${row.preview || '（无预览）'}\n`); }}>
             <span className="tl-quote-title">{row.title}</span>
             <span className="tl-quote-preview">{row.preview || '（无预览）'}</span>
+          </button>
+        ))}
+        {tab === 'skill' && (loading && skillRows.length === 0 ? <p className="tl-quote-empty">正在读取技能…</p> : skillRows.length === 0 ? <p className="tl-quote-empty">没有可引用的技能</p> : null)}
+        {tab === 'skill' && skillRows.map((row) => (
+          <button key={`skill-${row.name}`} type="button" role="option" aria-selected={false} className="tl-quote-row tl-press"
+            onClick={() => { haptic('selection'); onPick(`@技能 ${row.label}\nuri: ${row.uri || `skill://${row.name}`}\n`); }}>
+            <span className="tl-quote-title">{row.label}</span>
+            <span className="tl-quote-preview">{row.note || row.uri}</span>
+          </button>
+        ))}
+        {tab === 'plugin' && (loading && pluginRows.length === 0 ? <p className="tl-quote-empty">正在读取插件…</p> : pluginRows.length === 0 ? <p className="tl-quote-empty">没有可引用的插件</p> : null)}
+        {tab === 'plugin' && pluginRows.map((row) => (
+          <button key={`plugin-${row.name}`} type="button" role="option" aria-selected={false} className="tl-quote-row tl-press"
+            onClick={() => { haptic('selection'); onPick(`@插件 ${row.label}\nuri: ${row.uri || `plugin://${row.name}`}\n`); }}>
+            <span className="tl-quote-title">{row.label}</span>
+            <span className="tl-quote-preview">{row.note || row.uri}</span>
           </button>
         ))}
       </div>
@@ -281,12 +343,11 @@ export function ComposerFields({ fields, primary, enterKeyHint = 'send', autoFoc
   const inputRef = useRef<HTMLTextAreaElement>(null);
   // The quote block is plain text at the caret: the agent reads it as context, nothing
   // in the host turns it into a link or a conversation switch.
-  const insertQuote = (thread: { id: string; title: string; preview: string }) => {
+  const insertQuote = (block: string) => {
     const text = composer.text;
     const el = inputRef.current;
     const start = el && typeof el.selectionStart === 'number' ? el.selectionStart : text.length;
     const end = el && typeof el.selectionEnd === 'number' ? el.selectionEnd : text.length;
-    const block = `@会话 ${thread.id.slice(0, 8)}「${thread.title}」\n> 最近：${thread.preview || '（无预览）'}\n`;
     const next = `${text.slice(0, start)}${block}${text.slice(end)}`;
     setComposerText(next);
     setQuoteOpen(false);

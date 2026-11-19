@@ -484,6 +484,14 @@ export const getProjects = (context: RequestContext): Promise<ApiResult<{ projec
 export const getAccount = (context: RequestContext): Promise<ApiResult<AccountInfo>> => get(context, API_ENDPOINTS.account);
 export const getAppUpdate = (context: RequestContext): Promise<ApiResult<AppUpdateInfo>> => get(context, API_ENDPOINTS.appUpdate, undefined, 12_000);
 
+/** 引用菜单的取数：技能/插件都只读，插件用 compact 形状（不带内联图标，4.7 KB）。 */
+export interface SkillEntry { name?: string; displayName?: string; description?: string; uri?: string }
+export interface PluginEntry { name?: string; displayName?: string; description?: string; marketplace?: string; uri?: string }
+export type SkillList = { skills?: SkillEntry[] } | SkillEntry[];
+export type PluginList = { plugins?: PluginEntry[] } | PluginEntry[];
+export const getSkills = (context: RequestContext): Promise<ApiResult<SkillList>> => get(context, '/api/skills');
+export const getPlugins = (context: RequestContext): Promise<ApiResult<PluginList>> => get(context, '/api/plugins', { compact: 1 });
+
 /**
  * 公开更新检查：不需要配对或有效机器码，未连接电脑时也能拿到最新版本信息。
  * 只读版本号 / SHA / 下载路径，不含任何会话或凭据数据。

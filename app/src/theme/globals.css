@@ -704,16 +704,28 @@ button:focus-visible, a:focus-visible { outline: 2px solid var(--tl-blue); outli
 
 /* Model + 引用 sit above the input (2.2.4): the input line keeps the room the
    model trigger used to take at its left. */
+.tl-model-trigger::before { content: ''; position: absolute; inset: -2px 0; }
 .tl-composer-top {
   display: flex; align-items: center; gap: 6px;
   padding: 2px 2px 0; min-width: 0;
 }
 .tl-quote-trigger {
   display: inline-flex; align-items: center; gap: 4px;
+  position: relative;
   min-height: 40px; padding: 0 10px; border: 0; border-radius: 12px;
   background: transparent; color: var(--tl-label-secondary);
   font-size: 13px; font-weight: 500;
 }
+/* Visible 40px, touch 44px — same rule as the list capsules. */
+.tl-quote-trigger::before { content: ''; position: absolute; inset: -2px 0; }
+.tl-quote-tabs { display: flex; gap: 8px; justify-content: center; padding: 2px 16px 10px; }
+.tl-quote-tab {
+  position: relative; height: 36px; padding: 0 18px; border: 0; border-radius: 999px;
+  background: var(--tl-fill-secondary); color: var(--tl-label-secondary);
+  font-size: 14px; font-weight: 600;
+}
+.tl-quote-tab::before { content: ''; position: absolute; inset: -4px 0; }
+.tl-quote-tab.is-active { background: var(--tl-label-primary); color: #FFFFFF; }
 .tl-quote-trigger:active { background: var(--tl-fill-secondary); }
 .tl-quote-search {
   display: flex; align-items: center; gap: 8px; margin: 4px 16px 8px;
@@ -739,6 +751,7 @@ button:focus-visible, a:focus-visible { outline: 2px solid var(--tl-blue); outli
 
 /* Quiet text control that shows the real current model and effort. */
 .tl-model-trigger {
+  position: relative;
   display: inline-flex;
   align-items: center;
   gap: 5px;
@@ -837,6 +850,7 @@ button:focus-visible, a:focus-visible { outline: 2px solid var(--tl-blue); outli
 
 .tl-composer-tray::-webkit-scrollbar { display: none; }
 
+/* The remove affordance keeps a small glyph but a 44px hit box. */.tl-composer-attachment button { position: relative; }.tl-composer-attachment button::before { content: ''; position: absolute; inset: -8px; }
 .tl-composer-attachment {
   display: flex;
   align-items: center;
