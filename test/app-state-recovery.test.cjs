@@ -245,3 +245,72 @@ test('a late message history page is discarded after changing service', async ()
   assert.deepEqual(h.data.dataStore.getState().messagesByThread, {});
   assert.deepEqual(h.data.dataStore.getState().messagePages, {});
 });
+
+// -- multi-machine registry -------------------------------------------------
+
+function byHost() {
+  return (route, req) => {
+    if (route !== '/api/harnesses') return { ok: true };
+    const host = new URL(req.url).host;
+    const laptop = host.startsWith('192.168.50.43');
+    return {
+      ok: true, protocol: 'codex-turnloom', version: 2,
+      machineId: laptop ? 'laptop' : 'machine',
+      machineName: laptop ? 'Laptop' : 'Computer',
+      defaultHarnessId: 'codex',
+      harnesses: [{ id: 'codex', name: 'Codex', kind: 'codex', token: laptop ? 'laptop-token' : 'code-token', defaultHarness: true, online: true }],
+    };
+  };
+}
+
+test('a second pairing is remembered and switching back restores the first machine', async () => {
+  const h = harness();
+  h.setReply(byHost());
+  assert.equal(await h.session.connectWithPairing(h.pairing), true);
+  const second = { ...h.pairing, serverUrl: 'http://192.168.50.43:8787', machineToken: 'laptop-machine-token' };
+  assert.equal(await h.session.connectWithPairing(second), true);
+  assert.deepEqual(h.session.sessionStore.getState().machines.map(m => [m.id, m.active]), [['machine', false], ['laptop', true]]);
+  assert.equal(h.session.sessionStore.getState().machineId, 'laptop');
+
+  assert.equal(await h.session.switchMachine('machine'), true);
+  const state = h.session.sessionStore.getState();
+  assert.equal(state.machineId, 'machine');
+  assert.equal(state.harnessToken, 'code-token');
+  assert.deepEqual(state.machines.map(m => [m.id, m.active]), [['machine', true], ['laptop', false]]);
+  const stored = JSON.parse(h.storage.get('turnloom.machine.v2'));
+  assert.equal(stored.version, 3);
+  assert.equal(stored.machines.length, 2);
+  assert.equal(stored.activeMachineId, 'machine');
+  assert.ok(stored.machines.every(m => typeof m.machineToken === 'string' && m.machineToken.length > 0));
+});
+
+test('forgetting the active machine falls back to the remaining one, not the pairing screen', async () => {
+  const h = harness();
+  h.setReply(byHost());
+  await h.session.connectWithPairing(h.pairing);
+  await h.session.connectWithPairing({ ...h.pairing, serverUrl: 'http://192.168.50.43:8787', machineToken: 'laptop-machine-token' });
+  h.session.forgetMachine('laptop');
+  const state = h.session.sessionStore.getState();
+  assert.equal(state.machines.length, 1);
+  assert.equal(state.machineId, 'machine');
+  assert.equal(state.status, 'checking', 'the remaining machine is revalidated before it is trusted');
+  assert.equal(JSON.parse(h.storage.get('turnloom.machine.v2')).activeMachineId, 'machine');
+  await new Promise(resolve => setTimeout(resolve, 150));
+  assert.equal(h.session.sessionStore.getState().status, 'ready');
+  assert.equal(h.session.sessionStore.getState().harnessToken, 'code-token');
+});
+
+test('a legacy single-machine value hydrates as a one-entry registry', () => {
+  const h = harness();
+  h.storage.set('turnloom.machine.v2', JSON.stringify({
+    machineId: 'legacy', machineName: 'Old PC', serverUrl: 'http://192.168.50.44:8787',
+    machineToken: 'legacy-token',
+    harnesses: [{ id: 'codex', name: 'Codex', token: 'legacy-harness-token', kind: 'codex', defaultHarness: true, online: true }],
+    defaultHarnessId: 'codex',
+  }));
+  const saved = h.session.hydrateSession();
+  assert.equal(saved.machineId, 'legacy');
+  const state = h.session.sessionStore.getState();
+  assert.equal(state.machines.length, 1);
+  assert.deepEqual(state.machines[0], { id: 'legacy', name: 'Old PC', host: '192.168.50.44:8787', active: true, harnessCount: 1, lastUsedAt: null });
+});

@@ -13,27 +13,28 @@ import { tabStore, closeDetail } from './tabStore';
 import { closeSheet } from './sheetStore';
 import { APP_IDENTITY } from '../theme/optionATokens';
 import {
-  normalizeBaseUrl, normalizeDiscovery, connectionErrorMessage,
+  normalizeDiscovery, connectionErrorMessage,
   type Harness, type MachinePairing,
 } from '../lib/machinePairing';
+import {
+  parseRegistry, serializeRegistry, upsertMachine, removeMachine, machineKey,
+  activeMachine, machineSummaries,
+  type PersistedMachine, type MachineRegistry, type MachineSummary,
+} from '../lib/machineRegistry';
 import {
   discoverHarnesses, verifyHarness, setActiveRequestScope, getActiveGeneration,
   getActiveScope, type RequestContext,
 } from '../lib/turnloomApi';
 
+// The key keeps its historical name on purpose: QA harnesses
+// (capture / check-redesign / check-pinned-group) seed `turnloom.machine.v2`.
+// The stored value is shape-versioned and a legacy single object still parses.
 const STORAGE_KEY = 'turnloom.machine.v2';
 const CACHE_PREFIX = 'turnloom.cache.v2.';
 
 export type ConnectionStatus = 'unpaired' | 'checking' | 'connecting' | 'ready' | 'error' | 'reconnecting';
 
-export interface PersistedMachine {
-  machineId: string;
-  machineName: string;
-  serverUrl: string;
-  machineToken: string;
-  harnesses: Harness[];
-  defaultHarnessId: string;
-}
+export type { PersistedMachine, MachineSummary } from '../lib/machineRegistry';
 
 export interface SessionState {
   status: ConnectionStatus;
@@ -42,6 +43,8 @@ export interface SessionState {
   serverUrl: string;
   machineToken: string;
   harnesses: Harness[];
+  /** All paired machines for the device card; only the active one is verified live. */
+  machines: MachineSummary[];
   harnessId: string;
   harnessName: string;
   harnessToken: string;
@@ -62,7 +65,7 @@ export interface SessionState {
 export const sessionStore = createStore<SessionState>({
   status: 'unpaired',
   machineId: '', machineName: '', serverUrl: '', machineToken: '',
-  harnesses: [], harnessId: '', harnessName: '', harnessToken: '',
+  harnesses: [], machines: [], harnessId: '', harnessName: '', harnessToken: '',
   scope: '', generation: 0, online: false, error: '',
   appVersion: APP_IDENTITY.versionName, appVersionCode: APP_IDENTITY.versionCode,
   packageName: APP_IDENTITY.applicationId,
@@ -73,32 +76,20 @@ export const sessionStore = createStore<SessionState>({
 /** Monotonic id: a connection attempt interrupted by a newer one is ignored. */
 let transitionSeq = 0;
 
-function readPersisted(): PersistedMachine | null {
-  try {
-    const raw = secureGet(STORAGE_KEY);
-    if (!raw) return null;
-    const value = JSON.parse(raw) as Partial<PersistedMachine>;
-    const serverUrl = normalizeBaseUrl(String(value.serverUrl || ''));
-    const machineToken = typeof value.machineToken === 'string' ? value.machineToken.trim() : '';
-    if (!serverUrl || !machineToken || !Array.isArray(value.harnesses) || value.harnesses.length === 0) return null;
-    const harnesses = value.harnesses.filter((item): item is Harness =>
-      Boolean(item && typeof item.id === 'string' && typeof item.name === 'string' && typeof item.token === 'string'));
-    if (harnesses.length === 0) return null;
-
-    const defaultHarnessId = harnesses.some((h) => h.id === value.defaultHarnessId)
-      ? String(value.defaultHarnessId) : harnesses[0].id;
-    return {
-      machineId: String(value.machineId || ''),
-      machineName: String(value.machineName || '我的机器'),
-      serverUrl, machineToken, harnesses, defaultHarnessId,
-    };
-  } catch {
-    return null;
-  }
+function readRegistry(): MachineRegistry | null {
+  try { return parseRegistry(secureGet(STORAGE_KEY)); } catch { return null; }
 }
 
-function persist(machine: PersistedMachine): void {
-  try { secureSet(STORAGE_KEY, JSON.stringify(machine)); } catch { /* secure storage is best effort */ }
+function persistRegistry(registry: MachineRegistry): void {
+  try { secureSet(STORAGE_KEY, serializeRegistry(registry)); } catch { /* secure storage is best effort */ }
+}
+
+function readPersisted(): PersistedMachine | null {
+  return activeMachine(readRegistry());
+}
+
+function machinePinned(machine: PersistedMachine): void {
+  authorizeNativeOrigin(machine.serverUrl);
 }
 function authorizeNativeOrigin(serverUrl: string): void {
   try { secureSet('turnloom.serverUrl', serverUrl); } catch { /* browser fallback and native bridge both fail closed */ }
@@ -152,8 +143,10 @@ export function setOfflineCacheEnabled(enabled: boolean): void {
   try { secureSet('turnloom.offlineCache.v2', enabled ? 'true' : 'false'); } catch { /* best effort */ }
   sessionStore.setState({ offlineCacheEnabled: enabled });
   if (!enabled) {
-    const state = sessionStore.getState();
-    for (const h of state.harnesses) secureRemove(cacheKeyFor(scopeFor(state.machineId, h.id), 'threads'));
+    // Disabling the offline cache must not leave another machine's threads behind.
+    for (const machine of readRegistry()?.machines || []) {
+      for (const h of machine.harnesses) secureRemove(cacheKeyFor(scopeFor(machine.machineId, h.id), 'threads'));
+    }
   }
 }
 export function markSynced(): void { sessionStore.setState({ lastSyncAt: Date.now() }); }
@@ -164,12 +157,13 @@ export function setConnectionError(message: string, status: ConnectionStatus = '
 /** Hydrate a persisted candidate, but leave the app locked until verified. */
 export function hydrateSession(): PersistedMachine | null {
   transitionSeq += 1;
-  const machine = readPersisted();
+  const registry = readRegistry();
+  const machine = activeMachine(registry);
   const cacheEnabled = secureGet('turnloom.offlineCache.v2') !== 'false';
   if (!machine) {
     setActiveRequestScope('unpaired');
     sessionStore.setState({
-      status: 'unpaired', offlineCacheEnabled: cacheEnabled,
+      status: 'unpaired', offlineCacheEnabled: cacheEnabled, machines: machineSummaries(registry),
       ...harnessPatch(null, 'unpaired', getActiveGeneration()),
     });
     return null;
@@ -179,7 +173,7 @@ export function hydrateSession(): PersistedMachine | null {
     status: 'checking',
     machineId: machine.machineId, machineName: machine.machineName,
     serverUrl: machine.serverUrl, machineToken: machine.machineToken,
-    harnesses: machine.harnesses,
+    harnesses: machine.harnesses, machines: machineSummaries(registry),
     ...harnessPatch(null, 'revalidate', getActiveGeneration()),
     online: false, error: '', offlineCacheEnabled: cacheEnabled,
   });
@@ -197,9 +191,33 @@ function manualPairingFor(machine: PersistedMachine): MachinePairing {
 
 /** Revalidate the machine + default harness on every cold/foreground start. */
 export async function revalidatePersisted(machine: PersistedMachine): Promise<boolean> {
+  return revalidateMachine(machine, ++transitionSeq, 'checking');
+}
+
+/**
+ * Switch to another paired machine. The machine was already verified when it
+ * was paired, but its addresses/tokens may have rotated since, so this runs the
+ * same discovery + health gate as a foreground revalidation.
+ */
+export async function switchMachine(id: string): Promise<boolean> {
+  const registry = readRegistry();
+  const machine = registry?.machines.find((item) => machineKey(item) === id) || null;
+  if (!machine) return false;
+  const state = sessionStore.getState();
+  if (machineKey(machine) === machineKey({ machineId: state.machineId, serverUrl: state.serverUrl })
+    && state.status === 'ready') return true;
   const attempt = ++transitionSeq;
+  sessionStore.setState({ status: 'reconnecting', error: '', online: false, machines: machineSummaries(registry) });
+  return revalidateMachine(machine, attempt, 'reconnecting');
+}
+
+async function revalidateMachine(
+  machine: PersistedMachine,
+  attempt: number,
+  status: 'checking' | 'reconnecting',
+): Promise<boolean> {
   setActiveRequestScope('revalidate');
-  sessionStore.setState({ status: 'checking', error: '', online: false });
+  sessionStore.setState({ status, error: '', online: false });
   authorizeNativeOrigin(machine.serverUrl);
   const discovered = await discoverHarnesses(
     { serverUrl: machine.serverUrl, machineToken: machine.machineToken }, 'revalidate',
@@ -295,12 +313,14 @@ async function activateMachine(
     closeSheet();
     tabStore.setState({ threadsQuery: '', threadsFilter: 'all' });
   }
-  persist({ ...machine, defaultHarnessId: harness.id });
+  const registry = upsertMachine(readRegistry(), { ...machine, defaultHarnessId: harness.id });
+  persistRegistry(registry);
+  machinePinned(machine);
   sessionStore.setState({
     status: 'ready',
     machineId: machine.machineId, machineName: machine.machineName,
     serverUrl: machine.serverUrl, machineToken: machine.machineToken,
-    harnesses: machine.harnesses,
+    harnesses: machine.harnesses, machines: machineSummaries(registry),
     ...harnessPatch(harness, expectedScope, expectedGeneration),
     online: true, error: '',
     ...(revalidated ? { revalidatedAt: Date.now() } : {}),
@@ -343,24 +363,63 @@ export function stopConnecting(message = '已停止连接。'): void {
     status: paired ? 'error' : 'unpaired',
     online: false,
     error: message,
-    ...(paired ? {} : { harnesses: [], serverUrl: '', machineToken: '' }),
+    ...(paired ? {} : { harnesses: [], machines: [], serverUrl: '', machineToken: '' }),
   });
 }
 
 export function unpair(): void {
+  const state = sessionStore.getState();
+  forgetMachine(machineKey({ machineId: state.machineId, serverUrl: state.serverUrl }));
+}
+
+/**
+ * Forget one paired machine (the active one by default). Its thread cache is
+ * removed; when other machines remain, the most recently used one becomes
+ * active instead of dropping the user back to the pairing screen.
+ */
+export function forgetMachine(id?: string): void {
   transitionSeq += 1;
   const previous = sessionStore.getState();
-  for (const h of previous.harnesses) secureRemove(cacheKeyFor(scopeFor(previous.machineId, h.id), 'threads'));
+  const registry = readRegistry();
+  const targetKey = id || machineKey({ machineId: previous.machineId, serverUrl: previous.serverUrl });
+  const target = registry?.machines.find((item) => machineKey(item) === targetKey) || null;
+  for (const h of target?.harnesses || previous.harnesses) {
+    secureRemove(cacheKeyFor(scopeFor(target?.machineId || previous.machineId, h.id), 'threads'));
+  }
   closeDetail();
   closeSheet();
-  secureRemove(STORAGE_KEY);
-  secureRemove('turnloom.serverUrl');
-  setActiveRequestScope('unpaired');
+
+  const remaining = registry ? removeMachine(registry, targetKey) : null;
+  const next = activeMachine(remaining);
+  if (!remaining || !next) {
+    secureRemove(STORAGE_KEY);
+    secureRemove('turnloom.serverUrl');
+    setActiveRequestScope('unpaired');
+    sessionStore.setState({
+      status: 'unpaired', machineId: '', machineName: '', serverUrl: '', machineToken: '',
+      harnesses: [], machines: [], ...harnessPatch(null, 'unpaired', getActiveGeneration()),
+      online: false, error: '', lastSyncAt: null, revalidatedAt: null,
+    });
+    return;
+  }
+
+  persistRegistry(remaining);
+  if (targetKey !== registry?.activeMachineId) {
+    // A non-active machine was forgotten: the current session stays untouched.
+    sessionStore.setState({ machines: machineSummaries(remaining) });
+    return;
+  }
+  machinePinned(next);
+  setActiveRequestScope('revalidate');
   sessionStore.setState({
-    status: 'unpaired', machineId: '', machineName: '', serverUrl: '', machineToken: '',
-    harnesses: [], ...harnessPatch(null, 'unpaired', getActiveGeneration()),
-    online: false, error: '', lastSyncAt: null, revalidatedAt: null,
+    status: 'checking',
+    machineId: next.machineId, machineName: next.machineName,
+    serverUrl: next.serverUrl, machineToken: next.machineToken,
+    harnesses: next.harnesses, machines: machineSummaries(remaining),
+    ...harnessPatch(null, 'revalidate', getActiveGeneration()),
+    online: false, error: '', lastSyncAt: null,
   });
+  void revalidatePersisted(next);
 }
 
 export function isVerified(): boolean { return sessionStore.getState().status === 'ready'; }
