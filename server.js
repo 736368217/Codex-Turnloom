@@ -3365,20 +3365,25 @@ async function threadsWithPreview(rows) {
   const now = Date.now();
   const limit = Math.min(rows.length, THREAD_PREVIEW_MAX_ROWS);
   const out = rows.slice();
-  for (let index = 0; index < limit; index += 1) {
+  const resolveRow = async (index) => {
     const row = out[index];
-    if (row.preview) continue;
+    if (row.preview) return;
     const key = `${row.id}:${Number(row.updatedAtMs) || 0}`;
     const cached = threadPreviewCache.get(key);
     if (cached && now - cached.at < THREAD_PREVIEW_CACHE_MS) {
       out[index] = { ...row, preview: cached.text };
-      continue;
+      return;
     }
     let text = "";
     try { text = await threadPreviewFromRollout(row); } catch { text = ""; }
     if (threadPreviewCache.size > 2000) threadPreviewCache.clear();
     threadPreviewCache.set(key, { text, at: now });
     out[index] = { ...row, preview: text };
+  };
+  // 8 at a time: a cold page is 60 rollout tails, sequential reads make the
+  // first list render visibly slower on spinning disks.
+  for (let start = 0; start < limit; start += 8) {
+    await Promise.all(Array.from({ length: Math.min(8, limit - start) }, (_, offset) => resolveRow(start + offset)));
   }
   return out;
 }
