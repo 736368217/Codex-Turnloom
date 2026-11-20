@@ -424,7 +424,7 @@ try {
       });
       const active = cards().find((c) => c.getAttribute('data-active') === 'true');
       return {
-        alerts: visible.map((el) => ({ cls: String(el.className).slice(0, 40), text: txt(el).slice(0, 60) })),
+        alerts: visible.map((el) => ({ cls: String(el.className), text: txt(el).slice(0, 60) })),
         currentCard: active ? txt(active).slice(0, 60) : null,
       };
     })()`);
