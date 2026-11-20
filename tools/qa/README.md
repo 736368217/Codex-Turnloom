@@ -26,6 +26,21 @@ node tools/qa/check-redesign.mjs --require   # 控件必须在；缺失算失败
 
 契约：视图切换是 `role="tablist"` + `role="tab"`（文字「按时间」「按项目」），指示器命中 `[data-seg-thumb]` / `.tl-seg-pill` / `.tl-seg-thumb` / class 含 `thumb|indicator|pill` 之一。换 DOM 不用改脚本，保住这两条即可。
 
+### 设备面板：第二条门禁（`check-226-device.mjs`）
+
+`check-redesign.mjs` 管几何与动画；设备树的「记得住两台、单值、只开一层、失败语义」由 `check-226-device.mjs` 判——它播种两台已配对电脑（A = 视觉夹具，B = 报自己身份的代理，可 `--mode fail` 返 503）。
+
+```powershell
+node tools/qa/check-226-device.mjs --mode ok   --width 390   # 两台在场，切过去成功
+node tools/qa/check-226-device.mjs --mode fail --width 390   # B 返 503：当前卡不变、提示带原因
+```
+
+**出包门禁要两条都绿**：`84 PASS / 0 FAIL` 里不含「`data-machine` 只挂 `.tl-platblock`」和「失败提示带原因」，那两格在这条脚本里，别让前者的绿盖过后者的红。
+
+### 量边界：一把尺子量两边
+
+headless Chromium 的 `elementFromPoint` 把每个盒子的上沿提前约 **0.95px**（300px 处放一个纯黑 div，它从 299.05 就开始命中），而截图里它仍从 300 画起。所以**不要拿 `getBoundingClientRect()` 当几何基准**——正确的实现会被判成「越出 1px」。做法：用同一把尺子量两侧，逐 0.1px 扫出元素的首末行，再把对手元素临时关掉（例如命中带的 `::before`）扫它自己的首末行，比两侧差值；声明侧另给一条精确判据（`::before -3px` → 带高 44、越出 上 0 / 下 0）。
+
 ## 2.2.1 发送链路：故障 E2E 与真实照片压缩
 
 ```powershell
