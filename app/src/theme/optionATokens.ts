@@ -63,8 +63,8 @@ export const APP_IDENTITY = {
   label: 'Codex-Turnloom',
   applicationId: 'com.codex.turnloom.app',
   namespace: 'com.codex.turnloom.app',
-  versionName: '2.2.6',
-  versionCode: 95,
+  versionName: '2.2.7',
+  versionCode: 96,
   entry: 'file:///android_asset/public/index.html',
 } as const;
 
