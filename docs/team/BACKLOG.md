@@ -52,3 +52,8 @@
 
 15. **未选中电脑卡同时有「切换」pill 和 `⋯`**：比报告原型多一个次级标签。2.2.6 保留原样，等 Human 真机上手再定是去掉 pill（整卡可点已经是切换）还是保留。**验收**：Human 一句判断后按结论收一处；机器判据已有（点整卡 = `switchMachine`）。证据：NB3 09:45 视觉复核、报告 §3。
 
+## H. native-shell 质量门禁（2026-11-20 首次补跑）
+
+16. **`lintDebug` 有 2 个 `NewApi` 错误，以前从没跑过 lint**：`native-shell/app/src/main/res/values/styles.xml:12` 的 `android:windowLightNavigationBar` 要 API 27、`:16` 的 `android:windowOptOutEdgeToEdgeEnforcement` 要 API 35，而 `minSdk 26`——两条都放在基础 `values/` 里。运行时旧版本会忽略未知属性，所以**不改变已发布包的行为**，但 `gradlew lintDebug` 直接 abort（2 errors / 40 warnings）。**验收**：把两条分别挪进 `values-v27/styles.xml`、`values-v35/styles.xml`（或给条目加 `tools:targetApi`），`lintDebug` 转绿；并考虑把 lint 纳入出包脚本（现在只做 `assembleDebug`）。同一轮补跑的 `testDebugUnitTest` = **23 tests / 0 failures**（`AttachmentPickSessionTest` 4、`BridgeContractTest` 15、`WebViewStartupTest` 4），这一格现在可以宣称通过。注意：这轮不要在 2.2.6 发布途中改 `res/`——改资源就换 APK 字节，等 2.2.7。
+
+
