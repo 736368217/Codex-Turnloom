@@ -1,0 +1,624 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Turnloom 设计轮 · 2026-11-20</title>
+<style>
+  :root{
+    --canvas:#F2F2F7; --surface:#FFFFFF; --sep:#E5E5EA; --label:#000000;
+    --label2:#8E8E93; --label3:#AEAEB2; --blue:#007AFF; --red:#FF3B30; --green:#34C759;
+    --track:#E9E9EE; --radius:18px;
+    --shadow:0 1px 3px rgba(0,0,0,.06),0 8px 24px -12px rgba(0,0,0,.12);
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;padding:0;background:#EFEFF4;color:var(--label);
+    font:15px/1.65 -apple-system,BlinkMacSystemFont,"SF Pro Text","PingFang SC","Microsoft YaHei",system-ui,sans-serif;
+    -webkit-font-smoothing:antialiased}
+  .wrap{max-width:760px;margin:0 auto;padding:28px 18px 80px}
+  h1{font-size:26px;line-height:1.25;margin:0 0 6px;letter-spacing:-.4px}
+  h2{font-size:19px;margin:44px 0 10px;letter-spacing:-.2px}
+  h3{font-size:15px;margin:22px 0 8px}
+  p{margin:9px 0}
+  .meta{color:var(--label2);font-size:13px;margin-bottom:22px}
+  .lede{background:var(--surface);border-radius:var(--radius);padding:18px 18px 16px;box-shadow:var(--shadow);margin:0 0 8px}
+  .lede h2{margin-top:0}
+  .kicker{display:inline-block;font-size:11px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--blue);margin-bottom:6px}
+  .lede ol{margin:8px 0 0;padding-left:20px}
+  .lede li{margin:6px 0}
+  .cards{display:grid;gap:12px}
+  .card{background:var(--surface);border-radius:var(--radius);padding:16px 18px;box-shadow:var(--shadow)}
+  .card h4{margin:0 0 6px;font-size:15px}
+  .card p{margin:4px 0;color:#3C3C43;font-size:14px}
+  .verdict{display:inline-flex;align-items:center;gap:6px;font-size:11px;font-weight:700;padding:3px 9px;border-radius:999px;letter-spacing:.02em}
+  .v-cut{background:#FFE8E6;color:#B42318}
+  .v-merge{background:#FFF3D6;color:#7A4D00}
+  .v-keep{background:#E3F7E8;color:#186A3B}
+  .v-change{background:#E4EFFF;color:#0A4FA8}
+  table{width:100%;border-collapse:collapse;background:var(--surface);border-radius:var(--radius);overflow:hidden;box-shadow:var(--shadow);font-size:13.5px}
+  th,td{text-align:left;padding:11px 12px;vertical-align:top;border-bottom:1px solid var(--sep)}
+  th{background:#FAFAFC;font-size:12px;color:var(--label2);font-weight:600;white-space:nowrap}
+  tr:last-child td{border-bottom:0}
+  td b{font-weight:600}
+  code{font:12.5px/1.5 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;background:#F2F2F7;padding:1px 5px;border-radius:5px}
+  .frames{display:flex;gap:20px;flex-wrap:wrap;align-items:flex-start;margin-top:14px}
+  .frame-col{flex:1 1 320px;min-width:300px;max-width:400px}
+  .frame-cap{font-size:12px;color:var(--label2);margin:0 0 8px;font-weight:600}
+  .phone{background:var(--canvas);border-radius:34px;padding:0;overflow:hidden;box-shadow:0 2px 4px rgba(0,0,0,.08),0 24px 60px -20px rgba(0,0,0,.28);border:1px solid rgba(0,0,0,.04);font-size:14px}
+  .statusbar{height:30px;display:flex;align-items:center;justify-content:space-between;padding:0 22px;font-size:11px;font-weight:600;color:#3C3C43}
+  .ph{padding:0 16px}
+  /* ---------- header ---------- */
+  .devbar{display:flex;align-items:center;gap:10px;background:var(--surface);border-radius:14px;padding:9px 12px;box-shadow:0 1px 2px rgba(0,0,0,.05);margin-top:2px}
+  .devbar .txt{flex:1;min-width:0}
+  .devbar .nm{font-size:14px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .devbar .sub{font-size:11px;color:var(--label2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .dot{width:8px;height:8px;border-radius:50%;background:var(--green);flex:0 0 auto;box-shadow:0 0 0 3px rgba(52,199,89,.16)}
+  .modelchip{display:inline-flex;align-items:center;gap:3px;height:27px;padding:0 8px;border-radius:999px;background:#EEF4FF;color:var(--blue);font-size:11px;font-weight:600;white-space:nowrap;flex:0 0 auto}
+  /* ---------- laptop art ---------- */
+  .laptop{width:46px;flex:0 0 auto}
+  .laptop .lid{height:30px;border:1.5px solid #C7C7CC;border-radius:4px;background:linear-gradient(160deg,#fff,#ECECF2);position:relative;overflow:hidden;box-shadow:inset 0 1px 0 #fff}
+  .laptop .lid i{position:absolute;inset:4px;border-radius:2px;background:linear-gradient(150deg,rgba(0,122,255,.20),rgba(52,199,89,.16))}
+  .laptop .base{height:3px;margin:2px -3px 0;border-radius:0 0 3px 3px;background:#D3D3DA}
+  /* ---------- segmented (图1) ---------- */
+  .seg{position:relative;display:grid;grid-auto-flow:column;grid-auto-columns:minmax(88px,1fr);width:max-content;max-width:100%;height:44px;padding:3px;border-radius:999px;background:var(--track);margin:12px auto 10px;user-select:none}
+  .seg-thumb{position:absolute;top:3px;left:3px;height:calc(100% - 6px);width:calc(50% - 3px);border-radius:999px;background:#fff;
+    box-shadow:0 1px 2px rgba(0,0,0,.10),0 3px 8px -4px rgba(0,0,0,.18),0 0 0 .5px rgba(0,0,0,.03);
+    transform:translateX(calc(var(--i,0) * 100%));transition:transform .30s cubic-bezier(.32,.72,0,1)}
+  .seg button{position:relative;z-index:1;border:0;background:transparent;font:inherit;font-size:13px;font-weight:500;color:#3C3C43;opacity:.62;padding:0;min-height:0;transition:opacity .2s ease,font-weight .2s}
+  .seg button.on{opacity:1;font-weight:600;color:#000}
+  .seg-note{font-size:11px;color:var(--label2);margin:-4px 0 12px}
+  /* ---------- running strip ---------- */
+  .runstrip{display:flex;align-items:center;gap:8px;background:linear-gradient(180deg,#F0F7FF,#EAF3FF);border-radius:12px;padding:9px 12px;margin:0 0 10px;color:#0A4FA8;font-size:12.5px;font-weight:600}
+  .spin{width:11px;height:11px;border-radius:50%;border:2px solid rgba(0,122,255,.25);border-top-color:var(--blue);animation:spin .9s linear infinite}
+  @keyframes spin{to{transform:rotate(360deg)}}
+  .runstrip .go{margin-left:auto;color:var(--blue);font-weight:600;display:inline-flex;align-items:center;gap:2px}
+  .ico{display:inline-block;flex:0 0 auto;vertical-align:middle}
+  .ico svg{display:block}
+  /* ---------- rows ---------- */
+  .rows{background:var(--surface);border-radius:14px;overflow:hidden;box-shadow:0 1px 2px rgba(0,0,0,.05)}
+  .row{display:flex;gap:10px;padding:11px 12px;border-bottom:1px solid var(--sep);align-items:center}
+  .row:last-child{border-bottom:0}
+  .row .body{flex:1;min-width:0}
+  .row .t{font-size:14.5px;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .row .m{font-size:11.5px;color:var(--label2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:1px}
+  .row .tt{font-size:11px;color:var(--label3);flex:0 0 auto}
+  .tag{display:inline-flex;align-items:center;gap:4px;font-size:10.5px;font-weight:700;padding:2px 7px;border-radius:999px}
+  .tag-run{background:#E4EFFF;color:#0A4FA8}
+  .tag-wait{background:#FFF3D6;color:#7A4D00}
+  .tabbar2{display:flex;border-top:1px solid rgba(0,0,0,.06);background:rgba(255,255,255,.86);backdrop-filter:blur(20px);padding:6px 0 10px;margin-top:12px}
+  .tabbar2 div{flex:1;text-align:center;font-size:10.5px;font-weight:600;color:var(--label2)}
+  .tabbar2 div.on{color:var(--blue)}
+  .tabbar2 svg{display:block;margin:0 auto 2px}
+  .tabbar2 svg{stroke-width:2}
+  /* ---------- device hub ---------- */
+  .hub-title{display:flex;align-items:center;gap:8px;font-size:17px;font-weight:700;margin:6px 0 2px}
+  .hub-title span{font-size:12px;font-weight:500;color:var(--label2);margin-left:auto}
+  .devstack{display:grid;gap:8px;margin-top:10px}
+  .devcard,.plat{width:100%;text-align:left;font:inherit;color:inherit}
+  .devcard{position:relative;display:flex;align-items:center;gap:11px;background:var(--surface);border-radius:14px;padding:11px 12px;box-shadow:0 1px 2px rgba(0,0,0,.05);border:1.5px solid transparent;transition:transform .22s cubic-bezier(.32,.72,0,1),box-shadow .22s,border-color .22s}
+  .devcard .txt{flex:1;min-width:0}
+  .devcard .nm{font-size:14px;font-weight:600}
+  .devcard .sub{font-size:11px;color:var(--label2);margin-top:1px}
+  .devcard .badge{font-size:10.5px;font-weight:700;color:var(--blue);background:#EEF4FF;border-radius:999px;padding:2px 7px;flex:0 0 auto}
+  .devcard.on{border-color:rgba(0,122,255,.55);box-shadow:0 2px 4px rgba(0,0,0,.06),0 14px 26px -16px rgba(0,122,255,.55);transform:translateY(-1px)}
+  .devcard:not(.on){opacity:.72;transform:scale(.985)}
+  /* hierarchy */
+  .branch{display:grid;grid-template-rows:0fr;transition:grid-template-rows .34s cubic-bezier(.32,.72,0,1)}
+  .branch.open{grid-template-rows:1fr}
+  .branch>.inner{overflow:hidden}
+  .branch .pad{position:relative;padding:8px 0 2px 26px}
+  .spine{position:absolute;left:13px;top:0;bottom:12px;width:1.5px;background:linear-gradient(180deg,rgba(0,122,255,.45),rgba(0,122,255,.12));transform:scaleY(0);transform-origin:top;transition:transform .3s cubic-bezier(.32,.72,0,1) .06s}
+  .branch.open .spine{transform:scaleY(1)}
+  .plat{position:relative;display:flex;align-items:center;gap:10px;background:var(--surface);border-radius:12px;padding:10px 12px;margin-bottom:8px;box-shadow:0 1px 2px rgba(0,0,0,.05);border:1.5px solid transparent;opacity:0;transform:translateY(-4px);transition:opacity .2s ease,transform .22s ease,border-color .2s}
+  .branch.open .plat{opacity:1;transform:none;transition-delay:calc(.08s + var(--k,0) * .05s)}
+  .plat::before{content:'';position:absolute;left:-13px;top:50%;width:13px;height:1.5px;background:rgba(0,122,255,.28)}
+  .plat .kind{font-size:13.5px;font-weight:600;flex:1;min-width:0}
+  .plat .meta{font-size:10.5px;color:var(--label2)}
+  .plat.on{border-color:rgba(0,122,255,.45);background:#FBFDFF}
+  .plat .caret{display:inline-flex;align-items:center;justify-content:center;transition:transform .22s ease;color:var(--label3)}
+  .plat.on .caret{transform:rotate(90deg);color:var(--blue)}
+  .harness{display:grid;grid-template-rows:0fr;transition:grid-template-rows .26s cubic-bezier(.32,.72,0,1)}
+  .harness.open{grid-template-rows:1fr}
+  .harness>.inner2{overflow:hidden}
+  .hrow{display:flex;align-items:center;gap:8px;padding:8px 10px;margin:0 0 6px 12px;background:#F7F7FA;border-radius:10px;font-size:12.5px;opacity:0;transform:translateX(-4px);transition:opacity .18s ease,transform .2s ease}
+  .harness.open .hrow{opacity:1;transform:none;transition-delay:calc(var(--k,0) * .04s)}
+  .hrow .pill{margin-left:auto;font-size:10px;font-weight:700;color:#186A3B;background:#E3F7E8;border-radius:999px;padding:1px 7px}
+  .hrow .pill.off{color:#7A4D00;background:#FFF3D6}
+  /* ---------- diagram ---------- */
+  .flow{display:grid;gap:10px;margin-top:8px}
+  .flow .from,.flow .to{display:flex;align-items:flex-start;gap:10px;background:var(--surface);border-radius:14px;padding:12px 14px;box-shadow:var(--shadow);font-size:13.5px}
+  .flow .lbl{flex:0 0 42px;font-size:11px;font-weight:700;color:var(--label2);padding-top:2px}
+  .arrow{color:var(--label3);text-align:center;font-size:15px;line-height:1}
+  ul.tight{margin:6px 0;padding-left:19px}
+  ul.tight li{margin:4px 0}
+  .note{font-size:12.5px;color:var(--label2);margin-top:8px}
+  .kv{display:grid;grid-template-columns:88px 1fr;gap:6px 10px;font-size:13px;margin-top:6px}
+  .kv dt{color:var(--label2)}
+  .kv dd{margin:0}
+  .foot{margin-top:36px;font-size:12px;color:var(--label2);border-top:1px solid rgba(0,0,0,.08);padding-top:14px}
+  @media (max-width:560px){
+    .frames{margin-left:-12px;margin-right:-12px;gap:14px}
+    .frame-col{max-width:none}
+    .phone{border-radius:0}
+    table,thead,tbody,tr,td{display:block}
+    thead{display:none}
+    table{background:transparent;box-shadow:none;border-radius:0}
+    tr{background:var(--surface);border-radius:var(--radius);box-shadow:var(--shadow);padding:12px 14px;margin-bottom:10px}
+    td{border:0;padding:0 0 8px}
+    td:last-child{padding-bottom:0}
+    td::before{content:attr(data-label);display:block;font-size:10.5px;font-weight:700;letter-spacing:.04em;color:var(--label2);margin-bottom:2px}
+    td[data-label=""]::before{display:none}
+  }
+  @media (max-width:420px){ .wrap{padding:20px 12px 60px} h1{font-size:22px} .frame-col{min-width:0} }
+  @media (prefers-reduced-motion:reduce){ .seg-thumb,.branch,.spine,.plat,.harness,.hrow,.devcard{transition:none!important} }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <div class="kicker">Turnloom · 设计轮</div>
+  <h1>把「切换」做成一件看得懂的事</h1>
+  <div class="meta">2026-11-20 00:45 第三稿 · 依据随包 2.2.5（<code>index-CC0SxfnI.js</code> 784,932 B / <code>18b7bbf</code>）与仓库当前实现 · 只做设计与规范，不改已发布包 · 第三稿补：固定区/滚动区分界、11px 最小字号、命中带实测</div>
+
+  <div class="lede">
+    <h2>先说结论</h2>
+    <ol>
+      <li><b>「按时间/按项目」不是回退了，是从来没做成图1那样。</b>发布版里是两个各自填充的药丸（选中变黑），不是一条 track 里滑动的 thumb。提交 <code>dc07ebb</code> 只改了 CSS 的排布，把它变成「可横滑的药丸条」——字面上满足了「胶囊、可滑」，视觉上不是图1。我当时验收看的是「两个视图各 5 行、44px 命中」，没有对着图1 比控件本身，这是我的漏项。</li>
+      <li><b>「监控」这个 tab 不必要。</b>它四块内容里，三块在别处已经存在且同源（连接状态=头部徽标、会话数=列表长度、运行中=列表状态点）；唯一有行动价值的是「停止运行中的任务」，而那件事应该在你看到那个任务的地方做。</li>
+      <li><b>设备层级要三级，而且一次只露一层</b>：电脑 → 平台（Codex / PI）→ 该平台下的 harness（服务入口）。现在的「切换电脑上的服务」把第二、三层平铺成一个列表，看不出它们属于哪台电脑。</li>
+      <li><b>删一个 tab、补一个、并两处、加一层动画。</b>底栏仍是三项，但「监控」换成「设备」——监控的内容拆进别处，设备树需要自己的安放处（配对、忘记、切换都在那一页）。会话页头部再留一行当前设备（机器 · 平台），保证无论在哪一页都知道自己连的是谁。会话行从三块（状态图标 / 标题+时间 / 预览）收到两行，项目进 meta。</li>
+    </ol>
+  </div>
+
+  <h2>1 · 三判据：必要性 / 便利性 / 易读性</h2>
+  <p>逐块过一遍现在屏幕上真实存在的东西。判据不是「好不好看」，是这三问：这块信息是不是必须存在？要用它的时候够不够顺手？看得懂吗？</p>
+
+  <table>
+    <thead>
+      <tr><th>位置</th><th>现状</th><th>三判据</th><th>决定</th></tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><b>底部「监控」tab</b></td>
+        <td>四组卡片：运行态摘要三宫格（运行中/错误/会话）、距上次同步倒计时、连接状态、运行中的会话+停止、错误与告警、刷新按钮</td>
+        <td>必要性低：三项与别处同源，会出现两处不一致；便利性低：为了停一个任务要先切 tab；易读性中：三个数字没有单位、没有阈值，「3」到底多不多没人知道</td>
+        <td><span class="verdict v-cut">删掉这个 tab</span> 内容三处归位，见第 4 节。数据侧零独有字段，<code>threadsFilter:'running'</code> 已经存在，运行中胶囊直接复用</td>
+      </tr>
+      <tr>
+        <td><b>视图切换</b></td>
+        <td>两个独立药丸，选中项黑底白字（<code>.tl-filter-chip.is-active</code>）</td>
+        <td>必要性高（要切视图）；易读性差：实心黑与 iOS 语义冲突，也读不出「这是一个开关的两侧」</td>
+        <td><span class="verdict v-change">改成图1</span> 单条 track + 滑动 thumb，300ms 跟手动画；控件移出滚动容器</td>
+      </tr>
+      <tr>
+        <td><b>会话页头部</b></td>
+        <td>只有「会话」标题 + 新建 +；当前电脑/平台埋在设置里，不在首屏</td>
+        <td>必要性高（换设备、确认在哪台机器时要看）；便利性低：要进设置才知道；易读性中：看不出隶属关系</td>
+        <td><span class="verdict v-change">加常驻设备行</span> 电脑名 · 平台名 + 在线灯，点进设备页；模型 chip 留在聊天头部</td>
+      </tr>
+      <tr>
+        <td><b>切换服务抽屉</b></td>
+        <td>平铺的 <code>TapRow</code> 列表，标题「切换电脑上的服务」</td>
+        <td>必要性高；<b>层级缺失</b>：看不出这些服务在哪台电脑下，也看不出换过去以后会话、模型会跟着变</td>
+        <td><span class="verdict v-change">三级隶属</span> 电脑卡 → 平台 → harness，选谁才露谁</td>
+      </tr>
+      <tr>
+        <td><b>会话行</b></td>
+        <td>状态图标 + 标题/时间 + 预览；没有项目名，状态含义要靠猜</td>
+        <td>必要性高；易读性中：图标无文字、项目上下文缺失；320 下标题仍被预览挤压</td>
+        <td><span class="verdict v-change">两行</span> 标题 + 时间/项目 meta；只有「运行中 / 待审批 / 出错」出彩色标签</td>
+      </tr>
+      <tr>
+        <td><b>搜索框</b></td>
+        <td>常驻 44px</td>
+        <td>必要性中（49 条会话确实要搜）；便利性中：常驻占了首屏最贵的一条</td>
+        <td><span class="verdict v-keep">留在滚动区顶部</span> 滚下去自然收起、回到顶部再现；不常驻、不做浮动图标</td>
+      </tr>
+      <tr>
+        <td><b>设置里的运行信息 / 更新</b></td>
+        <td>诊断行、更新面板</td>
+        <td>必要性高：这是出问题时唯一能自助的地方</td>
+        <td><span class="verdict v-keep">保留</span> 并把「错误与告警」并进来</td>
+      </tr>
+      <tr>
+        <td><b>聊天头部</b></td>
+        <td>标题 + 项目副标题 + 右上模型 chip</td>
+        <td>必要性高；chip 44px；无项目时不占位</td>
+        <td><span class="verdict v-keep">保留</span></td>
+      </tr>
+      <tr>
+        <td><b>输入区</b></td>
+        <td>@ / 拍照 / 图片 / 附件 / 发送，@ 在工具行最左</td>
+        <td>必要性高；全部 44px；单手可达</td>
+        <td><span class="verdict v-keep">保留</span></td>
+      </tr>
+      <tr>
+        <td><b>模型面板</b></td>
+        <td>按后端集合渲染；&gt;8 行出搜索；16 行可滚</td>
+        <td>必要性高；行 44px；集合外状态行只一条、不可选</td>
+        <td><span class="verdict v-keep">保留</span>；2.2.6 按 <code>modelsSource</code> 分叉副标题（PI 已加入 / Codex 全部可用）</td>
+      </tr>
+      <tr>
+        <td><b>连接页</b></td>
+        <td>扫码 / 手动地址 / 公开更新入口</td>
+        <td>必要性高：首次配对唯一入口；未配对也能检查更新</td>
+        <td><span class="verdict v-keep">保留</span></td>
+      </tr>
+      <tr>
+        <td><b>置顶会话组</b></td>
+        <td>列表最上方，仅在有 pinned 时渲染</td>
+        <td>必要性中；0 条不占位；行 44px</td>
+        <td><span class="verdict v-keep">保留</span></td>
+      </tr>
+    </tbody>
+  </table>
+
+  <h2>2 · 会话页：图1 的分段控件 + 收干净的头部</h2>
+  <p>左边是现在发布版的样子，右边是这一轮要的样子。分段控件按下去能看动画。</p>
+
+  <div class="frames">
+    <div class="frame-col">
+      <div class="frame-cap">现状（2.2.5 / 94）· 会话页，设备信息不在这一层</div>
+      <div class="phone">
+        <div class="statusbar"><span>9:41</span><span>●●● ⌁ ▮</span></div>
+        <div class="ph">
+          <div style="padding:10px 0 4px">
+            <div style="display:flex;align-items:center"><div style="font-size:26px;font-weight:700;letter-spacing:-.5px">会话</div>
+              <span style="margin-left:auto;width:30px;height:30px;border-radius:50%;background:var(--blue);color:#fff;display:grid;place-items:center;font-size:0;line-height:1"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M5 12h14M12 5v14"/></svg></span></div>
+            <div style="display:flex;align-items:center;gap:6px;background:rgba(118,118,128,.12);border-radius:10px;padding:8px 10px;margin-top:8px;color:var(--label2);font-size:12px"><svg class="ico" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg><span>搜索会话</span></div>
+          </div>
+          <div style="display:flex;gap:8px;padding:10px 0 12px">
+            <span style="height:44px;padding:0 18px;border-radius:999px;background:#fff;display:flex;align-items:center;font-size:13px;font-weight:600;color:#3C3C43">按时间</span>
+            <span style="height:44px;padding:0 18px;border-radius:999px;background:#000;color:#fff;display:flex;align-items:center;font-size:13px;font-weight:600">按项目</span>
+          </div>
+          <div class="rows">
+            <div class="row"><span style="width:20px;flex:0 0 20px;display:grid;place-items:center;color:#C7C7CC"><svg class="ico" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg></span><div class="body"><div class="t">排查 OpenWrt 502 网关</div><div class="m">我访问我的 openwrt 路由器显示 5…</div></div><span class="tt">昨天</span></div>
+            <div class="row"><span style="width:20px;flex:0 0 20px;display:grid;place-items:center;color:#C7C7CC"><svg class="ico" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg></span><div class="body"><div class="t">调研飞牛 NAS 公网部署方案</div><div class="m">我拥有阿里云服务器，希望在这台电…</div></div><span class="tt">昨天</span></div>
+            <div class="row"><span style="width:20px;flex:0 0 20px;display:grid;place-items:center;color:#C7C7CC"><svg class="ico" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg></span><div class="body"><div class="t">修复 zcode 模型空响应</div><div class="m">我本地 zcode 软件坏了，不知道是不…</div></div><span class="tt">2 天前</span></div>
+          </div>
+          <div class="tabbar2">
+            <div class="on"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>会话</div>
+            <div><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>监控</div>
+            <div><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.9l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.9-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1-1.5 1.7 1.7 0 0 0-1.9.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.9 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1 1.7 1.7 0 0 0-.3-1.9l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.9.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.9-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.9V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg>设置</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="frame-col">
+      <div class="frame-cap">目标（这一轮）· 点分段看动画</div>
+      <div class="phone">
+        <div class="statusbar"><span>9:41</span><span>●●● ⌁ ▮</span></div>
+        <div class="ph">
+          <div style="display:flex;align-items:center;padding:8px 0 0">
+            <div style="font-size:26px;font-weight:700;letter-spacing:-.5px">会话</div>
+            <span style="margin-left:auto;width:30px;height:30px;border-radius:50%;background:var(--blue);color:#fff;display:flex;align-items:center;justify-content:center;font-size:0;font-weight:400"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M5 12h14M12 5v14"/></svg></span>
+          </div>
+          <button type="button" style="display:flex;align-items:center;gap:5px;border:0;background:transparent;padding:1px 0 0;color:var(--label2);font-size:12px;font-weight:600">
+            <span class="dot" style="width:7px;height:7px;box-shadow:0 0 0 2px rgba(52,199,89,.16)"></span>
+            Windows · 书房 <span style="color:#C7C7CC">·</span> Codex Desktop <span style="color:var(--label3);display:inline-flex;align-items:center"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg></span>
+          </button>
+
+          <div class="seg" id="seg" style="--i:1">
+            <span class="seg-thumb"></span>
+            <button data-i="0">按时间</button>
+            <button data-i="1" class="on">按项目</button>
+          </div>
+
+          <div class="runstrip">
+            <span class="spin"></span> 2 个任务在运行 <span class="go">展开 <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg></span>
+          </div>
+
+          <div style="display:flex;align-items:center;gap:6px;background:rgba(118,118,128,.12);border-radius:10px;padding:8px 10px;margin:2px 0 10px;color:var(--label2);font-size:12px"><svg class="ico" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg><span>搜索会话</span></div>
+
+          <div class="rows">
+            <div class="row"><div class="body"><div class="t">车机固件回滚方案</div><div class="m">车机 · 12 分钟前</div></div><span class="tag tag-run">运行中</span></div>
+            <div class="row"><div class="body"><div class="t">HUD 动画时序</div><div class="m">车机 · 1 小时前</div></div></div>
+            <div class="row"><div class="body"><div class="t">conmfyUI 采样器对比</div><div class="m">conmfyUI · 昨天</div></div></div>
+            <div class="row"><div class="body"><div class="t">tarot 牌面文案重写</div><div class="m">tarot-app · 2 天前</div></div></div>
+          </div>
+
+          <div class="tabbar2">
+            <div class="on"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>会话</div>
+            <div><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="12" rx="2"/><path d="M2 20h20"/></svg>设备</div>
+            <div><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.9l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.9-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1-1.5 1.7 1.7 0 0 0-1.9.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.9 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1 1.7 1.7 0 0 0-.3-1.9l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.9.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.9-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.9V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg>设置</div>
+          </div>
+        </div>
+      </div>
+      <p class="note">头部只在标题下留一行「电脑 · 平台」，12px、可点、带小箭头——它在任何一页都回答「我在跟谁说话」，设备页负责层级与切换，模型 chip 仍在聊天右上角（这里不重复）。分段是单条 track，thumb 只做 <code>translateX</code>，不重排文字。<b>分段固定在滚动容器之外</b>（搜索留在滚动区顶部，回顶部就能用）——2.2.5 的 rail 在 <code>.tl-thread-scroll</code> 里，Vera 实测 <code>scrollTop=600</code> 时 rail 从 y=100 变 y=-500；翻到列表中段想切视图必须先滚回顶部，换样式解决不了，必须换位置。</p>
+    </div>
+  </div>
+
+  <h3>为什么是「一条 track + 一个 thumb」而不是「两个药丸」</h3>
+  <ul class="tight">
+    <li><b>它表达的是同一个维度的两个值</b>，不是两个可选按钮。一个滑动的块把这件事说清楚了；两块独立的实心药丸读起来像「两个开关」。</li>
+    <li><b>动画只改一个属性</b>：<code>transform: translateX(index × 100%)</code>。文字位置不动、不重排，所以不会有抖动，也不需要测宽。</li>
+    <li><b>命中区不变</b>：track 高 44，两个 cell 各占一半，拇指在轨道内移动——按下哪里就切哪个，没有「跟手位移改变点击几何」的老问题。</li>
+  </ul>
+
+  <h3>控件必须钉住，不能跟着列表一起滚走</h3>
+  <p>实测随包 2.2.5：<code>.tl-thread-filters</code> 在 <code>.tl-thread-scroll</code> <b>内部</b>，<code>scrollTop=600</code> 时 rail 从 <code>y=100</code> 掉到 <code>y=-500</code>，390/360/320 三档一致。也就是说会话有 49 条时，想切「按时间/按项目」得先滚回顶部——<b>换一条灰轨道加 thumb 并不能解决这件事</b>，所以这一轮把分界一起定死：</p>
+  <table>
+    <thead><tr><th>区</th><th>放什么</th></tr></thead>
+    <tbody>
+      <tr><td><b>固定区</b>（不滚）</td><td>标题行（44，含「+」）＋ 分段控件（44）；两者贴在安全区下沿，列表从它们下面开始滚</td></tr>
+      <tr><td><b>滚动区</b></td><td>搜索框（在顶部，滚下去自然收起）→ 置顶组 → 会话列表 → 加载控件</td></tr>
+    </tbody>
+  </table>
+  <p class="note">代价是固定区长期占掉约 88px 加安全区；换来的是列表在任何位置都能一键切视图。搜索留在滚动区顶部而不是常驻，是 iOS 的分工——它低频、回顶部就能用，不需要新 JS，也不用长住 44px。</p>
+
+  <h2>3 · 设备层级：电脑 → 平台 → harness（入口）</h2>
+  <p>按图2 的隶属关系，一次只露一层：点电脑才露它的平台，点平台才露它下面的 harness。下面的原型可以点：点另一台电脑会收起当前分支、展开新的；点平台会展开 harness，带一点错位延迟，让人看清「这几个属于上面那一个」。</p>
+
+  <div class="frames">
+    <div class="frame-col" style="max-width:400px">
+      <div class="frame-cap">设备面板（可交互）</div>
+      <div class="phone">
+        <div class="statusbar"><span>9:41</span><span>●●● ⌁ ▮</span></div>
+        <div class="ph" style="padding-bottom:18px">
+          <div class="hub-title">设备 <span>2 台已配对 · 示例</span></div>
+
+          <div class="devstack">
+            <button class="devcard on" data-dev="win" type="button">
+              <div class="laptop"><div class="lid"><i></i></div><div class="base"></div></div>
+              <div class="txt">
+                <div class="nm">Windows · 书房</div>
+                <div class="sub">局域网 10.0.2.2:8787 · 刚同步</div>
+              </div>
+              <span class="badge">当前</span>
+            </button>
+
+            <div class="branch open" data-branch="win">
+              <div class="inner">
+                <div class="pad">
+                  <div class="spine"></div>
+
+                  <button class="plat on" data-plat="codex" style="--k:0" type="button">
+                    <span class="kind">Codex Desktop</span>
+                    <span class="meta">1 个入口 · 在线</span>
+                    <span class="caret"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m9 18 6-6-6-6"/></svg></span>
+                  </button>
+                  <div class="harness open" data-harness="codex">
+                    <div class="inner2">
+                      <div class="hrow" style="--k:0">codex-desktop · 本机服务 <span class="pill">当前</span></div>
+                    </div>
+                  </div>
+
+                  <button class="plat" data-plat="pi" style="--k:1" type="button">
+                    <span class="kind">PI-Desktop</span>
+                    <span class="meta">1 个入口 · 快照在线</span>
+                    <span class="caret"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m9 18 6-6-6-6"/></svg></span>
+                  </button>
+                  <div class="harness" data-harness="pi">
+                    <div class="inner2">
+                      <div class="hrow" style="--k:0">pidesktop · 本机服务 <span class="pill off">可切换</span></div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <button class="devcard" data-dev="mac" type="button">
+              <div class="laptop"><div class="lid"><i></i></div><div class="base"></div></div>
+              <div class="txt">
+                <div class="nm">MacBook · 工位</div>
+                <div class="sub">离线 · 示例第二台</div>
+              </div>
+            </button>
+            <div class="branch" data-branch="mac">
+              <div class="inner">
+                <div class="pad">
+                  <div class="spine"></div>
+                  <div class="plat" style="--k:0"><span class="kind">Codex Desktop</span><span class="meta">离线，暂不可读</span></div>
+                </div>
+              </div>
+            </div>
+
+            <div style="display:flex;align-items:center;gap:11px;margin-top:8px;padding:11px 12px;border:1.5px dashed rgba(0,122,255,.32);border-radius:14px;background:rgba(0,122,255,.045);color:var(--blue)">
+              <div style="width:38px;height:38px;border-radius:11px;display:grid;place-items:center;background:#fff;font-size:0;box-shadow:0 1px 2px rgba(0,0,0,.05)"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M5 12h14M12 5v14"/></svg></div>
+              <div style="flex:1;min-width:0">
+                <div style="font-size:13px;font-weight:650">添加一台电脑</div>
+                <div style="font-size:11px;color:var(--label2);margin-top:2px">扫码或输入地址 · 复用现有配对流程</div>
+              </div>
+              <span style="font-size:11px;font-weight:700;color:var(--blue)">2.2.6</span>
+            </div>
+          </div>
+
+          <p class="note" style="margin:14px 0 0;text-align:center">点上面两张电脑卡切换（当前那张点了不动，不收起）· 点平台展开 harness · 添加电脑走配对 sheet</p>
+        </div>
+      </div>
+    </div>
+
+    <div class="frame-col" style="flex:1 1 260px">
+      <div class="frame-cap">层级怎么画出来</div>
+      <div class="cards">
+        <div class="card">
+          <h4>一条脊柱 + 一个肘</h4>
+          <p>从选中的电脑卡底边落一条 1.5px 竖线，每个平台卡片左侧接一个 13px 横肘。线先画（<code>scaleY 0→1</code>），卡片后到（40ms 错位），读起来是「它们挂在这台电脑下面」。</p>
+        </div>
+        <div class="card">
+          <h4>一次只开一层</h4>
+          <p>切电脑时当前分支高度收为 0，新分支展开。不做「两台电脑的分支同时存在」——那又回到平铺列表。</p>
+        </div>
+        <div class="card">
+          <h4>未选中的电脑不消失</h4>
+          <p>未选中的卡片缩到 0.985、透明度 .72、无边框。它们随时可点，但不与当前分支竞争注意力。</p>
+        </div>
+        <div class="card">
+          <h4>拟物只用在「电脑」这一层</h4>
+          <p>电脑卡里有一台小笔记本（屏 + 底座）；平台和 harness 都是纯卡片。拟物是层级线索，不是装饰：只有「这是一台机器」这个事实值得用图形说。</p>
+        </div>
+        <div class="card">
+          <h4>单平台时，只有一张卡</h4>
+          <p>今天真机上只发现得到 <b>1 个</b> harness（直连 server、单 profile），所以装上会看到一张平台卡——那是数据现状，不是页面坏了。脊柱照画、卡片照展开；第二张卡要等网关配出两个 harness（BACKLOG 11）。</p>
+        </div>
+        <div class="card">
+          <h4>不显示假绿灯</h4>
+          <p>非当前电脑<b>不做实时探活</b>（探测会翻全局请求作用域、打断当前机器的在途请求），所以它们不配红/绿灯，只写「上次使用 3 小时前」。harness 行的「在线」也只是<b>发现那一刻</b>的快照，不写「实时」。</p>
+        </div>
+        <div class="card">
+          <h4>「配对另一台」放哪</h4>
+          <p>面板底部一行虚线卡 → <b>全屏</b>配对页，返回回到面板，配对成功不清已有列表。不放半屏抽屉：那一步要开相机扫码，塞进抽屉后权限弹窗和取景框都会挤。</p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="card" style="margin:16px 0">
+    <h4>两条这轮定死的交互（都写成验收判据）</h4>
+    <ul class="tight">
+      <li><b>当前电脑恒展开，没有收起动作。</b>点当前那张卡什么都不发生：不引入 <code>collapsed</code>、不留 <code>manualOpen</code>，代码里 <code>openMachine</code> 直接等于 <code>activeId</code>，当前卡 <code>aria-expanded</code> 恒为 <code>true</code>。没有人需要把正在用的那台电脑的平台藏起来，多一个状态只多一类边界。</li>
+      <li><b>切换是非乐观的。</b>点别的卡 = <code>switchMachine(id)</code>：只有成功才换成新的当前卡并展开它的分支；失败保持原状、顶部给一条报错。报错必须读 <code>sessionStore.getState().error</code>——读渲染闭包里的 <code>session</code>，<code>await</code> 之后拿到的还是切换前的值，常见结果是「切失败了但没有任何提示」。</li>
+    </ul>
+    <p class="note">可机器验证的三条：① 点当前卡前后，<code>[data-machine]</code> 的值和当前卡的 <code>aria-expanded</code> 都不变；② <code>[data-machine]</code> 全页只有一个值，且挂在 <code>.tl-platblock</code>（不是每台都有的 <code>.tl-devgrid</code>）；③ 让 <code>switchMachine</code> 失败（断网或不可达地址）时，当前卡仍是原来那台、顶部出现错误条。</p>
+  </div>
+
+  <p class="note"><b>原型按 2 台画；state 层已落</b>（<code>3d04843</code>：<code>machines[]</code>、旧单对象自动迁移、<code>switchMachine/forgetMachine</code>）。今天真机只有 1 台，所以默认看到一张电脑卡；第二台通过「添加一台电脑」的配对流程加入。第三层是 <b>harness（服务入口）</b>，不是模型——模型选择仍在聊天右上角的面板里，别把两层混在一起。</p>
+
+  <h3>换设备/换平台时，哪些东西跟着变</h3>
+  <dl class="kv">
+    <dt>会话列表</dt><dd>跟着设备+平台的作用域走（现在是 <code>machineId::harnessId</code>，缓存已经按这个键存，不用改数据模型）</dd>
+    <dt>模型 chip</dt><dd>跟着当前平台：Codex 显示「可用 N 个」，PI 显示「已加入 N 个」（<code>modelsSource</code>，2.2.6 一起做）</dd>
+    <dt>新会话默认模型</dt><dd>按「这台电脑 × 这个平台」记上次用的那个，不再跨设备串味</dd>
+    <dt>离线状态</dt><dd>只有<b>当前</b>设备有灯：离线时头部那张卡直接变色，不用切 tab 才发现；其余设备写「上次使用 N 分钟前」，因为对它们探活会打断当前机器的在途请求</dd>
+  </dl>
+
+  <h3>数据能绑什么（按当前契约核过）</h3>
+  <p>平台不是实体，是 <code>harness.kind</code> + 显示名映射（<code>codex</code>→Codex Desktop、<code>pi</code>→PI-Desktop）。不新增 <code>platform</code> 字段：那要同时改 <code>shared/machine-pairing.cjs</code>、app 镜像和测试，2.2.6 收益不够。但有一处必须先修：<code>deploy/machine.example.json:36</code> 里 PI 那行的 <code>kind</code> 现在写的是 <code>codex</code>，不改就永远分不出两个平台。</p>
+  <table>
+    <thead><tr><th>界面元素</th><th>可绑字段</th><th>缺口 / 处理</th></tr></thead>
+    <tbody>
+      <tr><td>电脑卡</td><td><code>machines[]</code> 的 name/host/harnessCount/lastUsedAt；当前那台另用 <code>session.online</code></td><td>非当前机器没有在线状态 → <b>不画红绿灯</b>，写「上次使用 N 分钟前」</td></tr>
+      <tr><td>平台卡</td><td><code>kind</code> → 显示名、该 kind 的 harness 数</td><td>今天真机只回 1 个 harness → <b>单卡是常态</b>；PI 的 kind 需一行文档修正</td></tr>
+      <tr><td>入口行</td><td><code>name</code>、<code>defaultHarness</code>、<code>online</code>（发现时刻快照）、是否当前</td><td><b>逐行地址拿不到</b>（discovery 不外发端口），不要编；「在线」写明是快照</td></tr>
+      <tr><td>运行中胶囊</td><td><code>threadsFilter:'running'</code> 已有，复用即可</td><td>无缺口：点开复用现成的运行中筛选，不必新接口</td></tr>
+      <tr><td>错误入口</td><td><code>openSheet('diagnostics')</code> 已有</td><td>无缺口</td></tr>
+    </tbody>
+  </table>
+
+  <h2>4 · 监控页：删掉，内容三处归位</h2>
+  <p>不是「做得不好看」，是它作为一页没有独立存在的理由。它每一块都能被一个更早看到它的地方接管：</p>
+
+  <div class="flow">
+    <div class="from"><span class="lbl">运行中</span><div><b>→ 会话页顶部运行条</b><br>有任务在跑才出现，一行显示「2 个任务在运行」，点开就地展开那两条并给停止。你看得见任务本身，停止也在同一个地方。</div></div>
+    <div class="arrow">↓</div>
+    <div class="from"><span class="lbl">错误/告警</span><div><b>→ 设置 · 运行信息</b><br>本来就有诊断抽屉（版本、地址、连接、会话数、同步时间）。把失败任务并进去，出问题时一个入口。</div></div>
+    <div class="arrow">↓</div>
+    <div class="from"><span class="lbl">连接/同步</span><div><b>→ 头部设备行</b><br>在线点 + 「刚同步 / 3 小时前」就写在电脑名下面。它本来就是这台机器的事实，不是全局指标。</div></div>
+    <div class="arrow">↓</div>
+    <div class="from"><span class="lbl">会话数</span><div><b>→ 直接删</b><br>列表自己就是计数。三宫格里那个数字没有任何人会拿来做决定。</div></div>
+  </div>
+
+  <p class="note">代价说清楚：少了「一眼看全局」的地方。但那个「全局」只有一台电脑、一个平台，三宫格并不能回答任何真问题；等真的支持多台设备时，全局视图应该按设备分组重做，而不是把现在的三宫格留下。</p>
+
+  <h2>5 · 尺寸与动效（写进规范的数）</h2>
+  <table>
+    <thead><tr><th>对象</th><th>数值</th></tr></thead>
+    <tbody>
+      <tr><td>分段控件</td><td><b>紧凑居中</b>（cell 最小 88–92px、两个 cell 合计 ≈ 180–200px），不强制满宽；track 高 <b>44</b>，内边距 3，圆角 999；cell 绘制 38px、命中带仍是整条 44；thumb 白底 + <code>0 1px 2px rgba(0,0,0,.10)</code> + <code>0 0 0 .5px rgba(0,0,0,.03)</code>；位移 <code>translateX(index × 100%)</code></td></tr>
+      <tr><td>分段动效</td><td><b>300ms</b>，<code>cubic-bezier(.32,.72,0,1)</code>；文字透明度 200ms；不缩放 thumb</td></tr>
+      <tr><td>设备分支展开</td><td>高度 <b>340ms</b> 同曲线；脊柱 <code>scaleY</code> <b>300ms</b> 延迟 60ms；平台卡 <b>220ms</b>，错位 50ms</td></tr>
+      <tr><td>平台→harness 展开</td><td>高度 <b>260ms</b>；harness 行 <b>200ms</b>，错位 40ms</td></tr>
+      <tr><td>设备卡选中态</td><td>边框 <code>rgba(0,122,255,.55)</code>、<code>translateY(-1px)</code>、升起的蓝色投影；未选中 <code>scale(.985)</code> + 透明度 .72；全部 220ms</td></tr>
+      <tr><td>命中区</td><td>电脑卡 ≥ 64；平台卡 ≥ 56；harness 行 ≥ 44；分段 cell = track 的一半宽 × 44</td></tr>
+      <tr><td>命中带</td><td>44 就是全部，不外扩：2.2.5 实测 chip 外 3px 已回滚动容器——别指望伪元素补面积</td></tr>
+      <tr><td>固定区</td><td>标题 44 + 分段 44 贴在安全区下沿；判据是 <code>scrollTop=600</code> 时分段仍在可视区</td></tr>
+      <tr><td>字号下限</td><td>正文最小 <b>11px</b>（2.2.5 现状即 11px、正文最低对比度 5.37:1），新设计不得再往下压</td></tr>
+      <tr><td>降级</td><td><code>prefers-reduced-motion</code> 下关闭以上所有 transition（不是缩短）</td></tr>
+      <tr><td>控件位置</td><td>分段固定在列表滚动容器之外；搜索留在滚动区顶部；滚动到列表中段仍可切视图</td></tr>
+      <tr><td>最小字号</td><td><b>11px</b>（2.2.5 实测下限）；新设计不再往下压</td></tr>
+    </tbody>
+  </table>
+
+  <h2>6 · 规范补丁（防止下次又按字面做回去）</h2>
+  <div class="card">
+    <p><code>docs/option-a/UI_SPEC.md</code> 增补两条，验收对着它查：</p>
+    <ul class="tight">
+      <li><b>分段控件</b>：必须是「一条 track + 一个 thumb」。禁止用两个各自填充的背景色表示选中（现状 <code>.tl-filter-chip.is-active</code> 的黑底药丸即为反例）。禁止用 <code>left</code>/<code>width</code> 做动画；只允许 <code>transform</code>。</li>
+      <li><b>设备层级</b>：必须是「电脑 → 平台 → harness（入口）」三级；切换电脑时才渲染该电脑的平台，切换平台时才渲染 harness。禁止把三层平铺进同一个列表（现状「切换电脑上的服务」抽屉即为反例）。</li>
+      <li><b>平台判别</b>：平台 = <code>harness.kind</code> + 显示名映射。新增/区分平台前，先确保 <code>deploy/machine.example.json</code> 里那一行的 <code>kind</code> 写对（PI 那行今天是 <code>codex</code>）。禁止在 UI 里按 <code>name</code> 字符串猜平台。</li>
+      <li><b>分段控件的位置</b>：必须放在滚动容器<b>之外</b>。放进 <code>.tl-thread-scroll</code> 就会随列表滚走（2.2.5 实测 <code>scrollTop=600</code> 时 rail 到 <code>y=-500</code>），这条与「长什么样」同等重要。</li>
+    </ul>
+    <p class="note">这些都能写成机器判据：DOM 里存在且只有一个 <code>[data-seg-thumb]</code>；点击第二个 cell 后 thumb 的 <code>getBoundingClientRect().left</code> 落在第二个 cell 内 ±1px；设备切换后 DOM 中平台节点的 <code>data-machine</code> 只有一个值。</p>
+  </div>
+
+  <h2>7 · 分工（2.2.6 / 95）</h2>
+  <table>
+    <thead><tr><th>谁</th><th>做什么</th><th>完成判据</th></tr></thead>
+    <tbody>
+      <tr><td><b>Iris</b></td><td>会话页：单 track 分段 + thumb 动画；头部「当前设备」行；会话行两行化；运行条</td><td>390/360/320 无溢出；截图与本节原型一致</td></tr>
+      <tr><td><b>Atlas</b></td><td>设备注册表：单机 → 设备列表 + 当前设备；每设备各自的平台/离线/上次同步；删监控 tab 的数据依赖归位</td><td>对 UI 暴露 <code>machines[] / switchMachine(id) / forgetMachine(id)</code>；键仍为 <code>turnloom.machine.v2</code>，值升到 <code>{version:3, activeMachineId, machines[]}</code>，旧单对象自动迁移；非活动机器不探活</td></tr>
+      <tr><td><b>Vera</b></td><td>上面的机器判据 + 真机三档截图（夹具 / 真数据 / 真机）</td><td>thumb 位移落在第二个 cell ±1px、无 <code>.tl-filter-chip</code>、设备分支单一、reduce-motion、<b>scrollTop=600 时分段仍在可视区</b>、命中带 44 不外扩</td></tr>
+      <tr><td><b>Rhea</b></td><td>2.2.6 / 95 出包与签名</td><td>与 2.2.5 同证书；升级路径不变</td></tr>
+    </tbody>
+  </table>
+
+  <h2>8 · 现状证据（给不信任结论的人）</h2>
+  <p class="note">本节的「现状」数字钉在随包 2.2.5（<code>index-CC0SxfnI.js</code> 784,932 B / <code>18b7bbf</code>）。<code>app/dist</code> 在 00:27 已被重建（<code>index-CE_TA6v0.js</code>），不是 2.2.5 基线；验收记录必须写 asset 文件名 + 字节数。</p>
+  <table>
+    <thead><tr><th>说法</th><th>证据</th></tr></thead>
+    <tbody>
+      <tr><td>分段控件仍是两个独立药丸</td><td><code>app/src/screens/ThreadsScreen.tsx:167-180</code> 渲染两个 <code>tl-filter-chip</code> 按钮；<code>globals.css:1535-1543</code> 里选中态是 <code>background: var(--tl-label-primary)</code>（黑底白字），没有 track，也没有 thumb</td></tr>
+      <tr><td>「可滑动药丸条」只是排版</td><td><code>dc07ebb</code> 只改 <code>globals.css</code>（12+/4−）：<code>overflow-x:auto</code> + 44px 高 + 圆角。视觉上仍是两个各自填充的药丸</td></tr>
+      <tr><td>服务切换是平铺列表</td><td><code>app/src/components/CupertinoSheetHost.tsx:40-62</code>：<code>session.harnesses.map(...)</code> 直接列 <code>TapRow</code>，没有电脑这一层</td></tr>
+      <tr><td>2.2.5 只存一台；现在已列表化</td><td>2.2.5：<code>PersistedMachine</code> 单对象（<code>sessionStore.ts:29-36</code>）。<code>3d04843</code> 起：<code>{version:3, activeMachineId, machines[]}</code>，旧单对象自动迁移，12 条单测覆盖</td></tr>
+      <tr><td>监控页的三项与别处同源</td><td><code>MonitorsScreen.tsx:57-71</code> 的「运行中」来自 <code>data.threads</code>+<code>statusByThread</code>（列表同源）；连接状态与顶部连接横幅 <code>AppShell.tsx:48-61</code>、设置页 <code>SettingsScreen.tsx:219</code> 同源</td></tr>
+      <tr><td>会话行是「状态图标 + 标题/时间 + 预览」</td><td><code>TaskStream.tsx:85-95</code>：左侧 <code>tl-thread-state</code> 图标、<code>tl-thread-top</code> 标题+时间、<code>tl-thread-preview</code>；<code>status</code> 只在归档时渲染，不是每行都有「已完成」胶囊</td></tr>
+    </tbody>
+  </table>
+
+  <div class="foot">
+    本页是设计稿与规范提案：可点原型在浏览器里直接生效，不依赖网络与外部资源。实现落在 2.2.6（95），不动已发布的 2.2.5 包。
+  </div>
+</div>
+
+<script>
+  // 窄屏把表格拆成卡片：把表头文字搬到每格的 data-label
+  document.querySelectorAll('table').forEach(function (t) {
+    var heads = Array.prototype.map.call(t.querySelectorAll('thead th'), function (th) { return th.textContent.trim(); });
+    t.querySelectorAll('tbody tr').forEach(function (tr) {
+      Array.prototype.forEach.call(tr.children, function (td, i) { if (heads[i]) td.setAttribute('data-label', heads[i]); });
+    });
+  });
+
+  // 分段控件：只改 index，位移交给 CSS transition
+  document.querySelectorAll('.seg').forEach(function (seg) {
+    seg.addEventListener('click', function (e) {
+      var btn = e.target.closest('button');
+      if (!btn) return;
+      var i = Number(btn.dataset.i);
+      seg.style.setProperty('--i', i);
+      seg.querySelectorAll('button').forEach(function (b) {
+        b.classList.toggle('on', b === btn);
+      });
+    });
+  });
+
+  // 设备分支：一次只开一层
+  document.querySelectorAll('.devcard').forEach(function (card) {
+    card.addEventListener('click', function () {
+      var id = card.dataset.dev;
+      document.querySelectorAll('.devcard').forEach(function (c) {
+        c.classList.toggle('on', c === card);
+      });
+      document.querySelectorAll('.branch').forEach(function (b) {
+        b.classList.toggle('open', b.dataset.branch === id);
+      });
+    });
+  });
+
+  // 平台 → 入口
+  document.querySelectorAll('.plat').forEach(function (plat) {
+    plat.addEventListener('click', function () {
+      if (!plat.dataset.plat) return;
+      var id = plat.dataset.plat;
+      var open = plat.classList.contains('on');
+      plat.classList.toggle('on', !open);
+      document.querySelectorAll('.harness').forEach(function (h) {
+        if (h.dataset.harness === id) h.classList.toggle('open', !open);
+      });
+    });
+  });
+</script>
+</body>
+</html>
