@@ -35,12 +35,12 @@ function ThreadRow({
   // The left slot used to be a decorative initial. It carries state now, which is the
   // only thing that earns 40px of every row.
   const stateIcon = tone === 'running'
-    ? <Activity size={18} aria-hidden="true" />
+    ? <Activity size={20} aria-hidden="true" />
     : tone === 'waiting'
-      ? <Clock size={18} aria-hidden="true" />
+      ? <Clock size={20} aria-hidden="true" />
       : tone === 'error'
-        ? <AlertTriangle size={18} aria-hidden="true" />
-        : <Check size={18} aria-hidden="true" />;
+        ? <AlertTriangle size={20} aria-hidden="true" />
+        : <Check size={20} aria-hidden="true" />;
   const stateLabel = tone === 'running' ? '运行中' : tone === 'waiting' ? '等待审批' : tone === 'error' ? '出错' : archived ? '已归档' : '空闲';
   const status = archived && tone === 'done'
     ? <span className="tl-thread-status" style={{ background: 'rgba(142,142,147,.14)', color: '#636366' }}>已归档</span>
@@ -119,7 +119,7 @@ export default function TaskStream({
   if (list.length === 0) {
     return (
       <div className="tl-thread-empty">
-        <MessageSquare size={26} color="var(--tl-label-secondary)" aria-hidden="true" />
+        <MessageSquare size={22} color="var(--tl-label-secondary)" aria-hidden="true" />
         <div className="tl-empty-title">{emptyTitle}</div>
         <p>{emptyDescription}</p>
       </div>

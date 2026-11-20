@@ -27,7 +27,7 @@ function CollapsibleLog({ title, icon, lines }: { title: string; icon: ReactNode
       <button type="button" aria-expanded={open} className="tl-press" onClick={() => setOpen((value) => !value)} style={{ display: 'flex', alignItems: 'center', gap: 10, width: '100%', minHeight: 44, padding: '8px 12px', border: 0, background: 'transparent', color: COLORS.labelPrimary, textAlign: 'left' }}>
         {icon}<span style={{ flex: 1, fontSize: 13, fontWeight: 600 }}>{title}</span>
         <span style={{ fontSize: 12, color: COLORS.labelSecondary }}>{lines.length} 行</span>
-        {open ? <ChevronDown size={15} color={COLORS.labelSecondary} /> : <ChevronRight size={15} color={COLORS.labelSecondary} />}
+        {open ? <ChevronDown size={16} color={COLORS.labelSecondary} /> : <ChevronRight size={16} color={COLORS.labelSecondary} />}
       </button>
       {open && (
         <pre className="tl-selectable" style={{ margin: 0, padding: 12, borderTop: `.5px solid ${COLORS.separator}`, background: COLORS.fillSecondary, color: COLORS.labelPrimary, fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Consolas, monospace', fontSize: 12, lineHeight: '19px', whiteSpace: 'pre-wrap', wordBreak: 'break-all' }}>
@@ -75,12 +75,12 @@ function ApprovalCard({ message, context, threadId }: { message: ThreadMessage; 
     <div className="tl-approval-title"><span>{String(message.title || '需要确认的操作')}</span><span className="tl-approval-kind">{approvalKind || '操作'}</span></div>
     <code className="tl-approval-id">请求 ID · {requestId || '不可用'}</code>
     <pre className="tl-approval-content tl-selectable">{String(message.content || message.text || '')}</pre>
-    {resolved ? <div className="tl-approval-resolved"><Check size={15} /> 已提交决定</div> : <>
+    {resolved ? <div className="tl-approval-resolved"><Check size={16} /> 已提交决定</div> : <>
       {error && <div role="alert" className="tl-approval-error">{error}</div>}
       {!canApprove && <div className="tl-approval-error">{message.unavailable ? '请求已过期、变化或已处理，已禁用决定。' : decisions.length ? '缺少可核对的请求详情，已禁用决定。' : '电脑端未提供可用决定，操作已禁用。'}</div>}
       <div className="tl-approval-actions">
         {decisions.map(decision => <button key={decision} type="button" className={decision === 'decline' ? 'tl-approval-reject' : 'tl-approval-approve'} style={{ minHeight: 44 }} disabled={!canApprove || busy} onClick={() => { void decide(decision); }}>
-          {decision === 'decline' ? <X size={15} /> : <Check size={15} />} {approvalDecisionLabel(decision)}
+          {decision === 'decline' ? <X size={16} /> : <Check size={16} />} {approvalDecisionLabel(decision)}
         </button>)}
       </div>
     </>}
@@ -321,7 +321,7 @@ export default function ChatDetailScreen({ threadId, title, newThread = false }:
         <div style={{ display: 'flex', alignItems: 'center', gap: 4, minHeight: 44 }}>
           <button type="button" className="tl-press" aria-label="返回" onClick={() => { haptic('selection'); closeDetail(); }}
             style={{ minWidth: 44, minHeight: 44, border: 0, borderRadius: 12, background: 'transparent', color: COLORS.blue, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-            <ChevronLeft size={24} />
+            <ChevronLeft size={22} />
           </button>
           <div style={{ flex: 1, minWidth: 0 }}>
             <div style={{ fontSize: 17, fontWeight: 600, color: COLORS.labelPrimary, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{title || (newThread ? '新会话' : '会话详情')}</div>
@@ -334,7 +334,7 @@ export default function ChatDetailScreen({ threadId, title, newThread = false }:
             </div>
           </div>
           <ModelChip fields={fields} />
-          {running && <Loader2 size={17} className="tl-spin" color={COLORS.blue} aria-label="运行中" />}
+          {running && <Loader2 size={20} className="tl-spin" color={COLORS.blue} aria-label="运行中" />}
         </div>
       </header>
 
@@ -348,7 +348,7 @@ export default function ChatDetailScreen({ threadId, title, newThread = false }:
         <div className={`tl-chat-list${newThread ? ' tl-chat-list--blank' : ''}`} role="log" aria-label="消息流" style={newThread ? { flexDirection: 'column' } : undefined}>
           {newThread ? (
             <div className="tl-chat-blank">
-              <div className="tl-chat-blank-orb" aria-hidden="true"><Sparkles size={26} /></div>
+              <div className="tl-chat-blank-orb" aria-hidden="true"><Sparkles size={22} /></div>
               <div className="tl-chat-blank-title">开始一个新会话</div>
               <p className="tl-chat-blank-copy">消息直接发给电脑上的 agent，第一条发送成功后会话会出现在列表里。</p>
               <button

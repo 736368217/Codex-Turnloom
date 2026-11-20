@@ -48,7 +48,7 @@ export default function CupertinoSheetHost() {
               return (
                 <TapRow
                   key={harness.id}
-                  leading={<Cpu size={17} color={active ? COLORS.blue : COLORS.labelSecondary} />}
+                  leading={<Cpu size={20} color={active ? COLORS.blue : COLORS.labelSecondary} />}
                   trailing={active ? <span style={{ color: COLORS.blue, fontSize: 13 }}>当前</span> : undefined}
                   disabled={session.status === 'reconnecting'}
                   onClick={() => { haptic('selection'); void switchHarness(harness.id); closeSheet(); }}

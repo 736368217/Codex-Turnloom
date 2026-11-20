@@ -3,7 +3,7 @@
  * 任务并停止——搬到任务列表上方。有任务才出现，点开就地展开，不再另开一页。
  */
 import { useState } from 'react';
-import { RefreshCw, Square } from 'lucide-react';
+import { ChevronDown, RefreshCw, Square } from 'lucide-react';
 import { useDataState, interruptThread, dataStore } from '../state/dataStore';
 import { currentRequestContext } from '../state/sessionStore';
 import { projectThread } from '../lib/threadProjection';
@@ -41,7 +41,7 @@ export default function RunningStrip() {
       >
         <span className="tl-runstrip-dot" aria-hidden="true" />
         <span className="tl-runstrip-label">{running.length} 运行中</span>
-        <span className="tl-runstrip-go">{expanded ? '收起' : '展开'}</span>
+        <span className="tl-runstrip-go">{expanded ? '收起' : '展开'}<ChevronDown size={14} className="tl-runstrip-caret" aria-hidden="true" /></span>
       </button>
       <div className="tl-runlist" data-open={expanded}>
         <div className="tl-runlist-inner">
@@ -61,7 +61,7 @@ export default function RunningStrip() {
                 disabled={Boolean(stopping)}
                 onClick={() => { void stop(thread.id); }}
               >
-                {stopping === thread.id ? <RefreshCw size={13} className="tl-spin" /> : <Square size={11} fill="currentColor" />}
+                {stopping === thread.id ? <RefreshCw size={14} className="tl-spin" /> : <Square size={14} fill="currentColor" />}
                 {stopping === thread.id ? '停止中' : '停止'}
               </button>
             </div>

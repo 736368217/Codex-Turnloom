@@ -59,7 +59,7 @@ export default function DiffCard({
           color: COLORS.labelPrimary,
         }}
       >
-        <FileDiff size={17} color={COLORS.blue} />
+        <FileDiff size={20} color={COLORS.blue} />
         <span style={{ flex: 1, minWidth: 0, fontSize: 14, fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
           {path}
         </span>

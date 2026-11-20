@@ -195,7 +195,7 @@ export default function DevicesScreen() {
                     </span>
                     {busy === machine.id
                       ? <RefreshCw size={16} className="tl-spin" color={COLORS.labelSecondary} />
-                      : !active ? <span className="tl-devcard-switch">切换</span> : null}
+                      : null}
                   </button>
                   <button
                     type="button"
@@ -204,7 +204,7 @@ export default function DevicesScreen() {
                     disabled={Boolean(busy)}
                     onClick={() => openMachineMenu(machine)}
                   >
-                    <MoreHorizontal size={18} color={COLORS.labelSecondary} />
+                    <MoreHorizontal size={20} color={COLORS.labelSecondary} />
                   </button>
                 </div>
 
@@ -242,7 +242,7 @@ export default function DevicesScreen() {
                                       {current ? ` · 当前 ${serviceLabel(current.name, current.kind, session.machineName)}` : ''}
                                     </span>
                                   </span>
-                                  <ChevronDown size={15} color={COLORS.labelSecondary} className={`tl-plat-caret${open ? ' is-open' : ''}`} />
+                                  <ChevronDown size={16} color={COLORS.labelSecondary} className={`tl-plat-caret${open ? ' is-open' : ''}`} />
                                 </button>
                                 <div className="tl-harness" data-open={open}>
                                   <div className="tl-harness-inner">
@@ -291,7 +291,7 @@ export default function DevicesScreen() {
           })}
 
           <button type="button" className="tl-addmachine tl-press" onClick={() => { haptic('selection'); openAddMachine(); }}>
-            <span className="tl-addmachine-mark" aria-hidden="true"><Plus size={18} /></span>
+            <span className="tl-addmachine-mark" aria-hidden="true"><Plus size={20} /></span>
             <span className="tl-addmachine-main">
               <span className="tl-addmachine-title">添加一台电脑</span>
               <span className="tl-addmachine-sub">扫码或输入地址 · 原来的电脑会保留</span>
@@ -302,7 +302,7 @@ export default function DevicesScreen() {
 
         {!session.online && (
           <div className="tl-device-offline">
-            <WifiOff size={15} />
+            <WifiOff size={16} />
             <span>离线：卡片显示上次同步的结果，切换入口会失败。</span>
           </div>
         )}

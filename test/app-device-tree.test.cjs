@@ -99,3 +99,19 @@ test('D9: a harness row name never repeats its platform label', () => {
   assert.match(devices, /const rowName = harness\.name === platform\.label \? \(harness\.id \|\| harness\.name\) : harness\.name/);
   assert.match(devices, /<span className="tl-hrow-name">\{rowName\}<\/span>/);
 });
+
+test('D10: an inactive computer card has no separate「切换」label', () => {
+  const devices = read('screens/DevicesScreen.tsx');
+  const css = read('theme/globals.css').replace(/\/\*[\s\S]*?\*\//g, '');
+  // The whole card is the switch target; a second label reads as another action.
+  assert.doesNotMatch(devices, /tl-devcard-switch/);
+  assert.doesNotMatch(css, /\.tl-devcard-switch\b/);
+});
+
+test('D11: the running strip keeps its 34px pill and gains a 44px tap band', () => {
+  const css = read('theme/globals.css');
+  assert.match(css, /\.tl-runstrip-head \{[^}]*position: relative/s);
+  assert.match(css, /\.tl-runstrip-head \{[^}]*min-height: 34px/s);
+  // 34 + 10 upward = 44; growing downward would cover the first running row.
+  assert.match(css, /\.tl-runstrip-head::before \{[^}]*inset: -10px 0 0/s);
+});

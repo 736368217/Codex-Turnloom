@@ -37,7 +37,7 @@ function AttachmentTray({ attachments, onRemove }: { attachments: SendAttachment
             ? <img src={item.dataUrl} alt="" />
             : <Paperclip size={14} aria-hidden="true" />}
           <span className="tl-composer-attachment-name">{item.name || '附件'}</span>
-          <button type="button" aria-label={`移除 ${item.name || '附件'}`} onClick={() => onRemove(item.id)}><X size={15} /></button>
+          <button type="button" aria-label={`移除 ${item.name || '附件'}`} onClick={() => onRemove(item.id)}><X size={16} /></button>
         </div>
       ))}
     </div>
@@ -94,7 +94,7 @@ export function ModelEffortSheet({ open, onClose, catalog, selected, onSelect }:
           <Search size={16} color={COLORS.labelSecondary} aria-hidden="true" />
           <input aria-label="搜索模型" type="search" value={query} placeholder="搜索模型名称或 ID"
             onChange={(event) => setQuery(event.target.value)} />
-          {query && <button type="button" aria-label="清除搜索" onClick={() => setQuery('')}><X size={15} /></button>}
+          {query && <button type="button" aria-label="清除搜索" onClick={() => setQuery('')}><X size={16} /></button>}
         </div>
       )}
       <div className="tl-mp-list" role="listbox" aria-label="模型">
@@ -132,7 +132,7 @@ export function ModelEffortSheet({ open, onClose, catalog, selected, onSelect }:
                 {meta && <span className="tl-mp-model-meta">{meta}</span>}
               </span>
               {entry.pinned && <span className="tl-mp-pin" title="已置顶"><Pin size={14} /></span>}
-              {active && <Check size={18} color={COLORS.blue} />}
+              {active && <Check size={20} color={COLORS.blue} />}
             </button>
           );
         })}
@@ -280,7 +280,7 @@ export function ModelChip({ fields }: { fields: ComposerFieldsApi }) {
       <span className="tl-header-model-name">{name}</span>
       {removed && <span className="tl-header-model-removed">已移除</span>}
       {effort && <span className="tl-header-model-effort">{effort}</span>}
-      <ChevronDown size={12} color={COLORS.labelSecondary} aria-hidden="true" />
+      <ChevronDown size={14} color={COLORS.labelSecondary} aria-hidden="true" />
     </button>
   );
 }
@@ -369,7 +369,7 @@ function QuoteSheet({ open, onClose, onPick }: {
         ))}
       </div>
       <div className="tl-quote-search">
-        <Search size={15} aria-hidden="true" />
+        <Search size={16} aria-hidden="true" />
         <input aria-label="搜索要引用的对象" type="search" value={query} placeholder={tab === 'thread' ? '搜索会话' : tab === 'skill' ? '搜索技能' : '搜索插件'}
           onChange={(event) => setQuery(event.target.value)} />
       </div>
@@ -465,7 +465,7 @@ export function ComposerFields({ fields, primary, enterKeyHint = 'send', autoFoc
         <div className="tl-composer-tools">
           <button type="button" className="tl-press tl-quote-trigger" aria-label="引用会话、技能或插件" title="引用"
             aria-haspopup="dialog" onClick={() => { haptic('selection'); setQuoteOpen(true); }}>
-            <AtSign size={18} />
+            <AtSign size={20} />
           </button>
           <button type="button" className="tl-press tl-composer-icon" aria-label="拍照" title="拍照"
             disabled={fields.picking}
@@ -476,7 +476,7 @@ export function ComposerFields({ fields, primary, enterKeyHint = 'send', autoFoc
                 return;
               }
               haptic('selection'); void pick('camera');
-            }}><Camera size={18} /></button>
+            }}><Camera size={20} /></button>
           <button type="button" className="tl-press tl-composer-icon" aria-label="图片" title="图片"
             disabled={fields.picking}
             style={{ width: 44, minWidth: 44, height: 44, minHeight: 44 }}
@@ -487,11 +487,11 @@ export function ComposerFields({ fields, primary, enterKeyHint = 'send', autoFoc
                 return;
               }
               haptic('selection'); void pick('image');
-            }}><ImageIcon size={18} /></button>
+            }}><ImageIcon size={20} /></button>
           <button type="button" className="tl-press tl-composer-icon" aria-label="附件" title="附件"
             disabled={fields.picking}
             style={{ width: 44, minWidth: 44, height: 44, minHeight: 44 }}
-            onClick={() => { haptic('selection'); void pick('file'); }}><Paperclip size={18} /></button>
+            onClick={() => { haptic('selection'); void pick('file'); }}><Paperclip size={20} /></button>
           <span className="tl-composer-spacer" />
           {primary}
         </div>
@@ -531,7 +531,7 @@ export function ChatPrimaryButton({ scope, threadId, fields, onStop }: {
     <button type="submit" aria-label="发送" title="发送"
       style={primaryStyle()}
       className="tl-press tl-composer-send" disabled={!hasInput || fields.busy}>
-      <ArrowUp size={20} strokeWidth={2.4} />
+      <ArrowUp size={20} />
     </button>
   );
 }

@@ -153,7 +153,7 @@ export default function ThreadsScreen() {
         <div className="tl-thread-nav">
           <h1>会话</h1>
           <button type="button" className="tl-press tl-nav-action" aria-label="新建会话" onClick={() => { haptic('selection'); openNewThread(); }}>
-            <Plus size={24} />
+            <Plus size={22} />
           </button>
         </div>
         {/* 2.2.6：标题下常驻一行「电脑 · 平台」。底栏三项后，它是会话页唯一
@@ -168,7 +168,7 @@ export default function ThreadsScreen() {
             <span className="tl-current-device-name">{session.machineName}</span>
             <span className="tl-current-device-sep" aria-hidden="true">·</span>
             <span className="tl-current-device-platform">{platformLabel(selectedHarness(session) || undefined, session.machineName)}</span>
-            <ChevronDown size={11} className="tl-current-device-caret" aria-hidden="true" />
+            <ChevronDown size={14} className="tl-current-device-caret" aria-hidden="true" />
           </button>
         )}
         {/* 固定区：切视图不该被列表滚动带走（2.2.6）。搜索留在滚动区顶部。 */}
@@ -290,7 +290,7 @@ export default function ThreadsScreen() {
                 <div className="tl-confirm-actions">
                   <button type="button" className="tl-confirm-cancel" onClick={() => setPending({ ...pending, stage: 'menu' })}>返回</button>
                   <button type="button" className="tl-confirm-ok" onClick={() => { void doArchive(pending.id, !pending.archived); }}>
-                    {pending.archived ? <ArchiveRestore size={15} /> : <Archive size={15} />}
+                    {pending.archived ? <ArchiveRestore size={16} /> : <Archive size={16} />}
                     {pending.archived ? '恢复' : '归档'}
                   </button>
                 </div>

@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { Toggle } from 'konsta/react';
-import { Wifi, Database, Activity, Trash2, RefreshCw, Download, X, ShieldCheck, CircleCheck, AlertTriangle, Info, FileUp } from 'lucide-react';
+import { Wifi, Database, Activity, Trash2, RefreshCw, Download, X, ShieldCheck, Cpu, Info, FileUp, ChevronRight } from 'lucide-react';
 import { InsetGroup } from '../components/Segmented';
 import { StatusPill } from '../components/ui';
 import { COLORS } from '../theme/optionATokens';
@@ -145,7 +145,7 @@ export function UpdatePanel() {
       <button type="button" className="tl-press tl-settings-row" onClick={() => { haptic('selection'); void check(true); }} disabled={state === 'checking'}>
         <span className="tl-settings-icon"><RefreshCw size={16} /></span>
         <span>手动检查更新</span>
-        <span className="tl-settings-value">{state === 'checking' ? '检查中…' : '›'}</span>
+        <span className="tl-settings-value">{state === 'checking' ? '检查中…' : <ChevronRight size={14} />}</span>
       </button>
       {(state === 'available' || state === 'cancelled') && (
         <>
@@ -153,7 +153,7 @@ export function UpdatePanel() {
           <button type="button" className="tl-press tl-settings-row" onClick={() => { haptic('success'); download(); }}>
             <span className="tl-settings-icon"><Download size={16} /></span>
             <span>下载新版本</span>
-            <span className="tl-settings-value">›</span>
+            <span className="tl-settings-value"><ChevronRight size={14} /></span>
           </button>
         </>
       )}
@@ -172,7 +172,7 @@ export function UpdatePanel() {
           <button type="button" className="tl-press tl-settings-row" onClick={() => { haptic('success'); if (!installUpdate()) setMessage('无法打开系统安装界面，请稍后重试'); }}>
             <span className="tl-settings-icon"><ShieldCheck size={16} /></span>
             <span>打开系统安装界面</span>
-            <span className="tl-settings-value">›</span>
+            <span className="tl-settings-value"><ChevronRight size={14} /></span>
           </button>
         </>
       )}
@@ -223,9 +223,9 @@ export default function SettingsScreen() {
               <span>测试连接</span>
             </button>
             <button type="button" className="tl-press tl-settings-row" onClick={() => { haptic('selection'); openSheet('harness'); }}>
-              <span className="tl-settings-icon"><CircleCheck size={16} /></span>
+              <span className="tl-settings-icon"><Cpu size={16} /></span>
               <span>切换电脑上的服务</span>
-              <span className="tl-settings-value">›</span>
+              <span className="tl-settings-value"><ChevronRight size={14} /></span>
             </button>
             <button type="button" className="tl-press tl-settings-row" onClick={() => { void uploadPhoneDiagnostics(); }}>
               <span className="tl-settings-icon"><FileUp size={16} /></span>
@@ -257,15 +257,15 @@ export default function SettingsScreen() {
             <button type="button" className="tl-press tl-settings-row" onClick={() => { haptic('selection'); openSheet('update'); }}>
               <span className="tl-settings-icon"><Download size={16} /></span>
               <span>检查更新</span>
-              <span className="tl-settings-value">›</span>
+              <span className="tl-settings-value"><ChevronRight size={14} /></span>
             </button>
             <button type="button" className="tl-press tl-settings-row" onClick={() => { haptic('selection'); openSheet('diagnostics'); }}>
               <span className="tl-settings-icon"><Info size={16} /></span>
               <span>运行信息</span>
-              <span className="tl-settings-value">›</span>
+              <span className="tl-settings-value"><ChevronRight size={14} /></span>
             </button>
             <div className="tl-settings-row">
-              <span className="tl-settings-icon"><AlertTriangle size={16} /></span>
+              <span className="tl-settings-icon"><Info size={16} /></span>
               <span>版本</span>
               <span className="tl-settings-value">{session.appVersion} ({session.appVersionCode})</span>
             </div>

@@ -150,7 +150,7 @@ export default function ConnectScreen({ onRevalidate, onBack, onPaired, mode = '
           {/* 2.2.6: 设备页「添加一台电脑」复用这个屏；未配对时没有返回键。 */}
           {onBack && (
             <button type="button" className="tl-connect-back tl-press" onClick={onBack} aria-label="返回设备" disabled={working}>
-              <ChevronLeft size={18} /> 返回
+              <ChevronLeft size={20} /> 返回
             </button>
           )}
           <div className="tl-brand" aria-hidden="true">
@@ -165,15 +165,15 @@ export default function ConnectScreen({ onRevalidate, onBack, onPaired, mode = '
             : saved ? `正在连接 ${session.machineName}` : '打开电脑端的配对二维码，扫码即可连接。'}</p>
         </header>
         <section className="tl-card tl-connect-card">
-          <ActionButton icon={<ScanLine size={18} />} onClick={() => void scan()} disabled={working || !session.cameraAvailable}>
+          <ActionButton icon={<ScanLine size={20} />} onClick={() => void scan()} disabled={working || !session.cameraAvailable}>
             {working ? '正在连接…' : '扫码连接'}
           </ActionButton>
           {working && <button type="button" className="tl-connect-manual tl-press" onClick={stop} aria-label="停止连接">
-            <Square size={15} /> 停止连接
+            <Square size={16} /> 停止连接
           </button>}
           {!session.cameraAvailable && <p className="tl-connect-hint">此设备没有可用相机，请手动连接。</p>}
           <button type="button" className="tl-connect-manual tl-press" aria-expanded={showManual} aria-controls="manual-connection" onClick={revealManual} disabled={working}>
-            <Link2 size={17} /> 输入地址和访问码 <ChevronDown size={16} style={{ marginLeft: 'auto', transform: showManual ? 'rotate(180deg)' : undefined }} />
+            <Link2 size={20} /> 输入地址和访问码 <ChevronDown size={16} style={{ marginLeft: 'auto', transform: showManual ? 'rotate(180deg)' : undefined }} />
           </button>
           {showManual && <form id="manual-connection" ref={form} onSubmit={submit} className="tl-connect-form">
             <label htmlFor="connection-url">电脑服务地址</label>
@@ -181,7 +181,7 @@ export default function ConnectScreen({ onRevalidate, onBack, onPaired, mode = '
             <label htmlFor="connection-code">机器访问码</label>
             <div className="tl-code-field">
               <input id="connection-code" type={showCode ? 'text' : 'password'} value={accessCode} onChange={e => setAccessCode(e.target.value)} placeholder="电脑配对页上显示的访问码" autoCapitalize="off" autoCorrect="off" spellCheck={false} disabled={working} />
-              <button type="button" aria-label={showCode ? '隐藏访问码' : '显示访问码'} aria-pressed={showCode} onClick={() => setShowCode(v => !v)}>{showCode ? <EyeOff size={18} /> : <Eye size={18} />}</button>
+              <button type="button" aria-label={showCode ? '隐藏访问码' : '显示访问码'} aria-pressed={showCode} onClick={() => setShowCode(v => !v)}>{showCode ? <EyeOff size={20} /> : <Eye size={20} />}</button>
             </div>
             <button type="submit" className="tl-connect-submit tl-press" disabled={working || !serverUrl.trim() || !accessCode.trim()}>{working ? '正在验证…' : '验证并连接'}</button>
           </form>}
@@ -194,7 +194,7 @@ export default function ConnectScreen({ onRevalidate, onBack, onPaired, mode = '
           <div className="tl-recovery-services">{session.harnesses.map(h => <button key={h.id} type="button" disabled={working} onClick={() => void switchHarness(h.id)}>{h.name}</button>)}</div>
           <button type="button" className="tl-connect-manual" onClick={() => { unpair(); setAccessCode(''); lastPairing.current = null; setShowManual(true); }}>忘记这台电脑</button>
         </section>}
-        <footer className="tl-connect-footer"><QrCode size={15} /> 地址和访问码在电脑端配对页查看。<br />Codex-Turnloom · {session.appVersion}</footer>
+        <footer className="tl-connect-footer"><span className="tl-connect-footer-line"><QrCode size={16} /> 地址和访问码在电脑端配对页查看。</span><br />Codex-Turnloom · {session.appVersion}</footer>
         {/* 未配对也必须能升级：扫码/访问码出问题时，这里是他唯一的自救入口。
             添加另一台电脑时不显示——这一步只做配对。 */}
         {!adding && (

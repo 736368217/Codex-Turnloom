@@ -5,9 +5,9 @@ import { haptic } from '../lib/nativeBridge';
 import { setActiveTab, TAB_LABELS, TAB_ORDER, type TabKey } from '../state/tabStore';
 
 const ICONS: Record<TabKey, ReactElement> = {
-  threads: <MessageSquare size={22} strokeWidth={1.9} />,
-  devices: <Laptop size={22} strokeWidth={1.9} />,
-  settings: <Settings size={22} strokeWidth={1.9} />,
+  threads: <MessageSquare size={22} />,
+  devices: <Laptop size={22} />,
+  settings: <Settings size={22} />,
 };
 
 /**
