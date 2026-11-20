@@ -1,20 +1,20 @@
 {
-  "generatedAt": "2026-11-20T11:21:26.9643921+08:00",
-  "startedAt": "2026-11-20T11:20:52.2104675+08:00",
+  "generatedAt": "2026-11-20T12:47:34.0160356+08:00",
+  "startedAt": "2026-11-20T12:46:55.0367511+08:00",
   "result": "ok",
   "route": "dom-shell",
   "buildType": "debug",
   "channel": "debug",
   "packageName": "com.codex.turnloom.app",
-  "versionName": "2.2.7",
-  "versionCode": 96,
-  "sha256": "94152d67c6760368163e9be404d9fef7faae1554cd76556e27c8da665c122323",
-  "sizeBytes": 2243778,
+  "versionName": "2.2.8",
+  "versionCode": 97,
+  "sha256": "5cee58d9690999ad9058c5740cdc2156a466fc993d7553a9c1e8dcca62e43c34",
+  "sizeBytes": 2259606,
   "notes": "",
   "identity": {
     "applicationId": "com.codex.turnloom.app",
-    "versionName": "2.2.7",
-    "versionCode": "96"
+    "versionName": "2.2.8",
+    "versionCode": "97"
   },
   "buildSteps": [
     {
@@ -70,7 +70,7 @@
     {
       "name": "aapt2-badging",
       "status": "ok",
-      "detail": "com.codex.turnloom.app/2.2.7/96"
+      "detail": "com.codex.turnloom.app/2.2.8/97"
     }
   ],
   "toolchain": {
@@ -82,10 +82,10 @@
     "npm": "C:\\Program Files\\nodejs\\npm.cmd"
   },
   "apk": {
-    "name": "Codex-Turnloom-2.2.7-app-debug.apk",
-    "path": "D:\\Turn-DSH\\Codex-Turnloom\\dist-app\\Codex-Turnloom-2.2.7-app-debug.apk",
-    "bytes": 2243778,
-    "sha256": "94152d67c6760368163e9be404d9fef7faae1554cd76556e27c8da665c122323"
+    "name": "Codex-Turnloom-2.2.8-app-debug.apk",
+    "path": "D:\\Turn-DSH\\Codex-Turnloom\\dist-app\\Codex-Turnloom-2.2.8-app-debug.apk",
+    "bytes": 2259606,
+    "sha256": "5cee58d9690999ad9058c5740cdc2156a466fc993d7553a9c1e8dcca62e43c34"
   },
   "entryUrl": "file:///android_asset/public/index.html",
   "gradleArgs": [
