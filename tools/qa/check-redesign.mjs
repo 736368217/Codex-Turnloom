@@ -426,12 +426,16 @@ const PANEL_STATE = `(() => {
     })
     .map((el) => el.getAttribute('data-harness')))];
   const machines = [...document.querySelectorAll('[data-machine]')].map((el) => el.getAttribute('data-machine'));
+  // 值对了不等于挂对了：契约 §4 要求属性只挂在 .tl-platblock 上。这里只**记录**
+  // 宿主，不在这里判红——那条判据归 Vera 的 check-device-panel.mjs，两处各写一份会漂。
+  const machineHosts = [...document.querySelectorAll('[data-machine]')].map((el) => (
+    el.closest('.tl-platblock') ? 'platblock' : String(el.className || el.tagName).split(/\\s+/)[0]));
   const deviceCards = [...document.querySelectorAll('.tl-devcard, [data-devcard]')].map((el) => ({
     active: el.getAttribute('data-active') === 'true',
     text: (el.textContent || '').trim().slice(0, 20),
   }));
   return JSON.stringify({
-    machines, uniqueMachines: [...new Set(machines)], deviceCards,
+    machines, machineHosts, uniqueMachines: [...new Set(machines)], deviceCards,
     platforms: platformCards, openPlatforms: platformCards.filter((entry) => entry.open).length,
     rows, scoped: rows.length > 0 && Boolean(document.querySelector('[data-open]')),
     text: (document.body.innerText || '').replace(/\s+/g, ' ').slice(0, 180),
@@ -460,7 +464,8 @@ async function probeDevicePanel() {
   if (facts.machines.length === 0) {
     skip("设备面板:data-machine", "面板里没有 data-machine 节点（控件未落地）");
   } else {
-    check(facts.uniqueMachines.length === 1, "设备面板：data-machine 同时只有一个值", facts.uniqueMachines.join(","));
+    check(facts.uniqueMachines.length === 1, "设备面板：data-machine 同时只有一个值",
+    `${facts.uniqueMachines.join(",")} · 宿主 ${[...new Set(facts.machineHosts)].join("/")}（挂对位置由 check-device-panel.mjs 判）`);
   }
   // 夹具里存了两台电脑：两张卡都在，但只有当前那台渲染平台。
   check(facts.deviceCards.length >= 2, "设备面板：记得住第二台电脑（卡片 ≥2）",
