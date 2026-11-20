@@ -891,6 +891,11 @@ async function main() {
       await goTab("设置");
       await auditIcons("设置");
       await browser.screenshot(path.join(OUT, "icon-system-390.png"));
+      // 320 也要一对：窄档最容易把「图标 + 标签」挤成换行或错轴。
+      await browser.setViewport(320, 568, 2);
+      await goTab("会话");
+      await auditIcons("会话320");
+      await browser.screenshot(path.join(OUT, "icon-system-320.png"));
 
       // ---- reduced motion: the same tap must land in one frame -----------
       await browser.setViewport(390, 844, 2);
