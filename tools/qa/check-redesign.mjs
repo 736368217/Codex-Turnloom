@@ -757,6 +757,56 @@ async function main() {
         check(/\b1\b/.test(runningEntry), "运行中入口的计数 = 夹具里运行中的条数", runningEntry);
         const monitorTab = await browser.eval(`Boolean(document.querySelector('button[aria-label="监控"]'))`);
         check(!monitorTab, "监控 Tab 已撤（只在运行中入口已落地时才要求）");
+        // 2.2.7：这条头是 34.5px 的紧凑条，命中带要补到 44 且不越出运行条本身。
+        // 量带不量盒（与 2.2.6 命中带同法），并给出两侧数字，改法换了也能量。
+        const headBand = await browser.eval(`(() => {
+          const head = document.querySelector('.tl-runstrip-head');
+          if (!head) return { found: false };
+          const box = head.getBoundingClientRect();
+          const wrap = head.closest('.tl-runstrip') || head.parentElement;
+          const wr = wrap ? wrap.getBoundingClientRect() : box;
+          const cx = box.left + box.width / 2;
+          let top = null, bottom = null;
+          for (let y = box.top - 14; y <= box.bottom + 14; y += 0.1) {
+            const el = document.elementFromPoint(cx, y);
+            if (el && (el === head || head.contains(el))) { if (top === null) top = Math.round(y * 10) / 10; bottom = Math.round(y * 10) / 10; }
+          }
+          return { found: true, bandTop: top, bandBottom: bottom,
+            band: top === null ? 0 : Math.round((bottom - top + 0.1) * 10) / 10,
+            boxTop: Math.round(box.top * 10) / 10, boxBottom: Math.round(box.bottom * 10) / 10, boxHeight: Math.round(box.height * 10) / 10,
+            wrapTop: Math.round(wr.top * 10) / 10, wrapBottom: Math.round(wr.bottom * 10) / 10, wrapHeight: Math.round(wr.height * 10) / 10 };
+        })()`);
+        check(headBand.found, "运行条头部在页面上（命中带可量）");
+        if (headBand.found) {
+          check(headBand.band >= 44, "运行条头部命中带 ≥44", `band=${headBand.band} 绘制=${headBand.boxHeight} 条高=${headBand.wrapHeight}`);
+          // A 44px band cannot fit inside a 34px bar — the real constraint is that
+          // the extra strip of hit area must not steal taps from its neighbours.
+          const neighbours = await browser.eval(`(() => {
+            const head = document.querySelector('.tl-runstrip-head');
+            if (!head) return { checked: 0, hits: [] };
+            const box = head.getBoundingClientRect();
+            const cx = box.left + box.width / 2;
+            let top = null, bottom = null;
+            for (let y = box.top - 14; y <= box.bottom + 14; y += 0.1) {
+              const el = document.elementFromPoint(cx, y);
+              if (el && (el === head || head.contains(el))) { if (top === null) top = y; bottom = y; }
+            }
+            if (top === null) return { checked: 0, hits: [] };
+            const others = [...document.querySelectorAll('button, [role="button"], a[href], [role="tab"]')]
+              .filter((el) => !head.contains(el) && el !== head);
+            const hits = [];
+            let checked = 0;
+            for (const el of others) {
+              const r = el.getBoundingClientRect();
+              if (r.width === 0 || r.height === 0) continue;
+              if (r.right < box.left || r.left > box.right) continue; // not in this column
+              checked += 1;
+              if (r.bottom > top + 0.5 && r.top < bottom - 0.5) hits.push({ cls: String(el.className).slice(0, 30), top: Math.round(r.top * 10) / 10, bottom: Math.round(r.bottom * 10) / 10 });
+            }
+            return { checked, hits, bandTop: Math.round(top * 10) / 10, bandBottom: Math.round(bottom * 10) / 10 };
+          })()`);
+          check(neighbours.hits.length === 0, "命中带没有压到相邻可点元素", `neighbours=${neighbours.checked} overlaps=${JSON.stringify(neighbours.hits)}`);
+        }
         await browser.eval(`(() => {
           const nodes = [...document.querySelectorAll('button, [role="button"], [role="tab"]')];
           const hit = nodes.find((el) => /(\\d+)\\s*运行中|运行中\\s*\\d+/.test((el.textContent || "").trim()));

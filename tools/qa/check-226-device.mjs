@@ -404,6 +404,25 @@ try {
       settled: Boolean(switched.settled), click: switched.click, values: switched.snap.values, cards: switched.snap.cards,
       openBranches: switched.snap.openBranches, alert: switched.alert,
     };
+    // 2.2.7: the whole card is the switch; the extra 「切换」 label ON THE CARD
+    // was a second visual rank nobody asked for. The harness row keeps its own
+    // 切换 pill (it is the only per-row affordance), so this scans cards only.
+    const pill = await browser.eval(`(() => {
+      const cards = qa('.tl-devcard');
+      const leaves = [];
+      for (const card of cards) {
+        for (const el of qa('*', card)) {
+          if (el.children.length === 0 && (el.textContent || '').trim() === '切换') leaves.push(String(el.className).slice(0, 30));
+        }
+        if (card.children.length === 0 && (card.textContent || '').trim() === '切换') leaves.push(String(card.className).slice(0, 30));
+      }
+      return { count: leaves.length, samples: leaves.slice(0, 3), moreButtons: qa('.tl-devcard-more').length };
+    })()`);
+    out.checks.noSwitchPill = {
+      pass: pill.count === 0 && pill.moreButtons >= 1,
+      standalone: pill.count, samples: pill.samples, moreButtons: pill.moreButtons,
+      note: '卡片上的独立「切换」标签删掉；harness 行的切换按钮保留；⋯ 管理与忘记仍在',
+    };
   } else {
     const deviceAlert = switched.alert ? switched.alert.device : null;
     const text = deviceAlert ? deviceAlert.text : "";
