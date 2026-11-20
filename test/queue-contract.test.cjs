@@ -155,6 +155,24 @@ test("queue reorder is one step or to the head and never displaces a sending ite
   assert.throws(() => reorderedQueuedSendItems(queue, "a", "sideways"), /调整方向无效/);
 });
 
+test("a sending or awaiting item cannot be cancelled or edited (same 409 copy as the UI)", async () => {
+  const { setPendingSendQueue, cancelQueuedSend } = await import("../server.js");
+  const key = "queue-contract-unit-busy";
+  const busy = (state) => queueItem("busy", "busy", { deliveryState: state });
+  for (const state of ["sending", "awaitingConfirmation"]) {
+    setPendingSendQueue(key, [busy(state)]);
+    await assert.rejects(
+      cancelQueuedSend(key, "busy"),
+      (error) => error.status === 409 && error.message === "正在发送，暂时不能修改。"
+    );
+    await assert.rejects(
+      cancelQueuedSend(key, "busy", { edit: true }),
+      (error) => error.status === 409 && error.message === "正在发送，暂时不能修改。"
+    );
+  }
+  setPendingSendQueue(key, []);
+});
+
 test("persisted queue schema keeps ordinary files, pause state, and reads v1 documents", async () => {
   const {
     normalizePersistedQueuedSendItem,
@@ -341,6 +359,8 @@ test("queue HTTP contract: status, files, reorder, draft, cap, pause across rest
     const persisted = JSON.parse(fs.readFileSync(queueFile, "utf8"));
     assert.equal(persisted.version, 2);
     assert.ok(Array.isArray(persisted.paused));
+    assert.equal(persisted.paused.includes(THREAD_A), false);
+    assert.equal(persisted.paused.includes(THREAD_B), false);
     assert.equal(persisted.queues[THREAD_B].length, 20);
   } finally {
     if (!stopped) await server.stop();
