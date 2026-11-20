@@ -6011,12 +6011,26 @@ function queueImageUrl(threadId, itemId, index) {
   return `/api/queue/image?${query.toString()}`;
 }
 
+/**
+ * What this backend can actually do. The client must not guess: a PI-native
+ * "steer" only raises priority (it does not merge into the running turn) and
+ * the native queue has no ordinary-file slot.
+ */
+function queueCapabilities() {
+  const nativeReady = PI_NATIVE_QUEUE && !legacyQueueMode;
+  return {
+    turnSteer: !nativeReady,
+    queueFiles: !nativeReady
+  };
+}
+
 function localQueuedSendStatus(threadId) {
   const queue = pendingSendQueues.get(String(threadId || "")) || [];
   return {
     queueLength: queue.length,
     queuePaused: queuePausedFor(threadId),
     queueSource: "local",
+    queueCapabilities: queueCapabilities(),
     queuedMessages: queue.map((item, index) => ({
       id: item.id,
       position: index + 1,
@@ -6139,6 +6153,7 @@ function queueUnavailableStatus(error) {
   return {
     queueLength: 0,
     queuePaused: false,
+    queueCapabilities: queueCapabilities(),
     queuedMessages: [],
     queueError: error?.message || String(error),
     queueUnavailable: true,
@@ -6171,6 +6186,7 @@ function nativeQueuedSendStatusFromEntries(threadId, entries) {
   return {
     queueLength: rows.length,
     queuePaused: queuePausedFor(threadId),
+    queueCapabilities: queueCapabilities(),
     queuedMessages: rows.map((entry, index) => {
       const text = String(entry?.content ?? entry?.text ?? "");
       const images = Array.isArray(entry?.attachments)

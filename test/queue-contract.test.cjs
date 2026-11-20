@@ -247,6 +247,7 @@ test("queue HTTP contract: status, files, reorder, draft, cap, pause across rest
       assert.equal(json.queueLength, 3);
       assert.equal(json.queuePaused, true);
       assert.equal(json.queueSource, "local");
+      assert.deepEqual(json.queueCapabilities, { turnSteer: true, queueFiles: true });
       assert.deepEqual(json.queuedMessages.map((item) => item.position), [1, 2, 3]);
       assert.deepEqual(json.queuedMessages.map((item) => item.text), ["第一条", "第二条", "带文件的排队"]);
       assert.equal(json.queuedMessages[2].fileCount, 1);
