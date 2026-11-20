@@ -2,10 +2,12 @@
 
 ## 渠道
 
-- Base `https://susu.wiki/v1`，模型名 `image2.6`，OpenAI 兼容 `POST /images/generations`。
+- Base `https://susu.wiki/v1`，OpenAI 兼容 `POST /images/generations`。
+- 可用模型（2026-11-20 用 `GET /v1/models` 读到，共 9 个）：`gpt-image-2.6-sunburst`、`gpt-image-2.6-flare`、`gpt-image-2.6`、`gpt-image-2.5-sunburst`、`gpt-image-2.5-flare`、`gpt-image-2.5`、`gpt-image-2-exact`、`gpt-image-2`、`gpt-image-1k-th`。**没有叫 `image2.6` 的**，`gpt-image-2.6` 这一代才是 Human 说的那个。
+- 默认用 **`gpt-image-2.6-flare`**：同一提示词下最平、最接近我们的浅色 Cupertino 风格（`sunburst` 更饱和、边缘更硬，适合「产品主视觉」那种需要能量的地方；底座 `gpt-image-2.6` 介于两者之间）。
+- 实测：1024×1024、约 **18–27 秒**/张，返回 `b64_json`，PNG 约 **0.7–0.85 MB**（进仓库前必须压到 ≤200 KB）。
 - 密钥只放两处：环境变量 `SUSU_API_KEY`，或本机 `%USERPROFILE%\Desktop\认证\susu-image-token.txt`。**不进仓库、不进 Thread、不进日志、不进命令行参数**（`scripts/gen-image.mjs` 从 env 读）。
-- 2026-11-20 状态：Human 在主对话给的 key 已被站点作废。站点原话：「全部旧 Key 已作废。站点出了问题，非常抱歉。请登录 https://susu.wiki 重新创建 Key，不用再买解锁卡。」`GET /v1` 就返回这段 401，三种鉴权形状（Bearer / raw / `x-api-key`）结果一致，`GET https://susu.wiki/` 本身 200 —— 是 key 的问题，不是网络或端点。
-- `scripts/gen-image.mjs` 已写好，**尚未对活接口跑通**；拿到新 key 后第一件事是跑一张 smoke，再让下游依赖它。
+- 2026-11-20：Human 给的 key 曾被站点整体作废（401「全部旧 Key 已作废」），同日重新启用后实测可用；`scripts/gen-image.mjs --model gpt-image-2.6-flare --prompt ... --out ...` 已跑通。
 
 ## 用在哪
 

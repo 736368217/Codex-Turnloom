@@ -20,7 +20,7 @@ const argOf = (name, fallback = '') => {
 
 const key = process.env.SUSU_API_KEY || '';
 const base = (process.env.SUSU_BASE_URL || 'https://susu.wiki/v1').replace(/\/+$/, '');
-const model = argOf('model', process.env.SUSU_MODEL || 'image2.6');
+const model = argOf('model', process.env.SUSU_MODEL || 'gpt-image-2.6-flare');
 const prompt = argOf('prompt');
 const out = argOf('out');
 const size = argOf('size', '1024x1024');
