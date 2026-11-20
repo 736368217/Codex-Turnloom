@@ -1,98 +1,102 @@
 {
-  "generatedAt": "2026-11-20T12:47:34.0160356+08:00",
-  "startedAt": "2026-11-20T12:46:55.0367511+08:00",
-  "result": "ok",
-  "route": "dom-shell",
-  "buildType": "debug",
-  "channel": "debug",
-  "packageName": "com.codex.turnloom.app",
-  "versionName": "2.2.8",
-  "versionCode": 97,
-  "sha256": "5cee58d9690999ad9058c5740cdc2156a466fc993d7553a9c1e8dcca62e43c34",
-  "sizeBytes": 2259606,
-  "notes": "",
-  "identity": {
-    "applicationId": "com.codex.turnloom.app",
-    "versionName": "2.2.8",
-    "versionCode": "97"
-  },
-  "buildSteps": [
-    {
-      "name": "validate",
-      "status": "ok",
-      "detail": "D:\\Turn-DSH\\Codex-Turnloom / D:\\Turn-DSH\\Codex-Turnloom\\.scratch\\app-build-tree"
-    },
-    {
-      "name": "toolchain",
-      "status": "ok",
-      "detail": "sdk=C:\\Users\\Administrator\\tools\\android-sdk tools=35.0.0 jdk=C:\\Program Files\\Eclipse Adoptium\\jdk-21.0.12.101-hotspot gradle=C:\\Users\\Administrator\\.gradle"
-    },
-    {
-      "name": "sync-source",
-      "status": "ok",
-      "detail": "D:\\Turn-DSH\\Codex-Turnloom\\.scratch\\app-build-tree"
-    },
-    {
-      "name": "typecheck",
-      "status": "ok",
-      "detail": "tsc --noEmit"
-    },
-    {
-      "name": "vite-build",
-      "status": "ok",
-      "detail": "dist/index.html base='./'"
-    },
-    {
-      "name": "copy-assets",
-      "status": "ok",
-      "detail": "D:\\Turn-DSH\\Codex-Turnloom\\native-shell\\app\\src\\main\\assets\\public"
-    },
-    {
-      "name": "assembleDebug",
-      "status": "ok",
-      "detail": "D:\\Turn-DSH\\Codex-Turnloom\\native-shell\\app\\build\\outputs\\apk\\debug\\app-debug.apk"
-    },
-    {
-      "name": "zipalign",
-      "status": "skipped",
-      "detail": "AGP debug output is aligned"
-    },
-    {
-      "name": "apksigner-sign",
-      "status": "skipped",
-      "detail": "AGP debug keystore"
-    },
-    {
-      "name": "apksigner-verify",
-      "status": "ok",
-      "detail": "v2/v3"
-    },
-    {
-      "name": "aapt2-badging",
-      "status": "ok",
-      "detail": "com.codex.turnloom.app/2.2.8/97"
-    }
-  ],
-  "toolchain": {
-    "androidSdk": "C:\\Users\\Administrator\\tools\\android-sdk",
-    "buildTools": "C:\\Users\\Administrator\\tools\\android-sdk\\build-tools\\35.0.0",
-    "jdk": "C:\\Program Files\\Eclipse Adoptium\\jdk-21.0.12.101-hotspot",
-    "gradleUserHome": "C:\\Users\\Administrator\\.gradle",
-    "node": "C:\\Program Files\\nodejs\\node.exe",
-    "npm": "C:\\Program Files\\nodejs\\npm.cmd"
-  },
-  "apk": {
-    "name": "Codex-Turnloom-2.2.8-app-debug.apk",
-    "path": "D:\\Turn-DSH\\Codex-Turnloom\\dist-app\\Codex-Turnloom-2.2.8-app-debug.apk",
-    "bytes": 2259606,
-    "sha256": "5cee58d9690999ad9058c5740cdc2156a466fc993d7553a9c1e8dcca62e43c34"
-  },
-  "entryUrl": "file:///android_asset/public/index.html",
-  "gradleArgs": [
-    "assembleDebug",
-    "--no-daemon",
-    "--console=plain"
-  ],
-  "apkName": "Codex-Turnloom.apk",
-  "stagedFor": "server-upgrade-package"
+    "generatedAt":  "2026-11-20T21:04:27.6816364+08:00",
+    "startedAt":  "2026-11-20T21:02:56.4766487+08:00",
+    "result":  "ok",
+    "route":  "dom-shell",
+    "buildType":  "debug",
+    "channel":  "debug",
+    "packageName":  "com.codex.turnloom.app",
+    "versionName":  "2.3.0",
+    "versionCode":  98,
+    "sha256":  "9eb92bed399ecc930de35f5dea743f0ea83dff3eabdf7eb9bdb8a5cfb52ff9c5",
+    "sizeBytes":  2269702,
+    "notes":  "",
+    "identity":  {
+                     "applicationId":  "com.codex.turnloom.app",
+                     "versionName":  "2.3.0",
+                     "versionCode":  "98"
+                 },
+    "buildSteps":  [
+                       {
+                           "name":  "validate",
+                           "status":  "ok",
+                           "detail":  "D:\\Turn-DSH\\Codex-Turnloom / D:\\Turn-DSH\\Codex-Turnloom\\.scratch\\app-build-tree"
+                       },
+                       {
+                           "name":  "toolchain",
+                           "status":  "ok",
+                           "detail":  "sdk=C:\\Users\\Administrator\\tools\\android-sdk tools=35.0.0 jdk=C:\\Program Files\\Eclipse Adoptium\\jdk-21.0.12.101-hotspot gradle=C:\\Users\\Administrator\\.gradle"
+                       },
+                       {
+                           "name":  "sync-source",
+                           "status":  "ok",
+                           "detail":  "D:\\Turn-DSH\\Codex-Turnloom\\.scratch\\app-build-tree"
+                       },
+                       {
+                           "name":  "typecheck",
+                           "status":  "ok",
+                           "detail":  "tsc --noEmit"
+                       },
+                       {
+                           "name":  "vite-build",
+                           "status":  "ok",
+                           "detail":  "dist/index.html base=\u0027./\u0027"
+                       },
+                       {
+                           "name":  "copy-assets",
+                           "status":  "ok",
+                           "detail":  "D:\\Turn-DSH\\Codex-Turnloom\\native-shell\\app\\src\\main\\assets\\public"
+                       },
+                       {
+                           "name":  "assembleDebug",
+                           "status":  "ok",
+                           "detail":  "D:\\Turn-DSH\\Codex-Turnloom\\native-shell\\app\\build\\outputs\\apk\\debug\\app-debug.apk"
+                       },
+                       {
+                           "name":  "zipalign",
+                           "status":  "skipped",
+                           "detail":  "AGP debug output is aligned"
+                       },
+                       {
+                           "name":  "apksigner-sign",
+                           "status":  "skipped",
+                           "detail":  "AGP debug keystore"
+                       },
+                       {
+                           "name":  "apksigner-verify",
+                           "status":  "ok",
+                           "detail":  "v2/v3"
+                       },
+                       {
+                           "name":  "aapt2-badging",
+                           "status":  "ok",
+                           "detail":  "com.codex.turnloom.app/2.3.0/98"
+                       }
+                   ],
+    "toolchain":  {
+                      "androidSdk":  "C:\\Users\\Administrator\\tools\\android-sdk",
+                      "buildTools":  "C:\\Users\\Administrator\\tools\\android-sdk\\build-tools\\35.0.0",
+                      "jdk":  "C:\\Program Files\\Eclipse Adoptium\\jdk-21.0.12.101-hotspot",
+                      "gradleUserHome":  "C:\\Users\\Administrator\\.gradle",
+                      "node":  "C:\\Program Files\\nodejs\\node.exe",
+                      "npm":  "C:\\Program Files\\nodejs\\npm.cmd"
+                  },
+    "apk":  {
+                "name":  "Codex-Turnloom-2.3.0-app-debug.apk",
+                "path":  "D:\\Turn-DSH\\Codex-Turnloom\\dist-app\\Codex-Turnloom-2.3.0-app-debug.apk",
+                "bytes":  2269702,
+                "sha256":  "9eb92bed399ecc930de35f5dea743f0ea83dff3eabdf7eb9bdb8a5cfb52ff9c5"
+            },
+    "entryUrl":  "file:///android_asset/public/index.html",
+    "gradleArgs":  [
+                       "assembleDebug",
+                       "--no-daemon",
+                       "--console=plain",
+                       "-Dhttp.proxyHost=127.0.0.1",
+                       "-Dhttp.proxyPort=7897",
+                       "-Dhttps.proxyHost=127.0.0.1",
+                       "-Dhttps.proxyPort=7897"
+                   ],
+    "apkName":  "Codex-Turnloom.apk",
+    "stagedFor":  "server-upgrade-package"
 }
