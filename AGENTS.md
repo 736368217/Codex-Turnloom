@@ -32,6 +32,18 @@ Node service; conversations and files stay on the computer.
 - A finished piece of work includes its verification: command output, screenshot, request log,
   or a test name. "Should work" is not a result.
 
+## UX bar (applies to every control you add or keep)
+
+- **One test per control**: "when does the user need this?" If the answer is not a moment in a
+  real task, delete the control. A second way to do the same thing is a defect, not a courtesy.
+- **Zero states do not render**: a count of 0, an empty group, a disabled row with nothing to
+  say — either hide it or say something only the real state can produce.
+- **Numbers have one source**: a count shown on the phone must equal what the computer or the
+  server says. Two surfaces disagreeing is a bug with a name, not a rounding detail. If the two
+  sides really do count different things, the UI must label both (e.g. 运行中 / 待你处理).
+- **Same question, one place**: machine status lives on the device page, not duplicated in
+  settings; update lives on the version row, not in a second card.
+
 ## Commands
 
 ```powershell
