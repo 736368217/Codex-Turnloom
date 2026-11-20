@@ -1,0 +1,161 @@
+{
+  "generatedAt": "2026-11-20T12:58:18.488Z",
+  "head": "eb9c98b18ad3dd52b6a4da18047287584dfeedbf",
+  "server": "server.js (synthetic --codex-home, active turn, temp queue file)",
+  "serverBytes": 399280,
+  "serverSha256": "b23975d22d5bc37e041ea9ea136ce57abde8eb15d1a628b7c5ad598ee659021a",
+  "pass": 30,
+  "fail": 0,
+  "results": [
+    {
+      "id": "status.empty",
+      "pass": true,
+      "detail": "{\"ok\":true,\"threadId\":\"qa-queue-api-thread\",\"queueLength\":0,\"queuePaused\":false,\"queueSource\":\"local\",\"queueCapabilities\":{\"turnSteer\":true,\"queueFiles\":true},\"queuedMessages\":[]}"
+    },
+    {
+      "id": "status.threadId",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "id": "status.capabilities.local",
+      "pass": true,
+      "detail": "{\"turnSteer\":true,\"queueFiles\":true}"
+    },
+    {
+      "id": "enqueue.text.ok",
+      "pass": true,
+      "detail": "{\"ok\":true,\"mode\":\"queue\",\"queued\":true,\"threadId\":\"qa-queue-api-thread\",\"queueItem\":{\"id\":\"090df31d-7492-4fda-87c2-06e6e93b686c\",\"position\":1,\"text\":\"A 第一条排队\",\"preview\":\"A 第一条排队\",\"imageCount\":0,\"file"
+    },
+    {
+      "id": "enqueue.text.item",
+      "pass": true,
+      "detail": "{\"id\":\"090df31d-7492-4fda-87c2-06e6e93b686c\",\"position\":1,\"text\":\"A 第一条排队\",\"preview\":\"A 第一条排队\",\"imageCount\":0,\"fileCount\":0,\"images\":[],\"files\":[],\"enqueuedAt\":\"2026-11-20T12:58:14.060Z\",\"lastError\":null,\"deliveryState\":\"queued\",\"model\":\"gpt-5.6-sol\",\"effort\":\"medium\"}"
+    },
+    {
+      "id": "enqueue.attachments.ok",
+      "pass": true,
+      "detail": "{\"ok\":true,\"mode\":\"queue\",\"queued\":true,\"threadId\":\"qa-queue-api-thread\",\"queueItem\":{\"id\":\"0276f948-355e-4eab-b954-c4a6fd981e8b\",\"position\":2,\"text\":\"B 带图和文件\",\"preview\":\"B 带图和文件 【图片】\",\"imageCount\":1,"
+    },
+    {
+      "id": "status.positions.continuous",
+      "pass": true,
+      "detail": "[1,2]"
+    },
+    {
+      "id": "status.text.is.user.original",
+      "pass": true,
+      "detail": "\"B 带图和文件\""
+    },
+    {
+      "id": "status.image.meta",
+      "pass": true,
+      "detail": "[{\"name\":\"photo.png\",\"mimeType\":\"image/png\",\"url\":\"/api/queue/image?threadId=qa-queue-api-thread&itemId=0276f948-355e-4eab-b954-c4a6fd981e8b&index=0\"}]"
+    },
+    {
+      "id": "status.file.meta",
+      "pass": true,
+      "detail": "[{\"name\":\"log.txt\",\"mimeType\":\"text/plain\",\"size\":29,\"sha256\":\"2a87536311645f082655a8013c3412b116bd3fb43c293eedba3e17f7981721a2\"}]"
+    },
+    {
+      "id": "reorder.up.ok",
+      "pass": true,
+      "detail": "{\"ok\":true,\"threadId\":\"qa-queue-api-thread\",\"moved\":true,\"itemId\":\"0276f948-355e-4eab-b954-c4a6fd981e8b\",\"queueLength\":2,\"queuePaused\":false,\"queueSource\":\"loca"
+    },
+    {
+      "id": "reorder.up.order",
+      "pass": true,
+      "detail": "[\"B 带图和文件\",\"A 第一条排队\"]"
+    },
+    {
+      "id": "reorder.invalid.direction",
+      "pass": true,
+      "detail": "{\"error\":\"调整方向无效（仅支持 up / down / top）。\",\"code\":\"queue_reorder_invalid_direction\"}"
+    },
+    {
+      "id": "cancel.edit.ok",
+      "pass": true,
+      "detail": "{\"ok\":true,\"threadId\":\"qa-queue-api-thread\",\"cancelled\":1,\"cancelledIds\":[\"0276f948-355e-4eab-b954-c4a6fd981e8b\"],\"draft\":{\"text\":\"B 带图和文件\",\"images\":[{\"name\":\"photo.png\",\"mimeType\":\"image/png\",\"data\":"
+    },
+    {
+      "id": "cancel.edit.images",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "id": "cancel.edit.files",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "id": "persist.schema",
+      "pass": true,
+      "detail": "{\"version\":2,\"paused\":[]}"
+    },
+    {
+      "id": "persist.files",
+      "pass": true,
+      "detail": "[{\"name\":\"note.txt\",\"mimeType\":\"text/plain\",\"data\":\"aGVsbG8gZnJvbSB0aGUgcXVldWUgZml4dHVyZQo=\",\"size\":27,\"sha256\":\"\"}]"
+    },
+    {
+      "id": "restart.restores.order",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "id": "restart.positions",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "id": "restart.paused",
+      "pass": true,
+      "detail": "true"
+    },
+    {
+      "id": "resume.ok",
+      "pass": true,
+      "detail": "{\"ok\":true,\"threadId\":\"qa-queue-api-thread\",\"queuePaused\":false,\"queueLength\":2,\"queueSource\":\"local\",\"queueCapabilities\":{\"turnSteer\":true,\"queueFiles\":true},\""
+    },
+    {
+      "id": "resume.persisted",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "id": "limit.21.rejected",
+      "pass": true,
+      "detail": "{\"error\":\"队列已满（20 条）。请等前几条发出或先删除一些再排队。\",\"code\":\"queue_full\"}"
+    },
+    {
+      "id": "limit.code",
+      "pass": true,
+      "detail": "queue_full"
+    },
+    {
+      "id": "limit.queue.unchanged",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "id": "busy.reorder.409",
+      "pass": true,
+      "detail": "{\"error\":\"正在发送，暂时不能修改。\",\"code\":\"queue_item_busy\"}"
+    },
+    {
+      "id": "failed.reorder.rejected",
+      "pass": true,
+      "detail": "{\"error\":\"先重试、编辑或删除这条消息。\",\"code\":\"queue_item_failed\"}"
+    },
+    {
+      "id": "failed.cross-row.rejected",
+      "pass": true,
+      "detail": "{\"error\":\"先重试、编辑或删除这条消息。\",\"code\":\"queue_item_failed\"}"
+    },
+    {
+      "id": "failed.cancel.allowed",
+      "pass": true,
+      "detail": "{\"ok\":true,\"threadId\":\"qa-queue-api-thread\",\"cancelled\":1,\"cancelledIds\":[\"qa-item-xf37ej\"],\"queueLength\":1,\"queuePaused\":false,\"queueSource\":\"local\",\"queueCapa"
+    }
+  ]
+}

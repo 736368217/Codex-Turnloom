@@ -1,0 +1,1082 @@
+{
+  "generatedAt": "2026-11-20T12:57:34.742Z",
+  "head": "720a3c2cb1e5387e4711921300596067150d71a9",
+  "bundle": "tmp\\dist-vera-queue",
+  "asset": {
+    "name": "index-DLbvZMiF.js",
+    "bytes": 838351,
+    "sha256": "07f3424edf0be91d803c99bbaac90377466686b19966a1dc7523cae61d06feab"
+  },
+  "fixture": "tools/qa/queue-fixture.mjs",
+  "views": [
+    "390x844",
+    "390x640",
+    "320x568"
+  ],
+  "pass": 177,
+  "fail": 0,
+  "results": [
+    {
+      "view": "390x844",
+      "id": "composer.stop.present",
+      "pass": true,
+      "detail": "aria-label=停止"
+    },
+    {
+      "view": "390x844",
+      "id": "composer.running.empty.only.stop",
+      "pass": true,
+      "detail": "send=false stop=true"
+    },
+    {
+      "view": "390x844",
+      "id": "composer.enterKeyHint.send",
+      "pass": true,
+      "detail": "send"
+    },
+    {
+      "view": "390x844",
+      "id": "composer.empty.bar.absent",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "view": "390x844",
+      "id": "composer.send.and.stop.44",
+      "pass": true,
+      "detail": "send h=48 stop h=48 value=\"排队 A · 390\" labels=[\"排队发送\",\"停止\"] composers=1"
+    },
+    {
+      "view": "390x844",
+      "id": "composer.stop.right.of.send",
+      "pass": true,
+      "detail": "send x=282 stop x=332"
+    },
+    {
+      "view": "390x844",
+      "id": "composer.running.hint",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "view": "390x844",
+      "id": "send.queues.bar",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "view": "390x844",
+      "id": "send.clears.input",
+      "pass": true,
+      "detail": "\"\""
+    },
+    {
+      "view": "390x844",
+      "id": "send.notice.count",
+      "pass": true,
+      "detail": "已排队 · 第 1 条"
+    },
+    {
+      "view": "390x844",
+      "id": "bar.above.composer",
+      "pass": true,
+      "detail": "bar bottom=715 composer top=742"
+    },
+    {
+      "view": "390x844",
+      "id": "bar.hit.44",
+      "pass": true,
+      "detail": "hit h=44.5"
+    },
+    {
+      "view": "390x844",
+      "id": "send.mode.queue.on.wire",
+      "pass": true,
+      "detail": "POST /api/send mode=queue"
+    },
+    {
+      "view": "390x844",
+      "id": "sheet.title",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "view": "390x844",
+      "id": "sheet.subtitle.normal",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "view": "390x844",
+      "id": "sheet.row.present",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "view": "390x844",
+      "id": "sheet.row.height.56",
+      "pass": true,
+      "detail": "h=56"
+    },
+    {
+      "view": "390x844",
+      "id": "sheet.badge.queued",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "view": "390x844",
+      "id": "sheet.meta.attachments",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "view": "390x844",
+      "id": "sheet.drawer.scrollable",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "view": "390x844",
+      "id": "sheet.no.horizontal.overflow",
+      "pass": true,
+      "detail": "{\"scrollWidth\":390,\"innerWidth\":390,\"scrollHeight\":844,\"innerHeight\":844}"
+    },
+    {
+      "view": "390x844",
+      "id": "detail.title",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "view": "390x844",
+      "id": "detail.back.visible",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "view": "390x844",
+      "id": "detail.actions.44",
+      "pass": true,
+      "detail": "[[\"取回编辑\",true,53],[\"插入本轮\",true,53],[\"移到队首\",true,53],[\"删除\",true,52]]"
+    },
+    {
+      "view": "390x844",
+      "id": "detail.attachment.meta",
+      "pass": true,
+      "detail": "image=true file=true"
+    },
+    {
+      "view": "390x844",
+      "id": "edit.returns.text",
+      "pass": true,
+      "detail": "\"第一条排队消息\""
+    },
+    {
+      "view": "390x844",
+      "id": "edit.clears.queue",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "view": "390x844",
+      "id": "edit.returns.attachments",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "view": "390x844",
+      "id": "edit.cancel.edit.on.wire",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "view": "390x844",
+      "id": "images.queue.detail.render",
+      "pass": true,
+      "detail": "{\"count\":2,\"rows\":[{\"src\":\"data:image/png;base64,iVBORw0KGg\",\"loaded\":true},{\"src\":\"data:image/jpeg;base64,/9j/4AAQS\",\"loaded\":true}],\"fallback\":true}"
+    },
+    {
+      "view": "390x844",
+      "id": "images.queue.detail.mime",
+      "pass": true,
+      "detail": "[{\"src\":\"data:image/png;base64,iVBORw0KGg\",\"loaded\":true},{\"src\":\"data:image/jpeg;base64,/9j/4AAQS\",\"loaded\":true}]"
+    },
+    {
+      "view": "390x844",
+      "id": "images.chat.jpeg.render",
+      "pass": true,
+      "detail": "{\"src\":\"data:image/jpeg;base64,/9j/4AAQSkZJRgABA\",\"loaded\":true}"
+    },
+    {
+      "view": "390x844",
+      "id": "drain.queue.empty",
+      "pass": true,
+      "detail": "[]"
+    },
+    {
+      "view": "390x844",
+      "id": "drain.sent.once",
+      "pass": true,
+      "detail": "1"
+    },
+    {
+      "view": "390x844",
+      "id": "drain.bar.gone",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "view": "390x844",
+      "id": "drain.message.visible",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "view": "390x844",
+      "id": "drain.turn.ended.ui",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "view": "390x844",
+      "id": "reload.before",
+      "pass": true,
+      "detail": "[\"刷新保留 1\",\"刷新保留 2\",\"刷新保留 3\"]"
+    },
+    {
+      "view": "390x844",
+      "id": "reload.after",
+      "pass": true,
+      "detail": "[\"刷新保留 1\",\"刷新保留 2\",\"刷新保留 3\"]"
+    },
+    {
+      "view": "390x844",
+      "id": "limit.error.copy",
+      "pass": true,
+      "detail": "{\"alert\":\"队列已满（20 条）。请等前几条发出或先删除一些再排队。 草稿和附件已保留，可再次点发送。\",\"value\":\"第 21 条\"}"
+    },
+    {
+      "view": "390x844",
+      "id": "limit.draft.kept",
+      "pass": true,
+      "detail": "\"第 21 条\""
+    },
+    {
+      "view": "390x844",
+      "id": "limit.queue.20",
+      "pass": true,
+      "detail": "20"
+    },
+    {
+      "view": "390x844",
+      "id": "limit.note.visible",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "view": "390x844",
+      "id": "normal.send.button",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "view": "390x844",
+      "id": "normal.send.mode.start",
+      "pass": true,
+      "detail": "{\"mode\":\"start\",\"text\":\"本轮已结束的普通发送\",\"imageCount\":0,\"fileCount\":0}"
+    },
+    {
+      "view": "390x844",
+      "id": "normal.send.arrives",
+      "pass": true,
+      "detail": "5"
+    },
+    {
+      "view": "390x844",
+      "id": "normal.send.no.bar",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "view": "390x844",
+      "id": "reorder.initial.order",
+      "pass": true,
+      "detail": "[\"A 第一条\",\"B 第二条\",\"C 第三条\"]"
+    },
+    {
+      "view": "390x844",
+      "id": "reorder.up.persisted",
+      "pass": true,
+      "detail": "[\"B 第二条\",\"A 第一条\",\"C 第三条\"]"
+    },
+    {
+      "view": "390x844",
+      "id": "reorder.top.persisted",
+      "pass": true,
+      "detail": "[\"C 第三条\",\"B 第二条\",\"A 第一条\"]"
+    },
+    {
+      "view": "390x844",
+      "id": "reorder.api.called",
+      "pass": true,
+      "detail": "2 calls"
+    },
+    {
+      "view": "390x844",
+      "id": "delete.confirm.copy",
+      "pass": true,
+      "detail": "{\"text\":true,\"dialog\":true}"
+    },
+    {
+      "view": "390x844",
+      "id": "delete.removes.one",
+      "pass": true,
+      "detail": "[\"保留的消息\"]"
+    },
+    {
+      "view": "390x844",
+      "id": "detail.sending.locked.copy",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "view": "390x844",
+      "id": "detail.sending.all.disabled",
+      "pass": true,
+      "detail": "[{\"label\":\"取回编辑\",\"present\":true,\"disabled\":true},{\"label\":\"插入本轮\",\"present\":true,\"disabled\":true},{\"label\":\"移到队首\",\"present\":true,\"disabled\":true},{\"label\":\"删除\",\"present\":true,\"disabled\":true}]"
+    },
+    {
+      "view": "390x844",
+      "id": "pause.bar.paused",
+      "pass": true,
+      "detail": "2 条排队 已暂停 恢复"
+    },
+    {
+      "view": "390x844",
+      "id": "pause.bar.resume.44",
+      "pass": true,
+      "detail": "hit=44.5"
+    },
+    {
+      "view": "390x844",
+      "id": "pause.bar.no.chevron",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "view": "390x844",
+      "id": "pause.no.silent.send",
+      "pass": true,
+      "detail": "queue=2"
+    },
+    {
+      "view": "390x844",
+      "id": "resume.clears.pause",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "view": "390x844",
+      "id": "pause.interrupt.on.wire",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "view": "390x844",
+      "id": "pause.resume.on.wire",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "view": "390x844",
+      "id": "failed.bar.copy",
+      "pass": true,
+      "detail": "2 条排队 队首发送失败"
+    },
+    {
+      "view": "390x844",
+      "id": "failed.bar.opens.detail",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "view": "390x844",
+      "id": "failed.reason.visible",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "view": "390x844",
+      "id": "failed.retry.visible",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "view": "390x844",
+      "id": "failed.reorder.hidden",
+      "pass": true,
+      "detail": "[\"取回编辑\",\"插入本轮\",\"重试\",\"删除\"]"
+    },
+    {
+      "view": "390x844",
+      "id": "failed.reorder.reason",
+      "pass": true,
+      "detail": "{\"rows\":[\"取回编辑\",\"插入本轮\",\"重试\",\"删除\"],\"reason\":true}"
+    },
+    {
+      "view": "390x844",
+      "id": "failed.list.subtitle",
+      "pass": true,
+      "detail": "{\"subtitle\":true,\"badge\":true,\"rows\":2}"
+    },
+    {
+      "view": "390x844",
+      "id": "failed.list.badge",
+      "pass": true,
+      "detail": "{\"subtitle\":true,\"badge\":true,\"rows\":2}"
+    },
+    {
+      "view": "390x844",
+      "id": "failed.list.rows",
+      "pass": true,
+      "detail": "2"
+    },
+    {
+      "view": "390x844",
+      "id": "failed.retry.requeues",
+      "pass": true,
+      "detail": "{\"id\":\"qitem-36-ytwb\",\"text\":\"失败的消息\",\"images\":[],\"files\":[],\"enqueuedAt\":\"2026-11-20T12:56:14.380Z\",\"deliveryState\":\"queued\",\"lastError\":null}"
+    },
+    {
+      "view": "390x844",
+      "id": "failed.retry.on.wire",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "view": "390x844",
+      "id": "steer.removes.item",
+      "pass": true,
+      "detail": "[]"
+    },
+    {
+      "view": "390x844",
+      "id": "steer.api.called",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "view": "390x844",
+      "id": "steer.409.copy",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "view": "390x844",
+      "id": "steer.409.keeps.item",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "view": "390x844",
+      "id": "enqueue.failure.visible",
+      "pass": true,
+      "detail": "{\"beforeClick\":{\"send\":true,\"disabled\":false,\"value\":\"断网入队失败的草稿\"},\"requestsBefore\":7,\"requestsAfter\":10,\"alert\":true,\"alertText\":\"电脑端服务出错：电脑端暂时无法写入队列（QA 故障注入）。消息还在输入框里。 草稿和附件已保留，可再次点发送。\",\"errorNode\":\"电脑端服务出错：电脑端暂时无法写入队列（QA 故障注入）。消息还在输入框里。 草稿和附件已保留，可再次点发送。\",\"bodyHasCopy\":true,\"value\":\"断网入队失败的草稿\",\"bar\":false,\"offline\":false,\"calls\":[\"GET http://127.0.0.1:17825/api/threads/qa-queue-running/messages?limit=80\",\"GET http://127.0.0.1:17825/api/threads/qa-queue-running/changes?timeout=250\",\"GET http://127.0.0.1:17825/api/thread-image?threadId=qa-queue-running&name=photo-red.jpg\",\"POST http://127.0.0.1:17825/api/send\",\"GET http://127.0.0.1:17825/api/threads/qa-queue-running/messages?limit=80\",\"GET http://127.0.0.1:17825/api/threads/qa-queue-running/changes?timeout=250\"]}"
+    },
+    {
+      "view": "390x844",
+      "id": "enqueue.failure.keeps.draft",
+      "pass": true,
+      "detail": "\"断网入队失败的草稿\""
+    },
+    {
+      "view": "390x844",
+      "id": "enqueue.failure.no.bar",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "view": "390x844",
+      "id": "enqueue.failure.not.offline",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "view": "390x844",
+      "id": "empty.sheet.copy",
+      "pass": true,
+      "detail": "{\"copy\":true,\"hint\":true,\"bar\":false}"
+    },
+    {
+      "view": "390x844",
+      "id": "empty.bar.gone",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "view": "390x844",
+      "id": "geometry.no.overflow.390x844",
+      "pass": true,
+      "detail": "{\"scrollWidth\":390,\"innerWidth\":390,\"scrollHeight\":844,\"innerHeight\":844}"
+    },
+    {
+      "view": "390x844",
+      "id": "geometry.buttons.44.390x844",
+      "pass": true,
+      "detail": "send=48 stop=48 value=\"几何检查\" sendPresent=true"
+    },
+    {
+      "view": "390x844",
+      "id": "geometry.stop.right.390x844",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "view": "390x844",
+      "id": "geometry.buttons.one.row.390x844",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "view": "390x844",
+      "id": "geometry.bar.above.composer.390x844",
+      "pass": true,
+      "detail": "bar=736 composer=742"
+    },
+    {
+      "view": "390x844",
+      "id": "geometry.bar.hit.44.390x844",
+      "pass": true,
+      "detail": "hit=44.5"
+    },
+    {
+      "view": "390x640",
+      "id": "composer.stop.present",
+      "pass": true,
+      "detail": "aria-label=停止"
+    },
+    {
+      "view": "390x640",
+      "id": "composer.running.empty.only.stop",
+      "pass": true,
+      "detail": "send=false stop=true"
+    },
+    {
+      "view": "390x640",
+      "id": "composer.enterKeyHint.send",
+      "pass": true,
+      "detail": "send"
+    },
+    {
+      "view": "390x640",
+      "id": "composer.empty.bar.absent",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "view": "390x640",
+      "id": "composer.send.and.stop.44",
+      "pass": true,
+      "detail": "send h=48 stop h=48 value=\"排队 A · 390\" labels=[\"排队发送\",\"停止\"] composers=1"
+    },
+    {
+      "view": "390x640",
+      "id": "composer.stop.right.of.send",
+      "pass": true,
+      "detail": "send x=282 stop x=332"
+    },
+    {
+      "view": "390x640",
+      "id": "composer.running.hint",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "view": "390x640",
+      "id": "send.queues.bar",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "view": "390x640",
+      "id": "send.clears.input",
+      "pass": true,
+      "detail": "\"\""
+    },
+    {
+      "view": "390x640",
+      "id": "send.notice.count",
+      "pass": true,
+      "detail": "已排队 · 第 1 条"
+    },
+    {
+      "view": "390x640",
+      "id": "bar.above.composer",
+      "pass": true,
+      "detail": "bar bottom=511 composer top=538"
+    },
+    {
+      "view": "390x640",
+      "id": "bar.hit.44",
+      "pass": true,
+      "detail": "hit h=44.5"
+    },
+    {
+      "view": "390x640",
+      "id": "send.mode.queue.on.wire",
+      "pass": true,
+      "detail": "POST /api/send mode=queue"
+    },
+    {
+      "view": "390x640",
+      "id": "sheet.title",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "view": "390x640",
+      "id": "sheet.subtitle.normal",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "view": "390x640",
+      "id": "sheet.row.present",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "view": "390x640",
+      "id": "sheet.row.height.56",
+      "pass": true,
+      "detail": "h=56"
+    },
+    {
+      "view": "390x640",
+      "id": "sheet.badge.queued",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "view": "390x640",
+      "id": "sheet.meta.attachments",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "view": "390x640",
+      "id": "sheet.drawer.scrollable",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "view": "390x640",
+      "id": "sheet.no.horizontal.overflow",
+      "pass": true,
+      "detail": "{\"scrollWidth\":390,\"innerWidth\":390,\"scrollHeight\":640,\"innerHeight\":640}"
+    },
+    {
+      "view": "390x640",
+      "id": "detail.title",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "view": "390x640",
+      "id": "detail.back.visible",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "view": "390x640",
+      "id": "detail.actions.44",
+      "pass": true,
+      "detail": "[[\"取回编辑\",true,53],[\"插入本轮\",true,53],[\"移到队首\",true,53],[\"删除\",true,52]]"
+    },
+    {
+      "view": "390x640",
+      "id": "detail.attachment.meta",
+      "pass": true,
+      "detail": "image=true file=true"
+    },
+    {
+      "view": "390x640",
+      "id": "edit.returns.text",
+      "pass": true,
+      "detail": "\"第一条排队消息\""
+    },
+    {
+      "view": "390x640",
+      "id": "edit.clears.queue",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "view": "390x640",
+      "id": "edit.returns.attachments",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "view": "390x640",
+      "id": "edit.cancel.edit.on.wire",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "view": "390x640",
+      "id": "pause.bar.paused",
+      "pass": true,
+      "detail": "2 条排队 已暂停 恢复"
+    },
+    {
+      "view": "390x640",
+      "id": "pause.bar.resume.44",
+      "pass": true,
+      "detail": "hit=44.5"
+    },
+    {
+      "view": "390x640",
+      "id": "pause.bar.no.chevron",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "view": "390x640",
+      "id": "pause.no.silent.send",
+      "pass": true,
+      "detail": "queue=2"
+    },
+    {
+      "view": "390x640",
+      "id": "resume.clears.pause",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "view": "390x640",
+      "id": "pause.interrupt.on.wire",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "view": "390x640",
+      "id": "pause.resume.on.wire",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "view": "390x640",
+      "id": "geometry.no.overflow.390x640",
+      "pass": true,
+      "detail": "{\"scrollWidth\":390,\"innerWidth\":390,\"scrollHeight\":640,\"innerHeight\":640}"
+    },
+    {
+      "view": "390x640",
+      "id": "geometry.buttons.44.390x640",
+      "pass": true,
+      "detail": "send=48 stop=48 value=\"几何检查\" sendPresent=true"
+    },
+    {
+      "view": "390x640",
+      "id": "geometry.stop.right.390x640",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "view": "390x640",
+      "id": "geometry.buttons.one.row.390x640",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "view": "390x640",
+      "id": "geometry.bar.above.composer.390x640",
+      "pass": true,
+      "detail": "bar=532 composer=538"
+    },
+    {
+      "view": "390x640",
+      "id": "geometry.bar.hit.44.390x640",
+      "pass": true,
+      "detail": "hit=44.5"
+    },
+    {
+      "view": "390x640",
+      "id": "geometry.keyboard.composer.visible.390x640",
+      "pass": true,
+      "detail": "{\"composer\":{\"x\":7,\"y\":538,\"w\":376,\"h\":94,\"bottom\":632,\"right\":383},\"bar\":{\"x\":7,\"y\":486,\"w\":376,\"h\":46,\"bottom\":532,\"right\":383},\"innerHeight\":640}"
+    },
+    {
+      "view": "390x640",
+      "id": "geometry.keyboard.bar.visible.390x640",
+      "pass": true,
+      "detail": "{\"x\":7,\"y\":486,\"w\":376,\"h\":46,\"bottom\":532,\"right\":383}"
+    },
+    {
+      "view": "320x568",
+      "id": "composer.stop.present",
+      "pass": true,
+      "detail": "aria-label=停止"
+    },
+    {
+      "view": "320x568",
+      "id": "composer.running.empty.only.stop",
+      "pass": true,
+      "detail": "send=false stop=true"
+    },
+    {
+      "view": "320x568",
+      "id": "composer.enterKeyHint.send",
+      "pass": true,
+      "detail": "send"
+    },
+    {
+      "view": "320x568",
+      "id": "composer.empty.bar.absent",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "view": "320x568",
+      "id": "composer.send.and.stop.44",
+      "pass": true,
+      "detail": "send h=48 stop h=48 value=\"排队 A · 390\" labels=[\"排队发送\",\"停止\"] composers=1"
+    },
+    {
+      "view": "320x568",
+      "id": "composer.stop.right.of.send",
+      "pass": true,
+      "detail": "send x=214 stop x=264"
+    },
+    {
+      "view": "320x568",
+      "id": "composer.running.hint",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "view": "320x568",
+      "id": "send.queues.bar",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "view": "320x568",
+      "id": "send.clears.input",
+      "pass": true,
+      "detail": "\"\""
+    },
+    {
+      "view": "320x568",
+      "id": "send.notice.count",
+      "pass": true,
+      "detail": "已排队 · 第 1 条"
+    },
+    {
+      "view": "320x568",
+      "id": "bar.above.composer",
+      "pass": true,
+      "detail": "bar bottom=439 composer top=466"
+    },
+    {
+      "view": "320x568",
+      "id": "bar.hit.44",
+      "pass": true,
+      "detail": "hit h=44.5"
+    },
+    {
+      "view": "320x568",
+      "id": "send.mode.queue.on.wire",
+      "pass": true,
+      "detail": "POST /api/send mode=queue"
+    },
+    {
+      "view": "320x568",
+      "id": "sheet.title",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "view": "320x568",
+      "id": "sheet.subtitle.normal",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "view": "320x568",
+      "id": "sheet.row.present",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "view": "320x568",
+      "id": "sheet.row.height.56",
+      "pass": true,
+      "detail": "h=56"
+    },
+    {
+      "view": "320x568",
+      "id": "sheet.badge.queued",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "view": "320x568",
+      "id": "sheet.meta.attachments",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "view": "320x568",
+      "id": "sheet.drawer.scrollable",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "view": "320x568",
+      "id": "sheet.no.horizontal.overflow",
+      "pass": true,
+      "detail": "{\"scrollWidth\":320,\"innerWidth\":320,\"scrollHeight\":568,\"innerHeight\":568}"
+    },
+    {
+      "view": "320x568",
+      "id": "detail.title",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "view": "320x568",
+      "id": "detail.back.visible",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "view": "320x568",
+      "id": "detail.actions.44",
+      "pass": true,
+      "detail": "[[\"取回编辑\",true,53],[\"插入本轮\",true,53],[\"移到队首\",true,53],[\"删除\",true,52]]"
+    },
+    {
+      "view": "320x568",
+      "id": "detail.attachment.meta",
+      "pass": true,
+      "detail": "image=true file=true"
+    },
+    {
+      "view": "320x568",
+      "id": "edit.returns.text",
+      "pass": true,
+      "detail": "\"第一条排队消息\""
+    },
+    {
+      "view": "320x568",
+      "id": "edit.clears.queue",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "view": "320x568",
+      "id": "edit.returns.attachments",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "view": "320x568",
+      "id": "edit.cancel.edit.on.wire",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "view": "320x568",
+      "id": "pause.bar.paused",
+      "pass": true,
+      "detail": "2 条排队 已暂停 恢复"
+    },
+    {
+      "view": "320x568",
+      "id": "pause.bar.resume.44",
+      "pass": true,
+      "detail": "hit=44.5"
+    },
+    {
+      "view": "320x568",
+      "id": "pause.bar.no.chevron",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "view": "320x568",
+      "id": "pause.no.silent.send",
+      "pass": true,
+      "detail": "queue=2"
+    },
+    {
+      "view": "320x568",
+      "id": "resume.clears.pause",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "view": "320x568",
+      "id": "pause.interrupt.on.wire",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "view": "320x568",
+      "id": "pause.resume.on.wire",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "view": "320x568",
+      "id": "geometry.no.overflow.320x568",
+      "pass": true,
+      "detail": "{\"scrollWidth\":320,\"innerWidth\":320,\"scrollHeight\":568,\"innerHeight\":568}"
+    },
+    {
+      "view": "320x568",
+      "id": "geometry.buttons.44.320x568",
+      "pass": true,
+      "detail": "send=48 stop=48 value=\"几何检查\" sendPresent=true"
+    },
+    {
+      "view": "320x568",
+      "id": "geometry.stop.right.320x568",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "view": "320x568",
+      "id": "geometry.buttons.one.row.320x568",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "view": "320x568",
+      "id": "geometry.bar.above.composer.320x568",
+      "pass": true,
+      "detail": "bar=460 composer=466"
+    },
+    {
+      "view": "320x568",
+      "id": "geometry.bar.hit.44.320x568",
+      "pass": true,
+      "detail": "hit=44.5"
+    },
+    {
+      "view": "320x568",
+      "id": "geometry.keyboard.composer.visible.320x568",
+      "pass": true,
+      "detail": "{\"composer\":{\"x\":5,\"y\":466,\"w\":310,\"h\":94,\"bottom\":560,\"right\":315},\"bar\":{\"x\":5,\"y\":414,\"w\":310,\"h\":46,\"bottom\":460,\"right\":315},\"innerHeight\":568}"
+    },
+    {
+      "view": "320x568",
+      "id": "geometry.keyboard.bar.visible.320x568",
+      "pass": true,
+      "detail": "{\"x\":5,\"y\":414,\"w\":310,\"h\":46,\"bottom\":460,\"right\":315}"
+    }
+  ]
+}
