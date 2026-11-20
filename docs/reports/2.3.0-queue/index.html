@@ -518,7 +518,7 @@
         <tr><td>队列 API E2E</td><td><b>30 PASS / 0 FAIL</b>：真 `server.js` + 临时队列文件（入队/附件/排序/恢复/重启/上限/409）</td></tr>
         <tr><td>设计回归</td><td>`check-redesign --build --require` PASS；`check-226-device` ok 390/320 + fail 390 全 PASS</td></tr>
         <tr><td>Android</td><td>`testDebugUnitTest` 31 / 0；`lintDebug` 0 error（Rhea 同一棵树）</td></tr>
-        <tr><td>模拟器实机</td><td>2.3.0/98 干净装机：空输入只剩停止；输入后蓝发送+红停止并排；发送后队列条「1 条排队」；抽屉/详情可达；JPEG 经 `bodyBase64` 真实显示；logcat 无 FATAL</td></tr>
+        <tr><td>模拟器实机</td><td>2.3.0/98 干净装机：Vera 独立走查 <b>12 PASS / 0 FAIL</b>（双按钮/队列条/抽屉/暂停恢复；JPEG+PNG 两张 `bodyBase64` 真实显示），Rhea 冒烟同 APK 通过，logcat 无 FATAL</td></tr>
         <tr><td>APK</td><td>2.3.0 / 98 · <b>2,269,702 B</b> · sha256 `9eb92bed…b52ff9c5` · 项目签名 `2feb63c5…`</td></tr>
         <tr><td>Server zip</td><td>2.3.0 · <b>2,502,154 B</b> · sha256 `4ce41177…6f8da768`（含 APK，供 8787 原地升级）</td></tr>
         <tr><td>线上 8787</td><td><b>2.3.0 · buildSha 809bbce</b>；`/api/queue/status` 200（`turnSteer/queueFiles=true`）；`/api/queue/reorder` 409 `queue_item_missing`（路由存在，非 404）；`messages.status.queuePaused=false`；`/api/app/update-public` 2.3.0/98，`/api/apk` 字节与 sha256 匹配</td></tr>
