@@ -143,10 +143,18 @@ test("queue reorder is one step or to the head and never displaces a sending ite
     ["a", "c", "b"]
   );
   assert.deepEqual(
-    reorderedQueuedSendItems(queue, "c", "top").queue.map((item) => item.id),
-    ["c", "a", "b"]
+    reorderedQueuedSendItems(queue, "b", "top").queue.map((item) => item.id),
+    ["b", "a", "c"]
   );
   assert.equal(reorderedQueuedSendItems(queue, "a", "up").changed, false);
+
+  // A failed item must be resolved, not bypassed by reordering it or by
+  // letting the next message jump over it.
+  assert.throws(() => reorderedQueuedSendItems(queue, "c", "top"), /先重试、编辑或删除这条消息/);
+  assert.throws(() => reorderedQueuedSendItems(queue, "c", "up"), /先重试、编辑或删除这条消息/);
+  const failedHead = [queueItem("bad", "BAD", { deliveryState: "failed" }), queueItem("next", "NEXT")];
+  assert.throws(() => reorderedQueuedSendItems(failedHead, "next", "up"), /先重试、编辑或删除这条消息/);
+  assert.throws(() => reorderedQueuedSendItems(failedHead, "next", "top"), /先重试、编辑或删除这条消息/);
 
   const busy = [queueItem("a", "A", { deliveryState: "sending" }), queueItem("b", "B")];
   assert.throws(() => reorderedQueuedSendItems(busy, "a", "down"), /正在发送，暂时不能修改/);

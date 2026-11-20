@@ -6522,6 +6522,9 @@ function normalizedQueueReorderDirection(value) {
  * Pure reorder plan: returns the next array plus the old/new index. Moves are
  * one-step up/down or straight to the head; a sending/awaiting item is never
  * displaced, because that is the item the drain is currently confirming.
+ * A failed item must be resolved (retry/edit/delete) before the queue moves:
+ * otherwise a later message could jump over a known-bad item and the order
+ * would stop meaning anything.
  */
 function reorderedQueuedSendItems(queue, itemId, direction) {
   const items = Array.isArray(queue) ? queue.slice() : [];
@@ -6540,6 +6543,12 @@ function reorderedQueuedSendItems(queue, itemId, direction) {
     error.code = "queue_item_busy";
     throw error;
   }
+  if (state === "failed") {
+    const error = new Error("先重试、编辑或删除这条消息。");
+    error.status = 409;
+    error.code = "queue_item_failed";
+    throw error;
+  }
   const targetIndex = normalizedDirection === "top"
     ? 0
     : normalizedDirection === "up"
@@ -6548,22 +6557,35 @@ function reorderedQueuedSendItems(queue, itemId, direction) {
   if (targetIndex < 0 || targetIndex >= items.length || targetIndex === index) {
     return { queue: items, from: index, to: index, changed: false, direction: normalizedDirection };
   }
-  const blocks = (position) => ["sending", "awaitingConfirmation"].includes(
-    normalizedQueuedSendState(items[position]?.deliveryState)
-  );
+  const stateAt = (position) => normalizedQueuedSendState(items[position]?.deliveryState);
+  const busyAt = (position) => ["sending", "awaitingConfirmation"].includes(stateAt(position));
+  const failedAt = (position) => stateAt(position) === "failed";
   if (normalizedDirection === "top") {
     for (let position = 0; position < index; position += 1) {
-      if (blocks(position)) {
+      if (busyAt(position)) {
         const error = new Error("正在发送，暂时不能修改。");
         error.status = 409;
         error.code = "queue_item_busy";
         throw error;
       }
+      if (failedAt(position)) {
+        const error = new Error("先重试、编辑或删除这条消息。");
+        error.status = 409;
+        error.code = "queue_item_failed";
+        throw error;
+      }
     }
-  } else if (blocks(targetIndex)) {
-    const error = new Error("正在发送，暂时不能调整顺序。");
+  } else if (busyAt(targetIndex)) {
+    const error = new Error("正在发送，暂时不能修改。");
     error.status = 409;
     error.code = "queue_item_busy";
+    throw error;
+  } else if (normalizedDirection === "up" && failedAt(targetIndex)) {
+    // Moving above a failed item would let this message overtake the known
+    // failure before the user has resolved it.
+    const error = new Error("先重试、编辑或删除这条消息。");
+    error.status = 409;
+    error.code = "queue_item_failed";
     throw error;
   }
   const [moved] = items.splice(index, 1);
