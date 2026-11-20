@@ -848,19 +848,28 @@ async function main() {
           const band = scan(hb.top - 20, hb.bottom + 20, (el) => el === head || head.contains(el));
           const rows = [...document.querySelectorAll('.tl-runrow-open, .tl-runrow-stop')].map((el) => el.getBoundingClientRect());
           const overlaps = rows.filter((r) => r.bottom > band.top + 0.2 && r.top < band.bottom - 0.2).length;
+          // 2.2.8: the strip owns a 44px slot, so the band is that slot — not an
+          // upward growth from the head. Two cells decide whether it steals:
+          // the segmented control above and the first running row below.
+          const track = document.querySelector('.tl-segmented');
+          const tb = track ? track.getBoundingClientRect() : null;
           return { found: true, band, own, wrap: wrapOwn, rows: rows.length, rowOverlaps: overlaps,
+            trackBottom: tb ? Math.round(tb.bottom * 10) / 10 : null,
             headBox: { top: Math.round(hb.top * 10) / 10, bottom: Math.round(hb.bottom * 10) / 10, h: Math.round(hb.height * 10) / 10 },
             wrapBox: { top: Math.round(wb.top * 10) / 10, bottom: Math.round(wb.bottom * 10) / 10, h: Math.round(wb.height * 10) / 10 } };
         })()`);
         check(strip.found, "运行条头部在页面上（命中带可量）");
         if (strip.found) {
           const bandH = strip.band.top === null ? 0 : Math.round((strip.band.bottom - strip.band.top + 0.1) * 10) / 10;
-          const bandOk = Math.abs(bandH - 44) <= 0.2;
-          const bottomOk = strip.band.bottom !== null && strip.own.bottom !== null && Math.abs(strip.band.bottom - strip.own.bottom) <= 0.2;
-          const inside = strip.band.top !== null && strip.wrap.top !== null && strip.band.top >= strip.wrap.top - 0.2 && strip.band.bottom <= strip.wrap.bottom + 0.2;
+          const slotHeight = strip.wrapBox.h;
+          const bandOk = Math.abs(slotHeight - 44) <= 0.5;
+          // band == the strip's own box (the slot), within the ruler's 0.2px
+          const slotOk = strip.band.top !== null && strip.wrap.top !== null
+            && Math.abs(strip.band.top - strip.wrap.top) <= 0.2 && Math.abs(strip.band.bottom - strip.wrap.bottom) <= 0.2;
           const rowsOk = strip.rowOverlaps === 0;
-          check(bandOk && bottomOk && inside && rowsOk, "运行条头部命中带 44±0.2 · 下沿贴头盒 · ⊂ 条 · 不压运行行",
-            `带=${bandH} (${strip.band.top}–${strip.band.bottom}) · 头盒=${strip.own.top}–${strip.own.bottom} (${strip.headBox.h}) · 条=${strip.wrap.top}–${strip.wrap.bottom} (${strip.wrapBox.h}) · 行重叠=${strip.rowOverlaps}/${strip.rows}`);
+          const noStealAbove = strip.trackBottom === null || strip.band.top === null || strip.band.top >= strip.trackBottom - 0.2;
+          check(bandOk && slotOk && rowsOk && noStealAbove, "运行条命中带 44±0.2 · = 自身 44 槽 · 不压分段控件 · 不压运行行",
+            `带=${bandH} (${strip.band.top}–${strip.band.bottom}) · 槽=${strip.wrap.top}–${strip.wrap.bottom} (${strip.wrapBox.h}) · 头盒=${strip.headBox.top}–${strip.headBox.bottom} · 分段底=${strip.trackBottom} · 行重叠=${strip.rowOverlaps}/${strip.rows}`);
         }
         // 2.2.7 第 4 项：头部要有 chevron，展开时转 180°——「展开/收起」纯文字
         // 是 NB3 7 屏复核里的同类问题。量完点两下复位，不影响后面的停止流程。
