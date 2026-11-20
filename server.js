@@ -5960,14 +5960,14 @@ function queuePausedFor(threadId) {
 function setQueuePaused(threadId, paused) {
   const key = String(threadId || "");
   if (!key) return false;
-  const previous = pausedSendQueues.has(key);
   if (paused) pausedSendQueues.add(key);
   else pausedSendQueues.delete(key);
   try {
     persistPendingSendQueues();
   } catch (error) {
-    if (previous) pausedSendQueues.add(key);
-    else pausedSendQueues.delete(key);
+    // Keep the in-memory pause even if the disk write failed: accidentally
+    // draining a queue the user stopped is worse than a stale on-disk flag.
+    logError("[queue] Could not persist pause state: " + (error?.message || error));
     throw error;
   }
   return paused;
