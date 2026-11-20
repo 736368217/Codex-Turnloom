@@ -196,6 +196,14 @@
 
 - 正文最小 **11px**（2.2.5 现状即 11px、正文最低对比度 5.37:1）。新设计不得再往下压；新增 11px 文本须实测对比度 ≥ 4.5:1。
 
+### 图标（2.2.7 起）
+
+- **单一家族：Lucide**（`lucide-react`）。禁止混用 Phosphor、禁止手绘小图标；品牌 logo 是产品标记，不受此限。
+- **尺寸只按文字阶梯取**：12–13px 文字 → 14；15 → 16；17 → 20；导航与大按钮 → 22。其它值不允许出现（2.2.6 实测一屏出现过 11/12/13/14/15/16/17/18/20/22/24/26 共 12 种，就是「和文字不适配」的来源）。
+- **线宽恒为 2**，不用 1.9/2.4 表达轻重；轻重靠颜色与字号。
+- **对齐**：图标 + 文字一律 `inline-flex` + `align-items:center` + `gap 6–8px`；图标 `display:block`，不进文字基线。
+- 判据：同一屏 `stroke-width` 集合 ⊆ {2}；`size` 集合 ⊆ {14, 16, 20, 22}；每个「图标 + 标签」组合的垂直中心差 ≤1px。
+
 ## 5. 禁止项（摘自 token 注释与 SINGLE_APP_CONTRACT.md）
 
 - `Light mode is HARD LOCKED. No dark variant, no black canvas, no desktop centered preview shell.`（`globals.css:8-9`）
