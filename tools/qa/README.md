@@ -31,11 +31,12 @@ node tools/qa/check-redesign.mjs --require   # 控件必须在；缺失算失败
 `check-redesign.mjs` 管几何与动画；设备树的「记得住两台、单值、只开一层、失败语义」由 `check-226-device.mjs` 判——它播种两台已配对电脑（A = 视觉夹具，B = 报自己身份的代理，可 `--mode fail` 返 503）。
 
 ```powershell
-node tools/qa/check-226-device.mjs --mode ok   --width 390   # 两台在场，切过去成功
-node tools/qa/check-226-device.mjs --mode fail --width 390   # B 返 503：当前卡不变、提示带原因
-node tools/qa/check-226-device.mjs --build --json tmp/226.json   # 按当前源码重建到 tmp/dist-vera 再量
+node tools/qa/check-226-device.mjs --build --mode ok --width 390   # 重建 tmp/dist-vera；两台在场、切过去成功
+node tools/qa/check-226-device.mjs --mode ok   --width 320         # 复用上面那个 bundle
+node tools/qa/check-226-device.mjs --mode fail --width 390         # B 返 503：当前卡不变、提示带原因
 ```
 
+- **第一条必须带 `--build`**：不带时直接复用 `tmp/dist-vera` 里的旧包（`check-226-device.mjs:40,69`），源码改了却不重建，四组测的仍是上一轮的 bundle——这种绿比红危险。宁可直接删掉 `tmp/dist-vera` 再跑：没有 bundle 会报错退出。
 - `--build` 只写 `tmp/dist-vera`（共享的 `app/dist` 是别人的活靶子，不碰）；端口全部运行时分配，和别的 QA 跑不冲突。
 - 同一次运行还会在**同一个 bundle** 上跑 `snippets/check-226-list.js`（滑块、命中带、钉住、减动效），报告里钉死 asset 名与字节数。
 - **退出码就是结论**：任何一格 FAIL → 1。出包前直接看退出码，不用读 JSON。
