@@ -70,13 +70,18 @@
 操作（每行 44 高，图标 20 + 文字 15px，按这个顺序）：
 
 1. **取回编辑**（`Pencil`）：调用 `/api/queue/cancel` `{edit:true}`；把返回的 `text/images/files` 放回输入框与附件托盘，队列表项消失。输入框已有内容时先确认「替换当前草稿？原草稿会丢失。」，只给 [替换] [取消]；输入框为空直接放回、不弹确认。
-2. **插入本轮**（`CornerUpLeft`）：仅运行中可用；调用 `/api/queue/steer`，立即并入当前轮；成功提示「已插入本轮」。非运行中置灰，副文案「本轮未在运行」；409 时只提示失败并刷新，**不改变按钮行为**。
-3. **移到队首**（`ArrowUpToLine`）：仅 `queued` 可用；调用 `/api/queue/reorder` `{direction:"top"}`；已在队首时置灰，副文案「已在队首」。
-4. **上移 / 下移**（`ArrowUp` / `ArrowDown`）：仅 `queued` 可用；`{direction:"up"|"down"}`；首/末项禁用。>1 条时始终显示。
+2. **插入本轮 / 优先下一条**（`CornerUpLeft`）：`queueCapabilities.turnSteer === true` 时写「插入本轮」，调用 `/api/queue/steer`，立即并入当前轮；`false` 时写「优先下一条」（只改优先级/下一条先发），**不出现「插入本轮」四个字**，成功提示「已设为下一条」。非运行中置灰，副文案「本轮未在运行」；409 只提示失败并刷新，不改变按钮行为。
+3. **移到队首**（`ArrowUpToLine`）：仅 `turnSteer === true` 显示（PI 无重排）；`/api/queue/reorder` `{direction:"top"}`；已在队首时置灰，副文案「已在队首」。
+4. **上移 / 下移**（`ArrowUp` / `ArrowDown`）：仅 `turnSteer === true` 显示；`{direction:"up"|"down"}`；首/末项禁用。>1 条时始终显示。
 5. **重试**（`RotateCw`）：仅 `failed` 项显示，调用 `/api/queue/retry`。
 6. **删除**（`Trash2`，红色）：二次确认「删除这条排队消息？」；调用 `/api/queue/cancel`。
 
-**失败项不能排序/移到队首**：副文案「先重试、编辑或删除」。失败必须被解决，不能靠下移绕过，否则后面的消息会越过一条已知坏消息，队列顺序就失去意义。失败项仍可「取回编辑」「插入本轮」「重试」「删除」。
+**失败项与排序（按整列判断，不只看自己那一行）**：`items[0]` 是队首，失败只可能停在队首。
+- 失败项自身：排序组（移到队首 / 上移 / 下移）**整组隐藏**，不置灰；详情标题下加一行 12px：「这条发送失败，先重试、编辑或删除；不能调整顺序。」动作只剩「取回编辑 / 插入本轮（或优先下一条）/ 重试 / 删除」。
+- 队列存在失败队首时：其余所有项的「移到队首」禁用；只有紧挨失败项的 index 1 的「上移」禁用（它会越过失败项）；index ≥2 的「上移」仍可用（只上一格，不会越过）；「下移」全部可用。
+- 原因只写一处：失败队首存在时，面板副标题下加一行 12px warning「队首消息发送失败，处理前不能越过它排序。」，行内不逐条重复。
+- 服务端 409 `queue_item_failed` 仍保留，用于并发/竞态兜底；正常路径不应让用户点到它。
+- `turnSteer:false`（PI native）时，任何时候都不显示排序三行。
 
 **发送中 / 待确认：以上全部禁用（含删除）**，行置灰，显示「正在发送，暂时不能修改」；服务端 409 用同一句话。删除不做特例。等状态转为 `failed` 后动作恢复。
 
@@ -98,6 +103,7 @@
 {
   "ok": true, "threadId": "…", "queueLength": 2, "queuePaused": false,
   "queueSource": "local|pi-native",
+  "queueCapabilities": { "turnSteer": true, "queueFiles": true },
   "queuedMessages": [{
     "id": "uuid", "position": 1, "text": "原文", "preview": "一行预览",
     "imageCount": 1, "fileCount": 1,
@@ -110,6 +116,13 @@
 ```
 
 顺序 = 发送顺序。`text` 是用户原文，不包含服务端追加的附件路径。
+
+**`queueCapabilities`（服务端按后端算，客户端不猜）**：
+- Codex 本地队列：`{turnSteer:true, queueFiles:true}`。
+- PI 原生队列：`{turnSteer:false, queueFiles:false}`。PI 的 `/queue/steer` 只设 `priority`（下一条先发），**不并入当前轮**；PI 也没有队列重排。所以 UI 必须把动作写成「优先下一条」而不是「插入本轮」，并隐藏「移到队首/上移/下移」。
+- HTTP 后端：由后端响应带；缺省按 `true/true`（保持既有适配器行为），但客户端只在字段明确为 `false` 时降级。
+- `turnSteer:false` 时隐藏所有排序行（PI 无 reorder），只留「优先下一条」。
+- `queueFiles:false` 时，运行中回形针置灰（44 命中保留），title「当前后端不支持排队文件」；空闲时照常。已选文件后入队仍由服务端 409 兜底。
 
 `images[].url` 是给浏览器/调试用的相对地址；**原生 App 的 WebView 是 `file:///android_asset`，且 `MainActivity` 会拦截一切 http(s) 子资源（`MainActivity.java:196-201`），所以 `<img src>` 既不能解析相对地址，也不能走 http(s)。** 手机端按下述 3.3 的图片管线取图，不能把绝对地址/签名 URL 塞进 `<img>`，也不能把 token 放进 URL。
 
