@@ -290,14 +290,26 @@ async function restFacts(page) {
 const browserScript = `(() => {
   const store = new Map();
   const base = "http://127.0.0.1:8899";
+  // 两台电脑：第二台不是当前机。设备树「同时只有一个 data-machine 值」只有在
+  // 存得下第二台时才测得出来——一台机器时这条判据是空的。
   store.set("turnloom.machine.v2", JSON.stringify({
-    machineId: "qa-redesign-machine", machineName: "DE 工作站", serverUrl: base,
-    machineToken: "qa-machine-token",
-    harnesses: [
-      { id: "codex", name: "Codex Desktop", token: "qa-codex-token", kind: "codex", defaultHarness: true, online: true },
-      { id: "pi", name: "PI-Desktop", token: "qa-pi-token", kind: "pi", online: true },
+    version: 3,
+    activeMachineId: "qa-redesign-machine",
+    machines: [
+      { machineId: "qa-redesign-machine", machineName: "DE 工作站", serverUrl: base,
+        machineToken: "qa-machine-token",
+        harnesses: [
+          { id: "codex", name: "Codex Desktop", token: "qa-codex-token", kind: "codex", defaultHarness: true, online: true },
+          { id: "pi", name: "PI-Desktop", token: "qa-pi-token", kind: "pi", online: true },
+        ],
+        defaultHarnessId: "codex", lastUsedAt: Date.now() },
+      { machineId: "qa-second-machine", machineName: "书房笔记本", serverUrl: "http://127.0.0.1:8898",
+        machineToken: "qa-second-token",
+        harnesses: [
+          { id: "codex-b", name: "Codex Desktop", token: "qa-codex-b-token", kind: "codex", defaultHarness: true, online: false },
+        ],
+        defaultHarnessId: "codex-b", lastUsedAt: Date.now() - 3600 * 1000 },
     ],
-    defaultHarnessId: "codex",
   }));
   const threads = [
     { id: "qa-r-a", title: "重设计：分段控件", status: { state: "running", thinking: true }, updatedAtMs: 1700000000000 },
@@ -397,64 +409,92 @@ async function bootInto(base, label) {
  *  2) 平台卡在电脑卡之下可见；
  *  3) harness 行只在选中平台之后出现（选中前不预渲染，图 2 的「选了才露出」）。
  *  面板不存在时整段 SKIP —— 不拿「没有主语」的格子当绿。 */
+/** 展开状态的行：平台卡用 aria-expanded，行容器用 data-open；两种都算。 */
+const PANEL_STATE = `(() => {
+  const platformCards = [...document.querySelectorAll('[data-plat], [data-platform], .plat')].map((el) => ({
+    key: el.getAttribute('data-plat') || el.getAttribute('data-platform') || '',
+    open: el.getAttribute('aria-expanded') === 'true' || el.getAttribute('data-open') === 'true',
+    text: (el.textContent || '').trim().slice(0, 16),
+  }));
+  const openContainers = [...document.querySelectorAll('[data-open="true"]')];
+  // 行只有在「最近的 data-open 祖先」是打开的时候才算露出来：分支容器本身是
+  // 打开的，所以不能只看容器里有没有行，否则收起平台的行走廊也会被算进来。
+  const rows = [...new Set([...document.querySelectorAll('[data-harness]')]
+    .filter((el) => {
+      const holder = el.closest('[data-open]');
+      return !holder || holder.getAttribute('data-open') === 'true';
+    })
+    .map((el) => el.getAttribute('data-harness')))];
+  const machines = [...document.querySelectorAll('[data-machine]')].map((el) => el.getAttribute('data-machine'));
+  const deviceCards = [...document.querySelectorAll('.tl-devcard, [data-devcard]')].map((el) => ({
+    active: el.getAttribute('data-active') === 'true',
+    text: (el.textContent || '').trim().slice(0, 20),
+  }));
+  return JSON.stringify({
+    machines, uniqueMachines: [...new Set(machines)], deviceCards,
+    platforms: platformCards, openPlatforms: platformCards.filter((entry) => entry.open).length,
+    rows, scoped: rows.length > 0 && Boolean(document.querySelector('[data-open]')),
+    text: (document.body.innerText || '').replace(/\s+/g, ' ').slice(0, 180),
+  });
+})()`;
+
 async function probeDevicePanel() {
+  // 入口可能是底栏「设备」，也可能是会话页头部的常驻设备卡——两种都认。
   const entry = await browser.eval(`(() => {
-    const byAttr = document.querySelector('[data-qa="device-panel"], [data-qa="device"], [aria-label*="设备"]');
-    if (byAttr) return 'attr';
-    const byText = [...document.querySelectorAll('button, [role="button"]')]
-      .find((el) => /设备|电脑|DE 工作站/.test((el.textContent || '').trim()));
-    return byText ? 'text' : '';
+    const tab = [...document.querySelectorAll('[role="tab"], .tl-tabbar button')]
+      .find((el) => (el.textContent || '').trim() === '设备');
+    if (tab) { tab.click(); return 'tab'; }
+    const card = document.querySelector('[data-qa="device-panel"], [data-qa="device"], [class*="devbar"], [aria-label*="设备"]');
+    if (card) { card.click(); return 'card'; }
+    return '';
   })()`);
   if (!entry) {
-    skip("设备面板", "还没有入口（电脑卡未落地）");
+    skip("设备面板", "还没有入口（底栏无「设备」、头部无设备卡）");
     return;
   }
-  await browser.eval(`(() => {
-    const el = document.querySelector('[data-qa="device-panel"], [data-qa="device"], [aria-label*="设备"]')
-      || [...document.querySelectorAll('button, [role="button"]')].find((node) => /设备|电脑|DE 工作站/.test((node.textContent || '').trim()));
-    el?.click();
-  })()`);
-  await sleep(700);
+  await sleep(800);
 
-  const facts = JSON.parse(await browser.eval(`(() => {
-    const machines = [...document.querySelectorAll('[data-machine]')].map((el) => el.getAttribute('data-machine'));
-    const platforms = [...document.querySelectorAll('[data-platform], .plat')].map((el) => (el.textContent || '').trim().slice(0, 20));
-    const harnessRows = [...document.querySelectorAll('[data-harness], .harness-row')].length;
-    return JSON.stringify({ machines, uniqueMachines: [...new Set(machines)], platforms, harnessRows,
-      text: (document.body.innerText || '').replace(/\\s+/g, ' ').slice(0, 160) });
-  })()`));
-  log(`设备面板 · ${JSON.stringify(facts)}`);
+  const facts = JSON.parse(await browser.eval(PANEL_STATE));
+  log(`设备面板（入口=${entry}）· ${JSON.stringify(facts)}`);
 
   if (facts.machines.length === 0) {
     skip("设备面板:data-machine", "面板里没有 data-machine 节点（控件未落地）");
   } else {
     check(facts.uniqueMachines.length === 1, "设备面板：data-machine 同时只有一个值", facts.uniqueMachines.join(","));
   }
-
+  // 夹具里存了两台电脑：两张卡都在，但只有当前那台渲染平台。
+  check(facts.deviceCards.length >= 2, "设备面板：记得住第二台电脑（卡片 ≥2）",
+    facts.deviceCards.map((card) => `${card.text.split("\\n")[0]}${card.active ? "(当前)" : ""}`).join(" / ") || "0 张");
   if (facts.platforms.length === 0) {
-    skip("设备面板:平台卡", "没有平台卡（data-platform / .plat）");
+    skip("设备面板:平台卡", "没有平台卡（data-plat / data-platform / .plat）");
     return;
   }
-  check(facts.platforms.length >= 1, "设备面板：至少一张平台卡", facts.platforms.join(" / "));
-  check(facts.harnessRows === 0, "设备面板：选中平台之前不预渲染 harness 行", `rows=${facts.harnessRows}`);
+  check(facts.platforms.length >= 1, "设备面板：至少一张平台卡", facts.platforms.map((entry2) => entry2.text).join(" / "));
+  // 「选了才露出」的正确形状：同时最多一个平台展开；当前平台默认展开是合理设计。
+  check(facts.openPlatforms <= 1, "设备面板：同时最多一个平台展开 harness", `open=${facts.openPlatforms}/${facts.platforms.length}`);
+  check(facts.rows.length > 0, "设备面板：展开的平台下看得见 harness 行", `rows=${facts.rows.join(",") || "none"}`);
 
+  if (facts.platforms.length < 2) {
+    skip("设备面板:换平台", "只有一张平台卡（单平台是常态），换平台不可测");
+    await browser.screenshot(path.join(OUT, "device-panel.png"));
+    return;
+  }
   const opened = await browser.eval(`(() => {
-    const card = document.querySelector('[data-platform], .plat');
-    if (!card) return false;
-    card.click();
-    return true;
+    const cards = [...document.querySelectorAll('[data-plat], [data-platform], .plat')];
+    const closed = cards.find((el) => el.getAttribute('aria-expanded') !== 'true' && el.getAttribute('data-open') !== 'true');
+    if (!closed) return '';
+    closed.click();
+    return closed.getAttribute('data-plat') || closed.getAttribute('data-platform') || 'clicked';
   })()`);
-  await sleep(700);
-  const after = JSON.parse(await browser.eval(`(() => ({
-    rows: [...document.querySelectorAll('[data-harness], .harness-row')].length,
-    text: (document.body.innerText || '').replace(/\\s+/g, ' ').slice(0, 200),
-  }))()`));
-  log(`设备面板 · 选中平台后 · ${JSON.stringify(after)}`);
-  check(Boolean(opened), "设备面板：平台卡可点", String(opened));
-  check(after.rows > 0, "设备面板：选中平台后露出 harness 行", `rows=${after.rows}`);
+  await sleep(800);
+  const after = JSON.parse(await browser.eval(PANEL_STATE));
+  log(`设备面板 · 换到「${opened}」后 · ${JSON.stringify({ open: after.openPlatforms, rows: after.rows })}`);
+  check(Boolean(opened), "设备面板：另一张平台卡可点", String(opened));
+  check(after.openPlatforms <= 1, "设备面板：换平台后仍只有一个平台展开", `open=${after.openPlatforms}`);
+  check(after.rows.length > 0 && after.rows.join(",") !== facts.rows.join(","),
+    "设备面板：换平台后行换成了那一家的", `${facts.rows.join(",") || "none"} → ${after.rows.join(",") || "none"}`);
   await browser.screenshot(path.join(OUT, "device-panel.png"));
 }
-
 async function main() {
   const cdpPort = Number(flag("cdp-port", "0")) || await freePort();
   browser = await new CDP({ port: cdpPort, width: 390, height: 844, scale: 3 }).launch();
@@ -529,24 +569,111 @@ async function main() {
         const restFactsRaw = JSON.parse(await restFacts(browser));
         log(`${label} · rest · ${JSON.stringify(restFactsRaw)}`);
         // 盒子高不等于可点：38px 的按钮躺在 44px 的轨道里，上下的 padding 属于轨道，
-        // 点在那里不会选中。用 elementFromPoint 量「整条 44px 带子算不算这一段」。
+        // 点在那里不会选中。这条带子要用两把尺子同时量，少一把就会重犯上一轮的错误：
+        //   声明值 —— rect + ::before 的 inset，这是 CSS 契约，精确到 0.1px；
+        //   实测值 —— elementFromPoint 逐 0.1px 扫出首末行，这是手指真的能点到的范围。
+        // 这台 headless 的命中测试把每个盒子的上沿都提前 ~0.95px（连 300px 处的纯黑
+        // div 也一样），所以实测边界只能和**同一把尺子量的轨道**比，不能和 rect 比；
+        // 拿 rect 当基准会把健康实现判成「冒出 1px」。
         const band = JSON.parse(await browser.eval(`(() => {
           const list = [...document.querySelectorAll('[role="tablist"]')].find((el) => /按时间|按项目/.test(el.textContent || ''));
           const tabs = [...list.querySelectorAll('[role="tab"]')];
           const track = list.getBoundingClientRect();
+          const STEP = 0.1;
           const out = tabs.map((tab) => {
             const rect = tab.getBoundingClientRect();
             const cx = Math.round(rect.left + rect.width / 2);
-            const probes = [track.top + 1, track.top + track.height / 2, track.bottom - 1].map((y) => {
-              const hit = document.elementFromPoint(cx, y);
-              return Boolean(hit && (hit === tab || tab.contains(hit) || hit.closest('[role="tab"]') === tab));
-            });
-            return { label: (tab.textContent || '').trim(), boxH: Math.round(rect.height), probes };
+            const owns = (hit) => Boolean(hit && (hit === tab || tab.contains(hit) || hit.closest('[role="tab"]') === tab));
+            // 轨道自己也不是矩形：两端是半径 22 的胶囊，按中心 x 扫出来的首末行
+            // 就是「整条轨道」的上沿下沿，和单元格用的是同一个 y、同一把尺子。
+            const scan = (predicate) => {
+              let first = null;
+              let last = null;
+              for (let y = track.top - 6; y <= track.bottom + 6; y += STEP) {
+                if (predicate(document.elementFromPoint(cx, y))) {
+                  if (first === null) first = y;
+                  last = y;
+                }
+              }
+              return { first: first === null ? null : Math.round(first * 100) / 100,
+                last: last === null ? null : Math.round((last + STEP) * 100) / 100 };
+            };
+            const band = scan(owns);
+            // 清掉单元格的 ::before 再扫一次：这时同一列最上面的是轨道本身。
+            const style = document.createElement('style');
+            style.textContent = '*::before{content:none!important}';
+            document.head.appendChild(style);
+            const rail = scan((hit) => Boolean(hit && (hit === list || list.contains(hit))));
+            style.remove();
+            const bandTop = band.first;
+            const bandBottom = band.last;
+            const railTop = rail.first;
+            const railBottom = rail.last;
+            const outsideTop = owns(document.elementFromPoint(cx, (railTop ?? track.top) - 1.2));
+            const outsideBottom = owns(document.elementFromPoint(cx, (railBottom ?? track.bottom) + 1.2));
+            // ::before 补的命中带必须留在轨道里：越出 1px，就会盖住轨道外的
+            // 兄弟元素（列表、标题行），点轨道边缘会命中一整段看不见的东西。
+            const pseudo = getComputedStyle(tab, '::before');
+            const hasPseudo = pseudo.content && pseudo.content !== 'none';
+            const insetTop = hasPseudo ? (parseFloat(pseudo.top) || 0) : 0;
+            const insetBottom = hasPseudo ? (parseFloat(pseudo.bottom) || 0) : 0;
+            const cssTop = rect.top + insetTop;
+            const cssBottom = rect.bottom - insetBottom;
+            const probes = [bandTop + 0.5, track.top + track.height / 2, bandBottom - 0.5]
+              .map((y) => owns(document.elementFromPoint(cx, y)));
+            return { label: (tab.textContent || '').trim(), boxH: Math.round(rect.height), probes,
+              bandTop, bandBottom, bandH: bandTop === null ? null : Math.round((bandBottom - bandTop) * 10) / 10,
+              railTop, railBottom, railH: railTop === null ? null : Math.round((railBottom - railTop) * 10) / 10,
+              outsideTop, outsideBottom,
+              cssTop: Math.round(cssTop * 10) / 10, cssBottom: Math.round(cssBottom * 10) / 10,
+              overflowTop: Math.round((track.top - cssTop) * 10) / 10,
+              overflowBottom: Math.round((cssBottom - track.bottom) * 10) / 10 };
           });
-          return JSON.stringify({ trackH: Math.round(track.height), out });
+          return JSON.stringify({ trackH: Math.round(track.height), trackTop: Math.round(track.top * 10) / 10,
+            trackBottom: Math.round(track.bottom * 10) / 10, step: STEP, out });
         })()`));
-        check(band.out.every((tab) => tab.probes.every(Boolean)), `${label}: 整条 44px 命中带都归这一段`,
-          band.out.map((tab) => `${tab.label}:h${tab.boxH}:${tab.probes.map((hit) => (hit ? 1 : 0)).join("")}`).join(" "));
+        const bandText = band.out.map((tab) => `${tab.label}: ${tab.bandTop}–${tab.bandBottom}（高 ${tab.bandH}）`).join(" / ");
+        const railText = band.out.map((tab) => `${tab.railTop}–${tab.railBottom}（高 ${tab.railH}）`).join(" / ");
+        const trackText = `轨道 rect ${band.trackTop}–${band.trackBottom}（高 ${band.trackH}）`;
+        // 口径（NB3 01:03）：带高 44，且整条不越出轨道。声明值先说死。
+        check(band.out.every((tab) => tab.overflowTop <= 0.1 && tab.overflowBottom <= 0.1
+          && Math.abs((tab.cssBottom - tab.cssTop) - 44) <= 0.1),
+          `${label}: 声明命中带 44 且与轨道同界（::before −3px）`,
+          band.out.map((tab) => `${tab.label}: ${tab.cssTop}–${tab.cssBottom} · 越出 上${tab.overflowTop}/下${tab.overflowBottom}`).join(" / "));
+        // 实测：同一个 y 上，单元格的首末行必须和轨道自己的首末行对齐。
+        check(band.out.every((tab) => tab.bandTop !== null && tab.railTop !== null
+          && Math.abs(tab.bandTop - tab.railTop) <= 0.15 && Math.abs(tab.bandBottom - tab.railBottom) <= 0.15),
+          `${label}: 实测命中带 ≡ 轨道（同一把尺子逐 0.1px 扫）`,
+          `带 ${bandText} · 轨道 ${railText} · 边界差 ${band.out.map((tab) => `${Math.round((tab.bandTop - tab.railTop) * 100) / 100}/${Math.round((tab.bandBottom - tab.railBottom) * 100) / 100}`).join(",")}`);
+        check(band.out.every((tab) => !tab.outsideTop && !tab.outsideBottom),
+          `${label}: 轨道外 1.2px 不可点（没有看不见的可点区域）`,
+          band.out.map((tab) => `${tab.label}:上${tab.outsideTop ? "命中" : "空"}/下${tab.outsideBottom ? "命中" : "空"}`).join(" "));
+        check(band.out.every((tab) => tab.probes.every(Boolean)),
+          `${label}: 带子首/中/尾都归这一段`, band.out.map((tab) => `${tab.label}:h${tab.boxH}:${tab.probes.map((hit) => (hit ? 1 : 0)).join("")}`).join(" "));
+        log(`${label} · 边界 · ${trackText} · 实测命中带 ${bandText}`);
+        // UI_SPEC 0.4：正文最小 11px，新设计不得再往下压。只量这轮动过的表面
+        //（分段控件 / 运行条 / 设备树）——底栏 10px 是 2.2.5 就有的，不该记在 2.2.6 账上。
+        const typeFacts = JSON.parse(await browser.eval(`(() => {
+          const scope = '[class*="tl-segmented"], [class*="tl-run"], [class*="tl-dev"], [class*="tl-harness"], [class*="tl-branch"]';
+          const sizes = [];
+          let globalMin = null;
+          for (const el of document.querySelectorAll('body *')) {
+            if (!el.childNodes || !el.childNodes.length) continue;
+            const hasText = [...el.childNodes].some((node) => node.nodeType === 3 && (node.textContent || '').trim());
+            if (!hasText) continue;
+            const style = getComputedStyle(el);
+            if (style.visibility === 'hidden' || style.display === 'none') continue;
+            const size = parseFloat(style.fontSize) || 0;
+            globalMin = globalMin === null ? size : Math.min(globalMin, size);
+            if (!el.closest(scope)) continue;
+            sizes.push({ size, text: (el.textContent || '').trim().slice(0, 14), cls: String(el.className || '').slice(0, 28) });
+          }
+          const small = sizes.filter((entry) => entry.size < 11 - 0.01);
+          return JSON.stringify({ smallest: sizes.length ? Math.min(...sizes.map((entry) => entry.size)) : null,
+            globalMin, count: sizes.length, small: small.slice(0, 6) });
+        })()`));
+        check(typeFacts.small.length === 0, `${label}: 重设计表面没有小于 11px 的文字（UI_SPEC）`,
+          `scope最小=${typeFacts.smallest}px 共${typeFacts.count}段` + (typeFacts.small.length ? ` · ${typeFacts.small.map((entry) => `${entry.text}@${entry.size}`).join(",")}` : "") + ` · 全屏最小=${typeFacts.globalMin}px`);
         check(Math.abs(restFactsRaw.thumb.transitionMs - 300) <= 1, `${label}: thumb 过渡 300ms（报告基线）`,
           `${restFactsRaw.thumb.transitionMs}ms · ${restFactsRaw.thumb.transitionProps}`);
         // 基线（NB3 00:48 裁定）：胶囊 999/999，不是圆角矩形。等价判据是半径 ≥ 自身高度的一半。
