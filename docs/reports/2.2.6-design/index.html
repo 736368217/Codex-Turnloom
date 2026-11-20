@@ -421,7 +421,7 @@
             </div>
           </div>
 
-          <p class="note" style="margin:14px 0 0;text-align:center">点上面两张电脑卡切换 · 点平台展开 harness · 添加电脑走配对 sheet</p>
+          <p class="note" style="margin:14px 0 0;text-align:center">点上面两张电脑卡切换（当前那张点了不动，不收起）· 点平台展开 harness · 添加电脑走配对 sheet</p>
         </div>
       </div>
     </div>
@@ -459,6 +459,15 @@
         </div>
       </div>
     </div>
+  </div>
+
+  <div class="card" style="margin:16px 0">
+    <h4>两条这轮定死的交互（都写成验收判据）</h4>
+    <ul class="tight">
+      <li><b>当前电脑恒展开，没有收起动作。</b>点当前那张卡什么都不发生：不引入 <code>collapsed</code>、不留 <code>manualOpen</code>，代码里 <code>openMachine</code> 直接等于 <code>activeId</code>，当前卡 <code>aria-expanded</code> 恒为 <code>true</code>。没有人需要把正在用的那台电脑的平台藏起来，多一个状态只多一类边界。</li>
+      <li><b>切换是非乐观的。</b>点别的卡 = <code>switchMachine(id)</code>：只有成功才换成新的当前卡并展开它的分支；失败保持原状、顶部给一条报错。报错必须读 <code>sessionStore.getState().error</code>——读渲染闭包里的 <code>session</code>，<code>await</code> 之后拿到的还是切换前的值，常见结果是「切失败了但没有任何提示」。</li>
+    </ul>
+    <p class="note">可机器验证的三条：① 点当前卡前后，<code>[data-machine]</code> 的值和当前卡的 <code>aria-expanded</code> 都不变；② <code>[data-machine]</code> 全页只有一个值，且挂在 <code>.tl-platblock</code>（不是每台都有的 <code>.tl-devgrid</code>）；③ 让 <code>switchMachine</code> 失败（断网或不可达地址）时，当前卡仍是原来那台、顶部出现错误条。</p>
   </div>
 
   <p class="note"><b>原型按 2 台画；state 层已落</b>（<code>3d04843</code>：<code>machines[]</code>、旧单对象自动迁移、<code>switchMachine/forgetMachine</code>）。今天真机只有 1 台，所以默认看到一张电脑卡；第二台通过「添加一台电脑」的配对流程加入。第三层是 <b>harness（服务入口）</b>，不是模型——模型选择仍在聊天右上角的面板里，别把两层混在一起。</p>
