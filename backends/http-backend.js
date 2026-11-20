@@ -254,6 +254,18 @@ export class HttpBackendClient {
     return this.request("/queue/steer", { method: "POST", body: payload || {} });
   }
 
+  async queueStatus(threadId) {
+    return this.request("/queue/status", { query: { threadId } });
+  }
+
+  async reorderQueuedSend(payload) {
+    return this.request("/queue/reorder", { method: "POST", body: payload || {} });
+  }
+
+  async resumeQueuedSend(payload) {
+    return this.request("/queue/resume", { method: "POST", body: payload || {} });
+  }
+
   async changeSignature(threadId) {
     const data = await this.getMessages(threadId, { limit: 1 });
     const lastMessage = data.messages.at(-1) || {};

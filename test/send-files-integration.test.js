@@ -12,14 +12,14 @@ test('ordinary file sending stages real bytes once inside request idempotency an
   const root = await fs.mkdtemp(path.join(os.tmpdir(), 'turnloom-send-files-'));
   try {
     let calls = 0;
-    const body = { threadId: 'thread-one', message: 'read this', clientRequestId: 'files-request-1', files: [file], model: 'real/model', effort: 'high', mode: 'queue' };
+    const body = { threadId: 'thread-one', message: 'read this', clientRequestId: 'files-request-1', files: [file], model: 'real/model', effort: 'high', mode: 'start' };
     const execute = async (message, threadId, images, options) => {
       calls++;
       assert.equal(threadId, body.threadId);
       assert.deepEqual(images, []);
       assert.equal(options.model, 'real/model');
       assert.equal(options.effort, 'high');
-      assert.equal(options.mode, 'queue');
+      assert.equal(options.mode, 'start');
       assert.equal(options.clientRequestId, body.clientRequestId);
       assert.match(message, /^read this\n\n/);
       assert.equal(message.includes(file.name), true);
@@ -42,6 +42,32 @@ test('ordinary file sending stages real bytes once inside request idempotency an
     assert.equal(JSON.stringify(first).includes(root), false, 'public receipt must not expose host path');
     await assert.rejects(sendWithFiles({ ...body, files: [{ ...file, data: 'Y2hhbmdlZA==' }] }, execute, { dataRoot: root, store }), error => error.status === 409);
     assert.equal(calls, 1);
+  } finally { await fs.rm(root, { recursive: true, force: true }); }
+});
+
+test('queued file sending defers staging and hands normalized bytes to the queue item', async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'turnloom-queue-files-'));
+  try {
+    const body = {
+      threadId: 'thread-queue', message: 'read this', clientRequestId: 'files-queue-1',
+      files: [file], model: 'real/model', effort: 'high', mode: 'queue'
+    };
+    const execute = async (message, threadId, images, options) => {
+      // The queue stores the user's original text; the host path is created
+      // only when the item is delivered.
+      assert.equal(message, 'read this');
+      assert.equal(threadId, body.threadId);
+      assert.deepEqual(images, []);
+      assert.equal(options.mode, 'queue');
+      assert.equal(options.files.length, 1);
+      assert.equal(options.files[0].name, 'report.txt');
+      assert.equal(options.files[0].mimeType, 'text/plain');
+      assert.equal(options.files[0].data, file.data);
+      assert.deepEqual(await fs.readdir(root), []);
+      return { ok: true, queued: true };
+    };
+    const result = await sendWithFiles(body, execute, { dataRoot: root, store: new Map() });
+    assert.equal(result.queued, true);
   } finally { await fs.rm(root, { recursive: true, force: true }); }
 });
 
