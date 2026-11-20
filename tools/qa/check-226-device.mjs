@@ -281,12 +281,18 @@ const measureTouchTargets = async () => {
     const rows = qa('button, [role="button"], a[href], input, select, textarea');
     const bad = [];
     let counted = 0;
+    const skipped = [];
     for (const el of rows) {
       const s = getComputedStyle(el);
       if (s.display === 'none' || s.visibility === 'hidden' || Number(s.opacity) === 0) continue;
       const r = el.getBoundingClientRect();
       if (r.width === 0 || r.height === 0) continue;
       if (r.bottom <= 0 || r.top >= window.innerHeight) continue; // off screen: not a target right now
+      // Only measure what is whole: a control half under the tab bar or the
+      // viewport edge has no measurable band, and counting it invents a red.
+      const bar = document.querySelector('.tl-tabbar');
+      const usableBottom = bar ? Math.min(window.innerHeight, bar.getBoundingClientRect().top) : window.innerHeight;
+      if (r.top < 0 || r.bottom > usableBottom) { skipped.push(String(el.className).slice(0, 24)); continue; }
       counted += 1;
       const cx = r.left + r.width / 2;
       let top = null, bottom = null;
@@ -295,13 +301,16 @@ const measureTouchTargets = async () => {
         if (hit && (hit === el || el.contains(hit))) { if (top === null) top = y; bottom = y; }
       }
       const band = top === null ? 0 : Math.round((bottom - top + 0.5) * 10) / 10;
+      // covered from above (sticky header) or below: the band is not this
+      // control's own, so measuring it invents a red instead of finding one
+      if (top === null || top - r.top > 2 || r.bottom - bottom > 2) { skipped.push(String(el.className).slice(0, 24)); continue; }
       if (band < 44 || r.width < 44) bad.push({ cls: String(el.className).slice(0, 34), w: Math.round(r.width), h: Math.round(r.height), band, text: txt(el).slice(0, 18) });
     }
-    return { counted, bad };
+    return { counted, bad, skipped };
   })()`);
   return {
     pass: raw.bad.length === 0,
-    onScreen: raw.counted, tooSmall: raw.bad,
+    onScreen: raw.counted, skipped: raw.skipped, tooSmall: raw.bad,
     note: 'device screen only, on-screen elements, band measured with the same 0.5px scan',
   };
 };
