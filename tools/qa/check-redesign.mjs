@@ -757,55 +757,48 @@ async function main() {
         check(/\b1\b/.test(runningEntry), "运行中入口的计数 = 夹具里运行中的条数", runningEntry);
         const monitorTab = await browser.eval(`Boolean(document.querySelector('button[aria-label="监控"]'))`);
         check(!monitorTab, "监控 Tab 已撤（只在运行中入口已落地时才要求）");
-        // 2.2.7：这条头是 34.5px 的紧凑条，命中带要补到 44 且不越出运行条本身。
-        // 量带不量盒（与 2.2.6 命中带同法），并给出两侧数字，改法换了也能量。
-        const headBand = await browser.eval(`(() => {
+        // 2.2.7：这条头是 34px 的紧凑条，命中带要补到 44，且只能向上长。
+        // 一格四条件（NB agent 09:50 口径）：带 44±0.2、下沿贴头盒下沿、
+        // ⊂ `.tl-runstrip` 的盒子、与 `.tl-runrow-*` 交集 0。
+        // 两侧都用同一把 0.1px 尺子：先临时关掉 ::before 量头和条自己的盒子，
+        // 再恢复量命中带——拿 rect 当基准会把 0.95px 的扫描偏差算成「越界」。
+        const strip = await browser.eval(`(() => {
           const head = document.querySelector('.tl-runstrip-head');
           if (!head) return { found: false };
-          const box = head.getBoundingClientRect();
           const wrap = head.closest('.tl-runstrip') || head.parentElement;
-          const wr = wrap ? wrap.getBoundingClientRect() : box;
-          const cx = box.left + box.width / 2;
-          let top = null, bottom = null;
-          for (let y = box.top - 14; y <= box.bottom + 14; y += 0.1) {
-            const el = document.elementFromPoint(cx, y);
-            if (el && (el === head || head.contains(el))) { if (top === null) top = Math.round(y * 10) / 10; bottom = Math.round(y * 10) / 10; }
-          }
-          return { found: true, bandTop: top, bandBottom: bottom,
-            band: top === null ? 0 : Math.round((bottom - top + 0.1) * 10) / 10,
-            boxTop: Math.round(box.top * 10) / 10, boxBottom: Math.round(box.bottom * 10) / 10, boxHeight: Math.round(box.height * 10) / 10,
-            wrapTop: Math.round(wr.top * 10) / 10, wrapBottom: Math.round(wr.bottom * 10) / 10, wrapHeight: Math.round(wr.height * 10) / 10 };
-        })()`);
-        check(headBand.found, "运行条头部在页面上（命中带可量）");
-        if (headBand.found) {
-          check(headBand.band >= 44, "运行条头部命中带 ≥44", `band=${headBand.band} 绘制=${headBand.boxHeight} 条高=${headBand.wrapHeight}`);
-          // A 44px band cannot fit inside a 34px bar — the real constraint is that
-          // the extra strip of hit area must not steal taps from its neighbours.
-          const neighbours = await browser.eval(`(() => {
-            const head = document.querySelector('.tl-runstrip-head');
-            if (!head) return { checked: 0, hits: [] };
-            const box = head.getBoundingClientRect();
-            const cx = box.left + box.width / 2;
+          const hb = head.getBoundingClientRect();
+          const wb = wrap.getBoundingClientRect();
+          const cx = hb.left + hb.width / 2;
+          const scan = (from, to, match) => {
             let top = null, bottom = null;
-            for (let y = box.top - 14; y <= box.bottom + 14; y += 0.1) {
+            for (let y = from; y <= to; y += 0.1) {
               const el = document.elementFromPoint(cx, y);
-              if (el && (el === head || head.contains(el))) { if (top === null) top = y; bottom = y; }
+              if (el && match(el)) { if (top === null) top = Math.round(y * 10) / 10; bottom = Math.round(y * 10) / 10; }
             }
-            if (top === null) return { checked: 0, hits: [] };
-            const others = [...document.querySelectorAll('button, [role="button"], a[href], [role="tab"]')]
-              .filter((el) => !head.contains(el) && el !== head);
-            const hits = [];
-            let checked = 0;
-            for (const el of others) {
-              const r = el.getBoundingClientRect();
-              if (r.width === 0 || r.height === 0) continue;
-              if (r.right < box.left || r.left > box.right) continue; // not in this column
-              checked += 1;
-              if (r.bottom > top + 0.5 && r.top < bottom - 0.5) hits.push({ cls: String(el.className).slice(0, 30), top: Math.round(r.top * 10) / 10, bottom: Math.round(r.bottom * 10) / 10 });
-            }
-            return { checked, hits, bandTop: Math.round(top * 10) / 10, bandBottom: Math.round(bottom * 10) / 10 };
-          })()`);
-          check(neighbours.hits.length === 0, "命中带没有压到相邻可点元素", `neighbours=${neighbours.checked} overlaps=${JSON.stringify(neighbours.hits)}`);
+            return { top, bottom };
+          };
+          const kill = document.createElement('style');
+          kill.textContent = '.tl-runstrip-head::before{content:none!important}';
+          document.head.appendChild(kill);
+          const own = scan(hb.top - 20, hb.bottom + 20, (el) => el === head || head.contains(el));
+          const wrapOwn = scan(wb.top - 20, wb.bottom + 20, (el) => el === wrap || wrap.contains(el));
+          kill.remove();
+          const band = scan(hb.top - 20, hb.bottom + 20, (el) => el === head || head.contains(el));
+          const rows = [...document.querySelectorAll('.tl-runrow-open, .tl-runrow-stop')].map((el) => el.getBoundingClientRect());
+          const overlaps = rows.filter((r) => r.bottom > band.top + 0.2 && r.top < band.bottom - 0.2).length;
+          return { found: true, band, own, wrap: wrapOwn, rows: rows.length, rowOverlaps: overlaps,
+            headBox: { top: Math.round(hb.top * 10) / 10, bottom: Math.round(hb.bottom * 10) / 10, h: Math.round(hb.height * 10) / 10 },
+            wrapBox: { top: Math.round(wb.top * 10) / 10, bottom: Math.round(wb.bottom * 10) / 10, h: Math.round(wb.height * 10) / 10 } };
+        })()`);
+        check(strip.found, "运行条头部在页面上（命中带可量）");
+        if (strip.found) {
+          const bandH = strip.band.top === null ? 0 : Math.round((strip.band.bottom - strip.band.top + 0.1) * 10) / 10;
+          const bandOk = Math.abs(bandH - 44) <= 0.2;
+          const bottomOk = strip.band.bottom !== null && strip.own.bottom !== null && Math.abs(strip.band.bottom - strip.own.bottom) <= 0.2;
+          const inside = strip.band.top !== null && strip.wrap.top !== null && strip.band.top >= strip.wrap.top - 0.2 && strip.band.bottom <= strip.wrap.bottom + 0.2;
+          const rowsOk = strip.rowOverlaps === 0;
+          check(bandOk && bottomOk && inside && rowsOk, "运行条头部命中带 44±0.2 · 下沿贴头盒 · ⊂ 条 · 不压运行行",
+            `带=${bandH} (${strip.band.top}–${strip.band.bottom}) · 头盒=${strip.own.top}–${strip.own.bottom} (${strip.headBox.h}) · 条=${strip.wrap.top}–${strip.wrap.bottom} (${strip.wrapBox.h}) · 行重叠=${strip.rowOverlaps}/${strip.rows}`);
         }
         await browser.eval(`(() => {
           const nodes = [...document.querySelectorAll('button, [role="button"], [role="tab"]')];
