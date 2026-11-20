@@ -50,6 +50,25 @@ For a debug APK without release keys:
 powershell -NoProfile -ExecutionPolicy Bypass -File scripts/build-single-app.ps1 -BuildType debug
 ```
 
+## Releasing (a version is not "done" until it is public)
+
+Every shipped version must leave the machine it was built on:
+
+1. `main` is pushed to `origin` — no version may exist only on one computer.
+2. The tag `v<version>` and a GitHub Release exist, carrying the APK, the Windows server
+   upgrade zip, and a `.sha256` for each.
+3. The update channel (`latest.json`) points at the same bytes; version, size and sha256 agree
+   in all three places (build output, Release asset, manifest).
+
+```powershell
+$env:GIT_PROXY="http://127.0.0.1:7897"      # only where a proxy is needed
+npm run release -- --version 2.4.0 --notes docs/RELEASE_2_4_0_2026-11-21.md
+```
+
+The script refuses a dirty tree, a version mismatch between `native-shell/app/build.gradle.kts`
+and `app/package.json`, or a missing artifact, then re-reads the Release asset digests and
+compares them with the local hashes. Never announce "已更新" before that check passes.
+
 ## Hygiene
 
 - Do not commit `node_modules/`, `.scratch/`, `dist-app/` APKs, keystores, access codes,

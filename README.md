@@ -38,7 +38,7 @@
 
 ---
 
-**2.2.0-rc.1 / 89**：PI-Desktop 普通收发不再依赖桌面前台授权（0 次 `session/configure`、0 原生弹窗）；手机端按会话实际模型解析、普通发送不再静默改写模型；重做玻璃 TabBar 与会话首屏；会话页默认可直接看到最近会话；监控页可真正停止；补齐 44px 触控、审批错误码、干净检出与可复现 APK 构建。安装 APK 时请同步更新电脑端服务与 PI 桥。见[本轮发布说明](docs/RELEASE_2_2_0_2026-11-18.md)。
+**2.3.0 / 98**：会话正在运行时发送的消息现在**进队列**（可展开抽屉、取回编辑、上移置顶、重试删除、停止即暂停、附件一起排队、PI 下优先下一条）。2.2.6 → 2.2.8 一并发布的还有：会话 / 设备 / 设置三页信息架构、设备页「电脑 → 平台（Codex / PI-Desktop）→ 入口」三层树、连接页插图、运行条 44px 命中带、全站统一 Lucide 图标。安装 APK 时请同步升级电脑端服务（这一版新增 `/api/queue/status` 等接口）。见[本轮发布说明](docs/RELEASE_2_3_0_2026-11-20.md)与 [Release v2.3.0](https://github.com/736368217/Codex-Turnloom/releases/tag/v2.3.0)。
 
 ## 它解决什么问题
 
@@ -48,31 +48,28 @@ Codex Desktop 的会话、项目目录和运行记录都在电脑上。Codex-Tur
 
 > **安全边界**：项目按可信局域网设计。不要把服务直接暴露到公网；需要远程访问时，请自行放在有访问控制与 TLS 的私有网络后。详见 [SECURITY.md](SECURITY.md)。
 
-## 真实界面
+## 界面
 
-下列截图来自**冻结归档的旧 Expo / React Native 客户端**（`mobile-app/`，非 WebView、非纯原生），仅作历史功能说明；**不代表当前 `ROUTE=dom-shell` 交付线的界面**。当前单线 App 的浅色 Option A 视觉以 [UI_SPEC.md](docs/option-a/UI_SPEC.md) 为准。截图使用隔离的文档数据，不含真实访问码、二维码、账户或私人会话内容。
+当前交付线只有三个入口，底部 TabBar 就是全部导航：
 
-| 会话工作台 | 对话与审批 |
-|:---:|:---:|
-| <img src="docs/screenshots/app-home.png" width="280" alt="会话列表：搜索、状态筛选与项目分组" /> | <img src="docs/screenshots/app-thread.png" width="280" alt="对话详情：消息流、模型摘要、排队消息与输入舱" /> |
-| 搜索、状态筛选、项目归属、运行状态一目了然 | 实时消息、运行状态、代码改动、排队发送、复制与停止 |
-| **长审批固定操作区** | **模型与思考强度** |
-| <img src="docs/screenshots/app-approval.png" width="280" alt="长审批滚动到文件列表末尾，批准与拒绝按钮仍固定在底部" /> | <img src="docs/screenshots/app-model.png" width="280" alt="模型与思考强度选择面板" /> |
-| 20 项文件列表滚动到底后，「批准并应用 / 拒绝」仍可见 | 按会话选择模型与推理强度，并记住偏好 |
-| **插件 / 技能引用** | **连接管理** |
-| <img src="docs/screenshots/app-mentions.png" width="280" alt="插件接口失败时，技能列表仍可正常选择" /> | <img src="docs/screenshots/app-terminals.png" width="280" alt="终端管理：当前连接、测试连接、编辑与解除配对" /> |
-| 插件接口异常不会掩盖技能列表，引用随消息发送 | 保存多台电脑、测试连接、编辑或解除配对 |
-| **扫码 / 手动配对** | **真实数据说明** |
-| <img src="docs/screenshots/app-pairing.png" width="280" alt="扫码配对抽屉与手动输入表单" /> | 截图由隔离文档 fixture 驱动：配对抽屉优先扫码，手动输入可展开；服务地址、访问码与会话内容均为演示数据，图中不展示真实二维码或密钥。 |
+| 页面 | 你在这里做什么 |
+|---|---|
+| **会话** | 打开就是最近会话；顶部一行「电脑 · 平台」回答「我在跟谁说话」；运行条列出正在跑的任务并就地停止；`按时间 / 按项目` 两个视图；搜索标题、项目名与消息正文。 |
+| **设备** | 电脑 → 平台（Codex / PI-Desktop）→ 入口（harness）三层；当前电脑恒展开，非当前电脑只显示上次使用；扫码添加第二台电脑。 |
+| **设置** | 当前电脑状态、诊断与日志上传、离线缓存、更新检查与版本。 |
+
+视觉契约是浅色 **Option A（Cupertino Daylight Glass）**：`#F2F2F7` 画布、白色分组卡、`#E5E5EA` 分隔线、毛玻璃顶栏/底栏、底部手势 sheet、44px 命中区、Lucide 单一图标族（尺寸 {14,16,20,22}、线宽 2）。细节见 [UI_SPEC.md](docs/option-a/UI_SPEC.md)。历史 Expo 客户端（`mobile-app/`）的截图仍留在 `docs/screenshots/`，但它们**不代表当前界面**。
 
 ## 主要能力
 
-- **会话管理**：列表、搜索、状态筛选、项目分组、逐会话草稿与缓存隔离。
-- **消息流**：历史消息、长轮询更新、排队 / 插队 / 取消、发送失败重试、中断当前任务。
+- **会话管理**：列表、搜索、状态筛选、项目分组、置顶、长按归档、逐会话草稿与缓存隔离。
+- **排队（2.3.0）**：运行中发送即入队；抽屉里取回编辑、上移 / 下移 / 置顶、重试、删除；停止即暂停、可恢复；附件随队列持久化；PI 入口可「优先下一条」。
+- **消息流**：历史消息、长轮询更新、发送失败重试、中断当前任务、图片与文件附件。
+- **运行中可见**：会话页顶部运行条列出正在跑的任务并就地停止，不用再翻「监控」页。
 - **审批**：真实服务审批数据驱动；长文件列表可滚动，批准 / 拒绝按钮固定可见。
 - **模型配置**：从服务健康接口读取模型目录，逐会话保存模型与思考强度。
 - **引用能力**：插件和技能分别读取；一侧接口失败不会清空另一侧列表。
-- **附件与复制**：图片/文件选择、消息复制、引用标签；可选原生模块缺失时安全降级。
+- **多电脑与多入口**：一机一码配对，多台电脑各自隔离；同一台电脑上 Codex Desktop 与 PI-Desktop 是两个平台入口，可切换。
 - **连接与安全**：二维码或手动配对、多电脑隔离、访问码鉴权、401 恢复、只读模式、登录失败限流。
 - **客户端**：当前唯一交付线为 `ROUTE=dom-shell` **App 化 DOM 容器（含 WebView）**（React + Konsta UI + Vaul → Android WebView 容器 APK）。旧 Expo / React Native 客户端（`mobile-app/`）、远程 PWA（`public/`）、旧 WebView 壳（`android/`）、Flutter 实验线（`dshgo/` / `dist-dshgo/` / `dist-native/`）均已**冻结 / 归档**；纯 Kotlin/Compose 原生 App 本轮未采用，不得把当前容器假称纯原生。服务端保留兼容网页入口（归档）与 Windows 托盘控制台。
 
@@ -178,6 +175,22 @@ GitHub Actions 的 `Verify` 工作流覆盖：
 - [HTTP 后端适配器](docs/HTTP_BACKEND.zh-CN.md)
 - [状态适配说明](docs/ADAPTER_STATUS.zh-CN.md)
 - [安全说明](SECURITY.md)
+
+## 发布纪律
+
+一个版本只有同时满足三条才算发完，缺一条就是「只存在于某台电脑上的构建」：
+
+1. **在 `origin/main` 上**：本地提交必须已经推上去。
+2. **有 tag 和 GitHub Release**：`v<version>`，附件是本版 APK、Windows 服务升级包，以及两者的 `.sha256`；Release 说明写 `docs/RELEASE_<version>_<date>.md`，与 CHANGELOG 同一口径。
+3. **更新通道指向同一份包**：`latest.json` 的版本、大小、sha256 与 Release 附件一致。
+
+一条命令走完并自检哈希：
+
+```bash
+npm run release -- --version 2.4.0 --notes docs/RELEASE_2_4_0_2026-11-21.md
+```
+
+脚本会先核对 `build.gradle.kts` 的 `versionName`/`versionCode` 与 `app/package.json` 是否一致、工作区是否干净、APK 与服务包是否存在，然后推 `main`、打 tag、建 Release，最后重新读回 Release 附件的 digest 与本地哈希比对——不一致就报错。任何一步失败都不要在 Main stream 宣布「已更新」。
 
 ## 安全约定
 

@@ -1,5 +1,48 @@
 # Changelog
 
+## 2.3.0 — 运行中也能排队（2026-11-20）
+
+对应 Task #18。App `2.3.0`（versionCode `98`）。**首个同时出现在 GitHub Release 的版本**（v2.3.0，APK + 服务升级包 + sha256）。
+
+### 排队
+
+- **运行中发送 = 入队**：以前运行中按发送会被直接拒绝，现在进队列；顶部队列条「N 条排队」，可展开抽屉。
+- **队列操作**：单条详情、取回编辑、上移 / 下移 / 置顶、重试、删除；失败条目挡住后面的顺序（不静默跳过）。
+- **停止即暂停**：运行中点停止 → 队列暂停，可恢复；恢复时等服务端 `thinking` / `interactionRequired` 结束后再发下一条。
+- **附件入队**：图片按原始字节保存（PNG 保持 PNG，MIME 由字节判断、不默认 png），服务重启后仍可发；单条 data URL 上限 1.5 MB。
+- **插队**：PI 入口下「优先下一条」把队首提为下一条发送；支持 steer。
+- **服务端**：新增 `GET /api/queue/status`（`queueCapabilities{turnSteer,queueFiles}`、`queuePaused`）、重排 / 恢复、队列文件持久化；`interrupt` 之后队列自动暂停。
+
+### 验证
+
+`npm test` 646 用例 / 644 通过 / 0 失败；API 契约 30/0；`check-redesign` 193/0；模拟器 `emulator-5554` 真 WebView 走查（入队、队列条、抽屉、详情、JPEG 渲染）无 FATAL。APK 2,269,702 B sha256 `9eb92bed…b52ff9c5`，bundle `index-DjFx4V2m.js` 838,351 B，公网 `latest.json` 2.3.0 / 98。
+
+## 2.2.8 — 连接页插图与固定区瘦身（2026-11-20）
+
+Task #17。App `2.2.8`（versionCode `97`）。APK 2,259,606 B sha256 `5CEE58D9…2E43C34`，bundle `index-CwJmdIGb.js` 807,119 B。
+
+- **连接页插图**：`app/src/assets/art/connect-hero.png`（669×240 @2x → 120 px），手机右上 → 笔记本左上，重映射 RGB 保留 alpha 成 `#007AFF`，背后一层极淡径向光晕（`.08` / 200 px），替换原来的 42 px 图标。
+- **矮屏让位**：可用高度 ≤540 px 时插图自动隐藏，「扫码连接」保持在首屏。
+- **会话页固定区瘦身**：设备行绘制 28 px、命中带 44 px（`::before`）；运行条自己占 44 px 槽位，不再从上方借 10 px（那次借位让运行条吃掉分段控件的点击区）。
+
+## 2.2.7 — 命中带、切换胶囊与图标阶梯（2026-11-20）
+
+Task #16。App `2.2.7`（versionCode `96`），APK 2,243,778 B sha256 `94152D67…C122323`，bundle `index-Br5-kYzj.js` 806,983 B。
+
+- **运行条头部真的是 44 px**：命中带画在条内（`inset:-10px 0 0`），不侵入下面的会话行。
+- **未选中卡的「切换」胶囊消失**：只留当前态，减少一列假按钮。
+- **一套图标阶梯**：只允许 Lucide，尺寸 {14,16,20,22}，线宽 2；设置页 `›` 字符、版本行 `AlertTriangle`、切换服务 `CircleCheck` 全部换成图标组件。
+- `native-shell` lint 用 `tools:targetApi` 修正，重打 APK 与 2.2.6 字节一致（纯 lint 修复）。
+
+## 2.2.6 — 三页信息架构、设备树与运行条（2026-11-20）
+
+Task #15。App `2.2.6`（versionCode `95`），APK 2,243,706 B sha256 `66E9E0D9…FCF9E4`，bundle `index-B5lPCj_T.js` 806,700 B。
+
+- **三页**：会话 / 设备 / 设置；「监控」页撤掉，运行中改为会话页顶部运行条。
+- **设备页**：电脑 → 平台（Codex / PI-Desktop）→ 入口（harness）三层；当前电脑恒展开（点它不做任何事），非当前电脑不探活、只写「上次使用」。
+- **切换失败不破坏现状**：失败时恢复 `status/online/scope/generation`，原因写进 `switchError`（不写全局 `connectionError`）；`data-machine` 全页只有一个值。
+- **对话头部**：标题下常驻「电脑 · 平台」，回答「我在跟谁说话」。
+
 ## 2.2.5 — 对话头部、模型面板与会话置顶（2026-11-19）
 
 对应两条 Task：#14 产品形态、#13 日志上传与控制台更新可见性。App `2.2.5`（versionCode `94`）。
