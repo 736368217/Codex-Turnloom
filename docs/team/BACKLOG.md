@@ -56,4 +56,11 @@
 
 16. **`lintDebug` 有 2 个 `NewApi` 错误，以前从没跑过 lint**：`native-shell/app/src/main/res/values/styles.xml:12` 的 `android:windowLightNavigationBar` 要 API 27、`:16` 的 `android:windowOptOutEdgeToEdgeEnforcement` 要 API 35，而 `minSdk 26`——两条都放在基础 `values/` 里。运行时旧版本会忽略未知属性，所以**不改变已发布包的行为**，但 `gradlew lintDebug` 直接 abort（2 errors / 40 warnings）。**验收**：把两条分别挪进 `values-v27/styles.xml`、`values-v35/styles.xml`（或给条目加 `tools:targetApi`），`lintDebug` 转绿；并考虑把 lint 纳入出包脚本（现在只做 `assembleDebug`）。同一轮补跑的 `testDebugUnitTest` = **23 tests / 0 failures**（`AttachmentPickSessionTest` 4、`BridgeContractTest` 15、`WebViewStartupTest` 4），这一格现在可以宣称通过。注意：这轮不要在 2.2.6 发布途中改 `res/`——改资源就换 APK 字节，等 2.2.7。
 
+## I. 2.2.8 候选（2.2.7 审计留下，需要布局决策）
+
+17. **会话页固定区偏厚**：标题 60 + 当前设备 44 + 分段 54 + 运行条 44 + 搜索 52 ≈ **254px**，320×568 只剩约 310px 给列表。当前设备行是 12px 文字却占 44px 绘制盒。**建议**：28px 绘制 + 44px 命中带（`::before` 补回），省 16px、命中不变。**为什么后置**：它动的是「固定区」契约（UI_SPEC 规定标题与分段贴安全区、判据是 `scrollTop=600` 时可见），要重跑三档截图与两条位置判据，不能在图标收口里顺手改。证据：NB3 11:06 七屏复核。
+
+18. **模型 chip 在 390 上截成 `deepseek-v4....`**：UI_SPEC 明确允许模型名省略号、强度不折行，所以**不算违规**。要更好读，只有两条路：短名映射（后端多给一个 `shortLabel`）或两行布局（会占更高）。属产品选择，2.2.8 再定，不在 2.2.7 动。证据：同上。
+
+
 
