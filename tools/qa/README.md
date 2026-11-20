@@ -33,7 +33,12 @@ node tools/qa/check-redesign.mjs --require   # 控件必须在；缺失算失败
 ```powershell
 node tools/qa/check-226-device.mjs --mode ok   --width 390   # 两台在场，切过去成功
 node tools/qa/check-226-device.mjs --mode fail --width 390   # B 返 503：当前卡不变、提示带原因
+node tools/qa/check-226-device.mjs --build --json tmp/226.json   # 按当前源码重建到 tmp/dist-vera 再量
 ```
+
+- `--build` 只写 `tmp/dist-vera`（共享的 `app/dist` 是别人的活靶子，不碰）；端口全部运行时分配，和别的 QA 跑不冲突。
+- 同一次运行还会在**同一个 bundle** 上跑 `snippets/check-226-list.js`（滑块、命中带、钉住、减动效），报告里钉死 asset 名与字节数。
+- **退出码就是结论**：任何一格 FAIL → 1。出包前直接看退出码，不用读 JSON。
 
 **出包门禁要两条都绿**：`84 PASS / 0 FAIL` 里不含「`data-machine` 只挂 `.tl-platblock`」和「失败提示带原因」，那两格在这条脚本里，别让前者的绿盖过后者的红。
 
