@@ -68,6 +68,28 @@ if (argv.includes("--build")) {
 }
 if (!fs.existsSync(path.join(DIST, "index.html"))) { console.error(`[226] no bundle at ${DIST} — pass --build`); process.exit(2); }
 
+// Without --build the runner reuses whatever bundle sits in DIST. That is handy
+// for re-measuring the same artifact, and dangerous as a gate: a stale bundle
+// looks green. Refuse it instead of trusting the command line.
+if (!argv.includes("--build")) {
+  const newest = (dir) => {
+    let latest = 0;
+    for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+      const full = path.join(dir, entry.name);
+      if (entry.isDirectory()) latest = Math.max(latest, newest(full));
+      else latest = Math.max(latest, fs.statSync(full).mtimeMs);
+    }
+    return latest;
+  };
+  const srcMtime = newest(path.join(REPO, "app", "src"));
+  const bundleMtime = fs.statSync(path.join(DIST, "index.html")).mtimeMs;
+  if (srcMtime > bundleMtime + 1000) {
+    console.error(`[226] ${path.relative(REPO, DIST)} is older than app/src (${new Date(bundleMtime).toISOString()} < ${new Date(srcMtime).toISOString()})`);
+    console.error("[226] refusing to measure a stale bundle — re-run with --build");
+    process.exit(2);
+  }
+}
+
 const A_PORT = await freePort();     // visual fixture (machine A)
 const B_PORT = await freePort();     // proxy with its own identity (machine B)
 const APP_PORT = await freePort();   // static preview of the built bundle
