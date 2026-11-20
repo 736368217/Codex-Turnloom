@@ -922,10 +922,21 @@ async function main() {
           const primary = [...document.querySelectorAll('button')].find((el) => /扫码连接|正在连接/.test((el.textContent || '').trim()));
           if (!primary) return { found: false, text: (document.body.innerText || '').replace(/\\s+/g, ' ').slice(0, 120) };
           const r = primary.getBoundingClientRect();
+          const hero = document.querySelector('img[src*="connect-hero"], .tl-connect-hero');
+          const img = hero && hero.tagName === 'IMG' ? hero : (hero ? hero.querySelector('img') || hero : null);
+          const box = img ? img.getBoundingClientRect() : null;
           return { found: true, top: Math.round(r.top), bottom: Math.round(r.bottom), viewport: window.innerHeight,
-            hero: Boolean(document.querySelector('img[src*="connect-hero"], .tl-connect-hero')) };
+            hero: Boolean(hero),
+            heroH: box ? Math.round(box.height) : null,
+            heroCentreOffset: box ? Math.round(((box.left + box.right) / 2 - window.innerWidth / 2) * 10) / 10 : null,
+            overflow: document.documentElement.scrollWidth > window.innerWidth };
         })()`);
         check(connect.found && connect.bottom <= connect.viewport, `${w}px 连接页：主按钮在首屏内`, JSON.stringify(connect));
+        if (connect.found) {
+          check(connect.hero && connect.heroH !== null && connect.heroH >= 90 && connect.heroH <= 121 && Math.abs(connect.heroCentreOffset) <= 1,
+            `${w}px 连接页：插图 90–121 高且居中`, `h=${connect.heroH} centreΔ=${connect.heroCentreOffset}`);
+          check(!connect.overflow, `${w}px 连接页：插图不撑出横向滚动`);
+        }
         await browser.screenshot(path.join(OUT, `connect-${w}.png`));
       }
 
