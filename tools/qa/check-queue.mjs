@@ -433,9 +433,20 @@ async function clickAction(label) {
   await sleep(700);
 }
 
+async function actionMatrix() {
+  return cdp.eval(`(() => {
+    const details = Array.from(document.querySelectorAll('.tl-queue-detail')).filter(__qa.visible);
+    const root = details.length ? details[details.length - 1] : document;
+    return Array.from(root.querySelectorAll('.tl-queue-action')).map((el) => ({
+      label: (el.querySelector('.tl-queue-action-text > span')?.textContent || '').trim(),
+      disabled: el.disabled === true || el.getAttribute('aria-disabled') === 'true',
+      reason: (el.querySelector('.tl-queue-action-reason')?.textContent || '').trim(),
+    }));
+  })()`);
+}
+
 /** Confirm cards are their own surface; never let the action row behind answer. */
-async function clickConfirm(label) {
-  const clicked = await cdp.eval(`(() => {
+async function clickConfirm(label) {  const clicked = await cdp.eval(`(() => {
     const cards = Array.from(document.querySelectorAll('.tl-queue-confirm')).filter(__qa.visible);
     const scope = cards.length ? cards[cards.length - 1] : document;
     const btn = __qa.button(${JSON.stringify(label)}, { root: scope, exact: true });
@@ -865,6 +876,76 @@ phase("failed", async () => {
   const state = await fixtureState();
   check("failed.retry.requeues", state.queue[0].deliveryState === "queued" && state.queue[0].lastError === null, JSON.stringify(state.queue[0]));
   check("failed.retry.on.wire", (await fixtureRequests()).some((row) => row.path === "/api/queue/retry"));
+});
+
+phase("capabilities", async () => {
+  // PI-native shape: steer only raises priority, queued files are refused.
+  await fixture("reset");
+  await fixture("set-capabilities", { capabilities: { turnSteer: false, queueFiles: false } });
+  await fixture("seed-queue", { items: [{ text: "PI 队首" }, { text: "PI 第二条" }] });
+  await openChat();
+  const paperclip = await cdp.eval(`(() => {
+    const btn = document.querySelector('button[aria-label*="附件"]');
+    return { present: Boolean(btn), label: btn?.getAttribute('aria-label') || '', disabled: btn?.getAttribute('aria-disabled') === 'true', hit: btn ? __qa.hitSpan(btn) : null };
+  })()`);
+  check("pi.files.button.44", paperclip.present && (paperclip.hit?.h ?? 0) >= 43.5, JSON.stringify(paperclip));
+  check("pi.files.button.explains", /不支持排队文件/.test(paperclip.label) && paperclip.disabled, JSON.stringify(paperclip));
+  await cdp.eval(`document.querySelector('button[aria-label*="附件"]')?.click()`);
+  await sleep(400);
+  const blockedHint = await cdp.eval(`document.body.innerText.includes('当前后端不支持把文件排进队列')`);
+  check("pi.files.tap.hint", blockedHint);
+
+  await openQueueSheet();
+  await openRow("PI 队首");
+  let rows = await actionMatrix();
+  check("pi.steer.label", rows.some((row) => row.label === '优先下一条') && !rows.some((row) => row.label === '插入本轮'), JSON.stringify(rows));
+  check("pi.reorder.hidden", !rows.some((row) => ['移到队首', '上移', '下移'].includes(row.label)), JSON.stringify(rows));
+  await cdp.eval(`document.querySelector('.tl-queue-back')?.click()`);
+  await sleep(400);
+  await openRow("PI 第二条");
+  rows = await actionMatrix();
+  const priority = rows.find((row) => row.label === '优先下一条');
+  check("pi.priority.enabled.behind", Boolean(priority) && !priority.disabled, JSON.stringify(rows));
+  await cdp.eval(`document.querySelector('.tl-queue-back')?.click()`);
+  await shot("pi-capabilities-390");
+
+  // Failed head with three rows: order rules are column-wide, not per-row.
+  await fixture("reset");
+  await fixture("seed-queue", { items: [
+    { text: "失败队首", deliveryState: "failed", lastError: "电脑端连接中断" },
+    { text: "紧随其后", },
+    { text: "第三行", },
+  ] });
+  await openChat();
+  await openQueueSheet();
+  rows = await actionMatrix();
+  check("failed.head.order.hidden", !rows.some((row) => ['移到队首', '上移', '下移'].includes(row.label)), JSON.stringify(rows));
+  const failedNote = await cdp.eval(`document.body.innerText.includes('这条发送失败，先重试、编辑或删除；不能调整顺序')`);
+  check("failed.head.item.note", failedNote);
+  await cdp.eval(`document.querySelector('.tl-queue-back')?.click()`);
+  await sleep(400);
+  const listWarning = await cdp.eval(`document.body.innerText.includes('处理前不能越过它排序')`);
+  check("failed.head.list.warning", listWarning);
+  await openRow("紧随其后");
+  rows = await actionMatrix();
+  const secondTop = rows.find((row) => row.label === '移到队首');
+  const secondUp = rows.find((row) => row.label === '上移');
+  const secondDown = rows.find((row) => row.label === '下移');
+  check("failed.head.index1.top.disabled", Boolean(secondTop?.disabled));
+  check("failed.head.index1.up.disabled", Boolean(secondUp?.disabled));
+  check("failed.head.index1.down.enabled", Boolean(secondDown) && !secondDown.disabled, JSON.stringify(rows));
+  check("failed.head.index1.order.note", await cdp.eval(`document.body.innerText.includes('处理前不能越过它排序')`));
+  await cdp.eval(`document.querySelector('.tl-queue-back')?.click()`);
+  await sleep(400);
+  await openRow("第三行");
+  rows = await actionMatrix();
+  const thirdTop = rows.find((row) => row.label === '移到队首');
+  const thirdUp = rows.find((row) => row.label === '上移');
+  const thirdDown = rows.find((row) => row.label === '下移');
+  check("failed.head.index2.top.disabled", Boolean(thirdTop?.disabled));
+  check("failed.head.index2.up.enabled", Boolean(thirdUp) && !thirdUp.disabled, JSON.stringify(rows));
+  check("failed.head.index2.down.disabled.tail", Boolean(thirdDown?.disabled) && /队尾/.test(thirdDown?.reason || ''), JSON.stringify(rows));
+  await shot("failed-head-actions-390");
 });
 
 phase("steer", async () => {

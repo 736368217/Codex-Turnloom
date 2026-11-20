@@ -46,6 +46,7 @@ const state = {
   startedAtMs: now - 95_000,
   queue: [],
   paused: false,
+  capabilities: { turnSteer: true, queueFiles: true },
   failNextEnqueue: false,
   failNextSteer: false,
   failNextResume: false,
@@ -101,7 +102,7 @@ function statusPayload() {
     queueLength: state.queue.length,
     queuePaused: state.paused,
     queueSource: "local",
-    queueCapabilities: { turnSteer: true, queueFiles: true },
+    queueCapabilities: { ...state.capabilities },
     queuedMessages: state.queue.map((item, index) => ({
       id: item.id,
       position: index + 1,
@@ -227,6 +228,7 @@ function control(action, body) {
       state.startedAtMs = Date.now() - 95_000;
       state.queue = [];
       state.paused = false;
+      state.capabilities = { turnSteer: true, queueFiles: true };
       state.failNextEnqueue = false;
       state.failNextSteer = false;
       state.failNextResume = false;
@@ -239,11 +241,16 @@ function control(action, body) {
         { id: "q3", role: "tool", kind: "tool_output", title: "shell · 2.1s", content: "$ npm run app:build\nvite v7 building client environment for production...", createdAt: Date.now() - 88_000 },
       );
       return { ok: true };
-    case "set": {
+    case "set":
       if (typeof body.thinking === "boolean") state.thinking = body.thinking;
       if (typeof body.interactionRequired === "boolean") state.interactionRequired = body.interactionRequired;
       if (typeof body.paused === "boolean") state.paused = body.paused;
       if (body.turnId) state.turnId = String(body.turnId);
+      return { ok: true, ...statusPayload() };
+    case "set-capabilities": {
+      const next = body.capabilities || {};
+      if (typeof next.turnSteer === "boolean") state.capabilities.turnSteer = next.turnSteer;
+      if (typeof next.queueFiles === "boolean") state.capabilities.queueFiles = next.queueFiles;
       return { ok: true, ...statusPayload() };
     }
     case "seed-queue": {

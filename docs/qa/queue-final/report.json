@@ -1,11 +1,11 @@
 {
-  "generatedAt": "2026-11-20T12:57:34.742Z",
-  "head": "720a3c2cb1e5387e4711921300596067150d71a9",
+  "generatedAt": "2026-11-20T13:09:04.293Z",
+  "head": "809bbce4072eae79f065bc50c8235a09ec7b7f9d",
   "bundle": "tmp\\dist-vera-queue",
   "asset": {
-    "name": "index-DLbvZMiF.js",
+    "name": "index-DjFx4V2m.js",
     "bytes": 838351,
-    "sha256": "07f3424edf0be91d803c99bbaac90377466686b19966a1dc7523cae61d06feab"
+    "sha256": "77804fbf9e18dbbd6d71d6dfdcdf7dadd8339587bdfdb05837bfb301b7ebba0f"
   },
   "fixture": "tools/qa/queue-fixture.mjs",
   "views": [
@@ -13,7 +13,7 @@
     "390x640",
     "320x568"
   ],
-  "pass": 177,
+  "pass": 193,
   "fail": 0,
   "results": [
     {
@@ -446,13 +446,109 @@
       "view": "390x844",
       "id": "failed.retry.requeues",
       "pass": true,
-      "detail": "{\"id\":\"qitem-36-ytwb\",\"text\":\"失败的消息\",\"images\":[],\"files\":[],\"enqueuedAt\":\"2026-11-20T12:56:14.380Z\",\"deliveryState\":\"queued\",\"lastError\":null}"
+      "detail": "{\"id\":\"qitem-36-eqy0\",\"text\":\"失败的消息\",\"images\":[],\"files\":[],\"enqueuedAt\":\"2026-11-20T13:07:31.964Z\",\"deliveryState\":\"queued\",\"lastError\":null}"
     },
     {
       "view": "390x844",
       "id": "failed.retry.on.wire",
       "pass": true,
       "detail": ""
+    },
+    {
+      "view": "390x844",
+      "id": "pi.files.button.44",
+      "pass": true,
+      "detail": "{\"present\":true,\"label\":\"附件（当前后端不支持排队文件）\",\"disabled\":true,\"hit\":{\"top\":784.5,\"bottom\":832.5,\"left\":145.5,\"right\":193.5,\"h\":48,\"w\":48}}"
+    },
+    {
+      "view": "390x844",
+      "id": "pi.files.button.explains",
+      "pass": true,
+      "detail": "{\"present\":true,\"label\":\"附件（当前后端不支持排队文件）\",\"disabled\":true,\"hit\":{\"top\":784.5,\"bottom\":832.5,\"left\":145.5,\"right\":193.5,\"h\":48,\"w\":48}}"
+    },
+    {
+      "view": "390x844",
+      "id": "pi.files.tap.hint",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "view": "390x844",
+      "id": "pi.steer.label",
+      "pass": true,
+      "detail": "[{\"label\":\"取回编辑\",\"disabled\":false,\"reason\":\"\"},{\"label\":\"优先下一条\",\"disabled\":true,\"reason\":\"已是下一条\"},{\"label\":\"删除\",\"disabled\":false,\"reason\":\"\"}]"
+    },
+    {
+      "view": "390x844",
+      "id": "pi.reorder.hidden",
+      "pass": true,
+      "detail": "[{\"label\":\"取回编辑\",\"disabled\":false,\"reason\":\"\"},{\"label\":\"优先下一条\",\"disabled\":true,\"reason\":\"已是下一条\"},{\"label\":\"删除\",\"disabled\":false,\"reason\":\"\"}]"
+    },
+    {
+      "view": "390x844",
+      "id": "pi.priority.enabled.behind",
+      "pass": true,
+      "detail": "[{\"label\":\"取回编辑\",\"disabled\":false,\"reason\":\"\"},{\"label\":\"优先下一条\",\"disabled\":false,\"reason\":\"\"},{\"label\":\"删除\",\"disabled\":false,\"reason\":\"\"}]"
+    },
+    {
+      "view": "390x844",
+      "id": "failed.head.order.hidden",
+      "pass": true,
+      "detail": "[{\"label\":\"取回编辑\",\"disabled\":false,\"reason\":\"\"},{\"label\":\"插入本轮\",\"disabled\":false,\"reason\":\"\"},{\"label\":\"重试\",\"disabled\":false,\"reason\":\"\"},{\"label\":\"删除\",\"disabled\":false,\"reason\":\"\"}]"
+    },
+    {
+      "view": "390x844",
+      "id": "failed.head.item.note",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "view": "390x844",
+      "id": "failed.head.list.warning",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "view": "390x844",
+      "id": "failed.head.index1.top.disabled",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "view": "390x844",
+      "id": "failed.head.index1.up.disabled",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "view": "390x844",
+      "id": "failed.head.index1.down.enabled",
+      "pass": true,
+      "detail": "[{\"label\":\"取回编辑\",\"disabled\":false,\"reason\":\"\"},{\"label\":\"插入本轮\",\"disabled\":false,\"reason\":\"\"},{\"label\":\"移到队首\",\"disabled\":true,\"reason\":\"\"},{\"label\":\"上移\",\"disabled\":true,\"reason\":\"\"},{\"label\":\"下移\",\"disabled\":false,\"reason\":\"\"},{\"label\":\"删除\",\"disabled\":false,\"reason\":\"\"}]"
+    },
+    {
+      "view": "390x844",
+      "id": "failed.head.index1.order.note",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "view": "390x844",
+      "id": "failed.head.index2.top.disabled",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "view": "390x844",
+      "id": "failed.head.index2.up.enabled",
+      "pass": true,
+      "detail": "[{\"label\":\"取回编辑\",\"disabled\":false,\"reason\":\"\"},{\"label\":\"插入本轮\",\"disabled\":false,\"reason\":\"\"},{\"label\":\"移到队首\",\"disabled\":true,\"reason\":\"\"},{\"label\":\"上移\",\"disabled\":false,\"reason\":\"\"},{\"label\":\"下移\",\"disabled\":true,\"reason\":\"已在队尾\"},{\"label\":\"删除\",\"disabled\":false,\"reason\":\"\"}]"
+    },
+    {
+      "view": "390x844",
+      "id": "failed.head.index2.down.disabled.tail",
+      "pass": true,
+      "detail": "[{\"label\":\"取回编辑\",\"disabled\":false,\"reason\":\"\"},{\"label\":\"插入本轮\",\"disabled\":false,\"reason\":\"\"},{\"label\":\"移到队首\",\"disabled\":true,\"reason\":\"\"},{\"label\":\"上移\",\"disabled\":false,\"reason\":\"\"},{\"label\":\"下移\",\"disabled\":true,\"reason\":\"已在队尾\"},{\"label\":\"删除\",\"disabled\":false,\"reason\":\"\"}]"
     },
     {
       "view": "390x844",
@@ -482,7 +578,7 @@
       "view": "390x844",
       "id": "enqueue.failure.visible",
       "pass": true,
-      "detail": "{\"beforeClick\":{\"send\":true,\"disabled\":false,\"value\":\"断网入队失败的草稿\"},\"requestsBefore\":7,\"requestsAfter\":10,\"alert\":true,\"alertText\":\"电脑端服务出错：电脑端暂时无法写入队列（QA 故障注入）。消息还在输入框里。 草稿和附件已保留，可再次点发送。\",\"errorNode\":\"电脑端服务出错：电脑端暂时无法写入队列（QA 故障注入）。消息还在输入框里。 草稿和附件已保留，可再次点发送。\",\"bodyHasCopy\":true,\"value\":\"断网入队失败的草稿\",\"bar\":false,\"offline\":false,\"calls\":[\"GET http://127.0.0.1:17825/api/threads/qa-queue-running/messages?limit=80\",\"GET http://127.0.0.1:17825/api/threads/qa-queue-running/changes?timeout=250\",\"GET http://127.0.0.1:17825/api/thread-image?threadId=qa-queue-running&name=photo-red.jpg\",\"POST http://127.0.0.1:17825/api/send\",\"GET http://127.0.0.1:17825/api/threads/qa-queue-running/messages?limit=80\",\"GET http://127.0.0.1:17825/api/threads/qa-queue-running/changes?timeout=250\"]}"
+      "detail": "{\"beforeClick\":{\"send\":true,\"disabled\":false,\"value\":\"断网入队失败的草稿\"},\"requestsBefore\":7,\"requestsAfter\":10,\"alert\":true,\"alertText\":\"电脑端服务出错：电脑端暂时无法写入队列（QA 故障注入）。消息还在输入框里。 草稿和附件已保留，可再次点发送。\",\"errorNode\":\"电脑端服务出错：电脑端暂时无法写入队列（QA 故障注入）。消息还在输入框里。 草稿和附件已保留，可再次点发送。\",\"bodyHasCopy\":true,\"value\":\"断网入队失败的草稿\",\"bar\":false,\"offline\":false,\"calls\":[\"GET http://127.0.0.1:11426/api/threads/qa-queue-running/messages?limit=80\",\"GET http://127.0.0.1:11426/api/threads/qa-queue-running/changes?timeout=250\",\"GET http://127.0.0.1:11426/api/thread-image?threadId=qa-queue-running&name=photo-red.jpg\",\"POST http://127.0.0.1:11426/api/send\",\"GET http://127.0.0.1:11426/api/threads/qa-queue-running/messages?limit=80\",\"GET http://127.0.0.1:11426/api/threads/qa-queue-running/changes?timeout=250\"]}"
     },
     {
       "view": "390x844",
