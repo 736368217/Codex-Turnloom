@@ -24,6 +24,7 @@ const model = argOf('model', process.env.SUSU_MODEL || 'gpt-image-2.6-flare');
 const prompt = argOf('prompt');
 const out = argOf('out');
 const size = argOf('size', '1024x1024');
+const transparent = process.argv.includes('--transparent');
 
 if (!key) { console.error('SUSU_API_KEY is not set (keep it in the env, never in the repo)'); process.exit(2); }
 if (!prompt || !out) { console.error('usage: node scripts/gen-image.mjs --prompt "..." --out <file.png> [--size 1024x1024] [--model image2.6]'); process.exit(2); }
@@ -31,7 +32,10 @@ if (!prompt || !out) { console.error('usage: node scripts/gen-image.mjs --prompt
 const response = await fetch(`${base}/images/generations`, {
   method: 'POST',
   headers: { 'content-type': 'application/json', authorization: `Bearer ${key}` },
-  body: JSON.stringify({ model, prompt, n: 1, size }),
+  body: JSON.stringify({
+    model, prompt, n: 1, size,
+    ...(transparent ? { background: 'transparent', output_format: 'png' } : {}),
+  }),
 });
 
 const text = await response.text();
