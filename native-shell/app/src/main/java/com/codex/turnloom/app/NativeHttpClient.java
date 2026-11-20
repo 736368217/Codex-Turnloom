@@ -146,7 +146,7 @@ final class NativeHttpClient {
                     continue;
                 }
                 byte[] body = readBounded(status >= 400 ? conn.getErrorStream() : conn.getInputStream());
-                return responseJson(status, body, null);
+                return responseJson(status, conn.getContentType(), body, null);
             } finally {
                 conn.disconnect();
             }
@@ -173,11 +173,31 @@ final class NativeHttpClient {
         }
     }
 
-    static String responseJson(int status, byte[] body, String error) {
+    /** Image payloads are bytes, not text; only these get a lossless bodyBase64. */
+    static boolean isBinaryImageType(String contentType) {
+        if (contentType == null) return false;
+        int semi = contentType.indexOf(';');
+        String mime = (semi >= 0 ? contentType.substring(0, semi) : contentType)
+                .trim().toLowerCase(java.util.Locale.ROOT);
+        return mime.startsWith("image/");
+    }
+
+    /**
+     * One response envelope. {@code body} keeps its historical UTF-8 rendering
+     * for every caller; image responses additionally carry {@code bodyBase64}
+     * because the packaged page cannot load remote subresources and must build
+     * a data: URL from the exact bytes. The extra field is additive: older page
+     * bundles ignore it.
+     */
+    static String responseJson(int status, String contentType, byte[] body, String error) {
         try {
             JSONObject o = new JSONObject();
+            byte[] bytes = body == null ? new byte[0] : body;
             o.put("status", status);
-            o.put("body", new String(body == null ? new byte[0] : body, StandardCharsets.UTF_8));
+            o.put("body", new String(bytes, StandardCharsets.UTF_8));
+            if (bytes.length > 0 && isBinaryImageType(contentType)) {
+                o.put("bodyBase64", java.util.Base64.getEncoder().encodeToString(bytes));
+            }
             if (error != null) o.put("error", error);
             return o.toString();
         } catch (Exception e) {
