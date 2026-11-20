@@ -647,12 +647,15 @@ button:focus-visible, a:focus-visible { outline: 2px solid var(--tl-blue); outli
 .tl-chat-bubble--assistant { background: var(--tl-fill-secondary); color: var(--tl-label-primary); }
 
 .tl-chat-attachment {
-  display: inline-flex;
+  /* A block row: thumbnails and the count sit under the text, never on the
+     text baseline (2.3.0 made chat images real; inline-flex put them on the
+     last line and 320px touched the final glyph). */
+  display: flex;
   align-items: center;
   gap: 4px;
   max-width: 100%;
   min-height: 0;
-  margin: 4px 0 0;
+  margin: 6px 0 0;
   padding: 0;
   font-size: 12px;
   line-height: 17px;
@@ -2212,7 +2215,7 @@ button:focus-visible, a:focus-visible { outline: 2px solid var(--tl-blue); outli
 .tl-queue-detail-body {
   max-height: 30vh;
   overflow-y: auto;
-  padding: 0 16px 4px;
+  padding: 0 16px 6px;
   -webkit-overflow-scrolling: touch;
 }
 .tl-queue-detail-text {
