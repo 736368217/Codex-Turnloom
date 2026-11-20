@@ -357,7 +357,52 @@ try {
       note: 'UI_SPEC: 顶部报错 — inside .tl-safe-top, above the scrolling list',
     };
   }
-  // 5 — no horizontal overflow on this screen
+  // 5 — the two entries that make the feature reachable at all (UI_SPEC §4).
+  //     Add first: it navigates to the pairing screen, and the forget menu is a
+  //     sheet that would otherwise still be covering the list.
+  if (MODE === "ok") {
+    const addFlow = await browser.eval(`(async () => {
+      const entry = qa('button, [role="button"]').find((el) => /添加一台电脑/.test(txt(el)));
+      if (!entry) return { found: false };
+      entry.click();
+      const opened = await until(() => /扫码|输入地址|访问码/.test(document.body.innerText || ''), 6000);
+      await wait(400);
+      const inputs = qa('input').map((el) => ({ type: el.type, value: el.value, placeholder: el.placeholder }));
+      const text = (document.body.innerText || '').replace(/\\s+/g, ' ').slice(0, 220);
+      const back = qa('button, [role="button"]').find((el) => /返回/.test(txt(el)) || /返回/.test(el.getAttribute('aria-label') || ''));
+      if (back) back.click();
+      await until(() => Boolean(document.querySelector('.tl-device-screen')), 5000);
+      return { found: true, opened, inputs, text };
+    })()`);
+    const seededUrl = `127.0.0.1:${A_PORT}`;
+    const dirty = (addFlow.inputs || []).filter((i) => i.value && (i.value.includes(seededUrl) || i.value.includes('qa-token') || i.value.includes('qa-codex-token')));
+    out.checks.addEntry = {
+      pass: Boolean(addFlow.found && addFlow.opened) && dirty.length === 0,
+      found: Boolean(addFlow.found), opened: Boolean(addFlow.opened),
+      prefilledInputs: dirty, inputs: addFlow.inputs, text: addFlow.text,
+      note: 'adding a second machine must not prefill the current one credentials',
+    };
+    const forgetFlow = await browser.eval(`(async () => {
+      const more = document.querySelector('.tl-devcard-more');
+      if (!more) return { found: false };
+      more.click();
+      const opened = await until(() => /忘记这台电脑/.test(document.body.innerText || ''), 4000);
+      await wait(350);
+      const text = (document.body.innerText || '').replace(/\\s+/g, ' ').slice(0, 200);
+      const forget = qa('button, [role="button"]').find((el) => /忘记这台电脑/.test(txt(el)));
+      // cancel, never confirm: this must not touch the seeded registry
+      const cancel = qa('button, [role="button"]').find((el) => /取消|保留|关闭/.test(txt(el)));
+      if (cancel) cancel.click();
+      await wait(250);
+      return { found: true, opened, hasForget: Boolean(forget), text };
+    })()`);
+    out.checks.forgetEntry = {
+      pass: Boolean(forgetFlow.found && forgetFlow.opened && forgetFlow.hasForget),
+      found: Boolean(forgetFlow.found), opened: Boolean(forgetFlow.opened), hasForget: Boolean(forgetFlow.hasForget),
+      text: forgetFlow.text, note: 'a paired machine must be removable from the device page',
+    };
+  }
+  // 6 — no horizontal overflow on this screen
   out.checks.noOverflow = { pass: switched.snap.overflow.scrollWidth <= WIDTH && switched.snap.overflow.innerWidth === WIDTH, ...switched.snap.overflow };
   out.summary = Object.fromEntries(Object.entries(out.checks).map(([k, v]) => [k, v.pass === null ? "N/A" : (v.pass ? "PASS" : "FAIL")]));
 } catch (error) {
