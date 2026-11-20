@@ -1,22 +1,26 @@
 import { useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from 'react';
 import { ChevronDown, ChevronRight, ChevronLeft, Brain, Terminal, FileDiff, Folder, Loader2, Check, X, Sparkles } from 'lucide-react';
 import { ComposerFields, ChatPrimaryButton, ModelChip, useComposerFields, requestIdForIdentity } from '../components/ChatComposer';
+import { QueueBar, QueueSheet } from '../components/QueuePanels';
+import AuthedImage from '../components/AuthedImage';
 import MarkdownMessage from '../components/MarkdownMessage';
 import VaulSheet from '../components/VaulSheet';
 import { COLORS } from '../theme/optionATokens';
 import { messageText, isRunning, supportsImages,
-  buildSendPayload, sendRequestIdentity, type ThreadRuntimeStatus,
+  buildSendPayload, sendRequestIdentity,
 } from '../lib/chatContract';
 import { composerSubmitDecision } from '../lib/composerSubmit';
+import { draftAttachments, queueHintText } from '../lib/queueLogic';
 import { haptic, pushNativeBackLayer } from '../lib/nativeBridge';
 import {
-  useDataState, dataStore, refreshMessages, loadOlderMessages, refreshChanges, sendMessage, interruptThread, resolveApproval, createThread,
+  useDataState, dataStore, refreshMessages, loadOlderMessages, refreshChanges, sendMessage,
+  sendQueuedMessage, resumeThreadQueue, interruptThread, resolveApproval, createThread,
 } from '../state/dataStore';
 import { closeDetail, openDetail } from '../state/tabStore';
 import { currentRequestContext } from '../state/sessionStore';
-import { clearComposerInputs } from '../state/composerStore';
-import { getThreadStatus } from '../state/runtimeStore';
-import { getProjects, type ProjectInfo, type ThreadMessage } from '../lib/turnloomApi';
+import { clearComposerInputs, setComposerAttachments, setComposerText } from '../state/composerStore';
+import { useThreadStatus } from '../state/runtimeStore';
+import { getProjects, type ProjectInfo, type ThreadMessage, type QueueDraft } from '../lib/turnloomApi';
 
 /** Secondary cards are rendered only when the host actually sent real rows. */
 function CollapsibleLog({ title, icon, lines }: { title: string; icon: ReactNode; lines: string[] }) {
@@ -131,10 +135,16 @@ export default function ChatDetailScreen({ threadId, title, newThread = false }:
   const messages = newThread ? [] : data.messagesByThread[threadId] || [];
   const changes = newThread ? [] : data.changesByThread[threadId] || [];
   const threadModel = newThread ? undefined : data.threads.find((row) => row.id === threadId)?.model;
-  const status: ThreadRuntimeStatus | null = newThread ? null : getThreadStatus(scope, threadId);
+  // Subscribe to the authoritative status: running state and the queue snapshot
+  // live in the same object, so a queue mutation repaints the bar immediately.
+  const status = useThreadStatus(scope, newThread ? '' : threadId);
   const running = isRunning(status);
   const fields = useComposerFields(scope, composerThreadId, threadModel);
   const [submitting, setSubmitting] = useState(false);
+  const [queueOpen, setQueueOpen] = useState(false);
+  const [queueInitialItem, setQueueInitialItem] = useState('');
+  const [queueNotice, setQueueNotice] = useState('');
+  const queueLength = status?.queueLength || 0;
   // New chat: the first message is filed into a project. Defaults to the most
   // recent project the user has talked to, but "未归类" is always one tap away.
   const [projects, setProjects] = useState<ProjectInfo[]>([]);
@@ -239,6 +249,47 @@ export default function ChatDetailScreen({ threadId, title, newThread = false }:
     ...(typeof entry.deletions === 'number' ? [`- ${entry.deletions} 行删除`] : []),
   ]), [changes]);
 
+  // The queue confirmation is a transient hint line, never a toast layer.
+  useEffect(() => {
+    if (!queueNotice) return;
+    const timer = setTimeout(() => setQueueNotice(''), 4000);
+    return () => clearTimeout(timer);
+  }, [queueNotice]);
+
+  // Switching conversations closes the drawer and drops the previous confirmation.
+  useEffect(() => {
+    setQueueOpen(false);
+    setQueueInitialItem('');
+    setQueueNotice('');
+  }, [threadId]);
+
+  const composerHasContent = Boolean(fields.composer.text.trim() || fields.composer.attachments.length);
+  const composerHint = queueHintText({ running, hasInput: composerHasContent, queueLength, notice: queueNotice });
+
+  const resumeQueue = async (): Promise<void> => {
+    if (submitting || !context || !threadId) return;
+    fields.setBusy(true);
+    const result = await resumeThreadQueue(context, threadId);
+    fields.setBusy(false);
+    if (result.ok) {
+      setQueueNotice('队列已恢复，将按顺序发送');
+      haptic('success');
+    } else {
+      fields.setError(result.error || '恢复队列未成功，请重试。');
+      haptic('error');
+    }
+  };
+
+  /** 「取回编辑」: the draft comes back from the server and replaces the composer. */
+  const applyQueueDraft = (draft: QueueDraft): void => {
+    const attachments = draftAttachments(draft);
+    const text = String(draft?.text || '');
+    setComposerText(text);
+    setComposerAttachments(attachments, scope, composerThreadId);
+    fields.setError('');
+    setQueueNotice('已取回队列消息，可继续编辑');
+  };
+
   const onSubmit = async (event: FormEvent<HTMLFormElement>): Promise<void> => {
     event.preventDefault();
     if (submitting || !context) return;
@@ -247,10 +298,6 @@ export default function ChatDetailScreen({ threadId, title, newThread = false }:
       text: fields.composer.text,
       attachmentCount: fields.composer.attachments.length,
     });
-    if (decision.kind === 'blocked-running') {
-      fields.setError('当前任务仍在运行。消息未发送，草稿已保留；请先点“停止”或等待本轮结束。');
-      return;
-    }
     if (decision.kind === 'empty') return;
     const text = fields.composer.text.trim();
     const attachments = fields.composer.attachments;
@@ -265,6 +312,24 @@ export default function ChatDetailScreen({ threadId, title, newThread = false }:
     setSubmitting(true);
     fields.setBusy(true);
     fields.setError('');
+    if (decision.kind === 'queue') {
+      // Running turn: the message is queued, not refused. No optimistic bubble,
+      // and the primary action keeps showing Stop (the turn is still going).
+      const outcome = await sendQueuedMessage(context, threadId, { ...payload, threadId });
+      setSubmitting(false);
+      fields.setBusy(false);
+      if (outcome.ok) {
+        clearComposerInputs(scope, composerThreadId, fields.composer.text, attachments);
+        const position = outcome.queueLength;
+        setQueueNotice(position > 0 ? `已排队 · 第 ${position} 条` : '已排队');
+        haptic('success');
+      } else {
+        const suffix = /草稿/.test(outcome.error) ? '' : ' 草稿和附件已保留，可再次点发送。';
+        fields.setError(`${outcome.error || '排队未成功。'}${suffix}`);
+        haptic('error');
+      }
+      return;
+    }
     if (newThread) {
       // First message creates the real thread; the draft lives under the
       // placeholder composer slot until the host returns an id.
@@ -313,6 +378,7 @@ export default function ChatDetailScreen({ threadId, title, newThread = false }:
       return;
     }
     await refreshMessages(context, threadId);
+    if ((status?.queueLength || 0) > 0) setQueueNotice('本轮已停止，队列已暂停');
   };
 
   return (
@@ -403,9 +469,16 @@ export default function ChatDetailScreen({ threadId, title, newThread = false }:
                   {images.length > 0 && (
                     <div className="tl-chat-attachment" aria-label={`${images.length} 张图片`}>
                       {images.slice(0, 4).map((image: unknown, imageIndex: number) => {
+                        const row = image && typeof image === 'object' ? image as { url?: unknown; dataUrl?: unknown; mimeType?: unknown; name?: unknown } : null;
                         const src = typeof image === 'string' ? image
-                          : image && typeof image === 'object' ? String((image as { url?: unknown; dataUrl?: unknown }).url || (image as { dataUrl?: unknown }).dataUrl || '') : '';
-                        return src ? <img key={imageIndex} src={src} alt={`附件 ${imageIndex + 1}`} /> : null;
+                          : row ? String(row.url || row.dataUrl || '') : '';
+                        // The envelope has no content type; use the message's own field
+                        // (and the file name as the last resort) instead of guessing.
+                        const mimeType = row ? String(row.mimeType || '') : '';
+                        const name = row ? String(row.name || '') : '';
+                        return src
+                          ? <AuthedImage key={imageIndex} src={src} alt={name || `附件 ${imageIndex + 1}`} mimeType={mimeType} />
+                          : null;
                       })}
                       <span>{images.length} 张图片</span>
                     </div>
@@ -426,9 +499,37 @@ export default function ChatDetailScreen({ threadId, title, newThread = false }:
       </main>
 
       <form className="tl-composer" onSubmit={(event) => { void onSubmit(event); }} aria-label="消息编辑器">
-        <ComposerFields fields={fields} enterKeyHint={running ? 'done' : 'send'} autoFocus={newThread}
+        {!newThread && (
+          <QueueBar
+            status={status}
+            busy={fields.busy}
+            onOpen={(failedId) => { setQueueInitialItem(failedId || ''); setQueueOpen(true); }}
+            onResume={() => { void resumeQueue(); }}
+          />
+        )}
+        <ComposerFields fields={fields} enterKeyHint="send" autoFocus={newThread}
+          hint={composerHint}
+          hintVisible={Boolean(composerHint)}
+          running={running}
+          queueFilesAllowed={status?.queueCapabilities.queueFiles !== false}
+          onQueueFilesBlocked={() => setQueueNotice('当前后端不支持把文件排进队列，本轮结束后再发。')}
           primary={<ChatPrimaryButton scope={scope} threadId={composerThreadId} fields={fields} onStop={stopRunning} />} />
       </form>
+
+      {!newThread && (
+        <QueueSheet
+          open={queueOpen}
+          onClose={() => { setQueueOpen(false); setQueueInitialItem(''); }}
+          threadId={threadId}
+          running={running}
+          status={status}
+          composerHasContent={composerHasContent}
+          onRetrieved={applyQueueDraft}
+          onNotice={setQueueNotice}
+          onResume={() => { void resumeQueue(); }}
+          initialItemId={queueInitialItem}
+        />
+      )}
 
       <VaulSheet open={projectSheet} onOpenChange={setProjectSheet} title="选择项目" subtitle="第一条消息会归档到这个项目">
         <div style={{ padding: '4px 16px 20px', display: 'flex', flexDirection: 'column' }}>

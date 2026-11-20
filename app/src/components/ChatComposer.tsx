@@ -413,18 +413,30 @@ function QuoteSheet({ open, onClose, onPick }: {
 
 
 /** Composer chrome: one card, one primary action, quiet icon/text controls. */
-export function ComposerFields({ fields, primary, enterKeyHint = 'send', autoFocus = false }: {
+export function ComposerFields({
+  fields, primary, hint = '', hintVisible = false, enterKeyHint = 'send', autoFocus = false,
+  running = false, queueFilesAllowed = true, onQueueFilesBlocked,
+}: {
   fields: ComposerFieldsApi;
   primary: ReactNode;
+  /** One 12px line above the card: queue hint or a short confirmation. */
+  hint?: string;
+  /** The line is only laid out when it has something to say (§2.1). */
+  hintVisible?: boolean;
   enterKeyHint?: 'send' | 'done' | 'next';
   /** A brand-new chat focuses the input so the keyboard opens with it. */
   autoFocus?: boolean;
+  /** Running turn: a backend without queued files explains itself on tap. */
+  running?: boolean;
+  queueFilesAllowed?: boolean;
+  onQueueFilesBlocked?: () => void;
 }) {
   const { composer, catalog, preference, imageSupport, sheetOpen, setSheetOpen, error, setError, pick, removeAttachment, select } = fields;
   // The model trigger lives in the chat header now (ModelChip); the composer keeps
   // only the textarea, the attachment row and the primary action.
   const [quoteOpen, setQuoteOpen] = useState(false);
   const inputRef = useRef<HTMLTextAreaElement>(null);
+  const filesBlocked = running && !queueFilesAllowed;
   // The quote block is plain text at the caret: the agent reads it as context, nothing
   // in the host turns it into a link or a conversation switch.
   const insertQuote = (block: string) => {
@@ -445,6 +457,7 @@ export function ComposerFields({ fields, primary, enterKeyHint = 'send', autoFoc
   };
   return (
     <>
+      {hintVisible && <div className="tl-composer-hint" role="status" aria-live="polite">{hint}</div>}
       <div className="tl-composer-card">
         <textarea ref={inputRef} className="tl-composer-input tl-selectable" aria-label="消息" placeholder="发送消息…" rows={1} value={composer.text}
           autoFocus={autoFocus}
@@ -488,10 +501,18 @@ export function ComposerFields({ fields, primary, enterKeyHint = 'send', autoFoc
               }
               haptic('selection'); void pick('image');
             }}><ImageIcon size={20} /></button>
-          <button type="button" className="tl-press tl-composer-icon" aria-label="附件" title="附件"
+          <button type="button" className="tl-press tl-composer-icon"
+            aria-label={filesBlocked ? '附件（当前后端不支持排队文件）' : '附件'}
+            aria-disabled={filesBlocked ? true : undefined}
+            title={filesBlocked ? '当前后端不支持排队文件' : '附件'}
             disabled={fields.picking}
             style={{ width: 44, minWidth: 44, height: 44, minHeight: 44 }}
-            onClick={() => { haptic('selection'); void pick('file'); }}><Paperclip size={20} /></button>
+            onClick={() => {
+              // A disabled button cannot explain itself on Android (no title
+              // tooltip), so the tap stays alive and the reason goes to the hint.
+              if (filesBlocked) { haptic('warning'); onQueueFilesBlocked?.(); return; }
+              haptic('selection'); void pick('file');
+            }}><Paperclip size={20} /></button>
           <span className="tl-composer-spacer" />
           {primary}
         </div>
@@ -509,7 +530,11 @@ function primaryStyle(): CSSProperties {
   return { width: 44, minWidth: 44, height: 44, minHeight: 44, borderRadius: 22 };
 }
 
-/** One primary action: form submit sends; Stop is a separate explicit button. */
+/**
+ * One primary action while idle (form submit sends). While a turn runs the
+ * composer keeps two 44px actions side by side: queue-send on the left, Stop
+ * always rightmost — Stop never moves when the send button appears or goes.
+ */
 export function ChatPrimaryButton({ scope, threadId, fields, onStop }: {
   scope: string;
   threadId: string;
@@ -520,11 +545,19 @@ export function ChatPrimaryButton({ scope, threadId, fields, onStop }: {
   const hasInput = Boolean(fields.composer.text.trim() || fields.composer.attachments.length);
   if (running) {
     return (
-      <button type="button" aria-label="停止" title="停止" onClick={() => { void onStop?.(); }}
-        style={primaryStyle()}
-        className="tl-press tl-composer-send tl-composer-send--stop" disabled={fields.busy || !onStop}>
-        <Square size={14} fill="currentColor" />
-      </button>
+      <div className="tl-composer-primary-row">
+        {hasInput && (
+          <button type="submit" aria-label="排队发送" title="排队发送" style={primaryStyle()}
+            className="tl-press tl-composer-send" disabled={fields.busy}>
+            <ArrowUp size={20} />
+          </button>
+        )}
+        <button type="button" aria-label="停止" title="停止" onClick={() => { void onStop?.(); }}
+          style={primaryStyle()}
+          className="tl-press tl-composer-send tl-composer-send--stop" disabled={fields.busy || !onStop}>
+          <Square size={14} fill="currentColor" />
+        </button>
+      </div>
     );
   }
   return (

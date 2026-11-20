@@ -12,8 +12,11 @@ import { secureGet, secureSet, secureRemove } from '../lib/nativeBridge';
 import {
   getThreads, getThreadMessages, getThreadChanges, getHealth,
   postNewThread, postSend, postInterrupt, postApproval, extractThreadId,
+  postQueueCancel, postQueueSteer, postQueueRetry, getQueueStatus,
+  postQueueReorder, postQueueResume,
   type ThreadSummary, type ThreadMessage, type ChangeEntry,
   type RequestContext, type SendOptions, type ApiResult,
+  type QueueActionPayload, type QueueReorderDirection,
 } from '../lib/turnloomApi';
 import { actionableMessage } from '../lib/serverErrors';
 import { recordDiagnostic, uploadDiagnostics } from '../lib/diagnostics';
@@ -21,7 +24,7 @@ import { isCurrentContext, getActiveGeneration } from '../lib/turnloomApi';
 import { cacheKeyFor, setOnline, markSynced, sessionStore } from './sessionStore';
 import { projectThread } from '../lib/threadProjection';
 import {
-  selectRuntimeScope, applyHealth, applyThreadStatus,
+  selectRuntimeScope, applyHealth, applyThreadStatus, applyQueueSnapshot,
   threadListStatus, markThreadSubmitted, getThreadStatus,
 } from './runtimeStore';
 import { mergeMessagePages } from '../lib/messagePaging';
@@ -373,6 +376,98 @@ export async function sendMessage(context: RequestContext, threadId: string, opt
   return true;
 }
 
+export interface QueueSendOutcome {
+  ok: boolean;
+  queueLength: number;
+  queuePaused: boolean;
+  error: string;
+}
+
+/**
+ * Running turn: the same payload becomes a queue entry instead of a message in
+ * the running turn. No optimistic bubble is appended and "running" is never
+ * cleared — the turn keeps going while the message waits.
+ */
+export async function sendQueuedMessage(
+  context: RequestContext,
+  threadId: string,
+  options: SendOptions,
+): Promise<QueueSendOutcome> {
+  if (!current(context) || !threadId) return { ok: false, queueLength: 0, queuePaused: false, error: '' };
+  const result = await retryTransport(context, () => postSend(context, { ...options, threadId, mode: 'queue' }));
+  if (!current(context)) return { ok: false, queueLength: 0, queuePaused: false, error: '连接已切换，请重试。' };
+  if (!result.ok) {
+    const message = actionable(result);
+    dataStore.setState({ lastSendError: message });
+    applyFailure(context, message, result.offline);
+    recordDiagnostic({
+      kind: result.status === 0 ? 'timeout' : 'send',
+      status: result.status,
+      path: '/api/send',
+      message,
+      detail: { threadId, newThread: false, mode: 'queue' },
+    });
+    return { ok: false, queueLength: 0, queuePaused: false, error: message };
+  }
+  dataStore.setState({ offline: false, error: '', lastSendError: '' });
+  const snapshot = applyQueueSnapshot(context.scope, threadId, result.data);
+  // The status poll is authoritative for positions and delivery states.
+  void refreshThreadStatus(context, threadId);
+  return { ok: true, queueLength: snapshot.queueLength, queuePaused: snapshot.queuePaused, error: '' };
+}
+
+export interface QueueActionResult {
+  ok: boolean;
+  error: string;
+  data: QueueActionPayload | null;
+}
+
+/**
+ * Shared queue mutation path. A 4xx here is a queue-state fact (item already
+ * sending, turn already over), so it is reported where the action happened and
+ * never turns the app into "offline"; only a transport failure touches the banner.
+ */
+async function queueAction(
+  context: RequestContext,
+  threadId: string,
+  run: () => Promise<ApiResult<QueueActionPayload>>,
+): Promise<QueueActionResult> {
+  if (!current(context) || !threadId) return { ok: false, error: '', data: null };
+  const result = await run();
+  if (!current(context)) return { ok: false, error: '连接已切换，请重试。', data: null };
+  if (!result.ok) {
+    const message = actionable(result);
+    if (result.offline) applyFailure(context, message, true);
+    return { ok: false, error: message, data: null };
+  }
+  dataStore.setState({ offline: false, error: '' });
+  applyQueueSnapshot(context.scope, threadId, result.data);
+  return { ok: true, error: '', data: result.data || null };
+}
+
+export const cancelQueuedMessage = (context: RequestContext, threadId: string, itemId: string, edit: boolean): Promise<QueueActionResult> =>
+  queueAction(context, threadId, () => postQueueCancel(context, { threadId, itemId, edit }));
+
+export const steerQueuedMessage = (context: RequestContext, threadId: string, itemId: string): Promise<QueueActionResult> =>
+  queueAction(context, threadId, () => postQueueSteer(context, { threadId, itemId }));
+
+export const retryQueuedMessage = (context: RequestContext, threadId: string, itemId: string): Promise<QueueActionResult> =>
+  queueAction(context, threadId, () => postQueueRetry(context, { threadId, itemId }));
+
+export const reorderQueuedMessage = (context: RequestContext, threadId: string, itemId: string, direction: QueueReorderDirection): Promise<QueueActionResult> =>
+  queueAction(context, threadId, () => postQueueReorder(context, { threadId, itemId, direction }));
+
+export const resumeThreadQueue = (context: RequestContext, threadId: string): Promise<QueueActionResult> =>
+  queueAction(context, threadId, () => postQueueResume(context, { threadId }));
+
+/** Fill the panel when the messages status carries a count but no rows. */
+export async function refreshQueue(context: RequestContext, threadId: string): Promise<void> {
+  if (!current(context) || !threadId) return;
+  const result = await getQueueStatus(context, threadId);
+  if (!current(context) || !result.ok) return;
+  applyQueueSnapshot(context.scope, threadId, result.data);
+}
+
 export async function interruptThread(context: RequestContext, threadId: string): Promise<boolean> {
   if (!current(context) || !threadId) return false;
   const result = await postInterrupt(context, { threadId });
@@ -380,6 +475,8 @@ export async function interruptThread(context: RequestContext, threadId: string)
   if (!result.ok) { applyFailure(context, actionable(result), result.offline); return false; }
   bumpStatusEpoch(context.scope, threadId);
   applyThreadStatus(context.scope, threadId, {});
+  // Stopping a turn pauses its queue on the server; the bar must say so at once.
+  applyQueueSnapshot(context.scope, threadId, result.data);
   dataStore.setState((prev) => prev.scope === context.scope
     ? { statusByThread: { ...prev.statusByThread, [threadId]: threadListStatus({}) } }
     : {});

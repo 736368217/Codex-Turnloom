@@ -9,6 +9,54 @@
 
 export type ThreadRuntimeState = 'ended' | 'running' | 'waiting';
 
+/** Server-side delivery state of one queued message; never invented locally. */
+export type QueueDeliveryState = 'queued' | 'sending' | 'awaitingConfirmation' | 'failed';
+
+export interface QueueImageRef {
+  name: string;
+  /** Only an absolute (or ability-authenticated) URL is usable in a WebView. */
+  url?: string;
+  dataUrl?: string;
+  /** The `data:` URL type; never guessed from the endpoint. */
+  mimeType?: string;
+}
+
+export interface QueueFileRef {
+  name: string;
+  size: number;
+  mimeType: string;
+}
+
+export interface QueueMessage {
+  id: string;
+  position: number;
+  text: string;
+  preview: string;
+  imageCount: number;
+  fileCount: number;
+  images: QueueImageRef[];
+  files: QueueFileRef[];
+  enqueuedAt: string;
+  deliveryState: QueueDeliveryState;
+  lastError: string;
+  model: string;
+  effort: string;
+}
+
+/** What this backend can actually do with a queue; the server decides, not the UI. */
+export interface QueueCapabilities {
+  /** True only where steer really folds into the running turn (Codex local). */
+  turnSteer: boolean;
+  /** False where queued files are refused (PI-native); images still work. */
+  queueFiles: boolean;
+}
+
+export const DEFAULT_QUEUE_CAPABILITIES: QueueCapabilities = {
+  // Unknown is not "yes": never promise a behavior the backend has not declared.
+  turnSteer: false,
+  queueFiles: true,
+};
+
 export interface ThreadRuntimeStatus {
   state: ThreadRuntimeState;
   thinking: boolean;
@@ -16,6 +64,14 @@ export interface ThreadRuntimeStatus {
   staleTurn: boolean;
   turnId: string | null;
   startedAtMs: number | null;
+  /** Queue snapshot from the same authoritative status object. */
+  queueLength: number;
+  queuePaused: boolean;
+  queuedMessages: QueueMessage[];
+  queueSource: string;
+  queueCapabilities: QueueCapabilities;
+  /** The bridge could not answer this poll; the numbers are the last known ones. */
+  queueUnavailable: boolean;
 }
 
 export interface ModelCatalogEntry {
@@ -87,6 +143,13 @@ export const EFFORT_LABEL = '思考强度';
 export const ENDED_STATUS: ThreadRuntimeStatus = {
   state: 'ended', thinking: false, interactionRequired: false, staleTurn: false,
   turnId: null, startedAtMs: null,
+  queueLength: 0, queuePaused: false, queuedMessages: [], queueSource: '',
+  queueCapabilities: DEFAULT_QUEUE_CAPABILITIES, queueUnavailable: false,
+};
+
+export const EMPTY_QUEUE = {
+  queueLength: 0, queuePaused: false, queuedMessages: [] as QueueMessage[],
+  queueSource: '', queueCapabilities: DEFAULT_QUEUE_CAPABILITIES, queueUnavailable: false,
 };
 
 function object(value: unknown): Record<string, unknown> | null {
@@ -103,10 +166,140 @@ function numberValue(value: unknown): number | null {
   return Number.isFinite(parsed) && parsed > 0 ? Math.trunc(parsed) : null;
 }
 
+function countValue(value: unknown): number | null {
+  const parsed = typeof value === 'number' ? value : Number(value);
+  return Number.isFinite(parsed) && parsed >= 0 ? Math.trunc(parsed) : null;
+}
+
+function queueDeliveryState(value: unknown): QueueDeliveryState {
+  const state = stringValue(value).toLowerCase();
+  if (state === 'sending') return 'sending';
+  if (state === 'awaitingconfirmation') return 'awaitingConfirmation';
+  if (state === 'failed') return 'failed';
+  return 'queued';
+}
+
+/** One queued item. Unknown shapes are dropped, never rendered as an empty row. */
+export function normalizeQueueMessage(raw: unknown, index = 0): QueueMessage | null {
+  const row = object(raw);
+  if (!row) return null;
+  const text = typeof row.text === 'string' ? row.text : '';
+  const images = Array.isArray(row.images) ? row.images.map((entry) => {
+    const image = object(entry);
+    const name = stringValue(image?.name);
+    const url = stringValue(image?.url);
+    const dataUrl = stringValue(image?.dataUrl);
+    const mimeType = stringValue(image?.mimeType).toLowerCase();
+    return name || url || dataUrl
+      ? { name, ...(url ? { url } : {}), ...(dataUrl ? { dataUrl } : {}), ...(mimeType ? { mimeType } : {}) } as QueueImageRef
+      : null;
+  }).filter((entry): entry is QueueImageRef => entry !== null) : [];
+  const files = Array.isArray(row.files) ? row.files.map((entry) => {
+    const file = object(entry);
+    const name = stringValue(file?.name);
+    if (!name) return null;
+    return {
+      name,
+      size: Math.max(0, Math.trunc(Number(file?.size) || 0)),
+      mimeType: stringValue(file?.mimeType),
+    } as QueueFileRef;
+  }).filter((entry): entry is QueueFileRef => entry !== null) : [];
+  return {
+    id: stringValue(row.id) || `queued-${index + 1}`,
+    position: numberValue(row.position) || index + 1,
+    text,
+    preview: stringValue(row.preview) || text.replace(/\s+/g, ' ').slice(0, 80),
+    imageCount: countValue(row.imageCount) ?? images.length,
+    fileCount: countValue(row.fileCount) ?? files.length,
+    images,
+    files,
+    enqueuedAt: stringValue(row.enqueuedAt),
+    deliveryState: queueDeliveryState(row.deliveryState),
+    lastError: stringValue(row.lastError).slice(0, 500),
+    model: stringValue(row.model),
+    effort: stringValue(row.effort),
+  };
+}
+
+/** Server order is send order; `position` is display only. */
+export function normalizeQueueList(raw: unknown): QueueMessage[] {
+  if (!Array.isArray(raw)) return [];
+  const seen = new Set<string>();
+  const rows: QueueMessage[] = [];
+  for (const entry of raw) {
+    const item = normalizeQueueMessage(entry, rows.length);
+    if (!item || seen.has(item.id)) continue;
+    seen.add(item.id);
+    rows.push(item);
+  }
+  return rows;
+}
+
+export interface QueueSnapshot {
+  queueLength: number;
+  queuePaused: boolean;
+  queuedMessages: QueueMessage[];
+  queueSource: string;
+  queueCapabilities: QueueCapabilities;
+  queueUnavailable: boolean;
+}
+
+/** Declared capabilities only; an undeclared flag keeps its previous value. */
+function capabilitiesFrom(raw: unknown, previous?: QueueSnapshot | null): QueueCapabilities {
+  const row = object(raw);
+  const declared = object(row?.queueCapabilities);
+  const base = previous?.queueCapabilities || DEFAULT_QUEUE_CAPABILITIES;
+  return {
+    turnSteer: typeof declared?.turnSteer === 'boolean' ? declared.turnSteer : base.turnSteer,
+    queueFiles: typeof declared?.queueFiles === 'boolean' ? declared.queueFiles : base.queueFiles,
+  };
+}
+
+/**
+ * Merge queue fields from a status / action response. A payload that carries
+ * none of them keeps the previous snapshot (a failed poll or a local stop must
+ * not blank the bar); a length that disagrees with the cached list drops the
+ * list so the bar count and the panel can never claim different numbers.
+ */
+export function normalizeQueueSnapshot(raw: unknown, previous?: QueueSnapshot | null): QueueSnapshot {
+  const row = object(raw);
+  const hasMessages = Array.isArray(row?.queuedMessages);
+  const lengthValue = countValue(row?.queueLength);
+  const hasPaused = typeof row?.queuePaused === 'boolean';
+  if (!row || (!hasMessages && lengthValue === null && !hasPaused)) {
+    if (!previous) return { ...EMPTY_QUEUE, queuedMessages: [], queueCapabilities: capabilitiesFrom(raw) };
+    // Copy only the queue fields: `previous` may be a full ThreadRuntimeStatus.
+    return {
+      queueLength: previous.queueLength,
+      queuePaused: previous.queuePaused,
+      queuedMessages: previous.queuedMessages.slice(),
+      queueSource: previous.queueSource,
+      queueCapabilities: capabilitiesFrom(raw, previous),
+      queueUnavailable: previous.queueUnavailable,
+    };
+  }
+  const list = hasMessages ? normalizeQueueList(row?.queuedMessages) : [];
+  const length = hasMessages ? list.length : lengthValue ?? previous?.queueLength ?? 0;
+  const kept = hasMessages
+    ? list.slice(0, length)
+    : previous && previous.queuedMessages.length === length
+      ? previous.queuedMessages.slice(0, length)
+      : [];
+  return {
+    queueLength: length,
+    queuePaused: hasPaused ? row?.queuePaused === true : Boolean(previous?.queuePaused),
+    queuedMessages: kept,
+    queueSource: stringValue(row?.queueSource) || previous?.queueSource || '',
+    queueCapabilities: capabilitiesFrom(row, previous),
+    queueUnavailable: row?.queueUnavailable === true,
+  };
+}
+
 /** Normalize only a top-level messages-response status object. */
-export function normalizeThreadStatus(raw: unknown): ThreadRuntimeStatus {
+export function normalizeThreadStatus(raw: unknown, previous?: ThreadRuntimeStatus | null): ThreadRuntimeStatus {
   const status = object(raw);
-  if (!status) return { ...ENDED_STATUS };
+  const queue = normalizeQueueSnapshot(raw, previous);
+  if (!status) return { ...ENDED_STATUS, ...queue };
   const thinking = status.thinking === true;
   const staleTurn = status.staleTurn === true;
   const interactionRequired = status.interactionRequired === true;
@@ -118,6 +311,7 @@ export function normalizeThreadStatus(raw: unknown): ThreadRuntimeStatus {
     staleTurn,
     turnId: stringValue(status.turnId) || null,
     startedAtMs: numberValue(status.startedAtMs),
+    ...queue,
   };
 }
 
@@ -449,5 +643,6 @@ export const chatContract = {
   normalizeThreadStatus, isRunning, normalizeHealthCatalog, resolveTurnPreference,
   effortLabel, supportsImages, compactMessageText, messageText, plainBase64,
   attachmentPayload, sendRequestIdentity, buildSendPayload, validateAttachments,
-  listStatusOf,
+  listStatusOf, normalizeQueueMessage, normalizeQueueList, normalizeQueueSnapshot,
+  ENDED_STATUS, EMPTY_QUEUE,
 };

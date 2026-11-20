@@ -25,10 +25,12 @@ function load(file) {
   return mod.exports;
 }
 
-test('R06: running Enter/attachment submit never becomes Stop; idle input still sends', () => {
+test('R06: running submit queues instead of being refused; idle input still sends', () => {
   const { composerSubmitDecision, shouldSubmitOnEnter } = load('lib/composerSubmit.ts');
-  assert.deepEqual(composerSubmitDecision({ running: true, text: 'phone message', attachmentCount: 0 }), { kind: 'blocked-running' });
-  assert.deepEqual(composerSubmitDecision({ running: true, text: '', attachmentCount: 1 }), { kind: 'blocked-running' });
+  // 2.3.0: a running turn no longer blocks the composer — the same submit is queued.
+  assert.deepEqual(composerSubmitDecision({ running: true, text: 'phone message', attachmentCount: 0 }), { kind: 'queue' });
+  assert.deepEqual(composerSubmitDecision({ running: true, text: '', attachmentCount: 1 }), { kind: 'queue' });
+  assert.deepEqual(composerSubmitDecision({ running: true, text: '   ', attachmentCount: 0 }), { kind: 'empty' });
   assert.deepEqual(composerSubmitDecision({ running: false, text: 'phone message', attachmentCount: 0 }), { kind: 'send' });
   assert.deepEqual(composerSubmitDecision({ running: false, text: '', attachmentCount: 1 }), { kind: 'send' });
   assert.deepEqual(composerSubmitDecision({ running: false, text: '   ', attachmentCount: 0 }), { kind: 'empty' });
@@ -49,13 +51,17 @@ test('R06: chat form submit cannot call interrupt; Stop has its own button path'
   const stop = screen.slice(stopStart, screen.indexOf('  return (', stopStart));
   assert.doesNotMatch(submit, /interruptThread/);
   assert.match(submit, /composerSubmitDecision/);
-  assert.match(submit, /blocked-running/);
-  assert.match(submit, /草稿已保留/);
+  // The refusenik path is gone: a running turn queues the message instead.
+  assert.doesNotMatch(submit, /blocked-running/);
+  assert.match(submit, /sendQueuedMessage/);
+  assert.match(submit, /草稿和附件已保留/);
   assert.match(stop, /interruptThread/);
+  // Two 44px primaries while running: queue-send left, Stop rightmost.
+  assert.match(composer, /aria-label="排队发送"/);
   assert.match(composer, /type="button" aria-label="停止"/);
   assert.match(composer, /type="submit" aria-label="发送"/);
   assert.match(screen, /onStop=\{stopRunning\}/);
-  assert.match(screen, /enterKeyHint=\{running \? 'done' : 'send'\}/);
+  assert.match(screen, /enterKeyHint="send"/);
 });
 
 test('R07: authoritative thread status wins for badge, filter, home card and monitor', () => {

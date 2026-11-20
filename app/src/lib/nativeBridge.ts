@@ -24,6 +24,8 @@ export interface NativeHttpRequest {
 export interface NativeHttpResult {
   status: number;
   body: string;
+  /** Image responses only (2.3.0 native): the raw bytes as plain base64. */
+  bodyBase64?: string;
   error?: string;
 }
 
@@ -370,6 +372,7 @@ export function deliverHttpResult(requestId: string, responseJson: string): void
   settleHttp(requestId, {
     status,
     body: typeof parsed.body === 'string' ? parsed.body : '',
+    ...(typeof parsed.bodyBase64 === 'string' && parsed.bodyBase64 ? { bodyBase64: parsed.bodyBase64 } : {}),
     ...(typeof parsed.error === 'string' ? { error: parsed.error } : {}),
   });
 }

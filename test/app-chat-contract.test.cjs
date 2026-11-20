@@ -95,12 +95,18 @@ const HEALTH = {
 
 test('idle, running, waiting and stale states come only from top-level status', () => {
   const c = harness().contract;
-  assert.deepEqual(c.normalizeThreadStatus({ thinking: false, interactionRequired: false }), {
+  // Compare the runtime projection only: the status object also carries the
+  // queue snapshot (2.3.0), which has its own test file.
+  const runtime = (status) => {
+    const { state, thinking, interactionRequired, staleTurn, turnId, startedAtMs } = status;
+    return { state, thinking, interactionRequired, staleTurn, turnId, startedAtMs };
+  };
+  assert.deepEqual(runtime(c.normalizeThreadStatus({ thinking: false, interactionRequired: false })), {
     state: 'ended', thinking: false, interactionRequired: false, staleTurn: false, turnId: null, startedAtMs: null,
   });
   assert.equal(c.isRunning(c.normalizeThreadStatus({ thinking: false })), false);
   const running = c.normalizeThreadStatus({ thinking: true, turnId: 'turn-1', startedAtMs: 1234 });
-  assert.deepEqual(running, { state: 'running', thinking: true, interactionRequired: false, staleTurn: false, turnId: 'turn-1', startedAtMs: 1234 });
+  assert.deepEqual(runtime(running), { state: 'running', thinking: true, interactionRequired: false, staleTurn: false, turnId: 'turn-1', startedAtMs: 1234 });
   assert.equal(c.isRunning(running), true);
   assert.equal(c.isRunning(c.normalizeThreadStatus({ thinking: true, staleTurn: true, turnId: 'old' })), false);
   assert.deepEqual(c.listStatusOf({ thinking: true, staleTurn: true }), { state: 'ended', thinking: false });
@@ -427,10 +433,12 @@ test('screen wiring: header back only, two picker buttons, one primary, no fake 
   assert.doesNotMatch(screen, /tl-thumbbar|openSheet\('approval'|openSheet\('interruptAll'|ThumbGlassBar/);
   assert.doesNotMatch(composer, /aria-label="返回"|aria-label="审批"|permanent/i);
   assert.match(composer, /aria-label="图片"/);
-  assert.match(composer, /aria-label="附件"/);
+  assert.match(composer, /'附件（当前后端不支持排队文件）' : '附件'/);
   assert.match(composer, /type="button" aria-label="停止"/);
   assert.match(composer, /type="submit" aria-label="发送"/);
-  assert.equal((composer.match(/type="submit"/g) || []).length, 1);
+  // 2.3.0: idle send and the running queue-send are two submit controls for the
+  // same form (one handler); nothing else may submit.
+  assert.equal((composer.match(/type="submit"/g) || []).length, 2);
   assert.match(composer, /pickAttachments\(kind\)/);
   assert.match(composer, /VaulSheet/);
   assert.doesNotMatch(read('app/src/components/ApprovalSheet.tsx'), /resolveApproval|待审批操作/);
@@ -454,7 +462,8 @@ function stripComments(text) {
 test('text-only model explains images before opening the native picker', () => {
   const composer = read('app/src/components/ChatComposer.tsx');
   const start = composer.indexOf('aria-label="图片"');
-  const end = composer.indexOf('aria-label="附件"');
+  // 2.3.0: the paperclip explains a backend that cannot queue files.
+  const end = composer.indexOf("'附件（当前后端不支持排队文件）'");
   assert.ok(start > 0 && end > start, 'image button block must exist before the file button');
   const block = composer.slice(start, end);
   assert.match(block, /imageSupport === false/, 'known text-only capability must be checked');

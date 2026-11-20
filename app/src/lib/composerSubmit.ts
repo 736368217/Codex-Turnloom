@@ -1,16 +1,22 @@
 /** Pure composer action decisions shared by phone and browser keyboards. */
 export type ComposerSubmitDecision =
   | { kind: 'empty' }
-  | { kind: 'blocked-running' }
+  | { kind: 'queue' }
   | { kind: 'send' };
 
+/**
+ * A running turn does not refuse the message any more: the same send becomes a
+ * queue entry, and the server drains it after the turn. An empty composer never
+ * submits, so it falls through to "nothing to send".
+ */
 export function composerSubmitDecision(input: {
   running: boolean;
   text: string;
   attachmentCount: number;
 }): ComposerSubmitDecision {
-  if (input.running) return { kind: 'blocked-running' };
-  if (!String(input.text || '').trim() && input.attachmentCount <= 0) return { kind: 'empty' };
+  const hasContent = Boolean(String(input.text || '').trim()) || input.attachmentCount > 0;
+  if (!hasContent) return { kind: 'empty' };
+  if (input.running) return { kind: 'queue' };
   return { kind: 'send' };
 }
 

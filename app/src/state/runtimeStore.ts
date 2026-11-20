@@ -8,10 +8,11 @@
  */
 
 import {
-  normalizeHealthCatalog, normalizeThreadStatus, listStatusOf,
+  normalizeHealthCatalog, normalizeThreadStatus, normalizeQueueSnapshot, listStatusOf,
+  ENDED_STATUS,
   type ModelCatalog, type ThreadRuntimeStatus,
 } from '../lib/chatContract';
-import { createStore } from './store';
+import { createStore, useStore } from './store';
 import { cacheKeyFor } from './sessionStore';
 import { secureGet, secureSet, secureRemove } from '../lib/nativeBridge';
 
@@ -83,10 +84,34 @@ export function clearHealthCache(scope: string): void {
 
 /** Apply the top-level messages status; preserve prior state on failed polls. */
 export function applyThreadStatus(scope: string, threadId: string, status: unknown): ThreadRuntimeStatus {
-  const parsed = normalizeThreadStatus(status);
+  const previous = getThreadStatus(scope, threadId);
+  const parsed = normalizeThreadStatus(status, previous);
   if (runtimeStore.getState().scope !== scope) selectRuntimeScope(scope);
   mutate({ statusByThread: { ...runtimeStore.getState().statusByThread, [threadId]: parsed } });
   return parsed;
+}
+
+/**
+ * Merge a queue snapshot from any queue endpoint / send response. Queue fields
+ * absent from the payload keep their previous values; the length and the cached
+ * list can never disagree (see `normalizeQueueSnapshot`).
+ */
+export function applyQueueSnapshot(scope: string, threadId: string, payload: unknown): ThreadRuntimeStatus {
+  if (!threadId) return ENDED_STATUS;
+  const previous = getThreadStatus(scope, threadId);
+  const queue = normalizeQueueSnapshot(payload, previous);
+  const next: ThreadRuntimeStatus = { ...(previous || ENDED_STATUS), ...queue };
+  if (runtimeStore.getState().scope !== scope) selectRuntimeScope(scope);
+  mutate({ statusByThread: { ...runtimeStore.getState().statusByThread, [threadId]: next } });
+  return next;
+}
+
+/** Subscribe a screen to one thread's authoritative status (running + queue). */
+export function useThreadStatus(scope: string, threadId: string): ThreadRuntimeStatus | null {
+  const state = useStore(runtimeStore);
+  if (!threadId) return null;
+  if (state.scope === scope) return state.statusByThread[threadId] || null;
+  return memory.get(scope)?.statusByThread[threadId] || null;
 }
 
 /** After a successful POST, only the next authoritative poll can claim running. */

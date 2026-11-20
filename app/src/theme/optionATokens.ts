@@ -18,6 +18,10 @@ export const COLORS = {
   actionBlue: '#0062CC',
   actionGreen: '#1F7A35',
   actionRed: '#B4231B',
+  /** Pause / degraded warning: one accent, one surface, one label colour. */
+  warning: '#FF9500',
+  warningSurface: '#FFF4E5',
+  warningLabel: '#8A5300',
   diffAddBg: '#E8F8EE',
   diffAddFg: '#1E7E34',
   diffDelBg: '#FDECEC',

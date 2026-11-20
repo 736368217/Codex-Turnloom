@@ -36,6 +36,9 @@ export const API_ENDPOINTS = {
   queueSteer: '/api/queue/steer',
   queueRetry: '/api/queue/retry',
   queueImage: '/api/queue/image',
+  queueStatus: '/api/queue/status',
+  queueReorder: '/api/queue/reorder',
+  queueResume: '/api/queue/resume',
   diagnostics: '/api/diagnostics',
 } as const;
 
@@ -88,6 +91,8 @@ export interface SendOptions {
   files?: ApiAttachment[];
   threadId?: string;
   projectId?: string;
+  /** `queue` keeps the message for after this turn; `steer` folds it into the turn. */
+  mode?: 'start' | 'queue' | 'steer';
 }
 
 export interface MessagesEnvelope {
@@ -144,6 +149,32 @@ export interface QueueItem {
   [key: string]: unknown;
 }
 export type QueueAction = 'cancel' | 'steer' | 'retry' | 'image';
+
+/** One queue row's draft returned by `cancel {edit:true}` (base64 rows). */
+export interface QueueDraftRow {
+  name?: string;
+  mimeType?: string;
+  data?: string;
+}
+export interface QueueDraft {
+  text?: string;
+  images?: QueueDraftRow[];
+  files?: QueueDraftRow[];
+}
+/** Queue mutation responses carry the authoritative snapshot plus an ok flag. */
+export interface QueueActionPayload {
+  ok?: boolean;
+  threadId?: string;
+  itemId?: string;
+  draft?: QueueDraft;
+  queueLength?: number;
+  queuePaused?: boolean;
+  queuedMessages?: unknown[];
+  queueSource?: string;
+  lastError?: string | null;
+  [key: string]: unknown;
+}
+export type QueueReorderDirection = 'up' | 'down' | 'top';
 
 export interface HealthInfo {
   ok?: boolean;
@@ -445,6 +476,7 @@ function sendBody(body: SendOptions, newThread: boolean): Record<string, unknown
     ...(body.model ? { model: body.model } : {}),
     ...(body.effort ? { effort: body.effort } : {}),
     ...(body.projectId ? { projectId: body.projectId } : {}),
+    ...(body.mode ? { mode: body.mode } : {}),
     images: body.images || [],
     files: body.files || [],
   };
@@ -474,7 +506,7 @@ export const postDiagnostics = (context: RequestContext, body: unknown): Promise
     { method: 'POST', body, timeoutMs: 12_000, quiet: true },
   );
 
-export const postInterrupt = (context: RequestContext, body: { threadId: string }): Promise<ApiResult<{ ok?: boolean }>> => post(context, API_ENDPOINTS.interrupt, body);
+export const postInterrupt = (context: RequestContext, body: { threadId: string }): Promise<ApiResult<{ ok?: boolean; queueLength?: number; queuePaused?: boolean }>> => post(context, API_ENDPOINTS.interrupt, body);
 export const postApproval = (context: RequestContext, body: { threadId: string; requestId: string; approvalKind: 'command' | 'file' | 'permission'; detailsHash: string; decision: 'approve' | 'approveForSession' | 'decline'; approved: boolean }): Promise<ApiResult<{ ok?: boolean; requestId?: string }>> => post(context, API_ENDPOINTS.approval, body);
 /** 手机端归档：写回 PI-Desktop 的 sidebar-preferences（服务端原子写，只改该会话）。 */
 export const postThreadArchive = (context: RequestContext, threadId: string, archived: boolean): Promise<ApiResult<{ ok?: boolean; archived?: boolean }>> =>
@@ -561,9 +593,12 @@ export async function getPublicUpdateManifest(
   return { ok: false, status: result.status, error: 'manifest-unavailable', offline: false };
 }
 
-export const postQueueCancel = (context: RequestContext, body: { threadId?: string; itemId?: string; edit?: boolean }): Promise<ApiResult<QueueItem>> => post(context, API_ENDPOINTS.queueCancel, body);
-export const postQueueSteer = (context: RequestContext, body: { threadId?: string; itemId?: string; text?: string }): Promise<ApiResult<QueueItem>> => post(context, API_ENDPOINTS.queueSteer, body);
-export const postQueueRetry = (context: RequestContext, body: { threadId?: string; itemId?: string }): Promise<ApiResult<QueueItem>> => post(context, API_ENDPOINTS.queueRetry, body);
+export const postQueueCancel = (context: RequestContext, body: { threadId?: string; itemId?: string; edit?: boolean }): Promise<ApiResult<QueueActionPayload>> => post(context, API_ENDPOINTS.queueCancel, body);
+export const postQueueSteer = (context: RequestContext, body: { threadId?: string; itemId?: string; text?: string }): Promise<ApiResult<QueueActionPayload>> => post(context, API_ENDPOINTS.queueSteer, body);
+export const postQueueRetry = (context: RequestContext, body: { threadId?: string; itemId?: string }): Promise<ApiResult<QueueActionPayload>> => post(context, API_ENDPOINTS.queueRetry, body);
+export const getQueueStatus = (context: RequestContext, threadId: string): Promise<ApiResult<QueueActionPayload>> => get(context, API_ENDPOINTS.queueStatus, { threadId });
+export const postQueueReorder = (context: RequestContext, body: { threadId: string; itemId: string; direction: QueueReorderDirection }): Promise<ApiResult<QueueActionPayload>> => post(context, API_ENDPOINTS.queueReorder, body);
+export const postQueueResume = (context: RequestContext, body: { threadId: string }): Promise<ApiResult<QueueActionPayload>> => post(context, API_ENDPOINTS.queueResume, body);
 export const getQueueImage = (context: RequestContext, params: { threadId: string; itemId: string; index?: number }): Promise<ApiResult<{ url?: string }>> => get(context, API_ENDPOINTS.queueImage, params);
 
 export const queueEndpointFor = (action: QueueAction): string => {
@@ -580,6 +615,7 @@ export const turnloomApi = {
   getHealth, postAuthSession, getThreads, getThreadMessages, getThreadChanges,
   postNewThread, postSend, postInterrupt, postApproval, getHostDiff, getProjects,
   getAccount, getAppUpdate, postQueueCancel, postQueueSteer, postQueueRetry,
+  getQueueStatus, postQueueReorder, postQueueResume,
   getQueueImage, queueEndpointFor, configureClient, setUnauthorizedHandler,
   setNetworkStateHandler, request, requestWithContext, startNativeRequest,
   discoverHarnesses, verifyHarness, setActiveRequestScope, getCurrentTarget,
