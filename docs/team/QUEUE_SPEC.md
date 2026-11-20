@@ -99,7 +99,7 @@
   "queuedMessages": [{
     "id": "uuid", "position": 1, "text": "原文", "preview": "一行预览",
     "imageCount": 1, "fileCount": 1,
-    "images": [{ "name": "a.jpg", "url": "/api/queue/image?threadId=…&itemId=…&index=0" }],
+    "images": [{ "name": "a.jpg", "mimeType": "image/jpeg", "url": "/api/queue/image?threadId=…&itemId=…&index=0" }],
     "files": [{ "name": "log.txt", "size": 1234, "mimeType": "text/plain" }],
     "enqueuedAt": "ISO", "deliveryState": "queued|sending|awaitingConfirmation|failed",
     "lastError": null, "model": "", "effort": ""
@@ -126,7 +126,7 @@
 
 - 服务端只提供现有 `GET /api/queue/image?...`（二进制 + `x-access-token` 头）；**不做签名 URL，也不做 `format=json`**。
 - 原生侧最小改动（2.3.0 一并做，顺带修老碎图）：`NativeHttpClient.responseJson` 在响应 `Content-Type` 为 `image/*` 时，额外返回 `"bodyBase64"`（保留现有 `body`，向后兼容）。
-- 客户端 `fetchImageDataUrl(absoluteUrl)`：优先走 `nativeHttpRequest`（带 token 头），用 `bodyBase64` 拼 `data:` URL；浏览器环境用 `fetch` + blob。按 URL 缓存最多 24 张 / 5 分钟。
+- 客户端 `fetchImageDataUrl(url, mimeType)`：优先走 `nativeHttpRequest`（带 token 头），用 `bodyBase64` 拼 `data:${mimeType};base64,…`；浏览器环境用 `fetch` + blob。**MIME 必须由调用方给**：队列项取 `images[].mimeType`（服务端 3.1 新增），聊天消息取 `message.images[].mimeType`；没有就按文件名扩展名推，推不出就不渲染，绝不默认 `image/png`。按 URL 缓存最多 24 张 / 5 分钟。
 - 队列条与列表行**不加载图片**，只显示「图片 N 张」；单条详情打开时才按需取最多 4 张。取不到就显示「图片 N 张 + 文件名」，不裂图。
 - 同一管线用于聊天消息图片（`ChatDetailScreen.tsx:407` 目前直接把相对地址塞 `<img>`，真机必碎）；这是 2.3.0 的回归修复，不只是队列。
 - 若冻结前原生改动未绿：队列先按「数量 + 文件名」交付，图片管线单独立项，报告如实写「未修」，不阻塞主链路。
@@ -162,7 +162,7 @@
 - `QueueMessage`：`id, position, text, preview, imageCount, fileCount, images, files, enqueuedAt, deliveryState, lastError`。
 - `postSend` 的 `SendOptions` 增加 `mode?: 'start' | 'queue' | 'steer'`，`sendBody` 原样透传。
 - 新增 API 函数：`getQueueStatus`、`postQueueReorder`、`postQueueResume`。
-- 新增 `fetchImageDataUrl(url)`（native `bodyBase64` / 浏览器 fetch+blob，带 token 头、24 张 / 5 分钟缓存）与 `<AuthedImage>`；聊天消息与队列详情共用。`getQueueImage` 保留但只作二进制调试用途。
+- 新增 `fetchImageDataUrl(url, mimeType)`（native `bodyBase64` / 浏览器 fetch+blob，带 token 头、24 张 / 5 分钟缓存）与 `<AuthedImage>`；聊天消息与队列详情共用。`getQueueImage` 保留但只作二进制调试用途。MIME 取 `images[].mimeType` / `message.images[].mimeType`；缺了就按扩展名推，再缺就不渲染。
 - `composerSubmitDecision` 增加 `{ kind:'queue' }`：running 且非空 → queue。
 - 队列相关状态只从服务端读，不在本地伪造 `deliveryState`；发送动作后立刻用响应里的 status 覆盖。
 
@@ -181,7 +181,7 @@
 
 - [ ] 运行中发送文字 → 入队，输入清空，提示含条数；本轮结束自动发出且只发一次。
 - [ ] 运行中发送图片 → 入队；打开单条详情能按需拉到缩略图（native `bodyBase64`）；结束后图片真实到达 Codex；拉取失败显示「图片 N 张 + 文件名」，不裂图。
-- [ ] 聊天里已发送的真实照片在模拟器上能显示（相对地址不再直接进 `<img>`）；这是既有碎图的回归修复。
+- [ ] 聊天里已发送的真实照片在模拟器上能显示（相对地址不再直接进 `<img>`）；JPEG 与 PNG 各一张，确认不是靠默认 `image/png` 蒙对的；这是既有碎图的回归修复。
 - [ ] 运行中发送普通文件 → 入队，状态带文件名；结束后文件在 Codex 侧落盘且消息含引用。
 - [ ] 运行中发送带引用块的文字 → 入队、取回、单条详情全文逐字不丢（`>` 行保留）。
 - [ ] 多条（≥3）排队 → 顺序与入队一致；上移/下移/移到队首后顺序改变且立即持久化。
