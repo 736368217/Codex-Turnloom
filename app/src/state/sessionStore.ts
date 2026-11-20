@@ -23,7 +23,7 @@ import {
 } from '../lib/machineRegistry';
 import {
   discoverHarnesses, verifyHarness, setActiveRequestScope, getActiveGeneration,
-  getActiveScope, type RequestContext,
+  getActiveScope, getCurrentTarget, type ConnectionTarget, type RequestContext,
 } from '../lib/turnloomApi';
 
 // The key keeps its historical name on purpose: QA harnesses
@@ -52,6 +52,8 @@ export interface SessionState {
   generation: number;
   online: boolean;
   error: string;
+  /** 设备页专用：切换另一台电脑失败的原因；不污染全局连接态。 */
+  switchError: string;
   appVersion: string;
   appVersionCode: number;
   packageName: string;
@@ -66,7 +68,7 @@ export const sessionStore = createStore<SessionState>({
   status: 'unpaired',
   machineId: '', machineName: '', serverUrl: '', machineToken: '',
   harnesses: [], machines: [], harnessId: '', harnessName: '', harnessToken: '',
-  scope: '', generation: 0, online: false, error: '',
+  scope: '', generation: 0, online: false, error: '', switchError: '',
   appVersion: APP_IDENTITY.versionName, appVersionCode: APP_IDENTITY.versionCode,
   packageName: APP_IDENTITY.applicationId,
   cameraAvailable: false, updatesAvailable: false,
@@ -151,8 +153,17 @@ export function setOfflineCacheEnabled(enabled: boolean): void {
 }
 export function markSynced(): void { sessionStore.setState({ lastSyncAt: Date.now() }); }
 export function setConnectionError(message: string, status: ConnectionStatus = 'error'): void {
-  sessionStore.setState({ status, online: false, error: message });
+  sessionStore.setState({ status, online: false, error: message, switchError: '' });
 }
+
+/**
+ * How a failed verification attempt is recorded. Cold start / foreground retry
+ * speak for the whole app (`setConnectionError`); a machine switch must not —
+ * the current machine was never probed, so it keeps its known state and the
+ * failure belongs to the device page alone.
+ */
+type FailureReporter = (message: string) => void;
+const reportConnectionFailure: FailureReporter = (message) => setConnectionError(message);
 
 /** Hydrate a persisted candidate, but leave the app locked until verified. */
 export function hydrateSession(): PersistedMachine | null {
@@ -175,7 +186,7 @@ export function hydrateSession(): PersistedMachine | null {
     serverUrl: machine.serverUrl, machineToken: machine.machineToken,
     harnesses: machine.harnesses, machines: machineSummaries(registry),
     ...harnessPatch(null, 'revalidate', getActiveGeneration()),
-    online: false, error: '', offlineCacheEnabled: cacheEnabled,
+    online: false, error: '', switchError: '', offlineCacheEnabled: cacheEnabled,
   });
   return machine;
 }
@@ -204,20 +215,55 @@ export async function switchMachine(id: string): Promise<boolean> {
   const machine = registry?.machines.find((item) => machineKey(item) === id) || null;
   if (!machine) return false;
   const state = sessionStore.getState();
-  if (machineKey(machine) === machineKey({ machineId: state.machineId, serverUrl: state.serverUrl })
-    && state.status === 'ready') return true;
+  const isCurrent = machineKey(machine) === machineKey({ machineId: state.machineId, serverUrl: state.serverUrl });
+  if (isCurrent && state.status === 'ready') return true;
   const attempt = ++transitionSeq;
-  sessionStore.setState({ status: 'reconnecting', error: '', online: false, machines: machineSummaries(registry) });
-  return revalidateMachine(machine, attempt, 'reconnecting');
+  const previous = state;
+  const previousTarget = getCurrentTarget();
+  sessionStore.setState({ status: 'reconnecting', error: '', switchError: '', online: false, machines: machineSummaries(registry) });
+  // Switching machines is not a connection loss. If B cannot be verified, A was
+  // never probed and keeps exactly what it had: status, online, request scope
+  // and the generation the shell is keyed on. Recording this through
+  // `setConnectionError` would leave the whole app in `error` — and then
+  // `currentRequestContext()` is null, so the current machine cannot send a
+  // single request until the user taps 重试; A's card would read "离线" for a
+  // machine nothing has talked to.
+  const reportFailure: FailureReporter = isCurrent
+    ? reportConnectionFailure
+    : (message) => {
+      if (attempt !== transitionSeq) return;
+      restoreSession(previous, previousTarget);
+      sessionStore.setState({ switchError: message });
+    };
+  return revalidateMachine(machine, attempt, 'reconnecting', reportFailure);
+}
+
+/** Put the session back exactly as it stood before the switch attempt. */
+function restoreSession(previous: SessionState, target: ConnectionTarget): void {
+  // Same scope, new generation: `setActiveRequestScope` always bumps it, and
+  // requests built from the restored context must be current again.
+  setActiveRequestScope(previous.scope || 'unpaired', target);
+  sessionStore.setState({
+    status: previous.status,
+    machineId: previous.machineId, machineName: previous.machineName,
+    serverUrl: previous.serverUrl, machineToken: previous.machineToken,
+    harnesses: previous.harnesses, machines: previous.machines,
+    harnessId: previous.harnessId, harnessName: previous.harnessName, harnessToken: previous.harnessToken,
+    scope: previous.scope || 'unpaired',
+    generation: getActiveGeneration(),
+    online: previous.online,
+    error: previous.error,
+  });
 }
 
 async function revalidateMachine(
   machine: PersistedMachine,
   attempt: number,
   status: 'checking' | 'reconnecting',
+  reportFailure: FailureReporter = reportConnectionFailure,
 ): Promise<boolean> {
   setActiveRequestScope('revalidate');
-  sessionStore.setState({ status, error: '', online: false });
+  sessionStore.setState({ status, error: '', switchError: '', online: false });
   authorizeNativeOrigin(machine.serverUrl);
   const discovered = await discoverHarnesses(
     { serverUrl: machine.serverUrl, machineToken: machine.machineToken }, 'revalidate',
@@ -225,12 +271,14 @@ async function revalidateMachine(
   if (attempt !== transitionSeq) return false;
   if (!discovered.ok) {
     // 401 = 机器访问码已轮换。先用本地保存的服务码自愈，避免用户被迫重新扫码。
-    if (discovered.status === 401 && await recoverWithSavedHarnesses(machine)) return true;
-    setConnectionError(connectionErrorMessage(discovered.status, discovered.error));
+    // 自愈沿用本次 attempt：它换了 transitionSeq 的话，下面这条失败就该被当成
+    // 「过期结果」丢掉，切换失败反而留在 error 态。
+    if (discovered.status === 401 && await recoverWithSavedHarnesses(machine, attempt)) return true;
+    reportFailure(connectionErrorMessage(discovered.status, discovered.error));
     return false;
   }
   const normalized = normalizeDiscovery(discovered.data, manualPairingFor(machine));
-  if (!normalized.ok) { setConnectionError(normalized.error); return false; }
+  if (!normalized.ok) { reportFailure(normalized.error); return false; }
   // Discovery tokens are authoritative; never reuse an obsolete persisted token.
   const updated: PersistedMachine = {
     ...normalized.machine,
@@ -240,18 +288,23 @@ async function revalidateMachine(
   const selected = updated.harnesses.find((item) => item.id === machine.defaultHarnessId) ||
     updated.harnesses.find((item) => item.id === updated.defaultHarnessId) || updated.harnesses[0];
   updated.defaultHarnessId = selected.id;
-  return activateMachine(updated, selected.id, true, attempt);
+  return activateMachine(updated, selected.id, true, attempt, reportFailure);
 }
 
 /**
  * 401 自愈：手机里存的机器访问码可能已被电脑端轮换（例如清掉了旧机器码）。
  * 此时不该让用户「忘记这台电脑 → 重新扫码」才能恢复。发现失败但本地已保存的
  * harness 列表仍在时，直接用保存的服务访问码逐个探活，能通就继续用。
+ *
+ * 传入调用方的 attempt 时，自愈属于同一次切换/重校验：它不另起一代，
+ * 调用方随后仍要拿到「这次尝试失败了」的结论（否则失败分支会被当成过期结果）。
  */
-export async function recoverWithSavedHarnesses(machine: PersistedMachine): Promise<boolean> {
+export async function recoverWithSavedHarnesses(
+  machine: PersistedMachine,
+  attempt: number = ++transitionSeq,
+): Promise<boolean> {
   const saved = machine.harnesses.filter((item) => item && item.token);
   if (!saved.length) return false;
-  const attempt = ++transitionSeq;
   setActiveRequestScope('revalidate');
   for (const harness of saved) {
     const scope = scopeFor(machine.machineId, harness.id);
@@ -268,7 +321,7 @@ export async function connectWithPairing(pairing: MachinePairing): Promise<boole
   const attempt = ++transitionSeq;
   const discoveryScope = `pairing-${attempt}-${Date.now()}`;
   setActiveRequestScope(discoveryScope);
-  sessionStore.setState({ status: 'connecting', error: '', online: false });
+  sessionStore.setState({ status: 'connecting', error: '', switchError: '', online: false });
   authorizeNativeOrigin(pairing.serverUrl);
   const discovered = await discoverHarnesses(
     { serverUrl: pairing.serverUrl, machineToken: pairing.machineToken }, discoveryScope,
@@ -293,10 +346,11 @@ async function activateMachine(
   harnessId: string,
   revalidated: boolean,
   attempt: number,
+  reportFailure: FailureReporter = reportConnectionFailure,
 ): Promise<boolean> {
   const harness = machine.harnesses.find((item) => item.id === harnessId) || machine.harnesses[0];
   if (!harness) {
-    if (attempt === transitionSeq) setConnectionError('这台机器没有可用服务，请检查桌面端配置');
+    if (attempt === transitionSeq) reportFailure('这台机器没有可用服务，请检查桌面端配置');
     return false;
   }
   const scope = scopeFor(machine.machineId, harness.id);
@@ -305,7 +359,7 @@ async function activateMachine(
   const expectedGeneration = getActiveGeneration();
   if (attempt !== transitionSeq || expectedScope !== scope) return false;
   if (!health.ok) {
-    setConnectionError(connectionErrorMessage(health.status, health.error));
+    reportFailure(connectionErrorMessage(health.status, health.error));
     return false;
   }
   if (sessionStore.getState().scope !== scope) {
@@ -322,7 +376,7 @@ async function activateMachine(
     serverUrl: machine.serverUrl, machineToken: machine.machineToken,
     harnesses: machine.harnesses, machines: machineSummaries(registry),
     ...harnessPatch(harness, expectedScope, expectedGeneration),
-    online: true, error: '',
+    online: true, error: '', switchError: '',
     ...(revalidated ? { revalidatedAt: Date.now() } : {}),
   });
   return true;
@@ -336,7 +390,7 @@ export async function switchHarness(harnessId: string): Promise<boolean> {
   if (!harness) return false;
   if (harness.id === state.harnessId && state.status === 'ready') return true;
   const attempt = ++transitionSeq;
-  sessionStore.setState({ status: 'reconnecting', error: '', online: false });
+  sessionStore.setState({ status: 'reconnecting', error: '', switchError: '', online: false });
   const machine: PersistedMachine = {
     machineId: state.machineId, machineName: state.machineName,
     serverUrl: state.serverUrl, machineToken: state.machineToken,
@@ -363,6 +417,7 @@ export function stopConnecting(message = '已停止连接。'): void {
     status: paired ? 'error' : 'unpaired',
     online: false,
     error: message,
+    switchError: '',
     ...(paired ? {} : { harnesses: [], machines: [], serverUrl: '', machineToken: '' }),
   });
 }
@@ -398,7 +453,7 @@ export function forgetMachine(id?: string): void {
     sessionStore.setState({
       status: 'unpaired', machineId: '', machineName: '', serverUrl: '', machineToken: '',
       harnesses: [], machines: [], ...harnessPatch(null, 'unpaired', getActiveGeneration()),
-      online: false, error: '', lastSyncAt: null, revalidatedAt: null,
+      online: false, error: '', switchError: '', lastSyncAt: null, revalidatedAt: null,
     });
     return;
   }
@@ -417,7 +472,7 @@ export function forgetMachine(id?: string): void {
     serverUrl: next.serverUrl, machineToken: next.machineToken,
     harnesses: next.harnesses, machines: machineSummaries(remaining),
     ...harnessPatch(null, 'revalidate', getActiveGeneration()),
-    online: false, error: '', lastSyncAt: null,
+    online: false, error: '', switchError: '', lastSyncAt: null,
   });
   void revalidatePersisted(next);
 }

@@ -284,6 +284,54 @@ test('a second pairing is remembered and switching back restores the first machi
   assert.ok(stored.machines.every(m => typeof m.machineToken === 'string' && m.machineToken.length > 0));
 });
 
+test('a failed machine switch leaves the current machine ready, not offline', async () => {
+  const h = harness();
+  h.setReply(byHost());
+  await h.session.connectWithPairing(h.pairing);
+  await h.session.connectWithPairing({ ...h.pairing, serverUrl: 'http://192.168.50.43:8787', machineToken: 'laptop-machine-token' });
+  const before = h.session.currentRequestContext();
+  const beforeState = h.session.sessionStore.getState();
+  assert.equal(beforeState.machineId, 'laptop');
+  assert.equal(beforeState.status, 'ready');
+
+  h.setReply(() => ({ __nativeResult: { status: 503, body: '{"error":"down"}' } }));
+  assert.equal(await h.session.switchMachine('machine'), false);
+
+  const state = h.session.sessionStore.getState();
+  assert.equal(state.machineId, 'laptop', 'the active machine does not change on a failed switch');
+  assert.equal(state.status, 'ready', 'the app is not left in the connection-error state');
+  assert.equal(state.online, beforeState.online, 'A was never probed, so it keeps its last known state');
+  assert.equal(state.error, '', 'a switch failure is not a connection error');
+  assert.match(state.switchError, /服务暂时不可用/, 'the device page gets the real reason');
+  assert.notEqual(state.generation, beforeState.generation, 'the request context is re-pinned to A');
+  const after = h.session.currentRequestContext();
+  assert.ok(after, 'the current machine must stay usable after a failed switch');
+  assert.deepEqual(after.target, before.target);
+  assert.deepEqual(after.scope, before.scope);
+});
+
+test('a 401 on the target machine still restores the current one', async () => {
+  // The 401 self-heal used to open its own generation. The switch then looked
+  // "stale" to its own failure handler and skipped the restore, leaving the app
+  // in `error` — the exact bug, just on the rotated-token path.
+  const h = harness();
+  h.setReply(byHost());
+  await h.session.connectWithPairing(h.pairing);
+  await h.session.connectWithPairing({ ...h.pairing, serverUrl: 'http://192.168.50.43:8787', machineToken: 'laptop-machine-token' });
+  const before = h.session.currentRequestContext();
+
+  h.setReply(() => ({ __nativeResult: { status: 401, body: '{"error":"unauthorized"}' } }));
+  assert.equal(await h.session.switchMachine('machine'), false);
+
+  const state = h.session.sessionStore.getState();
+  assert.equal(state.status, 'ready');
+  assert.equal(state.machineId, 'laptop');
+  assert.ok(state.switchError, 'the device page still gets a reason');
+  const after = h.session.currentRequestContext();
+  assert.ok(after, 'a rotated token on B cannot take A offline');
+  assert.deepEqual(after.target, before.target);
+});
+
 test('forgetting the active machine falls back to the remaining one, not the pairing screen', async () => {
   const h = harness();
   h.setReply(byHost());
