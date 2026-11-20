@@ -942,8 +942,13 @@ async function main() {
         })()`);
         check(connect.found && connect.bottom <= connect.viewport, `${w}px 连接页：主按钮在首屏内`, JSON.stringify(connect));
         if (connect.found) {
-          check(connect.hero && connect.heroH !== null && connect.heroH >= 90 && connect.heroH <= 121 && Math.abs(connect.heroCentreOffset) <= 1,
-            `${w}px 连接页：插图 90–121 高且居中`, `h=${connect.heroH} centreΔ=${connect.heroCentreOffset}`);
+          // max-height:540 hides the hero by design (a short real screen keeps the
+          // primary button in the first viewport); that counts as a pass, not as a
+          // missing image. Above 540 the picture itself must be 90–121 and centred.
+          const heroByDesign = !connect.hero && connect.viewport <= 540;
+          check(heroByDesign || (connect.hero && connect.heroH !== null && connect.heroH >= 90 && connect.heroH <= 121 && Math.abs(connect.heroCentreOffset) <= 1),
+            `${w}px 连接页：插图 90–121 高且居中`,
+            heroByDesign ? `viewport=${connect.viewport} ≤540，插图按 max-height 规则隐藏` : `h=${connect.heroH} centreΔ=${connect.heroCentreOffset}`);
           check(!connect.overflow, `${w}px 连接页：插图不撑出横向滚动`);
         }
         await browser.screenshot(path.join(OUT, `connect-${w}.png`));
