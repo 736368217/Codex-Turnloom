@@ -71,7 +71,7 @@ if (!fs.existsSync(path.join(DIST, "index.html"))) { console.error(`[226] no bun
 // Without --build the runner reuses whatever bundle sits in DIST. That is handy
 // for re-measuring the same artifact, and dangerous as a gate: a stale bundle
 // looks green. Refuse it instead of trusting the command line.
-if (!argv.includes("--build")) {
+if (!argv.includes("--build") && !argv.includes("--allow-stale")) {
   const newest = (dir) => {
     let latest = 0;
     for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
@@ -86,6 +86,7 @@ if (!argv.includes("--build")) {
   if (srcMtime > bundleMtime + 1000) {
     console.error(`[226] ${path.relative(REPO, DIST)} is older than app/src (${new Date(bundleMtime).toISOString()} < ${new Date(srcMtime).toISOString()})`);
     console.error("[226] refusing to measure a stale bundle — re-run with --build");
+    console.error("[226] --allow-stale is for comparing two artifacts on purpose, never for the release gate");
     process.exit(2);
   }
 }
@@ -273,6 +274,37 @@ const driver = `
 `;
 
 let browser = null;
+// 44x44 for anything a thumb can land on, and the band is what counts: a 38px
+// cell with a ::before hit area is fine, a 44px box scaled to 43.3 is not.
+const measureTouchTargets = async () => {
+  const raw = await browser.eval(`(() => {
+    const rows = qa('button, [role="button"], a[href], input, select, textarea');
+    const bad = [];
+    let counted = 0;
+    for (const el of rows) {
+      const s = getComputedStyle(el);
+      if (s.display === 'none' || s.visibility === 'hidden' || Number(s.opacity) === 0) continue;
+      const r = el.getBoundingClientRect();
+      if (r.width === 0 || r.height === 0) continue;
+      if (r.bottom <= 0 || r.top >= window.innerHeight) continue; // off screen: not a target right now
+      counted += 1;
+      const cx = r.left + r.width / 2;
+      let top = null, bottom = null;
+      for (let y = Math.max(0, r.top - 14); y <= Math.min(window.innerHeight - 1, r.bottom + 14); y += 0.5) {
+        const hit = document.elementFromPoint(cx, y);
+        if (hit && (hit === el || el.contains(hit))) { if (top === null) top = y; bottom = y; }
+      }
+      const band = top === null ? 0 : Math.round((bottom - top + 0.5) * 10) / 10;
+      if (band < 44 || r.width < 44) bad.push({ cls: String(el.className).slice(0, 34), w: Math.round(r.width), h: Math.round(r.height), band, text: txt(el).slice(0, 18) });
+    }
+    return { counted, bad };
+  })()`);
+  return {
+    pass: raw.bad.length === 0,
+    onScreen: raw.counted, tooSmall: raw.bad,
+    note: 'device screen only, on-screen elements, band measured with the same 0.5px scan',
+  };
+};
 const out = { run: { mode: MODE, viewport: { w: WIDTH, h: HEIGHT }, asset, builtAt: fs.statSync(path.join(DIST, "index.html")).mtime.toISOString() }, checks: {} };
 
 try {
@@ -284,6 +316,11 @@ try {
   browser.on("Runtime.consoleAPICalled", (p) => {
     const line = (p.args || []).map((a) => a.value ?? a.description ?? a.type).join(" ");
     if (/error|warn/i.test(String(p.type))) process.stderr.write(`[console:${p.type}] ${line}\n`);
+  });
+  const netLog = [];
+  browser.on("Network.requestWillBeSent", (p) => {
+    const url = p && p.request && p.request.url ? p.request.url : "";
+    if (/\/api\//.test(url)) netLog.push({ t: Date.now(), url });
   });
   await browser.navigate(`http://127.0.0.1:${APP_PORT}/index.html`);
   out.probe = await browser.eval(`(async () => {
@@ -378,6 +415,53 @@ try {
       top: deviceAlert ? deviceAlert.top : null,
       note: 'UI_SPEC: 顶部报错 — inside .tl-safe-top, above the scrolling list',
     };
+    // NB3 09:31: a failed switch must leave the CURRENT machine exactly as it
+    // was — status / online / request scope — and use its own error surface.
+    const surface = await browser.eval(`(() => {
+      const visible = qa('[role="alert"]').filter((el) => {
+        const s = getComputedStyle(el); const r = el.getBoundingClientRect();
+        return s.display !== 'none' && s.visibility !== 'hidden' && r.width > 0 && r.height > 0;
+      });
+      const active = cards().find((c) => c.getAttribute('data-active') === 'true');
+      return {
+        alerts: visible.map((el) => ({ cls: String(el.className).slice(0, 40), text: txt(el).slice(0, 60) })),
+        currentCard: active ? txt(active).slice(0, 60) : null,
+      };
+    })()`);
+    const online = Boolean(surface.currentCard && /在线/.test(surface.currentCard) && !/离线/.test(surface.currentCard));
+    out.checks.currentCardStaysOnline = {
+      pass: online, currentCard: surface.currentCard,
+      note: 'A was never probed; a failed switch to B must not claim A is offline',
+    };
+    out.checks.singleErrorSurface = {
+      pass: surface.alerts.length === 1 && /tl-device-error/.test(surface.alerts[0].cls),
+      alerts: surface.alerts,
+      note: 'one bar on screen: the device one; the global banner is for real connection loss only',
+    };
+    // 44px on this screen — measured while still on the device page, and only
+    // for what is actually on screen (a row below the fold has no hit area).
+    out.checks.touchTargets = await measureTouchTargets();
+    // "currentRequestContext() is still non-null" — proved by behaviour: the
+    // refresh button calls refreshThreads(context) only when context exists.
+    const mark = Date.now();
+    const refresh = await browser.eval(`(async () => {
+      const tab = qa('.tl-tabbar button, .tl-tabbar [role="tab"]').find((el) => /会话/.test(txt(el)) || /会话/.test(el.getAttribute('aria-label') || ''));
+      if (!tab) return { tab: false };
+      tab.click();
+      await wait(900);
+      const btn = qa('button').find((el) => /刷新会话列表/.test(txt(el)));
+      if (!btn) return { tab: true, button: false, text: (document.body.innerText || '').replace(/\\s+/g, ' ').slice(0, 160) };
+      btn.click();
+      await wait(2200);
+      return { tab: true, button: true, disabled: btn.disabled };
+    })()`);
+    const hits = netLog.filter((e) => e.t >= mark && /\/api\/threads/.test(e.url));
+    out.checks.stillSyncable = {
+      pass: hits.length > 0,
+      requests: hits.map((h) => h.url.replace(/^https?:\/\/[^/]+/, "")).slice(0, 3),
+      refresh,
+      note: 'after a failed switch the current machine must still be able to load the list',
+    };
   }
   // 5 — the two entries that make the feature reachable at all (UI_SPEC §4).
   //     Add first: it navigates to the pairing screen, and the forget menu is a
@@ -423,8 +507,9 @@ try {
       found: Boolean(forgetFlow.found), opened: Boolean(forgetFlow.opened), hasForget: Boolean(forgetFlow.hasForget),
       text: forgetFlow.text, note: 'a paired machine must be removable from the device page',
     };
+    out.checks.touchTargets = await measureTouchTargets();
   }
-  // 6 — no horizontal overflow on this screen
+  // 7 — no horizontal overflow on this screen
   out.checks.noOverflow = { pass: switched.snap.overflow.scrollWidth <= WIDTH && switched.snap.overflow.innerWidth === WIDTH, ...switched.snap.overflow };
   out.summary = Object.fromEntries(Object.entries(out.checks).map(([k, v]) => [k, v.pass === null ? "N/A" : (v.pass ? "PASS" : "FAIL")]));
 } catch (error) {
