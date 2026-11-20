@@ -490,6 +490,18 @@ async function auditIcons(screenLabel) {
   check(facts.sizes.every((s) => [14, 16, 20, 22].includes(s)), `图标尺寸只取 14/16/20/22（${screenLabel}）`, `sizes=${facts.sizes.join(",")}`);
   check(facts.mismatched.length === 0, `图标与标签垂直中心差 ≤1px（${screenLabel}）`,
     facts.mismatched.length ? JSON.stringify(facts.mismatched.slice(0, 3)) : `${facts.icons} 个图标`);
+  // 文字字形不是图标：`›`、`⌄`、`⌕`、`✓` 这类是 NB3 在报告里清掉的那一类，
+  // 屏幕上也一样要求。终端提示符 `>_` 不在字符集里，不会被误判。
+  const glyphs = await browser.eval(`(() => {
+    const bad = [];
+    for (const el of document.querySelectorAll('*')) {
+      if (el.children.length) continue;
+      const t = (el.textContent || '').trim();
+      if (/^[›‹»«‣→⌄⌕✓✔]$/.test(t)) bad.push({ t, cls: String(el.className).slice(0, 30) });
+    }
+    return bad;
+  })()`);
+  check(glyphs.length === 0, `没有拿文字字形当图标（${screenLabel}）`, JSON.stringify(glyphs.slice(0, 4)));
 }
 
 async function probeDevicePanel() {
@@ -849,6 +861,28 @@ async function main() {
           const rowsOk = strip.rowOverlaps === 0;
           check(bandOk && bottomOk && inside && rowsOk, "运行条头部命中带 44±0.2 · 下沿贴头盒 · ⊂ 条 · 不压运行行",
             `带=${bandH} (${strip.band.top}–${strip.band.bottom}) · 头盒=${strip.own.top}–${strip.own.bottom} (${strip.headBox.h}) · 条=${strip.wrap.top}–${strip.wrap.bottom} (${strip.wrapBox.h}) · 行重叠=${strip.rowOverlaps}/${strip.rows}`);
+        }
+        // 2.2.7 第 4 项：头部要有 chevron，展开时转 180°——「展开/收起」纯文字
+        // 是 NB3 7 屏复核里的同类问题。量完点两下复位，不影响后面的停止流程。
+        const chevron = await browser.eval(`(async () => {
+          const head = document.querySelector('.tl-runstrip-head');
+          if (!head) return { found: false };
+          const svg = head.querySelector('svg');
+          if (!svg) { head.click(); await new Promise((r) => setTimeout(r, 400)); return { found: true, chevron: false }; }
+          const collapsed = getComputedStyle(svg).transform;
+          head.click();
+          await new Promise((r) => setTimeout(r, 400));
+          const open = { transform: getComputedStyle(svg).transform, expanded: head.getAttribute('aria-expanded') };
+          head.click();
+          await new Promise((r) => setTimeout(r, 400));
+          return { found: true, chevron: true, collapsed, open };
+        })()`);
+        if (chevron.found) {
+          check(chevron.chevron, "运行条头部有 chevron（不是只有「展开/收起」文字）");
+          if (chevron.chevron) {
+            check(Boolean(chevron.open) && chevron.open.expanded === 'true' && /-1/.test(chevron.open.transform),
+              "展开时 chevron 旋转 180°", `transform=${chevron.open && chevron.open.transform}`);
+          }
         }
         await browser.eval(`(() => {
           const nodes = [...document.querySelectorAll('button, [role="button"], [role="tab"]')];

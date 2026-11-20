@@ -128,11 +128,52 @@
     const killPseudo = document.createElement('style');
     killPseudo.textContent = '[role="tab"]::before{content:none!important}';
     document.head.appendChild(killPseudo);
-    const trackHit = scan((el) => el === container || container.contains(el));
+    // The track is scanned through the whole stack, not just the topmost
+    // element: since 2.2.7 the running strip starts exactly where the segmented
+    // track ends, so elementFromPoint returns the strip on that shared row and
+    // the track read 1px short — a shared edge, not an overflow (Iris 11:18,
+    // measured 136 vs 136 on the committed build). Geometry untouched.
+    const scanStack = (matches) => {
+      let first = null, last = null;
+      for (const x of [cx, r.left + 12, r.right - 12]) {
+        for (let y = track.top - 12; y <= track.bottom + 12; y = Math.round((y + EPS) * 10000) / 10000) {
+          const stack = document.elementsFromPoint(x, y);
+          if (stack.some((el) => matches(el))) { if (first === null || y < first) first = Math.round(y * 10) / 10; if (last === null || y > last) last = Math.round(y * 10) / 10; }
+        }
+      }
+      return { first, last };
+    };
+    const trackHit = scanStack((el) => el === container || container.contains(el));
+    const boundary = [];
+    for (let y = track.bottom - 2; y <= track.bottom + 1.5; y = Math.round((y + 0.25) * 100) / 100) {
+      const stack = document.elementsFromPoint(cx, y);
+      boundary.push({ y: Math.round(y * 100) / 100, stack: stack.slice(0, 3).map((el) => `${el.tagName}.${String(el.className || '').slice(0, 20)}`) });
+    }
     killPseudo.remove();
     const bandHit = scan((el) => { const tab = el.closest && el.closest('[role="tab"]'); return Boolean(tab) && textOf(tab) === textOf(item); });
     const bandHeight = bandHit.first === null ? 0 : Math.round((bandHit.last - bandHit.first + EPS) * 10) / 10;
     const insideTrack = bandHit.first !== null && trackHit.first !== null && bandHit.first >= trackHit.first - 0.05 && bandHit.last <= trackHit.last + 0.05;
+    // 2.2.7: the running strip's own 44px band grows 10px upward; if it grows
+    // past the strip's box it eats the segmented control's bottom row, which is
+    // a real tap steal, not a measurement artefact (NB agent, 11:19).
+    const strip = (() => {
+      const head = document.querySelector('.tl-runstrip-head');
+      const wrap = document.querySelector('.tl-runstrip');
+      if (!head || !wrap) return null;
+      const hb = head.getBoundingClientRect();
+      const wb = wrap.getBoundingClientRect();
+      const sx = hb.left + hb.width / 2;
+      let top = null;
+      for (let y = Math.max(0, hb.top - 16); y <= hb.bottom; y += 0.1) {
+        const el = document.elementFromPoint(sx, y);
+        if (el && (el === head || head.contains(el))) { top = Math.round(y * 10) / 10; break; }
+      }
+      return { bandTop: top, headTop: n(hb.top), headBottom: n(hb.bottom), wrapTop: n(wb.top), wrapBottom: n(wb.bottom) };
+    })();
+    out.checks.stripDoesNotEatTrack = strip === null
+      ? { pass: null, status: 'n/a', note: '没有运行条（无运行中会话），这一格不适用' }
+      : { pass: strip.bandTop !== null && strip.bandTop >= n(track.bottom) - 0.05, strip, trackBottom: n(track.bottom),
+          note: '运行条的 44px 带必须从分段控件下沿开始算，不能压上来' };
     out.checks.tapBand = {
       pass: bandHeight >= 44 && insideTrack,
       bandHeight, bandTop: bandHit.first, bandBottom: bandHit.last,
