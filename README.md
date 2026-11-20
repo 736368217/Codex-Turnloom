@@ -192,6 +192,8 @@ npm run release -- --version 2.4.0 --notes docs/RELEASE_2_4_0_2026-11-21.md
 
 脚本会先核对 `build.gradle.kts` 的 `versionName`/`versionCode` 与 `app/package.json` 是否一致、工作区是否干净、APK 与服务包是否存在，然后推 `main`、打 tag、建 Release，最后重新读回 Release 附件的 digest 与本地哈希比对——不一致就报错。任何一步失败都不要在 Main stream 宣布「已更新」。
 
+`scripts/team/release-drift.ps1` 是这条规则的哨兵：每 30 分钟比对公网 `latest.json` 与最新 Release 的版本、APK 哈希与下载可达性，发现漂移才报一次（同一条漂移不重复报）。
+
 ## 安全约定
 
 - 默认只面向可信局域网；不要直接公网暴露服务。
