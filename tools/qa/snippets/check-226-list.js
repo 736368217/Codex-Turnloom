@@ -113,11 +113,15 @@
     const track = container.getBoundingClientRect();
     const cx = r.left + r.width / 2;
     const EPS = 0.1;
+    // Sample three columns: a gap or an overlay at one x can hide the last row
+    // of the track, and taking one column would then read as a 1px overflow.
     const scan = (matches) => {
       let first = null, last = null;
-      for (let y = track.top - 12; y <= track.bottom + 12; y = Math.round((y + EPS) * 10000) / 10000) {
-        const el = document.elementFromPoint(cx, y);
-        if (el && matches(el)) { if (first === null) first = Math.round(y * 10) / 10; last = Math.round(y * 10) / 10; }
+      for (const x of [cx, r.left + 12, r.right - 12]) {
+        for (let y = track.top - 12; y <= track.bottom + 12; y = Math.round((y + EPS) * 10000) / 10000) {
+          const el = document.elementFromPoint(x, y);
+          if (el && matches(el)) { if (first === null || y < first) first = Math.round(y * 10) / 10; if (last === null || y > last) last = Math.round(y * 10) / 10; }
+        }
       }
       return { first, last };
     };

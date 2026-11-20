@@ -442,6 +442,56 @@ const PANEL_STATE = `(() => {
   });
 })()`;
 
+// 2.2.7 第 4 项：一个图标家族、一套尺寸阶梯、一条线宽、与文字同轴。
+// 品牌 logo（.tl-brand）是产品标记，不在规则内；其余 svg 一律按 Lucide 的
+// 14/16/20/22、stroke 2 来审，尺寸用渲染后的短边而不是声明值。
+const ICON_AUDIT = `(() => {
+  const svgs = [...document.querySelectorAll('svg')].filter((s) => !s.closest('.tl-brand'));
+  const strokes = new Set(); const sizes = new Set(); const mismatched = [];
+  let counted = 0;
+  for (const s of svgs) {
+    const cs = getComputedStyle(s);
+    const sw = Number(s.getAttribute('stroke-width') || cs.strokeWidth || 0);
+    if (sw) strokes.add(Math.round(sw * 10) / 10);
+    const r = s.getBoundingClientRect();
+    if (!r.width || !r.height) continue;
+    counted += 1;
+    sizes.add(Math.round(Math.min(r.width, r.height)));
+    const row = s.closest('button, a, [role="button"], .tl-current-device, .tl-runstrip-head, .tl-hrow, .tl-platcard');
+    if (!row) continue;
+    const rr = row.getBoundingClientRect();
+    if (rr.height > 64) continue; // multi-line rows: the label is not one baseline
+    const walker = document.createTreeWalker(row, NodeFilter.SHOW_TEXT);
+    let textTop = null, textBottom = null;
+    while (walker.nextNode()) {
+      const node = walker.currentNode;
+      if (!node.nodeValue || !node.nodeValue.trim()) continue;
+      const range = document.createRange();
+      range.selectNodeContents(node);
+      const tr = range.getBoundingClientRect();
+      if (!tr.width || !tr.height) continue;
+      textTop = textTop === null ? tr.top : Math.min(textTop, tr.top);
+      textBottom = textBottom === null ? tr.bottom : Math.max(textBottom, tr.bottom);
+    }
+    if (textTop === null) continue;
+    // Icon-above-label (the bottom tab bar) is a deliberate stack, not a
+    // misalignment: only compare when the label actually sits beside the icon.
+    if (textTop >= r.bottom - 1 || textBottom <= r.top + 1) continue;
+    const d = Math.round(((r.top + r.height / 2) - (textTop + textBottom) / 2) * 10) / 10;
+    if (Math.abs(d) > 1) mismatched.push({ d, cls: String(row.className).slice(0, 26), size: Math.round(Math.min(r.width, r.height)) });
+  }
+  return { icons: counted, strokes: [...strokes].sort((a, b) => a - b), sizes: [...sizes].sort((a, b) => a - b), mismatched };
+})()`;
+
+async function auditIcons(screenLabel) {
+  const facts = await browser.eval(ICON_AUDIT);
+  if (!facts.icons) { skip(`图标体系:${screenLabel}`, "这一屏没有可见 svg"); return; }
+  check(facts.strokes.every((s) => s === 2), `图标线宽统一 2（${screenLabel}）`, `strokes=${facts.strokes.join(",")}`);
+  check(facts.sizes.every((s) => [14, 16, 20, 22].includes(s)), `图标尺寸只取 14/16/20/22（${screenLabel}）`, `sizes=${facts.sizes.join(",")}`);
+  check(facts.mismatched.length === 0, `图标与标签垂直中心差 ≤1px（${screenLabel}）`,
+    facts.mismatched.length ? JSON.stringify(facts.mismatched.slice(0, 3)) : `${facts.icons} 个图标`);
+}
+
 async function probeDevicePanel() {
   // 入口可能是底栏「设备」，也可能是会话页头部的常驻设备卡——两种都认。
   const entry = await browser.eval(`(() => {
@@ -823,6 +873,24 @@ async function main() {
       await browser.clearStorage(base);
       log(await bootInto(base, "device-panel"));
       await probeDevicePanel();
+
+      // ---- 2.2.7 第 4 项：图标体系（会话 / 设备 / 设置各审一遍）----------
+      await browser.setViewport(390, 844, 2);
+      await browser.clearStorage(base);
+      log(await bootInto(base, "icon-system"));
+      await auditIcons("会话");
+      const goTab = async (name) => {
+        await browser.eval(`(() => {
+          const tab = [...document.querySelectorAll('[role="tab"], .tl-tabbar button')].find((el) => (el.textContent || '').trim() === ${JSON.stringify(name)});
+          tab && tab.click();
+        })()`);
+        await sleep(700);
+      };
+      await goTab("设备");
+      await auditIcons("设备");
+      await goTab("设置");
+      await auditIcons("设置");
+      await browser.screenshot(path.join(OUT, "icon-system-390.png"));
 
       // ---- reduced motion: the same tap must land in one frame -----------
       await browser.setViewport(390, 844, 2);
