@@ -472,9 +472,9 @@ button:disabled { opacity: .48; cursor: default; }
 .tl-connect-hero {
   position: relative; display: flex; justify-content: center;
   margin: 0 0 18px;
-  /* A soft ellipse that reaches transparent before the box edges; the image
-     itself stays a transparent PNG, so there is no card and no hard cut. */
-  background: radial-gradient(ellipse 60% 60% at 50% 45%, rgba(0, 122, 255, .10), transparent 70%);
+  /* A soft 200px-wide ellipse that reaches transparent before the box edges;
+     the image itself stays a transparent PNG, so there is no card and no cut. */
+  background: radial-gradient(ellipse 200px 120px at 50% 45%, rgba(0, 122, 255, .08), transparent 70%);
 }
 .tl-connect-hero img {
   display: block; width: 334.5px; max-width: 100%; height: auto;

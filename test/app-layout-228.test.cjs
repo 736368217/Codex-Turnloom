@@ -23,7 +23,7 @@ test('L1: the connect screen uses the 2x hero, centred, no logo tile', () => {
   assert.doesNotMatch(screen, /tl-brand/);
   const css = read('theme/globals.css');
   assert.match(css, /\.tl-connect-hero img \{[^}]*width: 334\.5px;[^}]*max-width: 100%;[^}]*height: auto;/s);
-  assert.match(css, /\.tl-connect-hero \{[^}]*radial-gradient\(ellipse 60% 60% at 50% 45%/s);
+  assert.match(css, /\.tl-connect-hero \{[^}]*radial-gradient\(ellipse 200px 120px at 50% 45%, rgba\(0, 122, 255, \.08\)/s);
   // Below 540px the hero is the first thing to go, protecting the fold.
   assert.match(css, /\.tl-connect-hero \{ display: none; \}/);
 });
