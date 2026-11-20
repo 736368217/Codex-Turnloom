@@ -108,10 +108,12 @@ test('D10: an inactive computer card has no separate「切换」label', () => {
   assert.doesNotMatch(css, /\.tl-devcard-switch\b/);
 });
 
-test('D11: the running strip keeps its 34px pill and gains a 44px tap band', () => {
+test('D11: the running strip owns a 44px slot around its 34px pill', () => {
   const css = read('theme/globals.css');
-  assert.match(css, /\.tl-runstrip-head \{[^}]*position: relative/s);
+  assert.match(css, /\.tl-runstrip \{[^}]*padding-top: 5px/s);
+  assert.match(css, /\.tl-runstrip-head \{[^}]*margin-bottom: 5px/s);
   assert.match(css, /\.tl-runstrip-head \{[^}]*min-height: 34px/s);
-  // 34 + 10 upward = 44; growing downward would cover the first running row.
-  assert.match(css, /\.tl-runstrip-head::before \{[^}]*inset: -10px 0 0/s);
+  // 5 (strip padding) + 34 (head) + 5 (head margin) = 44; the pseudo fills the
+  // strip box and never reaches the segmented control or the first run row.
+  assert.match(css, /\.tl-runstrip-head::before \{[^}]*inset: -5px 0/s);
 });

@@ -469,8 +469,16 @@ button:disabled { opacity: .48; cursor: default; }
   background: transparent; color: var(--tl-blue); font-size: 15px; font-weight: 500;
 }
 .tl-connect-back:disabled { opacity: .45; }
-.tl-brand { width: 60px; height: 60px; display: grid; place-items: center; border-radius: 18px; background: #007AFF; box-shadow: 0 6px 20px #007aff26; margin-bottom: 18px; }
-.tl-brand svg { flex: none; max-width: 42px; }
+.tl-connect-hero {
+  position: relative; display: flex; justify-content: center;
+  margin: 0 0 18px;
+  /* A soft ellipse that reaches transparent before the box edges; the image
+     itself stays a transparent PNG, so there is no card and no hard cut. */
+  background: radial-gradient(ellipse 60% 60% at 50% 45%, rgba(0, 122, 255, .10), transparent 70%);
+}
+.tl-connect-hero img {
+  display: block; width: 334.5px; max-width: 100%; height: auto;
+}
 .tl-connect-header h1 { margin: 0; font-size: 30px; }
 .tl-connect-header p, .tl-connect-hint { color: #63636a; font-size: 13px; line-height: 1.5; margin: 8px 0; }
 .tl-connect-card { margin: 16px; padding: 16px; }
@@ -491,7 +499,7 @@ button:disabled { opacity: .48; cursor: default; }
 .tl-connect-footer-line { display: inline-flex; align-items: center; gap: 6px; }
 .tl-connect-footer svg { display: block; }
 button:focus-visible, a:focus-visible { outline: 2px solid var(--tl-blue); outline-offset: 2px; }
-@media (max-height: 540px) { .tl-connect-header { padding-top: 12px; } .tl-brand { display: none; } }
+@media (max-height: 540px) { .tl-connect-header { padding-top: 12px; } .tl-connect-hero { display: none; } }
 /* The composer enforces >=44px touch targets at every phone width. */
 
 
@@ -1511,13 +1519,19 @@ button:focus-visible, a:focus-visible { outline: 2px solid var(--tl-blue); outli
 .tl-thread-nav .tl-nav-action:active { background: var(--tl-fill-secondary); }
 
 /* Current device line (2.2.6): the only place on the conversation page that
-   answers "which computer and platform am I talking to". 12px secondary text,
-   a 44px row so the tap band is real, not a 17px label. */
+   answers "which computer and platform am I talking to". 12px secondary text.
+   2.2.8: the drawn row is 28px; the 44px band grows 8px up/down inside the
+   header, and stops 60px short of the right edge so it never covers the "+"
+   button (which is 44px tall inside a 38px title row). */
 .tl-current-device {
-  display: flex; align-items: center; gap: 6px; width: 100%; min-height: 44px;
-  padding: 0 16px; border: 0; background: transparent; text-align: left;
+  position: relative;
+  display: flex; align-items: center; gap: 6px; width: 100%; height: 28px; min-height: 28px;
+  /* The right 60px is reserved for the "+" button above; the line's own
+     content (including the caret) ends at the same edge as its hit band. */
+  padding: 0 60px 0 16px; border: 0; background: transparent; text-align: left;
   color: var(--tl-label-secondary); font-size: 12px; line-height: 17px; font-weight: 600;
 }
+.tl-current-device::before { content: ''; position: absolute; inset: -16px 60px 0 0; }
 .tl-current-device-dot {
   flex: 0 0 7px; width: 7px; height: 7px; border-radius: 50%;
   background: var(--tl-green); box-shadow: 0 0 0 2px rgba(52, 199, 89, .16);
@@ -1559,7 +1573,7 @@ button:focus-visible, a:focus-visible { outline: 2px solid var(--tl-blue); outli
    `.tl-filter-chip` / `.is-active` stay as QA hooks only. */
 .tl-thread-head { flex: 0 0 auto; background: var(--tl-canvas); }
 .tl-thread-filters {
-  flex: 0 0 auto; display: flex; justify-content: center; padding: 0 16px 10px;
+  flex: 0 0 auto; display: flex; justify-content: center; padding: 1px 16px 9px;
 }
 .tl-segmented {
   position: relative; display: inline-flex; align-items: stretch;
@@ -1943,21 +1957,20 @@ button:focus-visible, a:focus-visible { outline: 2px solid var(--tl-blue); outli
 
 /* Running strip (2.2.6): the one thing the monitor tab owned. Visible only
    while something runs; stop lives in the same place as the task. */
-/* The 10px of hit band above the pill lives inside this container's box:
-   padding-top makes room, the equal negative margin keeps the pill and every
-   following element at exactly the same y. The box is transparent. */
-.tl-runstrip { margin: -10px 16px 8px; padding-top: 10px; }
+/* The strip owns a full 44px slot. The visible pill is 34px; 5px of transparent
+   padding above and 5px of margin below the pill make the strip box 44px, and
+   the head's ::before fills exactly that box. It never reaches into the
+   segmented control above or the first running row below. */
+.tl-runstrip { margin: 0 16px 8px; padding-top: 5px; }
 .tl-runstrip-head {
-  position: relative;
+  position: relative; margin-bottom: 5px;
   display: flex; align-items: center; gap: 8px; width: 100%; min-height: 34px;
   padding: 0 10px; border: 0; border-radius: 11px;
   background: linear-gradient(180deg, #F0F7FF, #EAF3FF);
   color: #0A4FA8; font-size: 12.5px; line-height: 17px; font-weight: 600; text-align: left;
 }
-/* The visible pill is 34px; the tap band is 44. Grow upward only: the 10px
-   above lands in the segmented control's bottom padding (no tappable element),
-   while growing downward would cover the first running row's top 8px. */
-.tl-runstrip-head::before { content: ''; position: absolute; inset: -10px 0 0; }
+/* 34 + 5 + 5 = 44, exactly the strip box (padding-top 5 + head 34 + margin 5). */
+.tl-runstrip-head::before { content: ''; position: absolute; inset: -5px 0; }
 .tl-runstrip-dot { flex: 0 0 7px; width: 7px; height: 7px; border-radius: 50%; background: var(--tl-blue); box-shadow: 0 0 0 3px rgba(0, 122, 255, .14); }
 .tl-runstrip-label { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .tl-runstrip-go { flex: 0 0 auto; display: inline-flex; align-items: center; gap: 4px; color: var(--tl-blue); font-size: 11px; font-weight: 700; }

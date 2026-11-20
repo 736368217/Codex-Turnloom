@@ -9,6 +9,7 @@ import { connectWithPairing, useSessionState, setConnectionError, switchHarness,
 import { openSheet } from '../state/sheetStore';
 import CupertinoSheetHost from '../components/CupertinoSheetHost';
 import { runUpdateCheck } from '../lib/updateChannel';
+import connectHero from '../assets/art/connect-hero.png';
 
 export default function ConnectScreen({ onRevalidate, onBack, onPaired, mode = 'connect' }: {
   onRevalidate?: () => void;
@@ -153,11 +154,8 @@ export default function ConnectScreen({ onRevalidate, onBack, onPaired, mode = '
               <ChevronLeft size={20} /> 返回
             </button>
           )}
-          <div className="tl-brand" aria-hidden="true">
-            <svg viewBox="0 0 64 64" width="42" height="42">
-              <path d="M18 34a16 16 0 0 1 27-11M46 30a16 16 0 0 1-27 11" fill="none" stroke="white" strokeLinecap="round" strokeWidth="6" />
-              <circle cx="45" cy="23" r="5" fill="#56D9B5" /><circle cx="19" cy="41" r="5" fill="#FF6B4A" />
-            </svg>
+          <div className="tl-connect-hero">
+            <img src={connectHero} alt="" aria-hidden="true" width={669} height={240} decoding="async" />
           </div>
           <h1 className="tl-large-title">{adding ? '添加一台电脑' : '连接电脑'}</h1>
           <p>{adding
