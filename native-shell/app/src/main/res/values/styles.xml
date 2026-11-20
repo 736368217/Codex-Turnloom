@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<resources>
+<resources xmlns:tools="http://schemas.android.com/tools">
     <!-- Light NoActionBar: no address bar, no system title bar, no ActionBar. -->
     <style name="AppTheme" parent="android:style/Theme.Material.Light.NoActionBar">
         <item name="android:windowNoTitle">true</item>
@@ -9,11 +9,15 @@
         <item name="android:statusBarColor">@color/surface</item>
         <item name="android:navigationBarColor">@color/surface</item>
         <item name="android:windowLightStatusBar">true</item>
-        <item name="android:windowLightNavigationBar">true</item>
+        <!-- API 27+: unknown style attributes are ignored by older platforms,
+             so both items stay in the base style; tools:targetApi only tells
+             lint which level each one belongs to instead of moving the whole
+             style into values-v27/values-v35 copies. -->
+        <item name="android:windowLightNavigationBar" tools:targetApi="27">true</item>
         <item name="android:fontFamily">sans</item>
         <!-- Android 15 (API 35) enforces edge-to-edge by default; opt out so
              the WebView content is not covered by the system bars. -->
-        <item name="android:windowOptOutEdgeToEdgeEnforcement">true</item>
+        <item name="android:windowOptOutEdgeToEdgeEnforcement" tools:targetApi="35">true</item>
     </style>
     <style name="ScannerTheme" parent="android:style/Theme.Material.NoActionBar.Fullscreen">
         <item name="android:windowNoTitle">true</item>
