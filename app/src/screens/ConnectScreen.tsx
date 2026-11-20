@@ -1,19 +1,28 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { App } from 'konsta/react';
-import { QrCode, Link2, ScanLine, RefreshCw, ChevronDown, Eye, EyeOff, Square, Download } from 'lucide-react';
+import { QrCode, Link2, ScanLine, RefreshCw, ChevronDown, ChevronLeft, Eye, EyeOff, Square, Download } from 'lucide-react';
 import { COLORS } from '../theme/optionATokens';
 import { ActionButton } from '../components/ui';
-import { haptic, requestQrScan } from '../lib/nativeBridge';
+import { haptic, pushNativeBackLayer, requestQrScan } from '../lib/nativeBridge';
 import { parseMachinePairingPayload, manualPairing, type MachinePairing } from '../lib/machinePairing';
 import { connectWithPairing, useSessionState, setConnectionError, switchHarness, unpair, stopConnecting } from '../state/sessionStore';
 import { openSheet } from '../state/sheetStore';
 import CupertinoSheetHost from '../components/CupertinoSheetHost';
 import { runUpdateCheck } from '../lib/updateChannel';
 
-export default function ConnectScreen({ onRevalidate }: { onRevalidate?: () => void }) {
+export default function ConnectScreen({ onRevalidate, onBack, onPaired, mode = 'connect' }: {
+  onRevalidate?: () => void;
+  onBack?: () => void;
+  onPaired?: () => void;
+  /** `add` = 设备页的「添加一台电脑」，已有电脑保持不变。 */
+  mode?: 'connect' | 'add';
+}) {
   const session = useSessionState();
-  const [serverUrl, setServerUrl] = useState(session.serverUrl);
-  const [accessCode, setAccessCode] = useState(session.machineToken);
+  const adding = mode === 'add';
+  // 添加电脑时不能预填当前那台的地址与访问码：用户会把同一台又配一遍，
+  // 或者以为要改的是旧机器。
+  const [serverUrl, setServerUrl] = useState(adding ? '' : session.serverUrl);
+  const [accessCode, setAccessCode] = useState(adding ? '' : session.machineToken);
   const [showManual, setShowManual] = useState(!session.cameraAvailable);
   const [showCode, setShowCode] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -52,23 +61,33 @@ export default function ConnectScreen({ onRevalidate }: { onRevalidate?: () => v
   }
 
   useEffect(() => {
-    if (session.status === 'checking') {
+    if (session.status === 'checking' && !adding) {
       setServerUrl(session.serverUrl);
       setAccessCode(session.machineToken);
     }
-  }, [session.status, session.serverUrl, session.machineToken]);
+  }, [session.status, session.serverUrl, session.machineToken, adding]);
   useEffect(() => {
     if (session.status === 'error' && session.error.includes('访问码')) {
       setShowManual(true); setAccessCode(''); lastPairing.current = null;
     }
   }, [session.status, session.error]);
 
+  // 添加电脑是全屏路由，没有 AppShell 的返回栈：自己挂一层给系统返回键。
+  // 连接过程中不退出，用户要停就点屏上的「停止连接」。
+  useEffect(() => {
+    if (!onBack) return;
+    return pushNativeBackLayer(() => { if (!working) onBack(); });
+  }, [onBack, working]);
+
   // 只有已记住服务地址时才在挂载时自检；否则第一次打开 App 一个请求都不发。
+  // 添加另一台电脑时不代旧电脑检查更新——这一步只做配对。
   useEffect(() => {
     if (!session.serverUrl) return;
+    // 添加另一台电脑时不代旧电脑检查更新——这一步只做配对。
+    if (adding) return;
     void checkUpdate(false);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [session.serverUrl]);
+  }, [session.serverUrl, adding]);
 
   async function connect(pairing: MachinePairing) {
     lastPairing.current = pairing;
@@ -76,6 +95,7 @@ export default function ConnectScreen({ onRevalidate }: { onRevalidate?: () => v
     setNotice('');
     try {
       if (!await connectWithPairing(pairing)) haptic('error');
+      else onPaired?.();
     } catch {
       setConnectionError('连接未完成，请重试。');
     } finally { setBusy(false); }
@@ -127,14 +147,22 @@ export default function ConnectScreen({ onRevalidate }: { onRevalidate?: () => v
     <main className="tl-app tl-connect" style={{ background: COLORS.canvas }}>
       <div className="tl-connect-scroll">
         <header className="tl-connect-header">
+          {/* 2.2.6: 设备页「添加一台电脑」复用这个屏；未配对时没有返回键。 */}
+          {onBack && (
+            <button type="button" className="tl-connect-back tl-press" onClick={onBack} aria-label="返回设备" disabled={working}>
+              <ChevronLeft size={18} /> 返回
+            </button>
+          )}
           <div className="tl-brand" aria-hidden="true">
             <svg viewBox="0 0 64 64" width="42" height="42">
               <path d="M18 34a16 16 0 0 1 27-11M46 30a16 16 0 0 1-27 11" fill="none" stroke="white" strokeLinecap="round" strokeWidth="6" />
               <circle cx="45" cy="23" r="5" fill="#56D9B5" /><circle cx="19" cy="41" r="5" fill="#FF6B4A" />
             </svg>
           </div>
-          <h1 className="tl-large-title">连接电脑</h1>
-          <p>{saved ? `正在连接 ${session.machineName}` : '打开电脑端的配对二维码，扫码即可连接。'}</p>
+          <h1 className="tl-large-title">{adding ? '添加一台电脑' : '连接电脑'}</h1>
+          <p>{adding
+            ? '扫码或输入地址；连上后会加入设备列表，原来的电脑保留。'
+            : saved ? `正在连接 ${session.machineName}` : '打开电脑端的配对二维码，扫码即可连接。'}</p>
         </header>
         <section className="tl-card tl-connect-card">
           <ActionButton icon={<ScanLine size={18} />} onClick={() => void scan()} disabled={working || !session.cameraAvailable}>
@@ -161,30 +189,33 @@ export default function ConnectScreen({ onRevalidate }: { onRevalidate?: () => v
           {notice && <p role="status" className="tl-connect-hint">{notice}</p>}
           {session.status === 'error' && <button type="button" className="tl-connect-manual tl-press" onClick={retry} disabled={working}><RefreshCw size={16} /> 重试连接</button>}
         </section>
-        {saved && session.status === 'error' && <section className="tl-card tl-connect-card" aria-label="连接恢复">
+        {!adding && saved && session.status === 'error' && <section className="tl-card tl-connect-card" aria-label="连接恢复">
           <p className="tl-connect-hint">也可以连接电脑上的其他服务</p>
           <div className="tl-recovery-services">{session.harnesses.map(h => <button key={h.id} type="button" disabled={working} onClick={() => void switchHarness(h.id)}>{h.name}</button>)}</div>
           <button type="button" className="tl-connect-manual" onClick={() => { unpair(); setAccessCode(''); lastPairing.current = null; setShowManual(true); }}>忘记这台电脑</button>
         </section>}
         <footer className="tl-connect-footer"><QrCode size={15} /> 地址和访问码在电脑端配对页查看。<br />Codex-Turnloom · {session.appVersion}</footer>
-        {/* 未配对也必须能升级：扫码/访问码出问题时，这里是他唯一的自救入口。 */}
-        <section className="tl-card tl-connect-card" aria-label="应用更新">
-          <p className="tl-connect-hint">
-            {updateCheck === 'checking' && '正在检查新版本…'}
-            {updateCheck === 'available' && `发现新版本 ${updateVersion}，可先升级再连接。`}
-            {updateCheck === 'current' && `当前已是最新版本 ${session.appVersion}。`}
-            {updateCheck === 'error' && '暂时无法检查更新（连不上服务器时也可稍后重试）。'}
-            {updateCheck === 'idle' && '连不上电脑时，也可以主动检查公开更新通道（不会自动联网）。'}
-          </p>
-          <button type="button" className="tl-connect-manual tl-press" onClick={() => { void checkUpdate(true); }} disabled={updateCheck === 'checking'}>
-            <RefreshCw size={16} /> {updateCheck === 'checking' ? '检查中…' : '检查应用更新（公开通道）'}
-          </button>
-          {updateCheck === 'available' && (
-            <button type="button" className="tl-connect-submit tl-press" onClick={() => { haptic('selection'); openSheet('update'); }}>
-              <Download size={16} /> 查看并安装
+        {/* 未配对也必须能升级：扫码/访问码出问题时，这里是他唯一的自救入口。
+            添加另一台电脑时不显示——这一步只做配对。 */}
+        {!adding && (
+          <section className="tl-card tl-connect-card" aria-label="应用更新">
+            <p className="tl-connect-hint">
+              {updateCheck === 'checking' && '正在检查新版本…'}
+              {updateCheck === 'available' && `发现新版本 ${updateVersion}，可先升级再连接。`}
+              {updateCheck === 'current' && `当前已是最新版本 ${session.appVersion}。`}
+              {updateCheck === 'error' && '暂时无法检查更新（连不上服务器时也可稍后重试）。'}
+              {updateCheck === 'idle' && '连不上电脑时，也可以主动检查公开更新通道（不会自动联网）。'}
+            </p>
+            <button type="button" className="tl-connect-manual tl-press" onClick={() => { void checkUpdate(true); }} disabled={updateCheck === 'checking'}>
+              <RefreshCw size={16} /> {updateCheck === 'checking' ? '检查中…' : '检查应用更新（公开通道）'}
             </button>
-          )}
-        </section>
+            {updateCheck === 'available' && (
+              <button type="button" className="tl-connect-submit tl-press" onClick={() => { haptic('selection'); openSheet('update'); }}>
+                <Download size={16} /> 查看并安装
+              </button>
+            )}
+          </section>
+        )}
       </div>
     </main>
     {/* This screen renders its own Konsta <App>, outside AppShell. Without a host

@@ -136,7 +136,10 @@ export async function uploadDiagnostics(context: RequestContext | null): Promise
   const records = readDiagnostics();
   if (!records.length) return 0;
   const state = sessionStore.getState();
-  const payload = buildDiagnosticsPayload(records, state.machineName, APP_IDENTITY.versionName);
+  // 版本要报「装在这台手机上的那个」，不是构建时常量：2.2.5 出包时常量还停在
+  // 2.2.4/93，于是 2.2.5 上传的每一份诊断都标着旧版本。native getAppInfo 给的
+  // appVersion 才是真的，常量只做兜底。
+  const payload = buildDiagnosticsPayload(records, state.machineName, state.appVersion || APP_IDENTITY.versionName);
   if (!payload.records.length) { clearDiagnostics(); return 0; }
   const result: ApiResult<{ ok?: boolean; stored?: number }> = await postDiagnostics(context, payload);
   if (result.ok) {

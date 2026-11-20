@@ -4,12 +4,14 @@
  *
  * Why not the previous pill strip: the human reads "按时间 / 按项目" as one
  * two-state switch, not as two independent tags. The thumb carries the state
- * (220ms transform), the labels only fade (160ms), and the whole control keeps
- * a 44px tap band while drawing a 36px rail — the App Store shape.
+ * (300ms transform), the labels only fade (200ms), and the control draws a
+ * 44px capsule rail with 38px cells — the 图1 shape. Cells are >=92px and the
+ * pair is centred (184px total), not stretched full width.
  *
- * `tl-filter-chip` / `is-active` stay on the buttons as QA hooks: the existing
- * screenshot and pinned-group scripts select them, and renaming a hook is not
- * worth a broken evidence run.
+ * `tl-filter-chip` / `is-active` stay on the buttons as QA hooks only: the
+ * existing screenshot and pinned-group scripts select them. No CSS rule may
+ * give those two classes a background again — the old black pill must stay
+ * dead even if someone re-adds the class name.
  */
 import type { CSSProperties, KeyboardEvent } from 'react';
 import { haptic } from '../lib/nativeBridge';

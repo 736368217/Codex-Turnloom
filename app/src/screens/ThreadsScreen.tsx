@@ -6,10 +6,12 @@ import { useEffect, useMemo, useState } from 'react';
 import { Search, Plus, X, ChevronDown, ChevronRight, Archive, ArchiveRestore, Copy } from 'lucide-react';
 import TaskStream, { titleOfThread } from '../components/TaskStream';
 import SegmentedControl from '../components/SegmentedControl';
+import RunningStrip from '../components/RunningStrip';
 import { COLORS } from '../theme/optionATokens';
 import { useDataState, refreshThreads, loadMoreThreads } from '../state/dataStore';
-import { useTabState, setThreadsQuery, setThreadsView, openNewThread } from '../state/tabStore';
-import { currentRequestContext } from '../state/sessionStore';
+import { useTabState, setThreadsQuery, setThreadsView, openNewThread, setActiveTab } from '../state/tabStore';
+import { useSessionState, currentRequestContext, selectedHarness } from '../state/sessionStore';
+import { platformLabel } from '../lib/platforms';
 import { haptic, pushNativeBackLayer } from '../lib/nativeBridge';
 import { copyText } from '../lib/clipboard';
 import { isArchivedThread, groupThreadsByProject, threadUpdatedAtMs, partitionPinned } from '../lib/threadProjection';
@@ -25,6 +27,7 @@ const PINNED_KEY = 'pinned';
 
 export default function ThreadsScreen() {
   const data = useDataState();
+  const session = useSessionState();
   const { threadsQuery, threadsView: view } = useTabState();
   const [showArchived, setShowArchived] = useState(false);
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
@@ -153,6 +156,21 @@ export default function ThreadsScreen() {
             <Plus size={24} />
           </button>
         </div>
+        {/* 2.2.6：标题下常驻一行「电脑 · 平台」。底栏三项后，它是会话页唯一
+            能回答「我在跟谁说话」的地方；点进设备页，模型 chip 留在聊天头部。 */}
+        {session.machineName && (
+          <button
+            type="button"
+            className="tl-current-device tl-press"
+            onClick={() => { haptic('selection'); setActiveTab('devices'); }}
+          >
+            <span className="tl-current-device-dot" data-online={session.online ? 'true' : 'false'} aria-hidden="true" />
+            <span className="tl-current-device-name">{session.machineName}</span>
+            <span className="tl-current-device-sep" aria-hidden="true">·</span>
+            <span className="tl-current-device-platform">{platformLabel(selectedHarness(session) || undefined, session.machineName)}</span>
+            <ChevronDown size={11} className="tl-current-device-caret" aria-hidden="true" />
+          </button>
+        )}
         {/* 固定区：切视图不该被列表滚动带走（2.2.6）。搜索留在滚动区顶部。 */}
         <div className="tl-thread-filters">
           <SegmentedControl<View>
@@ -162,6 +180,7 @@ export default function ThreadsScreen() {
             onChange={setThreadsView}
           />
         </div>
+        <RunningStrip />
       </div>
 
       <div className="tl-thread-scroll" style={{ display: 'flex', flexDirection: 'column' }}>

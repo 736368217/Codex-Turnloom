@@ -462,6 +462,13 @@ button:disabled { opacity: .48; cursor: default; }
 
 /* Connection actions stay together, including at phone/keyboard widths. */
 .tl-connect-header { padding: 28px 24px 8px; }
+/* Add-machine is a full-screen route above AppShell; this is its only way back. */
+.tl-connect-back {
+  display: inline-flex; align-items: center; gap: 2px; min-height: 44px;
+  margin: -8px 0 2px -8px; padding: 0 10px 0 2px; border: 0; border-radius: 22px;
+  background: transparent; color: var(--tl-blue); font-size: 15px; font-weight: 500;
+}
+.tl-connect-back:disabled { opacity: .45; }
 .tl-brand { width: 60px; height: 60px; display: grid; place-items: center; border-radius: 18px; background: #007AFF; box-shadow: 0 6px 20px #007aff26; margin-bottom: 18px; }
 .tl-brand svg { flex: none; max-width: 42px; }
 .tl-connect-header h1 { margin: 0; font-size: 30px; }
@@ -1501,6 +1508,24 @@ button:focus-visible, a:focus-visible { outline: 2px solid var(--tl-blue); outli
 }
 .tl-thread-nav .tl-nav-action:active { background: var(--tl-fill-secondary); }
 
+/* Current device line (2.2.6): the only place on the conversation page that
+   answers "which computer and platform am I talking to". 12px secondary text,
+   a 44px row so the tap band is real, not a 17px label. */
+.tl-current-device {
+  display: flex; align-items: center; gap: 5px; width: 100%; min-height: 44px;
+  padding: 0 16px; border: 0; background: transparent; text-align: left;
+  color: var(--tl-label-secondary); font-size: 12px; line-height: 17px; font-weight: 600;
+}
+.tl-current-device-dot {
+  flex: 0 0 7px; width: 7px; height: 7px; border-radius: 50%;
+  background: var(--tl-green); box-shadow: 0 0 0 2px rgba(52, 199, 89, .16);
+}
+.tl-current-device-dot[data-online="false"] { background: var(--tl-red); box-shadow: 0 0 0 2px rgba(255, 59, 48, .14); }
+.tl-current-device-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tl-current-device-sep { flex: 0 0 auto; color: #C7C7CC; }
+.tl-current-device-platform { flex: 0 0 auto; max-width: 46%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tl-current-device-caret { flex: 0 0 auto; color: #C7C7CC; }
+
 .tl-thread-scroll {
   flex: 1; min-height: 0; display: flex; flex-direction: column;
   overflow-y: auto; overflow-x: hidden;
@@ -1561,7 +1586,7 @@ button:focus-visible, a:focus-visible { outline: 2px solid var(--tl-blue); outli
 .tl-segmented-item:active { opacity: .55; }
 /* The cell draws 38px inside the 3px track inset; the hit band still spans the
    full 44px track, measured with elementFromPoint rather than by box math. */
-.tl-segmented-item::before { content: ''; position: absolute; inset: -4px 0; }
+.tl-segmented-item::before { content: ''; position: absolute; inset: -3px 0; }
 @media (prefers-reduced-motion: reduce) {
   .tl-segmented-thumb { transition: none; }
   .tl-thread-view { animation: none; }
@@ -1726,3 +1751,219 @@ button:focus-visible, a:focus-visible { outline: 2px solid var(--tl-blue); outli
   max-width: 260px; margin: 0; font-size: 13px; line-height: 19px; text-align: center;
   color: var(--tl-label-secondary);
 }
+
+/* ============================================================
+   2.2.6 device tree: computer -> platform -> harness
+   One level at a time. The spine + elbow is the only decoration
+   that says "these hang under that machine"; the laptop is the
+   only skeuomorphic mark, because "this is a machine" is the one
+   fact worth drawing.
+   ============================================================ */
+.tl-device-screen { display: flex; flex-direction: column; overflow: hidden; background: var(--tl-canvas); }
+.tl-device-lede { margin: 2px 16px 6px; font-size: 12px; line-height: 17px; color: var(--tl-label-secondary); }
+.tl-device-scroll {
+  flex: 1; min-height: 0; overflow-y: auto; overflow-x: hidden;
+  padding: 2px 16px calc(var(--tl-tabbar-h) + 16px);
+  -webkit-overflow-scrolling: touch;
+}
+.tl-devstack { display: grid; gap: 8px; }
+.tl-devgrid { display: block; }
+
+.tl-devcard {
+  position: relative; display: flex; align-items: stretch; width: 100%;
+  min-height: 64px; border: 1.5px solid transparent;
+  border-radius: 14px; background: var(--tl-surface); color: var(--tl-label-primary);
+  text-align: left; box-shadow: 0 1px 2px rgba(0, 0, 0, .05);
+  transition: transform 220ms cubic-bezier(.32, .72, 0, 1), box-shadow 220ms ease, border-color 220ms ease, opacity 220ms ease;
+}
+/* The card is two sibling controls: select (>=64) and manage (44). Nesting a
+   button inside a button is invalid HTML and breaks the aria-expanded contract. */
+.tl-devcard-select {
+  flex: 1; min-width: 0; display: flex; align-items: center; gap: 11px;
+  min-height: 64px; padding: 10px 2px 10px 12px;
+  border: 0; background: transparent; color: inherit; text-align: left;
+}
+.tl-devcard-more {
+  flex: 0 0 44px; width: 44px; min-height: 44px; align-self: center;
+  display: grid; place-items: center; margin-right: 2px;
+  border: 0; border-radius: 22px; background: transparent;
+}
+.tl-devcard-more:active { background: var(--tl-fill-secondary); }
+.tl-devcard-more:disabled { opacity: .4; }
+.tl-devcard.is-active {
+  border-color: rgba(0, 122, 255, .55);
+  box-shadow: 0 2px 4px rgba(0, 0, 0, .06), 0 14px 26px -16px rgba(0, 122, 255, .55);
+  transform: translateY(-1px);
+}
+/* Only a second machine competes for attention; with one card nothing shrinks. */
+.tl-devcard[data-active="false"] { opacity: .72; transform: scale(.985); }
+.tl-devcard-main { flex: 1; min-width: 0; }
+.tl-devcard-name {
+  display: flex; align-items: center; gap: 6px;
+  font-size: 14px; line-height: 19px; font-weight: 600;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.tl-devcard-badge {
+  flex: 0 0 auto; padding: 1px 7px; border-radius: 999px;
+  background: #EEF4FF; color: #0A4FA8; font-size: 11px; line-height: 16px; font-weight: 700;
+}
+.tl-devcard-sub {
+  display: block; margin-top: 1px; font-size: 11px; line-height: 16px;
+  color: var(--tl-label-secondary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+/* Inactive machines are a switch target, not a disclosure: say so in words. */
+.tl-devcard-switch {
+  flex: 0 0 auto; padding: 2px 8px; border-radius: 999px;
+  background: var(--tl-fill-secondary); color: var(--tl-label-secondary);
+  font-size: 11px; line-height: 16px; font-weight: 700;
+}
+
+/* Skeuomorphic laptop: screen with a glass sheen, then the base. */
+.tl-devmark { position: relative; flex: 0 0 38px; width: 38px; height: 34px; display: flex; flex-direction: column; align-items: center; justify-content: flex-end; }
+.tl-devmark-screen {
+  position: relative; width: 30px; height: 21px; border-radius: 3px 3px 1px 1px;
+  background: linear-gradient(160deg, #F4F6FA, #E4E7EE);
+  box-shadow: inset 0 0 0 1.5px #C9CBD3, 0 1px 0 rgba(255, 255, 255, .9);
+}
+.tl-devmark-screen::after {
+  content: ''; position: absolute; inset: 3px; border-radius: 1.5px;
+  background: linear-gradient(150deg, rgba(0, 122, 255, .22), rgba(52, 199, 89, .16));
+}
+.tl-devmark-base {
+  width: 36px; height: 4px; margin-top: 2px; border-radius: 0 0 3px 3px;
+  background: linear-gradient(180deg, #DCDEE5, #C6C8D1);
+}
+
+/* Branch: grid 0fr -> 1fr so the height is measured by the browser, no JS. */
+.tl-branch { display: grid; grid-template-rows: 0fr; transition: grid-template-rows 340ms cubic-bezier(.32, .72, 0, 1); }
+.tl-branch[data-open="true"] { grid-template-rows: 1fr; }
+.tl-branch-inner { min-height: 0; overflow: hidden; }
+.tl-branch-pad { position: relative; padding: 2px 0 4px 18px; }
+.tl-branch-spine {
+  position: absolute; left: 8px; top: 0; bottom: 26px; width: 1.5px;
+  background: #D5D5DC; border-radius: 1px;
+  transform: scaleY(0); transform-origin: top;
+  transition: transform 300ms cubic-bezier(.32, .72, 0, 1) 60ms;
+}
+.tl-branch[data-open="true"] .tl-branch-spine { transform: scaleY(1); }
+.tl-branch-note { margin: 4px 0 6px; font-size: 12px; line-height: 17px; color: var(--tl-label-secondary); }
+
+.tl-platblock { position: relative; }
+.tl-platblock + .tl-platblock { margin-top: 6px; }
+.tl-platcard {
+  position: relative; display: flex; align-items: center; gap: 10px; width: 100%;
+  min-height: 56px; padding: 8px 11px; border: 1px solid var(--tl-separator);
+  border-radius: 12px; background: var(--tl-surface); color: var(--tl-label-primary);
+  text-align: left;
+  opacity: 0; transform: translateY(6px);
+  transition: opacity 220ms ease, transform 220ms cubic-bezier(.32, .72, 0, 1), border-color 220ms ease, box-shadow 220ms ease;
+  transition-delay: calc(80ms + var(--k, 0) * 50ms);
+}
+.tl-branch[data-open="true"] .tl-platcard { opacity: 1; transform: none; }
+.tl-platcard.is-open {
+  border-color: rgba(0, 122, 255, .55);
+  box-shadow: 0 10px 22px -16px rgba(0, 122, 255, .55);
+}
+/* Elbow from the spine into each platform card. */
+.tl-platcard::before {
+  content: ''; position: absolute; left: -10px; top: 50%; width: 10px; height: 1.5px;
+  background: #D5D5DC; border-radius: 1px;
+}
+.tl-platmark {
+  flex: 0 0 30px; width: 30px; height: 30px; border-radius: 9px;
+  display: grid; place-items: center;
+  background: var(--tl-fill-secondary); color: var(--tl-label-secondary);
+  font-size: 11px; font-weight: 700; letter-spacing: .2px;
+}
+.tl-platcard.is-open .tl-platmark { background: rgba(0, 122, 255, .12); color: #0A4FA8; }
+.tl-plat-main { flex: 1; min-width: 0; }
+.tl-plat-kind { display: block; font-size: 14px; line-height: 19px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.tl-plat-meta { display: block; margin-top: 1px; font-size: 11px; line-height: 16px; color: var(--tl-label-secondary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.tl-plat-caret { flex: 0 0 auto; transition: transform 260ms cubic-bezier(.32, .72, 0, 1); }
+.tl-plat-caret.is-open { transform: rotate(180deg); }
+
+.tl-harness { display: grid; grid-template-rows: 0fr; transition: grid-template-rows 260ms cubic-bezier(.32, .72, 0, 1); }
+.tl-harness[data-open="true"] { grid-template-rows: 1fr; }
+.tl-harness-inner { min-height: 0; overflow: hidden; }
+.tl-hrow {
+  display: flex; align-items: center; gap: 10px; width: 100%; min-height: 44px;
+  margin-top: 6px; padding: 6px 11px 6px 12px; border: 0; border-radius: 10px;
+  background: #F7F7FA; color: var(--tl-label-primary); text-align: left;
+  opacity: 0; transform: translateY(4px);
+  transition: opacity 200ms ease, transform 200ms cubic-bezier(.32, .72, 0, 1), background 150ms ease;
+  transition-delay: calc(60ms + var(--r, 0) * 40ms);
+}
+.tl-harness[data-open="true"] .tl-hrow { opacity: 1; transform: none; }
+.tl-hrow.is-current { background: #EEF4FF; }
+.tl-hrow-main { flex: 1; min-width: 0; }
+.tl-hrow-name { display: block; font-size: 13px; line-height: 18px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.tl-hrow-meta { display: block; margin-top: 1px; font-size: 11px; line-height: 15px; color: var(--tl-label-secondary); }
+.tl-hrow-pill {
+  flex: 0 0 auto; padding: 2px 8px; border-radius: 999px;
+  background: var(--tl-surface); color: var(--tl-label-secondary);
+  font-size: 11px; line-height: 16px; font-weight: 700;
+}
+.tl-hrow-pill.is-current { background: #FFFFFF; color: #0A4FA8; }
+
+/* Add-machine entry (2.2.6): dashed card at the end of the stack. Without it
+   `machines[]` can never grow past one, and「不同的设备可以选择」is empty. */
+.tl-addmachine {
+  display: flex; align-items: center; gap: 11px; width: 100%; min-height: 62px;
+  margin-top: 8px; padding: 10px 12px;
+  border: 1.5px dashed rgba(0, 122, 255, .32); border-radius: 14px;
+  background: rgba(0, 122, 255, .045); color: var(--tl-blue); text-align: left;
+}
+.tl-addmachine-mark {
+  flex: 0 0 38px; width: 38px; height: 38px; border-radius: 11px;
+  display: grid; place-items: center;
+  background: var(--tl-surface); box-shadow: 0 1px 2px rgba(0, 0, 0, .05);
+}
+.tl-addmachine-main { flex: 1; min-width: 0; }
+.tl-addmachine-title {
+  display: block; font-size: 13px; line-height: 18px; font-weight: 650;
+  color: var(--tl-label-primary);
+}
+.tl-addmachine-sub {
+  display: block; margin-top: 2px; font-size: 11px; line-height: 16px;
+  color: var(--tl-label-secondary);
+}
+.tl-addmachine-go { flex: 0 0 auto; }
+.tl-device-error { margin: 0 16px 8px; }
+.tl-device-offline {
+  display: flex; align-items: center; gap: 8px; margin-top: 12px; padding: 10px 12px;
+  border-radius: 12px; background: #FFF1EF; color: var(--tl-action-red, #B4231B);
+  font-size: 12px; line-height: 17px;
+}
+@media (prefers-reduced-motion: reduce) {
+  .tl-devcard, .tl-branch, .tl-branch-spine, .tl-platcard, .tl-plat-caret, .tl-harness, .tl-hrow {
+    transition: none;
+  }
+  .tl-platcard, .tl-hrow { opacity: 1; transform: none; }
+}
+
+/* Running strip (2.2.6): the one thing the monitor tab owned. Visible only
+   while something runs; stop lives in the same place as the task. */
+.tl-runstrip { margin: 0 16px 8px; }
+.tl-runstrip-head {
+  display: flex; align-items: center; gap: 8px; width: 100%; min-height: 34px;
+  padding: 0 10px; border: 0; border-radius: 11px;
+  background: linear-gradient(180deg, #F0F7FF, #EAF3FF);
+  color: #0A4FA8; font-size: 12.5px; line-height: 17px; font-weight: 600; text-align: left;
+}
+.tl-runstrip-dot { flex: 0 0 7px; width: 7px; height: 7px; border-radius: 50%; background: var(--tl-blue); box-shadow: 0 0 0 3px rgba(0, 122, 255, .14); }
+.tl-runstrip-label { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tl-runstrip-go { flex: 0 0 auto; color: var(--tl-blue); font-size: 11px; font-weight: 700; }
+.tl-runlist { display: grid; grid-template-rows: 0fr; transition: grid-template-rows 260ms cubic-bezier(.32, .72, 0, 1); }
+.tl-runlist[data-open="true"] { grid-template-rows: 1fr; }
+.tl-runlist-inner { min-height: 0; overflow: hidden; }
+.tl-runrow { display: flex; align-items: center; gap: 8px; min-height: 48px; padding: 2px 0 2px 10px; }
+.tl-runrow + .tl-runrow { border-top: .5px solid var(--tl-separator); }
+.tl-runrow-open { flex: 1; min-width: 0; min-height: 44px; display: flex; align-items: center; border: 0; background: transparent; color: var(--tl-label-primary); text-align: left; }
+.tl-runrow-title { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; line-height: 18px; font-weight: 600; }
+.tl-runrow-stop {
+  flex: 0 0 auto; display: inline-flex; align-items: center; justify-content: center; gap: 5px;
+  min-width: 64px; min-height: 44px; padding: 0 10px; border: 0; border-radius: 11px;
+  background: #FFE4E2; color: #B4231B; font-size: 12px; font-weight: 600;
+}
+.tl-runrow-error { margin: 0 0 6px; font-size: 11px; line-height: 16px; color: #B4231B; overflow-wrap: anywhere; }
+@media (prefers-reduced-motion: reduce) { .tl-runlist { transition: none; } }

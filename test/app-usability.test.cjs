@@ -60,12 +60,13 @@ test('U2: tapping a project group toggles it on the first tap', () => {
   assert.match(screen, /\[key\]: !isCollapsed\(key\)/);
 });
 
-test('U3: monitor rows offer a real stop action instead of a dead "view / stop" hint', () => {
-  const screen = read('screens/MonitorsScreen.tsx');
+test('U3: the running strip offers a real stop action instead of a dead "view / stop" hint', () => {
+  const screen = read('components/RunningStrip.tsx');
+  const css = read('theme/globals.css');
   assert.doesNotMatch(screen, /查看 \/ 停止/);
   assert.match(screen, /interruptThread/);
   assert.match(screen, /aria-label=\{`停止 \$\{titleOfThread\(thread\)\}`\}/);
-  assert.match(screen, /minHeight: 44/);
+  assert.match(css, /\.tl-runrow-stop \{[^}]*min-height: 44px/);
 });
 
 test('U4: an unpaired connect screen never touches the network on mount', () => {

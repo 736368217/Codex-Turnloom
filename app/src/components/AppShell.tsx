@@ -4,7 +4,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import GlassTabBar from './GlassTabBar';
 import CupertinoSheetHost from './CupertinoSheetHost';
 import ThreadsScreen from '../screens/ThreadsScreen';
-import MonitorsScreen from '../screens/MonitorsScreen';
+import DevicesScreen from '../screens/DevicesScreen';
 import SettingsScreen from '../screens/SettingsScreen';
 import ChatDetailScreen from '../screens/ChatDetailScreen';
 import { useTabState, closeDetail, setActiveTab, tabStore } from '../state/tabStore';
@@ -68,7 +68,7 @@ export default function AppShell() {
             ) : (
               <motion.div key={activeTab} initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.14, ease: 'easeOut' }} style={{ height: '100%', width: '100%' }}>
                 {activeTab === 'threads' && <ThreadsScreen />}
-                {activeTab === 'monitors' && <MonitorsScreen />}
+                {activeTab === 'devices' && <DevicesScreen />}
                 {activeTab === 'settings' && <SettingsScreen />}
               </motion.div>
             )}

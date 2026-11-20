@@ -39,8 +39,8 @@ function load(file) {
 
 test('IA1: three tabs, opening on the conversation list', () => {
   const tabs = load('state/tabStore.ts');
-  assert.deepEqual(tabs.TAB_ORDER, ['threads', 'monitors', 'settings']);
-  assert.deepEqual(Object.keys(tabs.TAB_LABELS).sort(), ['monitors', 'settings', 'threads']);
+  assert.deepEqual(tabs.TAB_ORDER, ['threads', 'devices', 'settings']);
+  assert.deepEqual(Object.keys(tabs.TAB_LABELS).sort(), ['devices', 'settings', 'threads']);
   assert.equal(tabs.tabStore.getState().activeTab, 'threads');
   assert.equal(tabs.tabStore.getState().composing, false);
   assert.equal(tabs.tabStore.getState().detailThreadId, null);
@@ -63,12 +63,14 @@ test('IA2: "+" opens a blank chat and a real thread supersedes it', () => {
   assert.equal(tabs.tabStore.getState().detailThreadId, null);
 });
 
-test('IA3: AppShell routes threads/monitors/settings only, new chat included', () => {
+test('IA3: AppShell routes threads/devices/settings only, new chat included', () => {
   const shell = read('components/AppShell.tsx');
   assert.doesNotMatch(shell, /HomeScreen/);
   assert.doesNotMatch(shell, /updateOffer/);
   assert.doesNotMatch(shell, /activeTab === 'home'/);
   assert.match(shell, /activeTab === 'threads' && <ThreadsScreen \/>/);
+  assert.match(shell, /activeTab === 'devices' && <DevicesScreen \/>/);
+  assert.doesNotMatch(shell, /MonitorsScreen/);
   assert.match(shell, /newThread=\{composing\}/);
   assert.match(shell, /const inDetail = composing \|\| detailThreadId !== null/);
   // Back never returns to a dashboard tab.

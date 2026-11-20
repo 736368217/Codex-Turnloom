@@ -6,6 +6,7 @@ import {
   hydrateSession, revalidatePersisted, setNativeCapabilities,
   sessionStore, useSessionState, type PersistedMachine,
 } from './state/sessionStore';
+import { closeAddMachine, useTabState } from './state/tabStore';
 import { setNetworkStateHandler, setUnauthorizedHandler } from './lib/turnloomApi';
 import { reportNetworkResult } from './state/offlineStore';
 
@@ -45,6 +46,7 @@ function bootstrap(): void {
 
 export default function AppRoot() {
   const session = useSessionState();
+  const { addMachine } = useTabState();
   const [bootReady, setBootReady] = useState(false);
 
   useEffect(() => {
@@ -65,6 +67,18 @@ export default function AppRoot() {
 
   // 已配对过就先进入工作台读缓存，后台再校验。
   const usable = session.harnesses.length > 0;
+  // 「添加一台电脑」是工作台之上的全屏路由：配对页自带 Konsta <App>，
+  // 嵌进 AppShell 会叠两层壳，也看不见相机。配对成功后回到设备页。
+  // 取消/失败返回时，如果旧电脑被这次尝试置成了 error，就按旧电脑重新校验，
+  // 不能让「加一台没加成」把当前会话留在断线态。
+  const leaveAddMachine = () => {
+    closeAddMachine();
+    const state = sessionStore.getState();
+    if (state.status !== 'ready' && state.machineId) retrySaved();
+  };
+  if (usable && addMachine) {
+    return <ConnectScreen mode="add" onBack={leaveAddMachine} onPaired={closeAddMachine} />;
+  }
   if (usable) return <AppShell key={`${session.scope}-${session.generation}`} />;
   // 宽限期内、或本地已有配对记录但状态还没落地：只给画布底色。
   if (!bootReady || bootSaved) return <div className="tl-app" style={{ background: '#F2F2F7' }} />;
