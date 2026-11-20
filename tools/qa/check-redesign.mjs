@@ -608,7 +608,7 @@ async function main() {
       ], { cwd: APP, stdio: "ignore", windowsHide: true });
       const base = `http://127.0.0.1:${port}/`;
       await waitForHttp(base);
-      await browser.send("Page.addScriptToEvaluateOnNewDocument", { source: browserScript });
+      const seedScript = await browser.send("Page.addScriptToEvaluateOnNewDocument", { source: browserScript });
 
       const viewports = [390, 360, 320];
       for (const width of viewports) {
@@ -907,6 +907,92 @@ async function main() {
       await browser.clearStorage(base);
       log(await bootInto(base, "device-panel"));
       await probeDevicePanel();
+
+      // ---- 2.2.8：连接页首屏 + 固定区瘦身 --------------------------------
+      // The seed script re-inserts a paired registry on every new document, so
+      // the connect screen needs it temporarily out of the way.
+      await browser.send("Page.removeScriptToEvaluateOnNewDocument", { identifier: seedScript.identifier });
+      for (const [w, h] of [[390, 844], [320, 568]]) {
+        await browser.setViewport(w, h, 2);
+        await browser.clearStorage(base);
+        await browser.navigate(base);
+        const connect = await browser.eval(`(async () => {
+          const end = Date.now() + 6000;
+          while (Date.now() < end && !/扫码连接|正在连接/.test(document.body.innerText || '')) await new Promise((r) => setTimeout(r, 150));
+          const primary = [...document.querySelectorAll('button')].find((el) => /扫码连接|正在连接/.test((el.textContent || '').trim()));
+          if (!primary) return { found: false, text: (document.body.innerText || '').replace(/\\s+/g, ' ').slice(0, 120) };
+          const r = primary.getBoundingClientRect();
+          return { found: true, top: Math.round(r.top), bottom: Math.round(r.bottom), viewport: window.innerHeight,
+            hero: Boolean(document.querySelector('img[src*="connect-hero"], .tl-connect-hero')) };
+        })()`);
+        check(connect.found && connect.bottom <= connect.viewport, `${w}px 连接页：主按钮在首屏内`, JSON.stringify(connect));
+        await browser.screenshot(path.join(OUT, `connect-${w}.png`));
+      }
+
+      await browser.send("Page.addScriptToEvaluateOnNewDocument", { source: browserScript });
+      await browser.setViewport(390, 844, 2);
+      await browser.clearStorage(base);
+      log(await bootInto(base, "fixed-region"));
+      const fixedRegion = await browser.eval(`(() => {
+        const row = document.querySelector('.tl-current-device');
+        const head = document.querySelector('.tl-thread-head');
+        if (!row || !head) return { found: false };
+        const rb = row.getBoundingClientRect();
+        const hb = head.getBoundingClientRect();
+        const cx = rb.left + rb.width / 2;
+        let top = null, bottom = null;
+        for (let y = rb.top - 18; y <= rb.bottom + 18; y += 0.1) {
+          const el = document.elementFromPoint(cx, y);
+          if (el && (el === row || row.contains(el))) { if (top === null) top = Math.round(y * 10) / 10; bottom = Math.round(y * 10) / 10; }
+        }
+        const scroller = document.querySelector('.tl-thread-scroll');
+        const first = scroller ? scroller.querySelector('button, [role="button"], a') : null;
+        const fr = first ? first.getBoundingClientRect() : null;
+        return { found: true, drawn: Math.round(rb.height * 10) / 10,
+          band: top === null ? 0 : Math.round((bottom - top + 0.1) * 10) / 10, bandTop: top, bandBottom: bottom,
+          headTop: Math.round(hb.top * 10) / 10, headBottom: Math.round(hb.bottom * 10) / 10,
+          firstRowTop: fr ? Math.round(fr.top * 10) / 10 : null };
+      })()`);
+      if (!fixedRegion.found) {
+        skip("固定区:设备行", "会话页没有当前设备行（未进 shell）");
+      } else {
+        check(fixedRegion.drawn <= 32, "当前设备行绘制 ≤32px（瘦身后）", `drawn=${fixedRegion.drawn}`);
+        check(fixedRegion.band >= 43.5, "当前设备行命中带 44±0.5", `band=${fixedRegion.band}`);
+        check(fixedRegion.bandTop >= fixedRegion.headTop - 0.2 && fixedRegion.bandBottom <= fixedRegion.headBottom + 0.2,
+          "命中带不越出固定区", `band=${fixedRegion.bandTop}–${fixedRegion.bandBottom} 固定区=${fixedRegion.headTop}–${fixedRegion.headBottom}`);
+        check(fixedRegion.firstRowTop === null || fixedRegion.bandBottom <= fixedRegion.firstRowTop + 0.05,
+          "命中带不压列表首行", `bandBottom=${fixedRegion.bandBottom} firstRow=${fixedRegion.firstRowTop}`);
+      }
+      // 320×568 is where the list actually overflows — the pinned check runs there.
+      // 按项目视图默认折叠分组，列表不满一屏，先切到按时间（平铺）再滚。
+      await browser.setViewport(320, 568, 2);
+      await selectTab(browser, "按时间");
+      await sleep(400);
+      const pinned = await browser.eval(`(async () => {
+        const at = (el) => (el ? Math.round(el.getBoundingClientRect().top * 10) / 10 : null);
+        const pick = () => ({
+          title: at(document.querySelector('.tl-thread-nav h1, .tl-thread-nav')),
+          row: at(document.querySelector('.tl-current-device')),
+          seg: at(document.querySelector('.tl-segmented')),
+        });
+        const sc = document.querySelector('.tl-thread-scroll');
+        if (!sc) return { room: 0, scrolled: 0, before: pick(), after: pick(), note: 'no .tl-thread-scroll' };
+        const room = Math.max(0, sc.scrollHeight - sc.clientHeight);
+        const before = pick();
+        sc.scrollTop = Math.min(600, room);
+        await new Promise((r) => setTimeout(r, 350));
+        const after = pick();
+        const scrolled = sc.scrollTop;
+        sc.scrollTop = 0;
+        return { room, scrolled, before, after };
+      })()`);
+      if (pinned.room < 100) {
+        skip("固定区:滚动不动", `列表无可滚动余量（room=${pinned.room}），这一格量不了`);
+      } else {
+        check(pinned.scrolled >= Math.min(600, pinned.room) - 1
+          && ["title", "row", "seg"].every((k) => pinned.before[k] !== null && pinned.after[k] !== null && Math.abs(pinned.after[k] - pinned.before[k]) <= 1),
+          "滚到底时标题 / 设备行 / 分段仍在固定区", JSON.stringify(pinned));
+      }
 
       // ---- 2.2.7 第 4 项：图标体系（会话 / 设备 / 设置各审一遍）----------
       await browser.setViewport(390, 844, 2);
