@@ -21,6 +21,7 @@ const TYPES = {
   ".apk": "application/vnd.android.package-archive",
   ".sha256": "text/plain; charset=utf-8",
   ".txt": "text/plain; charset=utf-8",
+  ".html": "text/html; charset=utf-8",
 };
 
 http.createServer((req, res) => {
