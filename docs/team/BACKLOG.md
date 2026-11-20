@@ -45,3 +45,10 @@
 ## F. Windows 控制台（本机从未安装过）
 
 13. **控制台的安装路径没有任何真机记录**：这台机器上没有 `node_modules\electron\dist\electron.exe`、没有计划任务 `Codex-Turnloom Console`、没有开始菜单快捷方式、也没有 `%LOCALAPPDATA%\electron`。`scripts/install-console.ps1` 第一步就校验 electron.exe，缺失直接 throw——所以 `npm run desktop:install` 现在起不来。**后果**：「上传日志」「检查更新」两张卡片只有代码路径与端点证据，**没有任何一次在真实托盘窗口里的点击**；2.2.5 验收里这一格因此写成「本机未安装控制台，未验」而不是「通过」。**验收**：在一台干净 Windows 上 `npm ci && npm run desktop:install` → 托盘出现、两张卡片可点、更新显示 `current 2.2.5 / 已是最新`、上传返回对象 key → `npm run desktop:uninstall` 后计划任务与快捷方式都不残留。证据：`thread:e32e124e` 21:27 Rhea 的只读排查。
+
+## G. 2.2.6 带走的两条（发布时已知，别丢）
+
+14. **会话页运行条头部只有 34px 高**：2.2.6 新增的 `.tl-runstrip-head` 实测 34，低于全局 44 命中带。整条可点且占满宽度，所以不影响可用，但不合规范。**验收**：用 `::before { inset: -5px 0 }` 在条内补到 44（先确认上沿不越出容器），再加一格「运行条头部命中带 ≥44」的机器判据；外观不动。证据：NB3 09:45 视觉复核（`index-DFjK_efm.js` 806,700 B）。
+
+15. **未选中电脑卡同时有「切换」pill 和 `⋯`**：比报告原型多一个次级标签。2.2.6 保留原样，等 Human 真机上手再定是去掉 pill（整卡可点已经是切换）还是保留。**验收**：Human 一句判断后按结论收一处；机器判据已有（点整卡 = `switchMachine`）。证据：NB3 09:45 视觉复核、报告 §3。
+
