@@ -40,6 +40,7 @@ node tools/qa/check-226-device.mjs --mode fail --width 390         # B 返 503�
 - `--build` 只写 `tmp/dist-vera`（共享的 `app/dist` 是别人的活靶子，不碰）；端口全部运行时分配，和别的 QA 跑不冲突。
 - 同一次运行还会在**同一个 bundle** 上跑 `snippets/check-226-list.js`（滑块、命中带、钉住、减动效），报告里钉死 asset 名与字节数。
 - **退出码就是结论**：任何一格 FAIL → 1。出包前直接看退出码，不用读 JSON。
+- 失败路径四格（`2d5347d` 起）：当前卡仍「在线」、全页只有一个 `[role=alert]`、点刷新后**真的发出** `/api/threads`（这是 `currentRequestContext()` 非空的行为证据）、每张卡的 `⋯` 命中带 ≥44（被 `scale(.985)` 压到 43 也会被抓）。判据只读 UI 行为，**不在 app 里加 `window.__debug` 之类探针**：要证明「还能用」，就让它真的发一次请求。
 
 **出包门禁要两条都绿**：`84 PASS / 0 FAIL` 里不含「`data-machine` 只挂 `.tl-platblock`」和「失败提示带原因」，那两格在这条脚本里，别让前者的绿盖过后者的红。
 
