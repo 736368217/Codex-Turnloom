@@ -1,0 +1,69 @@
+{
+  "generatedAt": "2026-11-20T13:32:29.273Z",
+  "serial": "emulator-5554",
+  "apk": "dist-app\\Codex-Turnloom-2.3.0-app-debug.apk",
+  "pass": 12,
+  "fail": 0,
+  "results": [
+    {
+      "id": "device.app.mounted",
+      "pass": true,
+      "detail": "正在重新连接电脑…（先显示上次缓存）\n重试\n会话\nQA 队列工作站\n·\n未选择平台\n按时间\n按项目\n暂无会话\n\n点右上角 + 开始一个新会话\n\n会话\n设备\n设置"
+    },
+    {
+      "id": "device.chat.open",
+      "pass": true,
+      "detail": "{\"chat\":true,\"stop\":true,\"send\":false,\"queueBar\":false,\"body\":\"运行中：排队一条消息 项目：Codex-Turnloom · 运行中 GPT-5.1 Codex 高 继续跑一遍 2.3.0 的视觉检定 正在执行 build 与截图，完成后我会把对比图贴出来。 先看一下这张照片 1 张图片 shell · 2.1s $ npm run app:build vite v7 building client environment for production...\"}"
+    },
+    {
+      "id": "device.stop.visible",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "id": "device.send.and.stop.44",
+      "pass": true,
+      "detail": "{\"send\":{\"x\":282,\"y\":714,\"w\":44,\"h\":44,\"bottom\":758},\"stop\":{\"x\":332,\"y\":714,\"w\":44,\"h\":44,\"bottom\":758},\"sendHit\":{\"h\":47.5},\"stopHit\":{\"h\":47.5}}"
+    },
+    {
+      "id": "device.stop.right",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "id": "device.queued.bar",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "id": "device.sheet.open",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "id": "device.detail.open",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "id": "device.chat.jpeg.loaded",
+      "pass": true,
+      "detail": "[{\"src\":\"data:image/jpeg;base64,/\",\"loaded\":true}]"
+    },
+    {
+      "id": "device.queue.png.loaded",
+      "pass": true,
+      "detail": "[{\"src\":\"data:image/png;base64,iV\",\"loaded\":true},{\"src\":\"data:image/jpeg;base64,/\",\"loaded\":true}]"
+    },
+    {
+      "id": "device.queue.jpeg.loaded",
+      "pass": true,
+      "detail": "[{\"src\":\"data:image/png;base64,iV\",\"loaded\":true},{\"src\":\"data:image/jpeg;base64,/\",\"loaded\":true}]"
+    },
+    {
+      "id": "device.pause.bar",
+      "pass": true,
+      "detail": "{\"bar\":\"1 条排队 已暂停 恢复\",\"resume\":true}"
+    }
+  ]
+}

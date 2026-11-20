@@ -241,8 +241,10 @@ async function main() {
   }
   adb("install", "-r", APK);
   seedPairing();
+  adb("shell", "am", "force-stop", PACKAGE);
+  await sleep(400);
   adb("shell", "am", "start", "-n", `${PACKAGE}/.MainActivity`, "--ez", "turnloom.qaDebug", "true");
-  await sleep(2500);
+  await sleep(3000);
 
   const unix = adb("shell", "cat", "/proc/net/unix");
   const socket = (unix.match(/webview_devtools_remote_\d+/) || [])[0];

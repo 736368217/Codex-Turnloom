@@ -23,7 +23,15 @@ node tools/qa/check-queue.mjs --build --out docs/qa/queue-final
 
 # 2) 真 server.js × 合成 --codex-home × 临时队列文件：30 条接口/持久化判据
 node tools/qa/check-queue-api.mjs
+
+# 3) 真 Android WebView（emulator-5554）：装 debug APK、seed 7813 配对、走队列/暂停/图片
+node tools/qa/check-queue-device.mjs --apk dist-app/Codex-Turnloom-2.3.0-app-debug.apk
 ```
+
+设备跑法：脚本先 `install -r`，把 `turnloom.machine.v2` + `turnloom.serverUrl` 写进
+`turnloom_native_secure_v1`（备份并在结束时恢复），`am start --ez turnloom.qaDebug true`，
+经 `webview_devtools_remote` 用 CDP 驱动。`10.0.2.2` 才是宿主；`127.0.0.1` 是模拟器自己。
+截图/报告落 `docs/qa/queue-final/device/`。
 
 - `queue-fixture.mjs`：按 SPEC §3 的 app-facing API 夹具，控制面 `/__qa/control` 可确定性造
   queued / sending / awaiting / failed / paused / 20 满 / 入队 500 / steer 409；
