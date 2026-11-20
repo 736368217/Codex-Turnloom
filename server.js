@@ -6473,7 +6473,7 @@ async function cancelQueuedSend(threadId, itemId = "", { edit = false } = {}) {
   if (!queue.length) return { ok: true, threadId: key, cancelled: 0, ...status() };
   const selected = queue.filter((item) => !itemId || item.id === itemId);
   if (selected.some((item) => ["sending", "awaitingConfirmation"].includes(item.deliveryState))) {
-    const error = new Error("这条消息正在发送或等待确认，暂时不能编辑或取消。");
+    const error = new Error("正在发送，暂时不能修改。");
     error.status = 409;
     throw error;
   }
@@ -6535,7 +6535,7 @@ function reorderedQueuedSendItems(queue, itemId, direction) {
   }
   const state = normalizedQueuedSendState(items[index].deliveryState);
   if (["sending", "awaitingConfirmation"].includes(state)) {
-    const error = new Error("正在发送，暂时不能调整顺序。");
+    const error = new Error("正在发送，暂时不能修改。");
     error.status = 409;
     error.code = "queue_item_busy";
     throw error;
@@ -6554,7 +6554,7 @@ function reorderedQueuedSendItems(queue, itemId, direction) {
   if (normalizedDirection === "top") {
     for (let position = 0; position < index; position += 1) {
       if (blocks(position)) {
-        const error = new Error("正在发送，暂时不能调整顺序。");
+        const error = new Error("正在发送，暂时不能修改。");
         error.status = 409;
         error.code = "queue_item_busy";
         throw error;
@@ -6753,7 +6753,7 @@ async function steerQueuedSend(threadId, itemId) {
   }
   const item = queue[index];
   if (["sending", "awaitingConfirmation"].includes(normalizedQueuedSendState(item.deliveryState))) {
-    const error = new Error("这条消息正在发送，暂时不能转为插入。");
+    const error = new Error("正在发送，暂时不能修改。");
     error.status = 409;
     throw error;
   }

@@ -149,8 +149,8 @@ test("queue reorder is one step or to the head and never displaces a sending ite
   assert.equal(reorderedQueuedSendItems(queue, "a", "up").changed, false);
 
   const busy = [queueItem("a", "A", { deliveryState: "sending" }), queueItem("b", "B")];
-  assert.throws(() => reorderedQueuedSendItems(busy, "a", "down"), /正在发送，暂时不能调整顺序/);
-  assert.throws(() => reorderedQueuedSendItems(busy, "b", "top"), /正在发送，暂时不能调整顺序/);
+  assert.throws(() => reorderedQueuedSendItems(busy, "a", "down"), /正在发送，暂时不能修改/);
+  assert.throws(() => reorderedQueuedSendItems(busy, "b", "top"), /正在发送，暂时不能修改/);
   assert.throws(() => reorderedQueuedSendItems(queue, "missing", "up"), /已发送或已移除/);
   assert.throws(() => reorderedQueuedSendItems(queue, "a", "sideways"), /调整方向无效/);
 });
