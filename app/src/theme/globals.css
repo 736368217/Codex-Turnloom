@@ -1783,10 +1783,12 @@ button:focus-visible, a:focus-visible { outline: 2px solid var(--tl-blue); outli
   min-height: 64px; padding: 10px 2px 10px 12px;
   border: 0; background: transparent; color: inherit; text-align: left;
 }
+/* 46, not 44: an inactive card is scaled .985, so a 44px box measures 43.34
+   and fails the touch-target gate. 46 * .985 = 45.3, still inside the card. */
 .tl-devcard-more {
-  flex: 0 0 44px; width: 44px; min-height: 44px; align-self: center;
-  display: grid; place-items: center; margin-right: 2px;
-  border: 0; border-radius: 22px; background: transparent;
+  flex: 0 0 46px; width: 46px; min-height: 46px; align-self: center;
+  display: grid; place-items: center; margin-right: 1px;
+  border: 0; border-radius: 23px; background: transparent;
 }
 .tl-devcard-more:active { background: var(--tl-fill-secondary); }
 .tl-devcard-more:disabled { opacity: .4; }

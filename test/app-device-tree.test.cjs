@@ -34,6 +34,10 @@ test('D2: the current computer never collapses and a tap on it is a no-op', () =
 
 test('D3: a failed switch reports the store snapshot, not the render closure', () => {
   const devices = read('screens/DevicesScreen.tsx');
+  // Machine switches use the device-page-only switchError; harness switches
+  // still read the error the store set for that attempt.
+  assert.match(devices, /session\.switchError/);
+  assert.match(devices, /sessionStore\.getState\(\)\.switchError/);
   assert.match(devices, /sessionStore\.getState\(\)\.error/);
   assert.doesNotMatch(devices, /session\.error/, 'the closure value is stale after await switchMachine()');
 });
@@ -64,6 +68,8 @@ test('D6: one track + one thumb, 44px rail, 38px cells, hit band inside the rail
   assert.match(css, /\.tl-segmented-item \{[^}]*height: 38px/s);
   // 38 + 3 + 3 = 44: the band is exactly the rail, never 1px outside it.
   assert.match(css, /\.tl-segmented-item::before \{[^}]*inset: -3px 0/s);
+  // Inactive cards scale .985; a 44px manage button would measure 43.34.
+  assert.match(css, /\.tl-devcard-more \{[^}]*width: 46px/s);
 });
 
 test('D7: the legacy pill classes carry no background rule', () => {

@@ -68,6 +68,7 @@ export default function DevicesScreen() {
   const [confirmForget, setConfirmForget] = useState(false);
 
   const machines = session.machines;
+  const switchError = session.switchError;
   const activeId = machines.find((machine) => machine.active)?.id || '';
   // 定稿：当前电脑恒展开，没有收起动作。点当前卡是空操作。
   const openMachine = activeId;
@@ -102,8 +103,9 @@ export default function DevicesScreen() {
     setBusy('');
     if (ok) { haptic('success'); setOpenPlatform(''); return; }
     haptic('error');
-    // await 之后闭包里的 session 还是切换前的 error，必须读 store 的当前值。
-    setError(`切换电脑未完成：${sessionStore.getState().error || '请重试'}`);
+    // switchMachine 失败时把 A 的 status/online/scope 恢复并把原因写进
+    // session.switchError；这里只兜底「机器已不在注册表」这种没写原因的返回。
+    if (!sessionStore.getState().switchError) setError('切换电脑未完成，请重试。');
   };
 
   const chooseHarness = async (harness: Harness) => {
@@ -148,7 +150,11 @@ export default function DevicesScreen() {
         <p className="tl-device-lede">{machines.length} 台已配对</p>
         {/* 顶部错误条放在固定区：两台以上就要滚动，错误若留在滚动流里，
             用户停在列表任意位置时就看不见（NB3 09:17 口径）。 */}
-        {error && <p role="alert" className="tl-page-note tl-page-note--error tl-device-error">{error}</p>}
+        {(switchError || error) && (
+          <p role="alert" className="tl-device-error tl-page-note tl-page-note--error">
+            {switchError ? `切换电脑未完成：${switchError}` : error}
+          </p>
+        )}
       </div>
 
       <div className="tl-device-scroll">
