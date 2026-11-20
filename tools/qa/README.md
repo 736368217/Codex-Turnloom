@@ -12,6 +12,32 @@ node tools/qa/capture.mjs --only threads,chat --dump   # 只跑部分屏；--dum
 
 输出：每个视口一个目录（`<out>/390x844/01-connect.png` …），加上 `report.json`（每屏的横向溢出、越界元素、<44px 交互元素、TabBar/输入舱几何、请求日志、审批请求体）。
 
+## 2.3.0 队列：UI 验收与真服务端契约
+
+两套，证据分开，别混：
+
+```powershell
+# 1) 真 App bundle × 队列契约夹具：390×844 / 390×640 / 320×568
+#    （含 193 条功能+几何判据；--build 只写 tmp/dist-vera-queue）
+node tools/qa/check-queue.mjs --build --out docs/qa/queue-final
+
+# 2) 真 server.js × 合成 --codex-home × 临时队列文件：30 条接口/持久化判据
+node tools/qa/check-queue-api.mjs
+```
+
+- `queue-fixture.mjs`：按 SPEC §3 的 app-facing API 夹具，控制面 `/__qa/control` 可确定性造
+  queued / sending / awaiting / failed / paused / 20 满 / 入队 500 / steer 409；
+  `queueCapabilities` 可切 Codex/PI 两种形态。请求全部记录，UI 声称“真的入队了”必须能在
+  `/__qa/requests` 里看到 `POST /api/send mode=queue`。
+- `check-queue-api.mjs`：不碰真实 Codex 数据；临时 `state_5.sqlite` + 一条 open-turn rollout
+  + 临时 `CODEX_LAN_PENDING_QUEUE_FILE`。覆盖 position 连续、files 随队列持久化、v2 schema、
+  重启恢复、暂停标记、20 上限、sending 409、failed 409（含跨行越过）。
+- 判据口径：`getBoundingClientRect` 只作初筛；44 命中用 `elementFromPoint` 0.5px 扫；队列条在
+  输入卡上方；390×640 聚焦后 composer + bar 都在视口内；3 个视口横向溢出 ≤1px。
+- 报告钉死 `HEAD`、asset 文件名/字节/sha256；同一份 report 不跨 build 复用。
+- 已知边界：两套都不经过真实 Codex IPC。`interrupt → queuePaused` 与“结束后附件真的落到
+  Codex”由服务端单测 + 真机走查覆盖，别把夹具绿当成 host 绿。
+
 ## 2.2.6 重设计：分段控件的行为验收
 
 ```powershell
