@@ -27,6 +27,7 @@ const LONG_RUN = "aaaaaaaa-1111-4111-8111-111111111111";
 const LONG_ENDED = "aaaaaaaa-2222-4222-8222-222222222222";
 const STALE_WAIT = "bbbbbbbb-1111-4111-8111-111111111111";
 const PAGE2_RUN = "cccccccc-1111-4111-8111-111111111111";
+const WIDE_RUN = "eeeeeeee-1111-4111-8111-111111111111";
 const IDLE = [
   "dddddddd-1111-4111-8111-111111111111",
   "dddddddd-2222-4222-8222-222222222222",
@@ -86,6 +87,15 @@ function staleApprovalRollout(id, cwd, nowMs) {
   return `${lines.join("\n")}\n`;
 }
 
+function openTurnRollout(id, cwd, nowMs) {
+  const lines = [
+    metaLine(nowMs - 120_000, id, cwd),
+    eventLine(nowMs - 119_000, { type: "task_started", turn_id: `${id}-live`, started_at: Math.floor((nowMs - 119_000) / 1000) }),
+    eventLine(nowMs - 118_000, { type: "user_message", message: "这个任务排在候选窗口之外" })
+  ];
+  return `${lines.join("\n")}\n`;
+}
+
 async function seedHome(home) {
   const { DatabaseSync } = require("node:sqlite");
   const sessions = path.join(home, "sessions", "2026", "11", "21");
@@ -139,11 +149,58 @@ async function seedHome(home) {
   db.close();
 }
 
-async function startServer() {
+async function seedWideHome(home) {
+  const { DatabaseSync } = require("node:sqlite");
+  const sessions = path.join(home, "sessions", "2026", "11", "21");
+  fs.mkdirSync(sessions, { recursive: true });
+  const nowMs = Date.now();
+  const rows = [];
+  const write = (id, title, text, updatedAtMs) => {
+    const file = path.join(sessions, `rollout-2026-11-21T00-00-00-${id}.jsonl`);
+    fs.writeFileSync(file, text, "utf8");
+    rows.push({ id, title, rollout: path.relative(home, file), updatedAtMs });
+  };
+  // 130 条已结束会话占满候选窗口（120 行），一条运行中排在第 131 位。
+  for (let index = 0; index < 130; index += 1) {
+    const id = `ffffffff-0000-4000-8000-${String(index).padStart(12, "0")}`;
+    const lines = [
+      metaLine(nowMs - 700_000, id, `C:\\qa\\projects\\wide\\${index}`),
+      eventLine(nowMs - 699_000, { type: "task_started", turn_id: `${id}-t1`, started_at: Math.floor((nowMs - 699_000) / 1000) }),
+      eventLine(nowMs - 698_000, { type: "agent_message", message: "已经做完了。" }),
+      eventLine(nowMs - 697_000, { type: "task_complete", turn_id: `${id}-t1`, completed_at: Math.floor((nowMs - 697_000) / 1000) })
+    ];
+    write(id, `窗口内已结束-${index}`, `${lines.join("\n")}\n`, nowMs - 1_000 - index * 1_000);
+  }
+  write(WIDE_RUN, "窗口外运行中", openTurnRollout(WIDE_RUN, "C:\\qa\\projects\\wide\\beyond", nowMs), nowMs - 10_000_000);
+
+  const db = new DatabaseSync(path.join(home, "state_5.sqlite"));
+  db.exec(`
+    CREATE TABLE threads (
+      id TEXT PRIMARY KEY, title TEXT, rollout_path TEXT, archived INTEGER DEFAULT 0,
+      created_at_ms INTEGER, updated_at_ms INTEGER, updated_at INTEGER,
+      preview TEXT, cwd TEXT, model TEXT, source TEXT, thread_source TEXT, agent_path TEXT,
+      is_pinned INTEGER DEFAULT 0, thread_section_id TEXT, section_position INTEGER, project_id TEXT
+    );
+    CREATE TABLE thread_sections (id TEXT PRIMARY KEY, name TEXT, appearance TEXT);
+    CREATE TABLE thread_spawn_edges (child_thread_id TEXT, parent_thread_id TEXT);
+    CREATE TABLE projects (id TEXT PRIMARY KEY, name TEXT, position INTEGER);
+    CREATE TABLE project_roots (project_id TEXT, path TEXT, position INTEGER);
+  `);
+  const insert = db.prepare(`
+    INSERT INTO threads (id, title, rollout_path, archived, created_at_ms, updated_at_ms, updated_at, cwd, model)
+    VALUES (?, ?, ?, 0, ?, ?, ?, ?, 'qa-model')
+  `);
+  for (const row of rows) {
+    insert.run(row.id, row.title, row.rollout, row.updatedAtMs - 60_000, row.updatedAtMs, Math.floor(row.updatedAtMs / 1000), "C:\\qa\\projects");
+  }
+  db.close();
+}
+
+async function startServer(seed = seedHome) {
   const home = fs.mkdtempSync(path.join(os.tmpdir(), "turnloom-status-window-"));
   const logDir = path.join(home, "logs");
   fs.mkdirSync(logDir, { recursive: true });
-  await seedHome(home);
+  await seed(home);
   const port = await freePort();
   const child = spawn(
     process.execPath,
@@ -246,6 +303,27 @@ test("长会话的 running 与静默 waiting 都不再被尾部窗口/10 分钟 
     for (const row of firstTwo.body.threads) {
       assert.equal(row.status.state, statusOf(row.id).state);
     }
+  } finally {
+    await server.stop();
+  }
+});
+
+test("候选窗口被截断时 active.truncated 为 true，不把下界当完整", async () => {
+  const server = await startServer(seedWideHome);
+  try {
+    const list = await server.get("/api/threads?limit=2");
+    assert.equal(list.status, 200, `server log:\n${server.log()}`);
+    const active = list.body.active || {};
+    const runningIds = (active.running || []).map((row) => row.id);
+    assert.equal(typeof active.truncated, "boolean");
+    // 130 条已结束 + 1 条运行中，候选窗口只有 120 行：窗口外的行没有解析状态。
+    // 要么把它数进来，要么明说数字是下界；两样都没有就是假装完整。
+    assert.ok(
+      active.truncated === true || runningIds.includes(WIDE_RUN),
+      `truncated=${active.truncated} running=${runningIds.length}`
+    );
+    assert.equal(active.truncated, true);
+    assert.equal(runningIds.includes(WIDE_RUN), false, "窗口外那条没有解析状态，不能被当成已知");
   } finally {
     await server.stop();
   }
