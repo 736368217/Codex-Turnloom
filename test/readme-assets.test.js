@@ -29,12 +29,20 @@ test("README only references image assets that exist", () => {
   const references = [...README.matchAll(/<img[^>]+src="([^"]+)"/g)]
     .map((match) => match[1])
     .filter((src) => !/^https?:\/\//.test(src));
-  assert.ok(references.length >= 8, "README should show the real screenshot set");
+  // 2.4.0 起 README 只保留当前交付线的 hero 图；旧 Expo 客户端的截图存放在
+  // docs/screenshots/ 供历史查阅，但不再以「当前界面」的身份出现在 README 里
+  // （见下面的 archived-screenshots 断言）。
+  assert.ok(references.length >= 1, "README should show at least the product hero image");
   for (const src of references) {
     const target = path.join(ROOT, src);
     assert.ok(statSync(target).isFile(), `missing image: ${src}`);
     assert.match(src, /^docs\/(assets|screenshots)\//, `unexpected image path: ${src}`);
   }
+});
+
+test("README marks the Expo screenshots as archived, not current UI", () => {
+  if (!README.includes("docs/screenshots/")) return;
+  assert.match(README, /不代表当前界面|已归档|归档/, "README must say the archived screenshots are not the current UI");
 });
 
 test("README image assets have stable, intentional dimensions", () => {

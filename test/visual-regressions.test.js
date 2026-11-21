@@ -57,20 +57,13 @@ test("bottom sheets keep a usable, bottom-aligned scroll area", () => {
   assert.doesNotMatch(text, /contentContainerStyle=\{\{[^}]*flexGrow:\s*1/);
 });
 
-test("README visual assets are refreshed from the fixed build", () => {
+test("README documents the current delivery line and links its release notes", () => {
   const readme = readFileSync(path.join(ROOT, "README.md"), "utf8");
-  for (const name of [
-    "app-home.png",
-    "app-thread.png",
-    "app-approval.png",
-    "app-model.png",
-    "app-mentions.png",
-    "app-pairing.png",
-    "app-terminals.png",
-  ]) {
-    assert.match(readme, new RegExp(name.replace(".", "\\.")));
-    assert.ok(statSync(path.join(ROOT, "docs", "screenshots", name)).isFile());
-  }
+  // 2.4.0 起 README 以 dom-shell 单线 + 发布纪律为骨架，不再用旧 Expo 截图充当当前界面。
+  assert.match(readme, /ROUTE=dom-shell/);
+  assert.match(readme, /docs\/RELEASE_2_4_0_2026-11-21\.md/, "README must link the current release notes");
+  assert.match(readme, /发布纪律/, "README must keep the release discipline section");
+  assert.match(readme, /不代表当前界面/, "archived Expo screenshots must be labelled as such");
 });
 
 test("desktop settings adapt without squeezing cards or overflowing narrow windows", () => {
