@@ -81,6 +81,25 @@ The script refuses a dirty tree, a version mismatch between `native-shell/app/bu
 and `app/package.json`, or a missing artifact, then re-reads the Release asset digests and
 compares them with the local hashes. Never announce "已更新" before that check passes.
 
+## Host safety (a mistake here can destroy the machine)
+
+- **Never assign `$HOME` in PowerShell.** It is a read-only automatic variable: the assignment
+  throws a *non-terminating* error, every later `$HOME` still points at the real user profile,
+  and a cleanup that follows deletes the real profile. Use `$FixtureHome`, and start destructive
+  scripts with `$ErrorActionPreference = 'Stop'` and `Set-StrictMode -Version Latest`.
+- **A recursive delete may only target a root created by this run**: a `%TEMP%\turnloom-qa-<id>`
+  directory, or `.scratch\<id>` inside the repo. Resolve and validate it first (exists, is a
+  directory, not a reparse point, not `$HOME` / `$env:USERPROFILE` / volume root / the workspace
+  root), then delete with `-LiteralPath`. Empty, relative, `..`, or a failed resolution aborts —
+  never fall back to the current directory or the user profile.
+- **Destructive commands outside the workspace need a human approval.** Prefer
+  `workspace-write`; `danger-full-access` is requested per task, not a default.
+- **Tests never clean real user data.** A test that needs a "fresh home" gets a synthetic
+  `--codex-home` under `%TEMP%`; it never deletes the real `~/.codex`, `~/.dsh`, `~/.zcode`,
+  or a real AVD.
+- Incident and the four-input acceptance checklist:
+  `docs/team/INCIDENT_2026-11-21_profile-deletion.md`.
+
 ## Hygiene
 
 - Do not commit `node_modules/`, `.scratch/`, `dist-app/` APKs, keystores, access codes,
