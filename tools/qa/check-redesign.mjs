@@ -856,17 +856,21 @@ async function main() {
         })()`);
         check(strip.found, "运行条头部在页面上（命中带可量）");
         if (strip.found) {
-          const height = (box) => (box.top === null ? 0 : Math.round((box.bottom - box.top + 0.1) * 10) / 10);
-          const bandH = height(strip.band);
-          const ownH = height(strip.own);
-          const bandOk = Math.abs(bandH - 44) <= 0.5;
-          const pillOk = Math.abs(ownH - 34) <= 0.5;
+          const span = (box) => (box.top === null ? 0 : Math.round((box.bottom - box.top + 0.1) * 10) / 10);
+          const bandH = span(strip.band);
+          const ownH = span(strip.own);
+          const wrapH = span(strip.wrapOwn);
+          // Same ruler on both sides: the band must fill the strip box exactly.
+          const bandOk = Math.abs(bandH - wrapH) <= 0.2 && Math.abs(bandH - 44) <= 1;
+          // 34px pill is scaled by the same 0.9px scan bias; the 5px collar on
+          // each side is what the band adds, and that difference is bias-free.
+          const pillOk = Math.abs(ownH - 34) <= 1 && Math.abs((bandH - ownH) - 10) <= 0.5;
           const insideOk = strip.band.top !== null && strip.wrapOwn.top !== null
             && strip.band.top >= strip.wrapOwn.top - 0.2 && strip.band.bottom <= strip.wrapOwn.bottom + 0.2;
           const rowsOk = strip.rowOverlaps === 0;
           const noStealAbove = strip.trackBottom === null || strip.band.top === null || strip.band.top >= strip.trackBottom - 0.2;
           check(bandOk && pillOk && insideOk && rowsOk && noStealAbove, "运行条命中带 44±0.2 · 胶囊自身 34 · 带不出条盒 · 不压分段控件 · 不压运行行",
-            `带=${bandH} (${strip.band.top}–${strip.band.bottom}) · 胶囊=${ownH} (${strip.pillBox.top}–${strip.pillBox.bottom}) · 条盒=${strip.wrapOwn.top}–${strip.wrapOwn.bottom} · 分段底=${strip.trackBottom} · 行重叠=${strip.rowOverlaps}/${strip.rows}`);
+            `带=${bandH} (${strip.band.top}–${strip.band.bottom}) · 胶囊=${ownH} (${strip.pillBox.top}–${strip.pillBox.bottom}) · 条盒=${strip.wrapOwn.top}–${strip.wrapOwn.bottom} (${wrapH}) · 分段底=${strip.trackBottom} · 行重叠=${strip.rowOverlaps}/${strip.rows}`);
         }
         // 2.2.7 第 4 项：胶囊要有 chevron，展开时转 180°——「展开/收起」纯文字
         // 是 NB3 7 屏复核里的同类问题。量完点两下复位，不影响后面的停止流程。
