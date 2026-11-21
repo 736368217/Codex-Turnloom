@@ -52,6 +52,22 @@ test("no script assigns the read-only $HOME automatic variable", () => {
   assert.deepEqual(offenders, [], `never assign $HOME — it is read-only and the failure is non-terminating:\n${offenders.join("\n")}`);
 });
 
+test("every recursive delete names its target literally", () => {
+  const offenders = [];
+  for (const file of scriptFiles) {
+    const text = fs.readFileSync(file, "utf8");
+    text.split(/\r?\n/).forEach((line, index) => {
+      if (!/Remove-Item\b/i.test(line) || !/-Recurse\b/i.test(line)) return;
+      // -LiteralPath keeps wildcards and empty variables from expanding; the review
+      // gate in AGENTS.md still requires printing and approving the resolved target.
+      if (!/-LiteralPath\b/i.test(line)) {
+        offenders.push(`${path.relative(ROOT, file)}:${index + 1}  ${line.trim()}`);
+      }
+    });
+  }
+  assert.deepEqual(offenders, [], `recursive deletes must use -LiteralPath:\n${offenders.join("\n")}`);
+});
+
 test("no script deletes the user profile or a bare $HOME", () => {
   const offenders = [];
   for (const file of scriptFiles) {

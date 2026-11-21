@@ -92,8 +92,22 @@ compares them with the local hashes. Never announce "已更新" before that chec
   directory, not a reparse point, not `$HOME` / `$env:USERPROFILE` / volume root / the workspace
   root), then delete with `-LiteralPath`. Empty, relative, `..`, or a failed resolution aborts —
   never fall back to the current directory or the user profile.
-- **Destructive commands outside the workspace need a human approval.** Prefer
-  `workspace-write`; `danger-full-access` is requested per task, not a default.
+- **Destructive commands are reviewed one by one — not banned, not waved through.**
+  Before anything that deletes, overwrites, resets, reformats or mirrors data
+  (`Remove-Item -Recurse`, `rd /s`, `rm -rf`, `git clean -fdx`, `git reset --hard`,
+  `robocopy /mir`, `format`, `diskpart`, registry deletes), print the resolved absolute
+  target, the object count and what recovery exists. Run the dry run first (`-WhatIf`,
+  `git clean -ndx`, `--dry-run`) and abort if the output names `%USERPROFILE%`, a volume
+  root, the repo root, or anything outside the task's scope.
+- **Anything this run did not create needs an explicit approval in the Thread that names
+  the target and the object count.** A general "clean up" does not cover a different path;
+  no approval means no command. A delete inside a `%TEMP%\turnloom-qa-<id>` or
+  `.scratch\<id>` root this run created still prints its target first, but needs no second
+  approval. Prefer `workspace-write`; `danger-full-access` is requested per task, not a default.
+- **Prefer quarantine over deletion**: move to `.scratch\<run-id>\quarantine\<timestamp>\`
+  and delete only after the task is accepted, so a mistake stays recoverable.
+- **Log it**: command, resolved target, object count and result go into the task report.
+  If the target cannot be resolved, stop — never fall back to cwd, `$HOME` or a parent.
 - **Tests never clean real user data.** A test that needs a "fresh home" gets a synthetic
   `--codex-home` under `%TEMP%`; it never deletes the real `~/.codex`, `~/.dsh`, `~/.zcode`,
   or a real AVD.

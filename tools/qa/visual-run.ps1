@@ -31,7 +31,7 @@ function Wait-Port([int]$Port, [int]$TimeoutSec = 30) {
 # Snapshot dist so a teammate rebuilding `app/` mid-run cannot swap the bundle
 # under the page (half-written chunks show up as a blank screen).
 $snapshot = Join-Path $logDir "dist-snapshot"
-if (Test-Path $snapshot) { Remove-Item -Recurse -Force $snapshot }
+if (Test-Path -LiteralPath $snapshot) { Remove-Item -LiteralPath $snapshot -Recurse -Force }
 Copy-Item (Join-Path $root "app\dist") $snapshot -Recurse
 
 if ($Fail) { $env:QA_VISUAL_FAIL = $Fail } else { Remove-Item Env:QA_VISUAL_FAIL -ErrorAction SilentlyContinue }
