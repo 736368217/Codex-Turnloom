@@ -71,6 +71,11 @@ test('R07: authoritative thread status wins for badge, filter, home card and mon
   const stopped = projectThread(stale, { one: { state: 'ended', thinking: false } });
   assert.deepEqual(stopped, { status: { state: 'ended', thinking: false }, tone: 'done' });
   assert.equal(projectThread(stale, { one: { state: 'waiting', thinking: false } }).tone, 'waiting');
+  // 2.4.0 契约 A：等授权的回合 thinking 仍为真，所以 waiting 必须优先于 thinking。
+  // 这条曾整组「待你处理」都不渲染（0 不渲染 → 界面什么都不显示，截图也看不出来）。
+  assert.equal(projectThread(stale, { one: { state: 'waiting', thinking: true } }).tone, 'waiting');
+  // 老宿主降级路径：行内 interactionRequired=true 且 thinking=true，也要判 waiting。
+  assert.equal(projectThread({ id: 'old', status: { thinking: true, interactionRequired: true } }).tone, 'waiting');
   assert.equal(projectThread({ id: 'failed', status: { state: 'error' } }).tone, 'error');
   assert.equal(projectThread({ id: 'failed', status: { state: 'error' } }, { failed: { state: 'ended', thinking: false } }).tone, 'done');
 
