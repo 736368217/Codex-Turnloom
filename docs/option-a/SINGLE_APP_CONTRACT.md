@@ -68,6 +68,7 @@
 - `GET /api/threads`
 - `GET /api/threads/:id/messages?limit&before`
 - `GET /api/threads/:id/changes`
+- `GET /api/search?q=&limit=`（2.4.0）
 - `POST /api/new-thread`
 - `POST /api/send`
 - `POST /api/interrupt`
@@ -76,6 +77,34 @@
 - `GET /api/projects`
 - `GET /api/account`
 - `POST/GET /api/queue/*`（至少类型定义占位）
+
+### 2.4.0 状态、`active` 与搜索
+
+`GET /api/threads` 每行带 `status.state`（`running` / `waiting` / `ended`）、`status.thinking`、`status.interactionRequired`：
+
+- `interactionRequired` 为真时 `state` 必须是 `waiting`，优先级高于 `thinking`；有活回合是 `running`；否则 `ended`。
+- `thinking` 语义不变：活回合为真，等授权也算活回合。
+- 运行中判定不许只看尾部 512 KiB 窗口：从文件尾回扫最近一条 turn 生命周期事件（`task_started` / `task_complete` / `turn_aborted`）判活；等授权的回合不受 10 分钟 stale 影响（等授权时文件本来就不再写入）。
+
+同一响应带**与分页无关**的 `active`：
+
+```json
+{
+  "running": [{ "id": "", "title": "", "project": "", "startedAtMs": 0, "updatedAtMs": 0 }],
+  "waiting": [{ "id": "", "title": "", "project": "", "reason": "interaction" }],
+  "truncated": false
+}
+```
+
+- `running` = `thinking && !interactionRequired`，`waiting` = `interactionRequired`；两数组不相交，相加 = 活会话数（客户端不做减法）。
+- 计数与展开行同源读 `active`，不许用当前页的 `threads` 过滤当真相；等待行用 `active` 里的标题直接打开详情。
+- `truncated: true` 表示候选窗口外的行没有解析，数字是下界：pill 写 `N+`，展开区末行写不可点的「另有会话未统计」。
+
+`GET /api/search?q=&limit=` → `{ ok, query, took, results: [{ kind: "thread"|"message", threadId, title, project, field: "title"|"project"|"content", snippet, at }], total, index }`：
+
+- 中文子串匹配（不分词、不拼音），ASCII 大小写不敏感；`%` / `_` / 引号是字面量（参数化 `LIKE ... ESCAPE`）。
+- query 为空返回 400；长度上限 120 字符；limit 默认 30、上限 100。
+- 结果顺序：标题命中 → 项目命中 → 正文命中，组内按时间倒序；`took` 是服务端实际耗时（毫秒）。
 
 鉴权：`x-access-token` 请求头；401 走重新输入访问码抽屉；不得把 token 写日志。
 Server URL / token / machineName / 离线缓存由原生安全存储桥或加密 SharedPreferences 保存。

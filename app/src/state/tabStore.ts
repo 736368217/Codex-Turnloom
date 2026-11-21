@@ -1,5 +1,6 @@
 /** Tab navigation state. No arbitrary local/http engine selector. */
 import { createStore, useStore } from './store';
+import { prefsStore } from './prefsStore';
 
 export type TabKey = 'threads' | 'devices' | 'settings';
 export const TAB_LABELS: Record<TabKey, string> = {
@@ -23,7 +24,7 @@ export interface TabState {
 
 export const tabStore = createStore<TabState>({
   activeTab: 'threads', detailThreadId: null, detailTitle: '', composing: false,
-  threadsQuery: '', threadsFilter: 'all', threadsView: 'project', addMachine: false,
+  threadsQuery: '', threadsFilter: 'all', threadsView: prefsStore.getState().defaultView, addMachine: false,
 });
 
 export function setActiveTab(tab: TabKey): void {

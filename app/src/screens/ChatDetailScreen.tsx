@@ -1,10 +1,11 @@
-import { useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from 'react';
-import { ChevronDown, ChevronRight, ChevronLeft, Brain, Terminal, FileDiff, Folder, Loader2, Check, X, Sparkles } from 'lucide-react';
+import { useEffect, useMemo, useRef, useState, Fragment, type FormEvent, type ReactNode } from 'react';
+import { ChevronDown, ChevronRight, ChevronLeft, Brain, Terminal, FileDiff, Folder, Check, X, Sparkles, ArrowDown } from 'lucide-react';
 import { ComposerFields, ChatPrimaryButton, ModelChip, useComposerFields, requestIdForIdentity } from '../components/ChatComposer';
 import { QueueBar, QueueSheet } from '../components/QueuePanels';
 import AuthedImage from '../components/AuthedImage';
 import MarkdownMessage from '../components/MarkdownMessage';
 import VaulSheet from '../components/VaulSheet';
+import KindAvatar from '../components/KindAvatar';
 import { COLORS } from '../theme/optionATokens';
 import { messageText, isRunning, supportsImages,
   buildSendPayload, sendRequestIdentity,
@@ -17,7 +18,7 @@ import {
   sendQueuedMessage, resumeThreadQueue, interruptThread, resolveApproval, createThread,
 } from '../state/dataStore';
 import { closeDetail, openDetail } from '../state/tabStore';
-import { currentRequestContext } from '../state/sessionStore';
+import { currentRequestContext, selectedHarness, useSessionState } from '../state/sessionStore';
 import { clearComposerInputs, setComposerAttachments, setComposerText } from '../state/composerStore';
 import { useThreadStatus } from '../state/runtimeStore';
 import { getProjects, type ProjectInfo, type ThreadMessage, type QueueDraft } from '../lib/turnloomApi';
@@ -124,10 +125,33 @@ function ToolBlock({ text, name, failed }: { text: string; name: string; failed?
   );
 }
 
+/** 日期分隔（2.4.0）：同一天只在第一条前出现一次，标签带时间。 */
+function chatDay(value: unknown): { key: string; label: string } {
+  const at = typeof value === 'number' ? value : typeof value === 'string' && value.trim() ? Date.parse(value) : NaN;
+  if (!Number.isFinite(at)) return { key: '', label: '' };
+  const date = new Date(at);
+  const now = new Date();
+  const key = `${date.getFullYear()}-${date.getMonth()}-${date.getDate()}`;
+  const pad = (n: number) => String(n).padStart(2, '0');
+  const time = `${pad(date.getHours())}:${pad(date.getMinutes())}`;
+  const sameDay = date.toDateString() === now.toDateString();
+  const yesterday = new Date(now);
+  yesterday.setDate(yesterday.getDate() - 1);
+  if (sameDay) return { key, label: `今天 ${time}` };
+  if (date.toDateString() === yesterday.toDateString()) return { key, label: `昨天 ${time}` };
+  const prefix = date.getFullYear() === now.getFullYear()
+    ? `${date.getMonth() + 1}月${date.getDate()}日`
+    : `${date.getFullYear()}年${date.getMonth() + 1}月${date.getDate()}日`;
+  return { key, label: `${prefix} ${time}` };
+}
+
 /** Chat screen: header-only back, compact bubbles, one authoritative primary action. */
 export default function ChatDetailScreen({ threadId, title, newThread = false }: { threadId: string; title: string; newThread?: boolean }) {
   const data = useDataState();
+  const session = useSessionState();
   const context = currentRequestContext();
+  const sourceKind = String(selectedHarness(session)?.kind || '');
+  const [atBottom, setAtBottom] = useState(true);
   const scope = context?.scope || '';
   // A blank new chat keeps its own composer slot so it can never inherit a
   // real thread's draft, tray, or pending clientRequestId.
@@ -220,12 +244,15 @@ export default function ChatDetailScreen({ threadId, title, newThread = false }:
   useEffect(() => {
     scrolledOnce.current = false;
     stickToBottom.current = true;
+    setAtBottom(true);
   }, [threadId]);
   useEffect(() => {
     const body = bodyRef.current;
     if (!body) return;
     const onScroll = () => {
-      stickToBottom.current = body.scrollHeight - body.scrollTop - body.clientHeight < 120;
+      const distance = body.scrollHeight - body.scrollTop - body.clientHeight;
+      stickToBottom.current = distance < 120;
+      setAtBottom(distance < 80);
     };
     body.addEventListener('scroll', onScroll, { passive: true });
     return () => body.removeEventListener('scroll', onScroll);
@@ -394,13 +421,12 @@ export default function ChatDetailScreen({ threadId, title, newThread = false }:
             <div style={{ fontSize: 11, lineHeight: '15px', color: COLORS.labelSecondary, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
               {[
                 ownProjectName ? `项目：${ownProjectName}` : '',
-                newThread ? '输入第一条消息开始会话' : status?.interactionRequired ? '等待电脑端处理' : running ? '运行中' : '空闲',
+                newThread ? '输入第一条消息开始会话' : status?.interactionRequired ? '待你处理' : running ? '运行中' : '空闲',
               ].filter(Boolean).join(' · ')}
               {!newThread && status?.staleTurn ? ' · 长时间无输出' : ''}
             </div>
           </div>
           <ModelChip fields={fields} />
-          {running && <Loader2 size={20} className="tl-spin" color={COLORS.blue} aria-label="运行中" />}
         </div>
       </header>
 
@@ -434,59 +460,74 @@ export default function ChatDetailScreen({ threadId, title, newThread = false }:
               {data.messageState[threadId]?.error || (data.messageState[threadId]?.loaded ? '暂无消息，可以发送第一条消息。' : '正在加载消息…')}
               {data.messageState[threadId]?.error && <button type="button" className="tl-connect-manual" onClick={() => { if (context) void refreshMessages(context, threadId); }}>重试加载消息</button>}
             </div>
-          ) : messages.map((message: ThreadMessage, index: number) => {
-            const isUser = message.role === 'user';
-            const kind = String(message.kind || '').toLowerCase();
-            const text = messageText(message);
-            const images = Array.isArray(message.images) ? message.images : [];
-            if (message.role === 'interaction' && message.approvalKind) {
-              return <div key={`approval:${threadId}:${String(message.requestId || message.id || index)}:${String(message.detailsHash || '')}`} className="tl-chat-row tl-approval-row"><ApprovalCard message={message} context={context} threadId={threadId} /></div>;
-            }
-            if (!text && !images.length) return null;
-            const rowKey = String(message.id || index);
-            // 思考与工具不是正文：用不同的容器和排版渲染，不再塞进普通气泡。
-            if (['thinking', 'reasoning', 'analysis'].includes(kind)) {
-              return <div key={rowKey} className="tl-chat-row tl-chat-row--meta"><ThoughtBlock text={text} /></div>;
-            }
-            if (message.role === 'tool' || ['tool_call', 'tool_output', 'command', 'terminal'].includes(kind)) {
-              return (
-                <div key={rowKey} className="tl-chat-row tl-chat-row--meta">
-                  <ToolBlock
-                    text={text}
-                    name={String(message.title || message.toolName || message.name || '工具调用')}
-                    failed={kind === 'error' || message.isError === true}
-                  />
-                </div>
-              );
-            }
-            if (kind === 'error' || message.role === 'notice' || message.role === 'system') {
-              return <div key={rowKey} className="tl-chat-row tl-chat-row--meta"><div className="tl-chat-notice">{text}</div></div>;
-            }
-            return (
-              <div key={rowKey} className={`tl-chat-row${isUser ? ' tl-chat-row--user' : ''}`}>
-                <div className={`tl-chat-bubble tl-selectable ${isUser ? 'tl-chat-bubble--user' : 'tl-chat-bubble--assistant'}`}>
-                  {isUser ? text || '(空消息)' : <MarkdownMessage text={text || '(空消息)'} />}
-                  {images.length > 0 && (
-                    <div className="tl-chat-attachment" aria-label={`${images.length} 张图片`}>
-                      {images.slice(0, 4).map((image: unknown, imageIndex: number) => {
-                        const row = image && typeof image === 'object' ? image as { url?: unknown; dataUrl?: unknown; mimeType?: unknown; name?: unknown } : null;
-                        const src = typeof image === 'string' ? image
-                          : row ? String(row.url || row.dataUrl || '') : '';
-                        // The envelope has no content type; use the message's own field
-                        // (and the file name as the last resort) instead of guessing.
-                        const mimeType = row ? String(row.mimeType || '') : '';
-                        const name = row ? String(row.name || '') : '';
-                        return src
-                          ? <AuthedImage key={imageIndex} src={src} alt={name || `附件 ${imageIndex + 1}`} mimeType={mimeType} />
-                          : null;
-                      })}
-                      <span>{images.length} 张图片</span>
+          ) : (() => {
+            // 2.4.0 date separators: one label per calendar day, in message order.
+            let lastDayKey = '';
+            return messages.map((message: ThreadMessage, index: number) => {
+              const isUser = message.role === 'user';
+              const kind = String(message.kind || '').toLowerCase();
+              const text = messageText(message);
+              const images = Array.isArray(message.images) ? message.images : [];
+              const rowKey = String(message.id || index);
+              const day = chatDay(message.createdAt ?? message.updatedAt);
+              const showDay = Boolean(day.key) && day.key !== lastDayKey;
+              if (showDay) lastDayKey = day.key;
+              const dayRow = showDay ? <div className="tl-chat-date" role="separator">{day.label}</div> : null;
+              if (message.role === 'interaction' && message.approvalKind) {
+                return <Fragment key={`approval:${threadId}:${String(message.requestId || message.id || index)}:${String(message.detailsHash || '')}`}>{dayRow}<div className="tl-chat-row tl-approval-row"><ApprovalCard message={message} context={context} threadId={threadId} /></div></Fragment>;
+              }
+              if (!text && !images.length) return null;
+              // 思考与工具不是正文：用不同的容器和排版渲染，不再塞进普通气泡。
+              if (['thinking', 'reasoning', 'analysis'].includes(kind)) {
+                return <Fragment key={rowKey}>{dayRow}<div className="tl-chat-row tl-chat-row--meta"><ThoughtBlock text={text} /></div></Fragment>;
+              }
+              if (message.role === 'tool' || ['tool_call', 'tool_output', 'command', 'terminal'].includes(kind)) {
+                return (
+                  <Fragment key={rowKey}>
+                    {dayRow}
+                    <div className="tl-chat-row tl-chat-row--meta">
+                      <ToolBlock
+                        text={text}
+                        name={String(message.title || message.toolName || message.name || '工具调用')}
+                        failed={kind === 'error' || message.isError === true}
+                      />
                     </div>
-                  )}
-                </div>
-              </div>
-            );
-          })}
+                  </Fragment>
+                );
+              }
+              if (kind === 'error' || message.role === 'notice' || message.role === 'system') {
+                return <Fragment key={rowKey}>{dayRow}<div className="tl-chat-row tl-chat-row--meta"><div className="tl-chat-notice">{text}</div></div></Fragment>;
+              }
+              return (
+                <Fragment key={rowKey}>
+                  {dayRow}
+                  <div className={`tl-chat-row${isUser ? ' tl-chat-row--user' : ' tl-chat-row--assistant'}`}>
+                    {!isUser && <KindAvatar kind={sourceKind} size={24} className="tl-chat-avatar" />}
+                    <div className={`tl-chat-bubble tl-selectable ${isUser ? 'tl-chat-bubble--user' : 'tl-chat-bubble--assistant'}`}>
+                      {isUser ? text || '(空消息)' : <MarkdownMessage text={text || '(空消息)'} />}
+                      {images.length > 0 && (
+                        <div className="tl-chat-attachment" aria-label={`${images.length} 张图片`}>
+                          {images.slice(0, 4).map((image: unknown, imageIndex: number) => {
+                            const row = image && typeof image === 'object' ? image as { url?: unknown; dataUrl?: unknown; mimeType?: unknown; name?: unknown } : null;
+                            const src = typeof image === 'string' ? image
+                              : row ? String(row.url || row.dataUrl || '') : '';
+                            // The envelope has no content type; use the message's own field
+                            // (and the file name as the last resort) instead of guessing.
+                            const mimeType = row ? String(row.mimeType || '') : '';
+                            const name = row ? String(row.name || '') : '';
+                            return src
+                              ? <AuthedImage key={imageIndex} src={src} alt={name || `附件 ${imageIndex + 1}`} mimeType={mimeType} />
+                              : null;
+                          })}
+                          <span>{images.length} 张图片</span>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </Fragment>
+              );
+            });
+          })()}
         </div>
         {diffLines.length > 0 && (
           <>
@@ -497,6 +538,24 @@ export default function ChatDetailScreen({ threadId, title, newThread = false }:
           </>
         )}
       </main>
+
+      {!newThread && !atBottom && (
+        <div className="tl-jump-latest">
+          <button
+            type="button"
+            className="tl-press"
+            onClick={() => {
+              haptic('selection');
+              stickToBottom.current = true;
+              setAtBottom(true);
+              bodyRef.current?.scrollTo({ top: bodyRef.current.scrollHeight, behavior: 'smooth' });
+            }}
+          >
+            <ArrowDown size={14} aria-hidden="true" />
+            最新消息
+          </button>
+        </div>
+      )}
 
       <form className="tl-composer" onSubmit={(event) => { void onSubmit(event); }} aria-label="消息编辑器">
         {!newThread && (

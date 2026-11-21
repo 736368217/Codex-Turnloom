@@ -16,6 +16,12 @@ export const KIND_LABEL: Record<string, string> = {
 };
 export const KIND_MARK: Record<string, string> = { codex: 'CX', pi: 'PI', pidesk: 'PI' };
 
+/** 2.4.0 的来源标记：列表、详情头像、设备卡共用一套，不允许各写各的。 */
+export function kindMark(kind: string): string {
+  const key = String(kind || '').toLowerCase();
+  return KIND_MARK[key] || '';
+}
+
 /** 服务名只是显示；平台永远按 kind 分。 */
 export function serviceLabel(name: string, kind: string, machineName: string): string {
   const clean = (name || '').trim();

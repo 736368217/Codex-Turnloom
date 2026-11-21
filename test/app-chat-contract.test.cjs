@@ -410,8 +410,17 @@ test('long multiline messages remain compact at 393px and 320px', () => {
   // 就会得到和线上不一致的结果。不冻结具体像素（14/21 → 15/22 这种排版调整不该让
   // 门禁红），但必须挡住审计里“lineHeight: 20 被当成 20 倍字号、行高 280px”的老问题。
   const bubbleBlock = /\.tl-chat-bubble\s*\{([^}]*)\}/s.exec(css)?.[1] || '';
-  const cssLineHeight = Number((/line-height:\s*(\d+)px/.exec(bubbleBlock) || [])[1] || 0);
-  const cssFontSize = Number((/font-size:\s*(\d+)px/.exec(bubbleBlock) || [])[1] || 0);
+  // 2.4.0 起气泡字号/行高走 `--tl-fs-body` / `--tl-lh-body`（字号设置只缩放这一个
+  // 角色）。变量里仍然是像素值，所以按 :root 解析回来，继续挡倍数写法。
+  const rootBlock = /:root\s*\{([^}]*)\}/s.exec(css)?.[1] || '';
+  const cssPx = (prop) => {
+    const decl = new RegExp(`${prop}:\\s*([^;]+);`).exec(bubbleBlock)?.[1] || '';
+    const varName = /var\((--[\w-]+)\)/.exec(decl)?.[1];
+    const source = varName ? new RegExp(`${varName}:\\s*([^;]+);`).exec(rootBlock)?.[1] || '' : decl;
+    return Number((/(\d+)px/.exec(source) || [])[1] || 0);
+  };
+  const cssLineHeight = cssPx('line-height');
+  const cssFontSize = cssPx('font-size');
   assert.ok(cssLineHeight >= 20 && cssLineHeight <= 24, `气泡行高必须是像素小倍数，当前 ${cssLineHeight}px（曾经被写成 20 倍字号）`);
   assert.ok(cssFontSize >= 14 && cssFontSize <= 16, `气泡字号应在 14–16px，当前 ${cssFontSize}px`);
   assert.equal(cssLineHeight, styles.CHAT_BUBBLE_LINE_HEIGHT,

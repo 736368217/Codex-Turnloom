@@ -164,8 +164,8 @@ t("summaries expose card fields and never invent liveness", () => {
     ],
   }));
   const [desk, laptop] = machineSummaries(registry);
-  assert.deepEqual(desk, { id: "a", name: "Desk", host: "192.168.1.10:8787", active: true, harnessCount: 1, lastUsedAt: 1234 });
-  assert.deepEqual(laptop, { id: "b", name: "Laptop", host: "turnloom.example.com", active: false, harnessCount: 1, lastUsedAt: 99 });
+  assert.deepEqual(desk, { id: "a", name: "Desk", host: "192.168.1.10:8787", active: true, harnessCount: 1, lastUsedAt: 1234, platforms: [{ key: "codex", label: "Codex Desktop", mark: "CX" }] });
+  assert.deepEqual(laptop, { id: "b", name: "Laptop", host: "turnloom.example.com", active: false, harnessCount: 1, lastUsedAt: 99, platforms: [{ key: "codex", label: "Codex Desktop", mark: "CX" }] });
   assert.deepEqual(machineSummaries(null), []);
 });
 

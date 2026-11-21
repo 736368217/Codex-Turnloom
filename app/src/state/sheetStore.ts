@@ -2,7 +2,7 @@
 import { createStore, useStore } from './store';
 import { safeExternalUrl } from '../lib/externalUrl';
 
-export type SheetKey = 'harness' | 'diagnostics' | 'disconnect' | 'link' | 'update' | null;
+export type SheetKey = 'diagnostics' | 'disconnect' | 'link' | 'update' | null;
 
 export interface SheetState {
   sheet: SheetKey;

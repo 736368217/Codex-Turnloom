@@ -65,7 +65,9 @@ test('U3: the running strip offers a real stop action instead of a dead "view / 
   const css = read('theme/globals.css');
   assert.doesNotMatch(screen, /查看 \/ 停止/);
   assert.match(screen, /interruptThread/);
-  assert.match(screen, /aria-label=\{`停止 \$\{titleOfThread\(thread\)\}`\}/);
+  // 2.4.0: rows come from `/api/threads.active`, so the label carries the title
+  // the server sent for that group instead of re-deriving it from a list page.
+  assert.match(screen, /aria-label=\{`停止 \$\{row\.title\}`\}/);
   assert.match(css, /\.tl-runrow-stop \{[^}]*min-height: 44px/);
 });
 

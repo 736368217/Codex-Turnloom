@@ -360,5 +360,5 @@ test('a legacy single-machine value hydrates as a one-entry registry', () => {
   assert.equal(saved.machineId, 'legacy');
   const state = h.session.sessionStore.getState();
   assert.equal(state.machines.length, 1);
-  assert.deepEqual(state.machines[0], { id: 'legacy', name: 'Old PC', host: '192.168.50.44:8787', active: true, harnessCount: 1, lastUsedAt: null });
+  assert.deepEqual(state.machines[0], { id: 'legacy', name: 'Old PC', host: '192.168.50.44:8787', active: true, harnessCount: 1, lastUsedAt: null, platforms: [{ key: 'codex', label: 'Codex Desktop', mark: 'CX' }] });
 });

@@ -35,6 +35,7 @@ const desktopRelease = require("./shared/desktop-release.cjs");
 const requestLog = require("./server/request-log.cjs");
 const { buildLogBundle } = require("./server/log-bundle.cjs");
 const logUpload = require("./server/log-upload.cjs");
+const searchIndexLib = require("./server/search-index.cjs");
 
 const modulePath = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(modulePath);
@@ -536,6 +537,8 @@ const DEFAULT_MESSAGE_LIMIT = 80;
 const MAX_MESSAGE_LIMIT = 1000;
 const TAIL_ROLLOUT_MIN_BYTES = 512 * 1024;
 const TAIL_ROLLOUT_MAX_BYTES = 4 * 1024 * 1024;
+// 尾部窗口只够装「最近的消息」，装不下长回合的 task_started；判活另走一次回扫。
+const TURN_SCAN_CHUNK_BYTES = 256 * 1024;
 const MIN_SEND_IMAGE_BYTES = 512;
 const MIN_SEND_IMAGE_EDGE = 16;
 const MAX_SEND_IMAGE_EDGE = 4096;
@@ -1700,6 +1703,22 @@ const STATUS_STATES = new Set(["running", "waiting", "ended"]);
 function normalizeStatusState(value) {
   const state = String(value || "").trim().toLowerCase();
   return STATUS_STATES.has(state) ? state : "";
+}
+
+/**
+ * 列表与详情共用的三态推导，优先级写死成一条：
+ * 等授权（interactionRequired）→ waiting，活回合 → running，其余 → ended。
+ * 旧实现是 `thinking ? running : interactionRequired ? waiting : ended`，
+ * 而等授权的会话本来就是 thinking=true，于是 waiting 永远拿不到。
+ * 显式给了 state 的（数据库/适配器 override）以它为准；unknown 保持 unknown，
+ * 不能被当成 ended —— 那是「没解析过」，不是「已结束」。
+ */
+function deriveThreadState(status) {
+  const explicit = String(status?.state || "");
+  if (explicit === "unknown") return "unknown";
+  if (status?.interactionRequired || explicit === "waiting") return "waiting";
+  if (status?.thinking || explicit === "running") return "running";
+  return "ended";
 }
 
 async function threadStatusColumns(dbPath) {
@@ -3144,7 +3163,7 @@ async function parseThreadListStatus(rolloutPath, nowMs) {
   }
   const parsed = await parseRollout(rolloutPath, { limit: 1, preferTail: true });
   const status = {
-    state: parsed.status?.thinking ? "running" : parsed.status?.interactionRequired ? "waiting" : "ended",
+    state: deriveThreadState(parsed.status),
     thinking: Boolean(parsed.status?.thinking),
     interactionRequired: Boolean(parsed.status?.interactionRequired),
     turnId: parsed.status?.turnId || null,
@@ -3231,6 +3250,65 @@ function threadStatusCandidates(rows, limit = 120) {
     if (state === "running" || state === "waiting" || Number(row?.statusStartedMs) > 0) push(row);
   });
   return picked;
+}
+
+function activeProjectName(row) {
+  return String(row?.project?.name || row?.projectName || row?.project_name || "").trim();
+}
+
+/**
+ * `/api/threads.active`（2.4.0）：与分页无关的「运行中 / 待你处理」两组。
+ * running = thinking 且不等待人；waiting = interactionRequired。两数组不相交，
+ * 相加 = 活会话数（A 口径），客户端不做减法、也不许拿当前页过滤当真相。
+ * 候选窗口外的行没有状态就是「没解析过」——`truncated: true`，客户端写成 `N+`。
+ */
+function buildActiveSnapshot(rows, statusByThread) {
+  const running = [];
+  const waiting = [];
+  let unknown = 0;
+  for (const row of rows) {
+    if (!row || isArchivedThread(row)) continue;
+    const id = String(row.id || "");
+    if (!id) continue;
+    const status = statusByThread.get(id) || row.status || null;
+    if (!status || status.state === "unknown") {
+      unknown += 1;
+      continue;
+    }
+    if (status.interactionRequired) {
+      waiting.push({ id, title: String(row.title || ""), project: activeProjectName(row), reason: "interaction" });
+      continue;
+    }
+    if (status.thinking) {
+      running.push({
+        id,
+        title: String(row.title || ""),
+        project: activeProjectName(row),
+        // 个别 override 只带 state 不带 startedAtMs；没有起点时退回 updatedAtMs，
+        // 至少保证客户端拿到的排序键是真实时间，不是 0。
+        startedAtMs: Number(status.startedAtMs) || Number(row.updatedAtMs) || 0,
+        updatedAtMs: Number(row.updatedAtMs) || 0
+      });
+    }
+  }
+  return { running, waiting, truncated: unknown > 0 };
+}
+
+/**
+ * 每次列表请求都重新解析候选窗口的状态：`threadsCache` 有 8 秒 TTL，
+ * 若 active 直接读缓存，回合刚结束时页面数字与 ETag 都会停在旧值（Vera 的
+ * etag.invalidate 判据就是这样抓到的）。解析走 `threadStatusParseCache`，
+ * 文件没变时只多一次 stat。
+ */
+async function resolveActiveSnapshot(rows) {
+  const candidates = threadStatusCandidates(rows);
+  const parsed = await mapWithConcurrency(candidates, THREADS_STATUS_PARALLELISM, async (row) => ({
+    id: String(row.id || ""),
+    status: await threadListStatus(row).catch(() => null)
+  }));
+  const statusByThread = new Map();
+  for (const row of parsed) if (row.id && row.status) statusByThread.set(row.id, row.status);
+  return { active: buildActiveSnapshot(rows, statusByThread), statusByThread };
 }
 
 async function buildThreadDiagnostics() {
@@ -3588,6 +3666,283 @@ async function findThread(id) {
     updatedAtMs: rolloutUpdatedAtMs,
     cwd: rows[0].cwd || "",
     title: displayThreadTitle(rows[0], sessionIndexTitles)
+  };
+}
+
+// ---------------------------------------------------------------------------
+// 正文搜索（2.4.0 的 `GET /api/search`）
+//
+// 标题/项目命中走一条轻量 SQL（不碰状态解析），正文命中走 server/search-index.cjs
+// 的副库。两条路径都不解析整棵会话，所以 2000 会话量级的检索是常数级扫描量。
+// ---------------------------------------------------------------------------
+const SEARCH_DEFAULT_LIMIT = 30;
+const SEARCH_MAX_LIMIT = 100;
+const SEARCH_THREADS_MAX = 2000;
+const SEARCH_THREADS_TTL_MS = 15_000;
+const SEARCH_INDEX_REFRESH_MS = 30_000;
+const SEARCH_INDEX_WAIT_MS = 25_000;
+const SEARCH_CONTENT_SCAN_ROWS = 800;
+
+let searchThreadsCache = { key: "", at: 0, rows: [] };
+let searchIndexState = { dbPath: "", ready: false, builtAt: 0, threads: 0, chars: 0 };
+let searchIndexBuild = null;
+
+function searchIndexDbPath(home) {
+  return path.join(path.resolve(home || ""), ".codex-lan-companion", "search", "index.sqlite");
+}
+
+async function readThreadsForSearch() {
+  const home = (await refreshCodexHomeContext({ source: "search" })).home;
+  const { stateDb } = codexPaths(home);
+  const key = `${home}|${existsSync(stateDb) ? "db" : "index"}`;
+  const now = Date.now();
+  if (searchThreadsCache.key === key && now - searchThreadsCache.at < SEARCH_THREADS_TTL_MS) {
+    return searchThreadsCache.rows;
+  }
+  let rows = [];
+  if (existsSync(stateDb)) {
+    const sessionIndexTitles = await readSessionIndexTitleMap();
+    try {
+      rows = await runSqlJsonFromDb(
+        stateDb,
+        `SELECT threads.id, threads.title, threads.rollout_path AS rolloutPath,
+                threads.updated_at_ms AS updatedAtMs, threads.archived, threads.cwd,
+                threads.project_id AS projectId, projects.name AS projectName
+         FROM threads
+         LEFT JOIN projects ON projects.id = threads.project_id
+         ORDER BY threads.updated_at_ms DESC
+         LIMIT ${SEARCH_THREADS_MAX};`
+      );
+    } catch (error) {
+      logError(`[search] thread query failed: ${error?.message || error}`);
+      rows = [];
+    }
+    rows = rows.map((row) => ({ ...row, title: displayThreadTitle(row, sessionIndexTitles) }));
+  }
+  const filtered = await filterRowsForCurrentAccount(rows, (row) => row.id, []);
+  const visible = visibleThreadRows(filtered.rows, []).filter((row) => !isArchivedThread(row));
+  const [projectRootsByPath, globalProjects] = await Promise.all([readProjectRoots(), readGlobalProjectState()]);
+  const resolved = visible.map((row) => {
+    const meta = threadListMetadata(row, projectRootsByPath, globalProjects);
+    return {
+      id: String(row.id || ""),
+      title: String(row.title || ""),
+      project: String(meta?.project?.name || ""),
+      rolloutPath: row.rolloutPath || "",
+      updatedAtMs: Number(row.updatedAtMs) || 0
+    };
+  }).filter((row) => row.id);
+  searchThreadsCache = { key, at: now, rows: resolved };
+  return resolved;
+}
+
+/** 一条会话的正文进索引；rollout 的 size/mtime 没变就跳过。 */
+async function indexOneThreadForSearch(index, row) {
+  const resolved = safeResolveRolloutFile(row?.rolloutPath, row?.id);
+  if (!resolved?.path) return false;
+  let stat = null;
+  try {
+    stat = await fs.stat(resolved.path);
+  } catch {
+    return false;
+  }
+  const title = String(row.title || "");
+  const project = String(row.project || "");
+  const existing = index.docFor(row.id);
+  if (
+    existing &&
+    Number(existing.size) === stat.size &&
+    Number(existing.mtime_ms) === stat.mtimeMs &&
+    String(existing.title) === title &&
+    String(existing.project) === project
+  ) {
+    return false;
+  }
+  const parsed = await parseRollout(resolved.path, { limit: 400, preferTail: true });
+  const { chunks, capped } = searchIndexLib.chunksForMessages(parsed?.messages);
+  index.putThread({
+    threadId: row.id,
+    title,
+    project,
+    updatedAtMs: row.updatedAtMs,
+    size: stat.size,
+    mtimeMs: stat.mtimeMs,
+    chunks,
+    capped
+  });
+  return true;
+}
+
+async function refreshSearchIndex({ force = false } = {}) {
+  if (searchIndexBuild) return searchIndexBuild;
+  if (!force && searchIndexState.ready && Date.now() - searchIndexState.builtAt < SEARCH_INDEX_REFRESH_MS) {
+    return searchIndexState;
+  }
+  const run = (async () => {
+    const module = await loadNodeSqliteModule();
+    if (!module?.DatabaseSync) return searchIndexState;
+    const home = (await refreshCodexHomeContext({ source: "search-index" })).home;
+    const dbPath = searchIndexDbPath(home);
+    await fs.mkdir(path.dirname(dbPath), { recursive: true });
+    const index = searchIndexLib.openSearchIndex(module.DatabaseSync, dbPath);
+    try {
+      const rows = await readThreadsForSearch();
+      let written = 0;
+      for (const row of rows) {
+        try {
+          if (await indexOneThreadForSearch(index, row)) written += 1;
+        } catch (error) {
+          // 一条坏 rollout 不能拖垮整轮索引：跳过它，其余照建。
+          logError(`[search] index ${row.id} failed: ${error?.message || error}`);
+        }
+        if (written && written % 25 === 0) await sleep(0);
+      }
+      const known = new Set(rows.map((row) => row.id));
+      if (rows.length) {
+        for (const id of index.allDocIds()) {
+          if (!known.has(id)) index.removeThread(id);
+        }
+      }
+      const stats = index.stats();
+      searchIndexState = { dbPath, ready: true, builtAt: Date.now(), threads: stats.threads, chars: stats.chars };
+      return searchIndexState;
+    } finally {
+      index.close();
+    }
+  })();
+  searchIndexBuild = run;
+  try {
+    return await run;
+  } finally {
+    if (searchIndexBuild === run) searchIndexBuild = null;
+  }
+}
+
+function kickSearchIndexRefresh() {
+  refreshSearchIndex().catch((error) => logError(`[search] index refresh failed: ${error?.message || error}`));
+}
+
+/** 请求路径用：第一次搜索等索引建完（有上限），之后只在后台增量刷新。 */
+async function ensureSearchIndexReady() {
+  if (searchIndexState.ready) {
+    kickSearchIndexRefresh();
+    return searchIndexState;
+  }
+  const build = refreshSearchIndex().catch((error) => {
+    logError(`[search] index build failed: ${error?.message || error}`);
+    return null;
+  });
+  await Promise.race([build, sleep(SEARCH_INDEX_WAIT_MS)]);
+  return searchIndexState;
+}
+
+function normalizeSearchLimit(raw) {
+  const value = Number(raw);
+  if (!Number.isFinite(value) || value <= 0) return SEARCH_DEFAULT_LIMIT;
+  return Math.min(SEARCH_MAX_LIMIT, Math.floor(value));
+}
+
+/**
+ * 一条请求的完整检索：标题 → 项目 → 正文，三组按优先级拼接，组内按时间倒序。
+ * 返回的 `total` 是**命中数**而不是返回数，客户端要显示「还有多少」时用它。
+ */
+async function runSearch({ query, limit = SEARCH_DEFAULT_LIMIT, allowContent = true } = {}) {
+  const startedAt = Date.now();
+  const threads = await readThreadsForSearch();
+  const folded = searchIndexLib.foldAscii(query);
+  const titleHits = [];
+  const projectHits = [];
+  for (const row of threads) {
+    if (!row.title) continue;
+    if (searchIndexLib.foldAscii(row.title).includes(folded)) titleHits.push(row);
+    else if (row.project && searchIndexLib.foldAscii(row.project).includes(folded)) projectHits.push(row);
+  }
+  const byId = new Map(threads.map((row) => [row.id, row]));
+  const contentHits = [];
+  let indexInfo = { threads: searchIndexState.threads, chars: searchIndexState.chars, ready: searchIndexState.ready };
+  if (allowContent) {
+    const home = (await refreshCodexHomeContext({ source: "search" })).home;
+    const dbPath = searchIndexDbPath(home);
+    if (existsSync(dbPath)) {
+      const module = await loadNodeSqliteModule();
+      if (module?.DatabaseSync) {
+        let index = null;
+        try {
+          index = searchIndexLib.openSearchIndex(module.DatabaseSync, dbPath);
+          const rows = index.searchContent(query, SEARCH_CONTENT_SCAN_ROWS);
+          const seen = new Set();
+          const ranked = rows
+            .map((row) => ({ ...row, atMs: Number(row.at_ms) || 0 }))
+            .sort((left, right) => right.atMs - left.atMs);
+          for (const row of ranked) {
+            const threadId = String(row.thread_id);
+            if (seen.has(threadId)) continue;
+            seen.add(threadId);
+            const doc = byId.get(threadId) || index.docFor(threadId);
+            contentHits.push({
+              threadId,
+              title: String(byId.get(threadId)?.title || doc?.title || ""),
+              project: String(byId.get(threadId)?.project || doc?.project || ""),
+              text: String(row.text || ""),
+              atMs: row.atMs
+            });
+          }
+          const stats = index.stats();
+          indexInfo = { threads: stats.threads, chars: stats.chars, ready: true };
+        } catch (error) {
+          logError(`[search] content query failed: ${error?.message || error}`);
+        } finally {
+          index?.close();
+        }
+      }
+    }
+  }
+  const results = [];
+  const push = (entry) => {
+    if (results.length >= limit) return;
+    results.push(entry);
+  };
+  for (const row of titleHits) {
+    push({
+      kind: "thread",
+      threadId: row.id,
+      title: row.title,
+      project: row.project,
+      field: "title",
+      snippet: searchIndexLib.snippetAround(row.title, query) || row.title,
+      at: new Date(row.updatedAtMs || 0).toISOString()
+    });
+  }
+  for (const row of projectHits) {
+    push({
+      kind: "thread",
+      threadId: row.id,
+      title: row.title,
+      project: row.project,
+      field: "project",
+      snippet: `${row.project} · ${row.title}`,
+      at: new Date(row.updatedAtMs || 0).toISOString()
+    });
+  }
+  for (const row of contentHits) {
+    push({
+      kind: "message",
+      threadId: row.threadId,
+      title: row.title,
+      project: row.project,
+      field: "content",
+      snippet: searchIndexLib.snippetAround(row.text, query),
+      at: new Date(row.atMs || 0).toISOString()
+    });
+  }
+  return {
+    ok: true,
+    query,
+    took: Date.now() - startedAt,
+    results,
+    total: titleHits.length + projectHits.length + contentHits.length,
+    limit,
+    index: { ...indexInfo, indexing: Boolean(searchIndexBuild) }
   };
 }
 
@@ -4775,12 +5130,21 @@ function rolloutResultFromState({ filePath, stat, nowMs, state, partial = false 
   const activeTurnLastUpdatedAtMs = state.activeTurn
     ? Math.max(state.activeTurn.startedAtMs || 0, state.lastEntryAtMs || 0, Number.isFinite(stat.mtimeMs) ? stat.mtimeMs : 0)
     : null;
-  const activeTurnStale = Boolean(state.activeTurn && nowMs - activeTurnLastUpdatedAtMs > ACTIVE_TURN_STALE_MS);
-  const visibleActiveTurn = activeTurnStale ? null : state.activeTurn;
+  const turnAcceptsInteraction = (message) =>
+    Boolean(state.activeTurn && (!message.turnId || message.turnId === state.activeTurn.turnId));
+  // 等授权的回合是「安静」而不是「结束」：真实等待时文件本来就不再写入，
+  // 先算 pending 再判 stale，否则 10 分钟后 interactionRequired 会跟着 thinking 一起变假，
+  // 一个正等人点「批准」的会话会在手机上显示 ended（桌面侧的点还亮着）。
+  const pendingInteractions = state.interactionMessages.filter(turnAcceptsInteraction);
   for (const message of state.interactionMessages) {
-    message.requiresDesktopAction = Boolean(visibleActiveTurn && (!message.turnId || message.turnId === visibleActiveTurn.turnId));
+    message.requiresDesktopAction = turnAcceptsInteraction(message);
   }
-  const pendingInteractions = state.interactionMessages.filter((message) => message.requiresDesktopAction);
+  const activeTurnStale = Boolean(
+    state.activeTurn &&
+      pendingInteractions.length === 0 &&
+      nowMs - activeTurnLastUpdatedAtMs > ACTIVE_TURN_STALE_MS
+  );
+  const visibleActiveTurn = activeTurnStale ? null : state.activeTurn;
   const activeTurnWaitMs = visibleActiveTurn?.startedAtMs ? nowMs - visibleActiveTurn.startedAtMs : 0;
   return {
     meta: state.meta,
@@ -4801,6 +5165,93 @@ function rolloutResultFromState({ filePath, stat, nowMs, state, partial = false 
     },
     messages: dedupeInteractionMessages([...chatMessages, ...pendingInteractions, ...state.noticeMessages, ...state.toolMessages]).sort(messageSortCompare)
   };
+}
+
+/**
+ * 从文件尾按块往回扫，取**最近一条 turn 生命周期事件**（task_started / task_complete / turn_aborted）。
+ *
+ * 为什么不能只信尾部窗口：`readRolloutTailLines` 固定读最后 max(512 KiB, limit*24 KiB)，
+ * 一个跑了很久、输出很多的回合，`task_started` 会被后续输出挤出窗口；窗口里只剩上一轮的
+ * `task_complete`，openTurns 为空 → thinking=false → 手机显示「已结束」，桌面却还在转。
+ * 实测 10.6 MB 的真实 rollout：`task_started` 距文件尾 784 KiB，尾部窗口 512 KiB。
+ *
+ * 返回 { open, turnId, startedAtMs, atMs }；整份文件没有任何生命周期事件（很老的格式）
+ * 返回 null —— 调用方保持原判定，不凭空造状态。
+ */
+async function scanTurnBoundary(filePath, stat) {
+  let handle;
+  try {
+    handle = await fs.open(filePath, "r");
+  } catch {
+    return null;
+  }
+  try {
+    let end = stat.size;
+    let carry = "";
+    while (end > 0) {
+      const start = Math.max(0, end - TURN_SCAN_CHUNK_BYTES);
+      const length = end - start;
+      const buffer = Buffer.alloc(length);
+      const { bytesRead } = await handle.read(buffer, 0, length, start);
+      let text = buffer.subarray(0, bytesRead).toString("utf8") + carry;
+      let head = "";
+      if (start > 0) {
+        const firstNewline = text.indexOf("\n");
+        if (firstNewline < 0) {
+          // 整块都是半行：把这块拼到下一块前面继续找。
+          carry = text;
+          end = start;
+          continue;
+        }
+        head = text.slice(0, firstNewline);
+        text = text.slice(firstNewline + 1);
+      }
+      const lines = text.split(/\r?\n/);
+      for (let index = lines.length - 1; index >= 0; index -= 1) {
+        const line = lines[index];
+        if (!line || !line.includes("event_msg")) continue;
+        if (!line.includes("task_started") && !line.includes("task_complete") && !line.includes("turn_aborted")) continue;
+        let entry;
+        try {
+          entry = JSON.parse(line);
+        } catch {
+          continue;
+        }
+        if (entry?.type !== "event_msg") continue;
+        const payload = entry.payload || {};
+        if (payload.type === "task_started") {
+          const startedAtMs = Number(payload.started_at) ? Number(payload.started_at) * 1000 : Date.parse(entry.timestamp);
+          return {
+            open: true,
+            turnId: payload.turn_id || null,
+            startedAtMs: Number.isFinite(startedAtMs) ? startedAtMs : null,
+            atMs: Date.parse(entry.timestamp) || 0
+          };
+        }
+        if (isTurnEndEvent(payload)) {
+          return { open: false, turnId: payload.turn_id || null, atMs: Date.parse(entry.timestamp) || 0 };
+        }
+      }
+      carry = head;
+      end = start;
+    }
+    return null;
+  } finally {
+    await handle.close();
+  }
+}
+
+/** 回扫结果是判活的唯一权威：窗口里的 openTurns 只是「在窗口内看到过」。 */
+function applyTurnBoundaryToState(state, boundary) {
+  if (!boundary) return;
+  state.openTurns.clear();
+  if (!boundary.open) {
+    state.activeTurn = null;
+    return;
+  }
+  const turn = { turnId: boundary.turnId, startedAtMs: boundary.startedAtMs };
+  state.activeTurn = turn;
+  if (turn.turnId) state.openTurns.set(turn.turnId, turn);
 }
 
 async function readRolloutTailLines(filePath, stat, limit) {
@@ -4825,6 +5276,8 @@ async function parseRolloutTail(filePath, stat, limit, nowMs) {
   const state = createRolloutParseState(stat, nowMs);
   const lines = await readRolloutTailLines(filePath, stat, limit);
   for (const line of lines) parseRolloutLine(line, state);
+  // 窗口内的 openTurns 只覆盖最近 512 KiB；长回合的开始事件在窗口外，必须回扫补上。
+  applyTurnBoundaryToState(state, await scanTurnBoundary(filePath, stat));
   return rolloutResultFromState({ filePath, stat, nowMs, state, partial: true });
 }
 
@@ -4906,9 +5359,10 @@ async function getMessages(id, { limit = DEFAULT_MESSAGE_LIMIT, fullHistory = fa
       interactionRequired: ipcInteractions.some((message) => message.requiresDesktopAction),
       possibleDesktopAttention: false
     };
-    const status = statusOverride
+    const mergedStatus = statusOverride
       ? { ...baseStatus, ...statusFieldsFromOverride(statusOverride, overrideLacksCorroboration(statusOverride, null)) }
       : baseStatus;
+    const status = { ...mergedStatus, state: deriveThreadState(mergedStatus) };
     const limited = limitMessagesForClient(messages, status, limit, before);
     return await finalizeMessagesResponse(id, {
       thread,
@@ -4937,15 +5391,18 @@ async function getMessages(id, { limit = DEFAULT_MESSAGE_LIMIT, fullHistory = fa
   const parsedStatus = statusOverride
     ? { ...parsed.status, ...statusFieldsFromOverride(statusOverride, overrideLacksCorroboration(statusOverride, parsed.status)) }
     : parsed.status;
+  // 详情头部与列表共用同一套三态：列表说整备中、详情说已结束是同一份 rollout 的两张嘴。
+  const parsedStatusWithState = { ...parsedStatus, state: deriveThreadState(parsedStatus) };
   if (!liveMessages.length) {
     const messages = await decorateMessageFiles(parsed.messages, id, thread);
-    const limited = limitMessagesForClient(messages, parsedStatus, limit, before);
-    return await finalizeMessagesResponse(id, { thread, goal, ...parsed, status: parsedStatus, ...limited });
+    const limited = limitMessagesForClient(messages, parsedStatusWithState, limit, before);
+    return await finalizeMessagesResponse(id, { thread, goal, ...parsed, status: parsedStatusWithState, ...limited });
   }
-  const status = {
-    ...parsedStatus,
-    interactionRequired: parsedStatus?.interactionRequired || ipcInteractions.some((message) => message.requiresDesktopAction)
+  const mergedLiveStatus = {
+    ...parsedStatusWithState,
+    interactionRequired: parsedStatusWithState?.interactionRequired || ipcInteractions.some((message) => message.requiresDesktopAction)
   };
+  const status = { ...mergedLiveStatus, state: deriveThreadState(mergedLiveStatus) };
   const messages = await decorateMessageFiles(dedupeInteractionMessages([...parsed.messages, ...liveMessages]).sort(messageSortCompare), id, thread);
   const limited = limitMessagesForClient(messages, status, limit, before);
   return await finalizeMessagesResponse(id, {
@@ -8654,6 +9111,49 @@ async function handleHttpBackendApi(req, res, url, profile = null) {
       return true;
     }
 
+    if (req.method === "GET" && pathname === "/api/search") {
+      // http 后端（PI-Desktop 桥）没有本机 rollout，正文索引建不起来。
+      // 这里只按标题/项目命中，并在响应里明说 content:false，不假装搜过正文。
+      const startedAt = Date.now();
+      const query = searchIndexLib.normalizeQuery(searchParams.get("q"));
+      if (!query) {
+        sendJson(res, 400, { ok: false, error: "query-required", query: "", took: 0, results: [] });
+        return true;
+      }
+      const limit = normalizeSearchLimit(searchParams.get("limit"));
+      const folded = searchIndexLib.foldAscii(query);
+      const results = [];
+      for (const thread of await backend.listThreads()) {
+        const title = String(thread?.title || "");
+        const project = String(thread?.project?.name || "");
+        const field = searchIndexLib.foldAscii(title).includes(folded)
+          ? "title"
+          : project && searchIndexLib.foldAscii(project).includes(folded) ? "project" : "";
+        if (!field) continue;
+        results.push({
+          kind: "thread",
+          threadId: String(thread.id || ""),
+          title,
+          project,
+          field,
+          snippet: field === "title" ? title : `${project} · ${title}`,
+          at: new Date(Number(thread?.updatedAtMs || Date.parse(thread?.updatedAt || "") || 0)).toISOString()
+        });
+        if (results.length >= limit) break;
+      }
+      sendJson(res, 200, {
+        ok: true,
+        query,
+        took: Date.now() - startedAt,
+        results,
+        total: results.length,
+        limit,
+        content: false,
+        index: { ready: false, threads: 0, chars: 0, indexing: false }
+      }, { "cache-control": "no-store" });
+      return true;
+    }
+
     if (req.method === "GET" && pathname === "/api/threads") {
       let threads = await backend.listThreads();
       const selectedId = String(searchParams.get("selectedId") || "").trim();
@@ -8669,8 +9169,13 @@ async function handleHttpBackendApi(req, res, url, profile = null) {
       });
       const limit = normalizeThreadsLimit(searchParams.get("limit"));
       const page = threadsPage(threads, { limit, cursor: searchParams.get("cursor") });
+      // 远端 harness 自己带回 status；这里只做聚合，不再解析本机 rollout。
+      const statusByThread = new Map(
+        threads.map((thread) => [String(thread?.id || ""), thread?.status]).filter(([id, status]) => id && status)
+      );
       const body = {
         threads: page.threads,
+        active: buildActiveSnapshot(threads, statusByThread),
         ...(limit ? { total: page.total, nextCursor: page.nextCursor } : {}),
         backend: { kind: "http", url: backend.baseUrl, profile: profile?.id || null }
       };
@@ -9580,6 +10085,18 @@ const server = http.createServer(async (req, res) => {
       sendJson(res, 200, await getSkills());
       return;
     }
+    if (req.method === "GET" && url.pathname === "/api/search") {
+      if (!requireAuthorized(req, res, url)) return;
+      const query = searchIndexLib.normalizeQuery(url.searchParams.get("q"));
+      if (!query) {
+        sendJson(res, 400, { ok: false, error: "query-required", query: "", took: 0, results: [] });
+        return;
+      }
+      const limit = normalizeSearchLimit(url.searchParams.get("limit"));
+      await ensureSearchIndexReady();
+      sendJson(res, 200, await runSearch({ query, limit }), { "cache-control": "no-store" });
+      return;
+    }
     if (req.method === "GET" && url.pathname === "/api/threads") {
       if (!requireAuthorized(req, res, url)) return;
       const homeState = await refreshCodexHomeContext({ source: "threads" });
@@ -9589,8 +10106,16 @@ const server = http.createServer(async (req, res) => {
         limit,
         cursor: url.searchParams.get("cursor")
       });
+      // active 与分页无关；顺带用它刚解析出的状态覆盖本页行，避免「条上说 waiting、
+      // 行上还说 running」这种同一次响应内的自相矛盾。
+      const { active, statusByThread } = await resolveActiveSnapshot(allThreads);
+      const pageThreads = page.threads.map((row) => {
+        const fresh = statusByThread.get(String(row.id || ""));
+        return fresh ? { ...row, status: fresh } : row;
+      });
       const body = {
-        threads: await threadsWithPreview(page.threads),
+        threads: await threadsWithPreview(pageThreads),
+        active,
         ...(limit ? { total: page.total, nextCursor: page.nextCursor } : {}),
         codexHome: homeState.home,
         codexHomeVersion: homeState.version

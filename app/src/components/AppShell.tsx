@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 import { App } from 'konsta/react';
 import { motion, AnimatePresence } from 'motion/react';
 import GlassTabBar from './GlassTabBar';
@@ -12,7 +12,7 @@ import { COLORS } from '../theme/optionATokens';
 import { haptic, registerBackHandler } from '../lib/nativeBridge';
 import { backFromSheet } from '../state/sheetStore';
 import { useSessionState, currentRequestContext, retryPersistedSession } from '../state/sessionStore';
-import { revalidateForForeground } from '../state/dataStore';
+import { revalidateForForeground, refreshThreads } from '../state/dataStore';
 
 /** App chrome. This subtree is mounted only after verified machine pairing. */
 export default function AppShell() {
@@ -28,6 +28,17 @@ export default function AppShell() {
   }, [session.scope, session.generation]);
 
   useEffect(() => { haptic('selection'); }, [activeTab]);
+
+  // 2.4.0: the list's bottom "refresh" button is gone; entering the list (from
+  // another tab or back from a detail) is the refresh gesture instead. The first
+  // mount is already covered by revalidateForForeground above.
+  const listVisited = useRef(false);
+  useEffect(() => {
+    if (activeTab !== 'threads' || inDetail) return;
+    if (!listVisited.current) { listVisited.current = true; return; }
+    const context = currentRequestContext();
+    if (context) void refreshThreads(context);
+  }, [activeTab, inDetail, session.scope, session.generation]);
 
   useEffect(() => {
     const handler = (): boolean => {

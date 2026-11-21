@@ -16,6 +16,7 @@ import { useEffect, useMemo, useState, type CSSProperties } from 'react';
 import { ChevronDown, ChevronRight, MoreHorizontal, Plus, RefreshCw, WifiOff } from 'lucide-react';
 import type { Harness } from '../lib/machinePairing';
 import { platformsOf, serviceLabel } from '../lib/platforms';
+import KindAvatar from '../components/KindAvatar';
 import {
   useSessionState, switchMachine, switchHarness, retryPersistedSession,
   forgetMachine, sessionStore, type MachineSummary,
@@ -147,7 +148,6 @@ export default function DevicesScreen() {
             <RefreshCw size={20} className={session.status === 'reconnecting' ? 'tl-spin' : undefined} />
           </button>
         </div>
-        <p className="tl-device-lede">{machines.length} 台已配对</p>
         {/* 顶部错误条放在固定区：两台以上就要滚动，错误若留在滚动流里，
             用户停在列表任意位置时就看不见（NB3 09:17 口径）。 */}
         {(switchError || error) && (
@@ -190,7 +190,14 @@ export default function DevicesScreen() {
                       <span className="tl-devcard-sub">
                         {active
                           ? `${machine.host} · ${session.online ? '在线' : '离线'} · ${syncLabel(data.lastSyncAt)}`
-                          : `${machine.harnessCount} 个平台 · ${lastUsedLabel(machine.lastUsedAt)}`}
+                          : <span className="tl-devcard-platforms">
+                              {machine.platforms.slice(0, 3).map((platform) => (
+                                <KindAvatar key={platform.key} kind={platform.key} label={platform.label} size={20} />
+                              ))}
+                              {machine.platforms.length > 3 && <span className="tl-devcard-moreplat">+{machine.platforms.length - 3}</span>}
+                              {machine.platforms.length === 0 && <span>未发现平台</span>}
+                              <span className="tl-devcard-lastused">· {lastUsedLabel(machine.lastUsedAt)}</span>
+                            </span>}
                       </span>
                     </span>
                     {busy === machine.id
@@ -234,7 +241,7 @@ export default function DevicesScreen() {
                                   aria-expanded={open}
                                   onClick={() => { haptic('selection'); setOpenPlatform(platform.key); }}
                                 >
-                                  <span className="tl-platmark" aria-hidden="true">{platform.mark}</span>
+                                  <KindAvatar kind={platform.key} label={platform.label} size={24} className="tl-platavatar" />
                                   <span className="tl-plat-main">
                                     <span className="tl-plat-kind">{platform.label}</span>
                                     <span className="tl-plat-meta">

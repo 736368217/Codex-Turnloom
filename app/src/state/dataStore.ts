@@ -29,9 +29,48 @@ import {
 } from './runtimeStore';
 import { mergeMessagePages } from '../lib/messagePaging';
 
+export interface ActiveThread {
+  id: string;
+  title: string;
+  project: string;
+  reason: string;
+}
+
+/**
+ * Global "what is running / what waits for you" snapshot from `/api/threads`.
+ * It is pagination-independent; `truncated` means the host's candidate window
+ * was cut, so the numbers are a lower bound and the UI must say so.
+ */
+export interface ActiveSnapshot {
+  running: ActiveThread[];
+  waiting: ActiveThread[];
+  truncated: boolean;
+}
+
+function normalizeActiveThreads(raw: unknown): ActiveSnapshot | null {
+  if (!raw || typeof raw !== 'object') return null;
+  const row = raw as Record<string, unknown>;
+  if (!Array.isArray(row.running) && !Array.isArray(row.waiting)) return null;
+  const list = (value: unknown): ActiveThread[] => (Array.isArray(value) ? value : []).flatMap((item) => {
+    if (!item || typeof item !== 'object') return [];
+    const entry = item as Record<string, unknown>;
+    const id = typeof entry.id === 'string' ? entry.id.trim() : '';
+    if (!id) return [];
+    return [{
+      id,
+      title: typeof entry.title === 'string' && entry.title.trim() ? entry.title.trim() : id,
+      project: typeof entry.project === 'string' ? entry.project.trim() : '',
+      reason: typeof entry.reason === 'string' ? entry.reason : '',
+    }];
+  });
+  return { running: list(row.running), waiting: list(row.waiting), truncated: row.truncated === true };
+}
+
 export interface DataState {
   scope: string;
   threads: ThreadSummary[];
+  /** Server truth for the running/waiting counts; null on old hosts. */
+  active: ActiveSnapshot | null;
   messagesByThread: Record<string, ThreadMessage[]>;
   changesByThread: Record<string, ChangeEntry[]>;
   /** Authoritative per-thread runtime status, separate from message arrays. */
@@ -54,7 +93,7 @@ export interface DataState {
 }
 
 const EMPTY: DataState = {
-  scope: '', threads: [], messagesByThread: {}, changesByThread: {}, statusByThread: {}, messageState: {}, messagePages: {},
+  scope: '', threads: [], active: null, messagesByThread: {}, changesByThread: {}, statusByThread: {}, messageState: {}, messagePages: {},
   loading: false, loadingMore: false, nextCursor: null, threadTotal: null, threadPages: 0,
   offline: false, error: '', lastSendError: '', lastSyncAt: null, cachedAt: null, runningCount: 0, errorCount: 0,
 };
@@ -154,7 +193,7 @@ function ensureScope(context: RequestContext): void {
 
 let threadRequestVersion = 0;
 
-function applyThreads(context: RequestContext, threads: ThreadSummary[], page?: { nextCursor?: string | null; total?: number }, append = false): void {
+function applyThreads(context: RequestContext, threads: ThreadSummary[], page?: { nextCursor?: string | null; total?: number; active?: unknown }, append = false): void {
   if (!current(context)) return;
   const prev = dataStore.getState();
   const incoming = Array.isArray(threads) ? threads.filter((row) => row && typeof row.id === 'string') : [];
@@ -164,8 +203,13 @@ function applyThreads(context: RequestContext, threads: ThreadSummary[], page?: 
   const rows = append ? [...prev.threads, ...incoming] : keepHistory ? [...incoming, ...prev.threads] : incoming;
   const list = rows.filter(row => !ids.has(row.id) && Boolean(ids.add(row.id)));
   persistThreads(context.scope, list);
+  // A new host sends `active` on every page. An old host never does: fall back
+  // to null so the strip keeps its page-filtered projection (honest, if partial).
+  const nextActive = page && page.active !== undefined
+    ? normalizeActiveThreads(page.active)
+    : append ? prev.active : null;
   dataStore.setState({
-    scope: context.scope, threads: list, statusByThread: statusMap(list, context.scope), loading: false, loadingMore: false, offline: false, error: '',
+    scope: context.scope, threads: list, active: nextActive, statusByThread: statusMap(list, context.scope), loading: false, loadingMore: false, offline: false, error: '',
     ...(page ? {
       nextCursor: keepHistory ? prev.nextCursor : page.nextCursor || null,
       threadTotal: typeof page.total === 'number' ? page.total : null,

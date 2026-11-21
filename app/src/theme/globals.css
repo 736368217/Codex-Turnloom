@@ -57,7 +57,35 @@
   --tl-card-shadow: 0 1px 3px rgba(0, 0, 0, .04);
   --tl-tap: 44px;
   --tl-press-duration: 150ms;
+  /* 2.4.0 text roles. Only these three scale with the user's 字号 setting;
+     icons, hit areas and chrome never do. */
+  --tl-fs-body: 15px;
+  --tl-lh-body: 22px;
+  --tl-fs-list-title: 16px;
+  --tl-lh-list-title: 21px;
+  --tl-fs-settings: 15px;
+  --tl-lh-settings: 20px;
+  /* One role: the source mark (CX / PI), never a second brand palette. */
+  --tl-source-avatar: #3A3A3C;
   color-scheme: light only;
+}
+
+html[data-text-size="s"] {
+  --tl-fs-body: 14px;
+  --tl-lh-body: 21px;
+  --tl-fs-list-title: 15px;
+  --tl-lh-list-title: 20px;
+  --tl-fs-settings: 14px;
+  --tl-lh-settings: 19px;
+}
+
+html[data-text-size="l"] {
+  --tl-fs-body: 17px;
+  --tl-lh-body: 25px;
+  --tl-fs-list-title: 17px;
+  --tl-lh-list-title: 22px;
+  --tl-fs-settings: 16px;
+  --tl-lh-settings: 21px;
 }
 
 *, *::before, *::after {
@@ -599,9 +627,10 @@ button:focus-visible, a:focus-visible { outline: 2px solid var(--tl-blue); outli
   padding: 9px 12px;
   border-radius: 16px;
   /* 15/22 instead of 14/21: at 390px the 14px body reads a size smaller than
-     every reference app (iMessage/ChatGPT use 16-17). */
-  font-size: 15px;
-  line-height: 22px;
+     every reference app (iMessage/ChatGPT use 16-17). 2.4.0: the user's text
+     size setting scales this role only (never hit areas or chrome). */
+  font-size: var(--tl-fs-body);
+  line-height: var(--tl-lh-body);
   letter-spacing: normal;
   text-align: left;
   white-space: pre-wrap;
@@ -1660,7 +1689,7 @@ button:focus-visible, a:focus-visible { outline: 2px solid var(--tl-blue); outli
 .tl-thread-main { flex: 1; min-width: 0; }
 .tl-thread-top { display: flex; align-items: baseline; gap: 8px; }
 .tl-thread-title {
-  flex: 1; min-width: 0; font-size: 16px; line-height: 21px; font-weight: 600;
+  flex: 1; min-width: 0; font-size: var(--tl-fs-list-title); line-height: var(--tl-lh-list-title); font-weight: 600;
   color: var(--tl-label-primary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
 .tl-thread-time {
@@ -1710,7 +1739,7 @@ button:focus-visible, a:focus-visible { outline: 2px solid var(--tl-blue); outli
   position: relative; display: flex; align-items: center; gap: 12px;
   width: 100%; min-height: 48px; padding: 9px 14px;
   border: 0; background: var(--tl-surface); color: var(--tl-label-primary);
-  font-size: 15px; line-height: 20px; text-align: left;
+  font-size: var(--tl-fs-settings); line-height: var(--tl-lh-settings); text-align: left;
 }
 /* Only the main cards get the automatic inset line; InsetGroup content keeps
    its explicit separator (a plus b siblings otherwise draw two lines). */
@@ -1732,7 +1761,7 @@ button:focus-visible, a:focus-visible { outline: 2px solid var(--tl-blue); outli
 }
 .tl-settings-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
 .tl-settings-title {
-  min-width: 0; font-size: 15px; line-height: 20px; color: var(--tl-label-primary);
+  min-width: 0; font-size: var(--tl-fs-settings); line-height: var(--tl-lh-settings); color: var(--tl-label-primary);
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
 .tl-settings-sub {
@@ -1971,18 +2000,26 @@ button:focus-visible, a:focus-visible { outline: 2px solid var(--tl-blue); outli
 .tl-runstrip { margin: 0 16px 8px; padding-top: 5px; }
 .tl-runstrip-head {
   position: relative; margin-bottom: 5px;
-  display: flex; align-items: center; gap: 8px; width: 100%; min-height: 34px;
-  padding: 0 10px; border: 0; border-radius: 11px;
+  display: flex; align-items: center; gap: 6px; width: 100%; min-height: 34px;
+}
+/* 2.4.0: two independent groups. Each pill is its own 44px target (::before
+   extends 5px up/down); the old single-button ::before is gone. */
+.tl-runstrip-pill {
+  position: relative; display: inline-flex; align-items: center; gap: 6px;
+  min-height: 34px; padding: 0 10px; border: 0; border-radius: 11px;
   background: linear-gradient(180deg, #F0F7FF, #EAF3FF);
   color: #0A4FA8; font-size: 12.5px; line-height: 17px; font-weight: 600; text-align: left;
 }
-/* 34 + 5 + 5 = 44, exactly the strip box (padding-top 5 + head 34 + margin 5). */
-.tl-runstrip-head::before { content: ''; position: absolute; inset: -5px 0; }
+.tl-runstrip-pill::before { content: ''; position: absolute; inset: -5px 0; }
+.tl-runstrip-pill[data-kind="waiting"] { background: linear-gradient(180deg, #FFF8ED, #FFF3E2); color: var(--tl-warning-label); }
 .tl-runstrip-dot { flex: 0 0 7px; width: 7px; height: 7px; border-radius: 50%; background: var(--tl-blue); box-shadow: 0 0 0 3px rgba(0, 122, 255, .14); }
-.tl-runstrip-label { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.tl-runstrip-go { flex: 0 0 auto; display: inline-flex; align-items: center; gap: 4px; color: var(--tl-blue); font-size: 11px; font-weight: 700; }
+.tl-runstrip-clock {
+  flex: 0 0 8px; width: 8px; height: 8px; border-radius: 50%;
+  border: 1.5px solid currentColor; box-sizing: border-box;
+}
+.tl-runstrip-label { flex: 0 0 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .tl-runstrip-caret { display: block; transition: transform 220ms cubic-bezier(.32, .72, 0, 1); }
-.tl-runstrip-head[aria-expanded="true"] .tl-runstrip-caret { transform: rotate(180deg); }
+.tl-runstrip-pill[aria-expanded="true"] .tl-runstrip-caret { transform: rotate(180deg); }
 .tl-runlist { display: grid; grid-template-rows: 0fr; transition: grid-template-rows 260ms cubic-bezier(.32, .72, 0, 1); }
 .tl-runlist[data-open="true"] { grid-template-rows: 1fr; }
 .tl-runlist-inner { min-height: 0; overflow: hidden; }
@@ -1996,6 +2033,15 @@ button:focus-visible, a:focus-visible { outline: 2px solid var(--tl-blue); outli
   background: #FFE4E2; color: #B4231B; font-size: 12px; font-weight: 600;
 }
 .tl-runrow-error { margin: 0 0 6px; font-size: 11px; line-height: 16px; color: #B4231B; overflow-wrap: anywhere; }
+.tl-runrow-go {
+  flex: 0 0 auto; display: inline-flex; align-items: center; justify-content: center; gap: 2px;
+  min-width: 64px; min-height: 44px; padding: 0 8px; border: 0; border-radius: 11px;
+  background: transparent; color: var(--tl-blue); font-size: 12px; font-weight: 600;
+}
+.tl-runrow-note {
+  margin: 0 0 6px; padding: 6px 0; font-size: 11px; line-height: 16px;
+  color: var(--tl-label-secondary); text-align: left;
+}
 @media (prefers-reduced-motion: reduce) { .tl-runlist { transition: none; } }
 
 /* ============================================================
@@ -2340,4 +2386,84 @@ button:focus-visible, a:focus-visible { outline: 2px solid var(--tl-blue); outli
   font-size: 12px;
   line-height: 17px;
   color: var(--tl-warning-label);
+}
+
+/* ============================================================
+   2.4.0 — source marks, chat avatars/dates, search, settings choices
+   ============================================================ */
+
+/* One monochrome source mark. Letters come from lib/platforms (CX / PI). */
+.tl-kindavatar {
+  display: inline-grid; place-items: center;
+  box-sizing: border-box; flex: 0 0 auto;
+  background: var(--tl-source-avatar); color: #FFFFFF;
+  font-weight: 700; line-height: 1; letter-spacing: .02em;
+  user-select: none;
+}
+
+/* Device card platform group (non-active machines too). */
+.tl-devcard-platforms { display: inline-flex; align-items: center; gap: 4px; vertical-align: middle; }
+.tl-devcard-platforms .tl-kindavatar { width: 20px; height: 20px; border-radius: 6px; font-size: 9px; }
+.tl-devcard-moreplat { font-size: 10px; font-weight: 700; color: var(--tl-label-secondary); }
+.tl-devcard-lastused { margin-left: 2px; }
+.tl-platavatar { flex: 0 0 24px; }
+
+/* Chat: assistant rows get a 24px source square; user rows never do. */
+.tl-chat-row--assistant { align-items: flex-start; }
+.tl-chat-avatar { margin-top: 1px; }
+.tl-chat-date {
+  align-self: center; margin: 10px 0 6px; padding: 2px 10px;
+  border-radius: 999px; background: rgba(60, 60, 67, .06);
+  color: var(--tl-label-secondary); font-size: 11px; line-height: 16px; text-align: center;
+}
+.tl-jump-latest { flex: 0 0 auto; display: flex; justify-content: center; padding: 4px 0; background: var(--tl-canvas); }
+.tl-jump-latest button {
+  display: inline-flex; align-items: center; gap: 5px; min-height: 44px; padding: 0 14px;
+  border: 0; border-radius: 999px; background: var(--tl-surface); color: var(--tl-blue);
+  font-size: 12px; font-weight: 600; box-shadow: 0 1px 3px rgba(0, 0, 0, .10);
+}
+
+/* Search results (cover the list area; fixed header stays put). */
+.tl-search-panel { flex: 1 1 auto; min-height: 0; overflow-y: auto; background: var(--tl-surface); padding-bottom: 12px; }
+.tl-search-status { padding: 12px 16px; font-size: 12px; line-height: 17px; color: var(--tl-label-secondary); }
+.tl-search-status--error { color: var(--tl-red); }
+.tl-search-group { padding-top: 6px; }
+.tl-search-head {
+  display: flex; align-items: center; gap: 6px; padding: 6px 16px;
+  font-size: 12px; line-height: 16px; font-weight: 600; letter-spacing: .04em;
+  color: var(--tl-label-secondary);
+}
+.tl-search-head span { font-weight: 600; color: var(--tl-label-secondary); }
+.tl-search-row {
+  position: relative; display: flex; align-items: flex-start; gap: 10px; width: 100%;
+  min-height: 56px; padding: 10px 16px; border: 0; background: var(--tl-surface);
+  color: var(--tl-label-primary); text-align: left;
+}
+.tl-search-row + .tl-search-row::before {
+  content: ''; position: absolute; top: 0; left: 16px; right: 0; height: .5px; background: var(--tl-separator);
+}
+.tl-search-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.tl-search-title { font-size: var(--tl-fs-list-title); line-height: var(--tl-lh-list-title); font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tl-search-meta { font-size: 11px; line-height: 15px; color: var(--tl-label-secondary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tl-search-snippet { font-size: 12px; line-height: 18px; color: var(--tl-label-secondary); overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow-wrap: anywhere; }
+.tl-search-snippet mark, .tl-search-title mark { background: rgba(255, 204, 0, .38); color: inherit; border-radius: 2px; padding: 0 1px; }
+.tl-search-at { flex: 0 0 auto; padding-top: 2px; font-size: 11px; line-height: 15px; color: var(--tl-label-secondary); font-variant-numeric: tabular-nums; }
+.tl-search-empty { padding: 36px 28px; text-align: center; }
+.tl-search-empty-title { font-size: 15px; line-height: 21px; font-weight: 600; color: var(--tl-label-primary); }
+.tl-search-empty-copy { margin-top: 4px; font-size: 12px; line-height: 18px; color: var(--tl-label-secondary); }
+
+/* Settings: inline choices keep 44px targets; label stays a label. */
+.tl-choice-row { gap: 10px; }
+.tl-choice-label { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tl-choice { flex: 0 0 auto; display: inline-flex; align-items: center; gap: 2px; padding: 2px; border-radius: 10px; background: var(--tl-fill-secondary); }
+.tl-choice-option {
+  min-height: 44px; padding: 0 10px; border: 0; border-radius: 9px; background: transparent;
+  color: var(--tl-label-secondary); font-size: 13px; line-height: 18px; font-weight: 500;
+}
+.tl-choice-option[aria-pressed="true"] { background: var(--tl-surface); color: var(--tl-label-primary); font-weight: 600; box-shadow: 0 1px 2px rgba(0, 0, 0, .08); }
+.tl-settings-hint { color: var(--tl-label-secondary); font-size: 12px; }
+.tl-settings-address { overflow-wrap: anywhere; }
+.tl-diag-copy {
+  flex: 0 0 auto; min-height: 44px; padding: 0 6px; border: 0; background: transparent;
+  color: var(--tl-blue); font-size: 12px; font-weight: 600;
 }

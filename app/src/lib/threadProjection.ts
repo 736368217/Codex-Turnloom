@@ -25,10 +25,10 @@ export function projectThread(thread: ThreadWithStatus, statusByThread: StatusMa
   const raw = String(typeof thread.status === 'object'
     ? (thread.status as { state?: unknown } | null)?.state || ''
     : thread.status || '').toLowerCase();
-  const tone: TaskTone = status.thinking
-    ? 'running'
-    : status.state === 'waiting'
-      ? 'waiting'
+  const tone: TaskTone = status.state === 'waiting'
+    ? 'waiting'
+    : status.thinking
+      ? 'running'
       : !authoritative && /error|fail|denied|reject/.test(raw)
         ? 'error'
         : 'done';

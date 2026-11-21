@@ -305,7 +305,9 @@ export function normalizeThreadStatus(raw: unknown, previous?: ThreadRuntimeStat
   const interactionRequired = status.interactionRequired === true;
   const authoritativeThinking = thinking && !staleTurn;
   return {
-    state: authoritativeThinking ? 'running' : interactionRequired ? 'waiting' : 'ended',
+    // A turn waiting for approval is still an open turn (`thinking: true`),
+    // but its projected state is `waiting`, not `running` (2.4.0 A-contract).
+    state: interactionRequired ? 'waiting' : authoritativeThinking ? 'running' : 'ended',
     thinking: authoritativeThinking,
     interactionRequired,
     staleTurn,
@@ -315,9 +317,9 @@ export function normalizeThreadStatus(raw: unknown, previous?: ThreadRuntimeStat
   };
 }
 
-/** The primary button is STOP only for a real, non-stale running turn. */
+/** The primary button is STOP while a real, non-stale turn is open (waiting included). */
 export function isRunning(status: ThreadRuntimeStatus | null | undefined): boolean {
-  return Boolean(status && status.state === 'running' && status.thinking && !status.staleTurn);
+  return Boolean(status && status.thinking && !status.staleTurn);
 }
 
 function cleanEfforts(value: unknown): string[] {

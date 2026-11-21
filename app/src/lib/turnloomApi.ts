@@ -40,6 +40,7 @@ export const API_ENDPOINTS = {
   queueReorder: '/api/queue/reorder',
   queueResume: '/api/queue/resume',
   diagnostics: '/api/diagnostics',
+  search: '/api/search',
 } as const;
 
 export const ACCESS_TOKEN_HEADER = 'x-access-token';
@@ -443,9 +444,39 @@ export function verifyHarness(target: ConnectionTarget, scope: string): Promise<
 
 export const getHealth = (context: RequestContext): Promise<ApiResult<HealthEnvelope>> => get(context, API_ENDPOINTS.health);
 export const postAuthSession = (context: RequestContext, body: { code?: string; token?: string; [key: string]: unknown }): Promise<ApiResult<{ ok?: boolean; token?: string }>> => post(context, API_ENDPOINTS.authSession, body);
-export const getThreads = (context: RequestContext, params?: { limit?: number; cursor?: string; selectedId?: string }): Promise<ApiResult<{ threads?: ThreadSummary[]; total?: number; nextCursor?: string | null }>> => get(context, API_ENDPOINTS.threads, params);
+export const getThreads = (context: RequestContext, params?: { limit?: number; cursor?: string; selectedId?: string }): Promise<ApiResult<{ threads?: ThreadSummary[]; total?: number; nextCursor?: string | null; active?: unknown; [key: string]: unknown }>> => get(context, API_ENDPOINTS.threads, params);
 export const getThreadMessages = (context: RequestContext, threadId: string, params?: { limit?: number; before?: string }): Promise<ApiResult<MessagesEnvelope>> => get(context, endpointWithId(API_ENDPOINTS.threadMessages, threadId), params);
 export const getThreadChanges = (context: RequestContext, threadId: string): Promise<ApiResult<{ changes?: ChangeEntry[]; files?: ChangeEntry[]; cursor?: string; changed?: boolean; [key: string]: unknown }>> => get(context, endpointWithId(API_ENDPOINTS.threadChanges, threadId), { timeout: 250 }, 12_000);
+
+/** 2.4.0 full-text search: title, project and message content in one call. */
+export interface SearchEnvelope {
+  ok?: boolean;
+  query?: string;
+  took?: number;
+  results?: unknown[];
+  [key: string]: unknown;
+}
+
+/** `/api/threads` global active window (2.4.0): independent of pagination. */
+export interface ActiveThreadRow {
+  id: string;
+  title?: string;
+  project?: string;
+  startedAtMs?: number | null;
+  updatedAtMs?: number | null;
+  reason?: string;
+}
+export interface ActiveThreadsEnvelope {
+  running?: unknown[];
+  waiting?: unknown[];
+  truncated?: boolean;
+  [key: string]: unknown;
+}
+export const searchThreads = (
+  context: RequestContext,
+  query: string,
+  limit = 30,
+): Promise<ApiResult<SearchEnvelope>> => get(context, API_ENDPOINTS.search, { q: query, limit }, 12_000);
 
 /** Real new-thread / send responses: strictly require an id returned by the host. */
 export function extractThreadId(data: unknown): string | null {

@@ -157,7 +157,12 @@ export function secureRemove(key: string): boolean {
   return memoryFallback.delete(key);
 }
 
+/** Global haptics switch (2.4.0 setting). Every call site goes through haptic(). */
+let hapticsEnabled = true;
+export function setHapticsEnabled(enabled: boolean): void { hapticsEnabled = enabled; }
+
 export function haptic(kind: HapticKind): void {
+  if (!hapticsEnabled) return;
   const n = bridge();
   if (!n || typeof n.haptic !== 'function') return;
   try { n.haptic(kind); } catch { /* cosmetic only */ }

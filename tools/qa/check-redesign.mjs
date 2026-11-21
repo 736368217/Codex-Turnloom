@@ -819,18 +819,17 @@ async function main() {
         check(/\b1\b/.test(runningEntry), "运行中入口的计数 = 夹具里运行中的条数", runningEntry);
         const monitorTab = await browser.eval(`Boolean(document.querySelector('button[aria-label="监控"]'))`);
         check(!monitorTab, "监控 Tab 已撤（只在运行中入口已落地时才要求）");
-        // 2.2.7：这条头是 34px 的紧凑条，命中带要补到 44，且只能向上长。
-        // 一格四条件（NB agent 09:50 口径）：带 44±0.2、下沿贴头盒下沿、
-        // ⊂ `.tl-runstrip` 的盒子、与 `.tl-runrow-*` 交集 0。
-        // 两侧都用同一把 0.1px 尺子：先临时关掉 ::before 量头和条自己的盒子，
-        // 再恢复量命中带——拿 rect 当基准会把 0.95px 的扫描偏差算成「越界」。
+        // 2.4.0：头部拆成两个独立胶囊（运行中 / 待你处理），命中带从「头盒」
+        // 下放到每个胶囊：34px 胶囊 + 上下各 5px = 44，且带不出条盒、不压上方的
+        // 分段控件与下方的运行行。两把尺子都在同一页同一位置扫，避免 rect 与
+        // elementFromPoint 的 0.9px 偏差被算成越界。
         const strip = await browser.eval(`(() => {
           const head = document.querySelector('.tl-runstrip-head');
-          if (!head) return { found: false };
+          const pill = document.querySelector('.tl-runstrip-pill[data-kind="running"]') || document.querySelector('.tl-runstrip-pill');
+          if (!head || !pill) return { found: false };
           const wrap = head.closest('.tl-runstrip') || head.parentElement;
-          const hb = head.getBoundingClientRect();
-          const wb = wrap.getBoundingClientRect();
-          const cx = hb.left + hb.width / 2;
+          const pb = pill.getBoundingClientRect();
+          const cx = pb.left + pb.width / 2;
           const scan = (from, to, match) => {
             let top = null, bottom = null;
             for (let y = from; y <= to; y += 0.1) {
@@ -840,49 +839,47 @@ async function main() {
             return { top, bottom };
           };
           const kill = document.createElement('style');
-          kill.textContent = '.tl-runstrip-head::before{content:none!important}';
+          kill.textContent = '.tl-runstrip-pill::before{content:none!important}';
           document.head.appendChild(kill);
-          const own = scan(hb.top - 20, hb.bottom + 20, (el) => el === head || head.contains(el));
-          const wrapOwn = scan(wb.top - 20, wb.bottom + 20, (el) => el === wrap || wrap.contains(el));
+          const own = scan(pb.top - 20, pb.bottom + 20, (el) => el === pill || pill.contains(el));
           kill.remove();
-          const band = scan(hb.top - 20, hb.bottom + 20, (el) => el === head || head.contains(el));
+          const band = scan(pb.top - 20, pb.bottom + 20, (el) => el === pill || pill.contains(el));
+          const wrapOwn = scan(pb.top - 20, pb.bottom + 20, (el) => el === wrap || wrap.contains(el));
           const rows = [...document.querySelectorAll('.tl-runrow-open, .tl-runrow-stop')].map((el) => el.getBoundingClientRect());
           const overlaps = rows.filter((r) => r.bottom > band.top + 0.2 && r.top < band.bottom - 0.2).length;
-          // 2.2.8: the strip owns a 44px slot, so the band is that slot — not an
-          // upward growth from the head. Two cells decide whether it steals:
-          // the segmented control above and the first running row below.
           const track = document.querySelector('.tl-segmented');
           const tb = track ? track.getBoundingClientRect() : null;
-          return { found: true, band, own, wrap: wrapOwn, rows: rows.length, rowOverlaps: overlaps,
-            trackBottom: tb ? Math.round(tb.bottom * 10) / 10 : null,
-            headBox: { top: Math.round(hb.top * 10) / 10, bottom: Math.round(hb.bottom * 10) / 10, h: Math.round(hb.height * 10) / 10 },
-            wrapBox: { top: Math.round(wb.top * 10) / 10, bottom: Math.round(wb.bottom * 10) / 10, h: Math.round(wb.height * 10) / 10 } };
+          const round = (value) => Math.round(value * 10) / 10;
+          return { found: true, band, own, wrapOwn, rows: rows.length, rowOverlaps: overlaps,
+            trackBottom: tb ? round(tb.bottom) : null,
+            pillBox: { top: round(pb.top), bottom: round(pb.bottom), h: round(pb.height) } };
         })()`);
         check(strip.found, "运行条头部在页面上（命中带可量）");
         if (strip.found) {
-          const bandH = strip.band.top === null ? 0 : Math.round((strip.band.bottom - strip.band.top + 0.1) * 10) / 10;
-          const slotHeight = strip.wrapBox.h;
-          const bandOk = Math.abs(slotHeight - 44) <= 0.5;
-          // band == the strip's own box (the slot), within the ruler's 0.2px
-          const slotOk = strip.band.top !== null && strip.wrap.top !== null
-            && Math.abs(strip.band.top - strip.wrap.top) <= 0.2 && Math.abs(strip.band.bottom - strip.wrap.bottom) <= 0.2;
+          const height = (box) => (box.top === null ? 0 : Math.round((box.bottom - box.top + 0.1) * 10) / 10);
+          const bandH = height(strip.band);
+          const ownH = height(strip.own);
+          const bandOk = Math.abs(bandH - 44) <= 0.5;
+          const pillOk = Math.abs(ownH - 34) <= 0.5;
+          const insideOk = strip.band.top !== null && strip.wrapOwn.top !== null
+            && strip.band.top >= strip.wrapOwn.top - 0.2 && strip.band.bottom <= strip.wrapOwn.bottom + 0.2;
           const rowsOk = strip.rowOverlaps === 0;
           const noStealAbove = strip.trackBottom === null || strip.band.top === null || strip.band.top >= strip.trackBottom - 0.2;
-          check(bandOk && slotOk && rowsOk && noStealAbove, "运行条命中带 44±0.2 · = 自身 44 槽 · 不压分段控件 · 不压运行行",
-            `带=${bandH} (${strip.band.top}–${strip.band.bottom}) · 槽=${strip.wrap.top}–${strip.wrap.bottom} (${strip.wrapBox.h}) · 头盒=${strip.headBox.top}–${strip.headBox.bottom} · 分段底=${strip.trackBottom} · 行重叠=${strip.rowOverlaps}/${strip.rows}`);
+          check(bandOk && pillOk && insideOk && rowsOk && noStealAbove, "运行条命中带 44±0.2 · 胶囊自身 34 · 带不出条盒 · 不压分段控件 · 不压运行行",
+            `带=${bandH} (${strip.band.top}–${strip.band.bottom}) · 胶囊=${ownH} (${strip.pillBox.top}–${strip.pillBox.bottom}) · 条盒=${strip.wrapOwn.top}–${strip.wrapOwn.bottom} · 分段底=${strip.trackBottom} · 行重叠=${strip.rowOverlaps}/${strip.rows}`);
         }
-        // 2.2.7 第 4 项：头部要有 chevron，展开时转 180°——「展开/收起」纯文字
+        // 2.2.7 第 4 项：胶囊要有 chevron，展开时转 180°——「展开/收起」纯文字
         // 是 NB3 7 屏复核里的同类问题。量完点两下复位，不影响后面的停止流程。
         const chevron = await browser.eval(`(async () => {
-          const head = document.querySelector('.tl-runstrip-head');
-          if (!head) return { found: false };
-          const svg = head.querySelector('svg');
-          if (!svg) { head.click(); await new Promise((r) => setTimeout(r, 400)); return { found: true, chevron: false }; }
+          const pill = document.querySelector('.tl-runstrip-pill[data-kind="running"]') || document.querySelector('.tl-runstrip-pill');
+          if (!pill) return { found: false };
+          const svg = pill.querySelector('svg');
+          if (!svg) { pill.click(); await new Promise((r) => setTimeout(r, 400)); return { found: true, chevron: false }; }
           const collapsed = getComputedStyle(svg).transform;
-          head.click();
+          pill.click();
           await new Promise((r) => setTimeout(r, 400));
-          const open = { transform: getComputedStyle(svg).transform, expanded: head.getAttribute('aria-expanded') };
-          head.click();
+          const open = { transform: getComputedStyle(svg).transform, expanded: pill.getAttribute('aria-expanded') };
+          pill.click();
           await new Promise((r) => setTimeout(r, 400));
           return { found: true, chevron: true, collapsed, open };
         })()`);

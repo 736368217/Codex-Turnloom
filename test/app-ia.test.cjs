@@ -101,14 +101,17 @@ test('IA4: the list owns "+" and is full-bleed, with no dashboard chrome', () =>
 
 test('IA5: machine + diagnostics live in Settings, version appears once', () => {
   const settings = read('screens/SettingsScreen.tsx');
+  const sheet = read('components/CupertinoSheetHost.tsx');
   assert.match(settings, /className="tl-settings-group"/);
-  assert.match(settings, /<div className="tl-settings-label">我的电脑<\/div>/);
-  assert.match(settings, /uploadDiagnostics\(context\)/);
-  assert.match(settings, /上传诊断/);
+  assert.match(settings, /<div className="tl-settings-label">当前电脑<\/div>/);
+  // 2.4.0: the diagnostics action moved into the one diagnostics sheet; the
+  // capability still lives in the settings area, which is what this test owns.
+  assert.match(sheet, /uploadDiagnostics\(context\)/);
+  assert.match(sheet, /上传日志/);
   assert.match(settings, /openSheet\('diagnostics'\)/);
   // Version appears once, in the About card; there is no second subtitle copy.
   assert.doesNotMatch(settings, /APP_IDENTITY/);
-  assert.match(settings, /\{session\.appVersion\} \(\{session\.appVersionCode\}\)/);
+  assert.match(settings, /\{`版本 \$\{session\.appVersion\} \(\$\{session\.appVersionCode\}\)`\}/);
   assert.match(settings, /tl-settings-row--danger/);
 });
 

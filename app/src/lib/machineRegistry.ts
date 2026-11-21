@@ -11,6 +11,7 @@
  */
 
 import { normalizeBaseUrl, type Harness } from './machinePairing.ts';
+import { platformsOf } from './platforms.ts';
 
 export const REGISTRY_VERSION = 3;
 export const MAX_MACHINES = 12;
@@ -39,6 +40,8 @@ export interface MachineSummary {
   host: string;
   active: boolean;
   harnessCount: number;
+  /** Last discovery's platform marks (CX/PI); non-active machines show these too. */
+  platforms: { key: string; label: string; mark: string }[];
   lastUsedAt: number | null;
 }
 
@@ -202,6 +205,9 @@ export function machineSummaries(registry: MachineRegistry | null): MachineSumma
     host: hostOf(machine.serverUrl),
     active: machineKey(machine) === registry.activeMachineId,
     harnessCount: machine.harnesses.length,
+    platforms: platformsOf(machine.harnesses, machine.machineName).map((platform) => ({
+      key: platform.key, label: platform.label, mark: platform.mark,
+    })),
     lastUsedAt: machine.lastUsedAt || null,
   }));
 }

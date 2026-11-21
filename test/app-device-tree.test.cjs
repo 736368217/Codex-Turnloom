@@ -113,7 +113,9 @@ test('D11: the running strip owns a 44px slot around its 34px pill', () => {
   assert.match(css, /\.tl-runstrip \{[^}]*padding-top: 5px/s);
   assert.match(css, /\.tl-runstrip-head \{[^}]*margin-bottom: 5px/s);
   assert.match(css, /\.tl-runstrip-head \{[^}]*min-height: 34px/s);
-  // 5 (strip padding) + 34 (head) + 5 (head margin) = 44; the pseudo fills the
-  // strip box and never reaches the segmented control or the first run row.
-  assert.match(css, /\.tl-runstrip-head::before \{[^}]*inset: -5px 0/s);
+  // 5 (strip padding) + 34 (head) + 5 (head margin) = 44 for the strip slot.
+  // 2.4.0 splits the head into two pills, so each pill owns its own band; it
+  // still stops at the strip box, not at the segmented control or a run row.
+  assert.match(css, /\.tl-runstrip-pill \{[^}]*min-height: 34px/s);
+  assert.match(css, /\.tl-runstrip-pill::before \{[^}]*inset: -5px 0/s);
 });

@@ -25,7 +25,16 @@ test('I1: every icon size is on the 14 / 16 / 20 / 22 ladder', () => {
   const sizes = new Set();
   for (const file of tsxFiles(root)) {
     const source = fs.readFileSync(file, 'utf8');
-    for (const match of source.matchAll(/size=\{(\d+)\}/g)) sizes.add(Number(match[1]));
+    // The ladder is about Lucide glyphs. A component that takes a pixel box
+    // (KindAvatar's 20/24 source mark) is not an icon and must not widen the
+    // ladder, so only tags whose name came from `lucide-react` are counted.
+    const imports = /import\s*\{([^}]*)\}\s*from\s*['"]lucide-react['"]/.exec(source);
+    if (!imports) continue;
+    const names = imports[1].split(',').map((entry) => entry.trim().split(/\s+as\s+/).pop()).filter(Boolean);
+    for (const name of names) {
+      const tag = new RegExp(`<${name}\\b[^>]*\\bsize=\\{(\\d+)\\}`, 'g');
+      for (const match of source.matchAll(tag)) sizes.add(Number(match[1]));
+    }
   }
   assert.deepEqual([...sizes].sort((a, b) => a - b), [14, 16, 20, 22]);
 });
@@ -53,8 +62,8 @@ test('I4: settings rows use Lucide chevrons, not a text glyph', () => {
   const settings = read('screens/SettingsScreen.tsx');
   assert.doesNotMatch(settings, /›/, 'no text arrow may stand in for a Lucide icon');
   assert.match(settings, /<ChevronRight size=\{14\} \/>/);
-  // 版本 is information, not a warning; 切换电脑上的服务 is a service, not a success.
-  assert.match(settings, /<Cpu size=\{16\} \/>/);
+  // 2.4.0: the duplicate "switch service" row is gone; the icon system still
+  // uses Lucide only and this screen must not adopt warning glyphs.
   assert.doesNotMatch(settings, /CircleCheck|AlertTriangle/);
 });
 
@@ -62,6 +71,6 @@ test('I5: the running-strip disclosure has a Lucide chevron that flips with aria
   const strip = read('components/RunningStrip.tsx');
   const css = read('theme/globals.css');
   assert.match(strip, /<ChevronDown size=\{14\} className="tl-runstrip-caret"/);
-  assert.match(css, /\.tl-runstrip-go \{[^}]*display: inline-flex;[^}]*gap: 4px/s);
-  assert.match(css, /\.tl-runstrip-head\[aria-expanded="true"\] \.tl-runstrip-caret \{[^}]*rotate\(180deg\)/s);
+  assert.match(css, /\.tl-runstrip-pill \{[^}]*display: inline-flex;/s);
+  assert.match(css, /\.tl-runstrip-pill\[aria-expanded="true"\] \.tl-runstrip-caret \{[^}]*rotate\(180deg\)/s);
 });
