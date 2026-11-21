@@ -1,9 +1,9 @@
 {
-  "generatedAt": "2026-11-20T13:09:39.470Z",
-  "head": "809bbce4072eae79f065bc50c8235a09ec7b7f9d",
+  "generatedAt": "2026-11-21T06:47:19.866Z",
+  "head": "b7d7d17ffee4b644f411aa887885c9aec125950d",
   "server": "server.js (synthetic --codex-home, active turn, temp queue file)",
-  "serverBytes": 399280,
-  "serverSha256": "b23975d22d5bc37e041ea9ea136ce57abde8eb15d1a628b7c5ad598ee659021a",
+  "serverBytes": 420504,
+  "serverSha256": "ef2ef91df63d90177763c249f79c29222e7f722ac3054479f4b9bd05aab604bb",
   "pass": 30,
   "fail": 0,
   "results": [
@@ -25,17 +25,17 @@
     {
       "id": "enqueue.text.ok",
       "pass": true,
-      "detail": "{\"ok\":true,\"mode\":\"queue\",\"queued\":true,\"threadId\":\"qa-queue-api-thread\",\"queueItem\":{\"id\":\"72a69375-80fc-4b3b-b7ba-ce1554696c8f\",\"position\":1,\"text\":\"A 第一条排队\",\"preview\":\"A 第一条排队\",\"imageCount\":0,\"file"
+      "detail": "{\"ok\":true,\"mode\":\"queue\",\"queued\":true,\"threadId\":\"qa-queue-api-thread\",\"queueItem\":{\"id\":\"bd6ec263-c616-4bf1-8909-6d27a357f8cb\",\"position\":1,\"text\":\"A 第一条排队\",\"preview\":\"A 第一条排队\",\"imageCount\":0,\"file"
     },
     {
       "id": "enqueue.text.item",
       "pass": true,
-      "detail": "{\"id\":\"72a69375-80fc-4b3b-b7ba-ce1554696c8f\",\"position\":1,\"text\":\"A 第一条排队\",\"preview\":\"A 第一条排队\",\"imageCount\":0,\"fileCount\":0,\"images\":[],\"files\":[],\"enqueuedAt\":\"2026-11-20T13:09:34.997Z\",\"lastError\":null,\"deliveryState\":\"queued\",\"model\":\"gpt-5.6-sol\",\"effort\":\"medium\"}"
+      "detail": "{\"id\":\"bd6ec263-c616-4bf1-8909-6d27a357f8cb\",\"position\":1,\"text\":\"A 第一条排队\",\"preview\":\"A 第一条排队\",\"imageCount\":0,\"fileCount\":0,\"images\":[],\"files\":[],\"enqueuedAt\":\"2026-11-21T06:47:15.247Z\",\"lastError\":null,\"deliveryState\":\"queued\",\"model\":\"gpt-5.6-sol\",\"effort\":\"medium\"}"
     },
     {
       "id": "enqueue.attachments.ok",
       "pass": true,
-      "detail": "{\"ok\":true,\"mode\":\"queue\",\"queued\":true,\"threadId\":\"qa-queue-api-thread\",\"queueItem\":{\"id\":\"27110cab-7711-4008-884d-51da13b70b8f\",\"position\":2,\"text\":\"B 带图和文件\",\"preview\":\"B 带图和文件 【图片】\",\"imageCount\":1,"
+      "detail": "{\"ok\":true,\"mode\":\"queue\",\"queued\":true,\"threadId\":\"qa-queue-api-thread\",\"queueItem\":{\"id\":\"c9682134-5e27-48a5-9186-8d0edade85ad\",\"position\":2,\"text\":\"B 带图和文件\",\"preview\":\"B 带图和文件 【图片】\",\"imageCount\":1,"
     },
     {
       "id": "status.positions.continuous",
@@ -50,7 +50,7 @@
     {
       "id": "status.image.meta",
       "pass": true,
-      "detail": "[{\"name\":\"photo.png\",\"mimeType\":\"image/png\",\"url\":\"/api/queue/image?threadId=qa-queue-api-thread&itemId=27110cab-7711-4008-884d-51da13b70b8f&index=0\"}]"
+      "detail": "[{\"name\":\"photo.png\",\"mimeType\":\"image/png\",\"url\":\"/api/queue/image?threadId=qa-queue-api-thread&itemId=c9682134-5e27-48a5-9186-8d0edade85ad&index=0\"}]"
     },
     {
       "id": "status.file.meta",
@@ -60,7 +60,7 @@
     {
       "id": "reorder.up.ok",
       "pass": true,
-      "detail": "{\"ok\":true,\"threadId\":\"qa-queue-api-thread\",\"moved\":true,\"itemId\":\"27110cab-7711-4008-884d-51da13b70b8f\",\"queueLength\":2,\"queuePaused\":false,\"queueSource\":\"loca"
+      "detail": "{\"ok\":true,\"threadId\":\"qa-queue-api-thread\",\"moved\":true,\"itemId\":\"c9682134-5e27-48a5-9186-8d0edade85ad\",\"queueLength\":2,\"queuePaused\":false,\"queueSource\":\"loca"
     },
     {
       "id": "reorder.up.order",
@@ -75,7 +75,7 @@
     {
       "id": "cancel.edit.ok",
       "pass": true,
-      "detail": "{\"ok\":true,\"threadId\":\"qa-queue-api-thread\",\"cancelled\":1,\"cancelledIds\":[\"27110cab-7711-4008-884d-51da13b70b8f\"],\"draft\":{\"text\":\"B 带图和文件\",\"images\":[{\"name\":\"photo.png\",\"mimeType\":\"image/png\",\"data\":"
+      "detail": "{\"ok\":true,\"threadId\":\"qa-queue-api-thread\",\"cancelled\":1,\"cancelledIds\":[\"c9682134-5e27-48a5-9186-8d0edade85ad\"],\"draft\":{\"text\":\"B 带图和文件\",\"images\":[{\"name\":\"photo.png\",\"mimeType\":\"image/png\",\"data\":"
     },
     {
       "id": "cancel.edit.images",
@@ -155,7 +155,7 @@
     {
       "id": "failed.cancel.allowed",
       "pass": true,
-      "detail": "{\"ok\":true,\"threadId\":\"qa-queue-api-thread\",\"cancelled\":1,\"cancelledIds\":[\"qa-item-z5xmwj\"],\"queueLength\":1,\"queuePaused\":false,\"queueSource\":\"local\",\"queueCapa"
+      "detail": "{\"ok\":true,\"threadId\":\"qa-queue-api-thread\",\"cancelled\":1,\"cancelledIds\":[\"qa-item-14hrfk\"],\"queueLength\":1,\"queuePaused\":false,\"queueSource\":\"local\",\"queueCapa"
     }
   ]
 }
