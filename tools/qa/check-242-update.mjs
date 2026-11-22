@@ -240,6 +240,22 @@ async function until(fn, timeoutMs = 12_000, step = 150) {
 }
 
 const evalJs = (expression) => browser.eval(expression);
+
+/** Evidence capture must not fail the layout gate: one retry, then report it. */
+async function shoot(name) {
+  const file = path.join(SHOTS, name);
+  for (let attempt = 1; attempt <= 2; attempt += 1) {
+    try {
+      await browser.screenshot(file);
+      return file;
+    } catch (error) {
+      log(`WARN screenshot ${name} attempt ${attempt}: ${error.message}`);
+      await sleep(600);
+    }
+  }
+  check(false, `shot-${name}`, `截图失败（两次尝试）：${name}`);
+  return "";
+}
 const drawerInfo = () => evalJs(`(() => {
   const drawers = Array.from(document.querySelectorAll('[data-vaul-drawer]'));
   const el = drawers[0] || null;
@@ -309,7 +325,7 @@ try {
 
   // Let Vaul finish its slide-in before the screenshot and the geometry read.
   await sleep(800);
-  await browser.screenshot(path.join(SHOTS, `cold-available-${WIDTH}.png`));
+  await shoot(`cold-available-${WIDTH}.png`);
 
   const geo = await evalJs(`(() => {
     const el = document.querySelector('[data-vaul-drawer]');
@@ -336,7 +352,7 @@ try {
 
   const progress = await until(async () => Boolean(await evalJs(`Boolean(document.querySelector('[data-qa="update-progress"]'))`)), 3000);
   check(progress, "download-progress", "进度条出现在同一弹层里");
-  await browser.screenshot(path.join(SHOTS, `downloading-${WIDTH}.png`));
+  await shoot(`downloading-${WIDTH}.png`);
 
   const installed = await until(async () => Number(await evalJs("window.__qaInstalls")) === 1, 6000);
   check(installed, "installer-once", "ready 后自动打开系统安装器", `installUpdate calls=${await evalJs("window.__qaInstalls")}`);
@@ -387,7 +403,7 @@ try {
   const settings2 = await openSettings();
   const row2 = settings2 ? await versionRowText() : "";
   check(/已是最新 · \d{2}:\d{2}/.test(row2), "row-current", "版本行 = 已是最新 · HH:mm", row2);
-  await browser.screenshot(path.join(SHOTS, `settings-current-${WIDTH}.png`));
+  await shoot(`settings-current-${WIDTH}.png`);
 
   // ------------------------------------------------------------------ case 4
   await openApp(seedScript({ manifest: CURRENT, manifestStatus: 500, failServerUpdate: true }));
