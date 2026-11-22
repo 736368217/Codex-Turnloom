@@ -1,4 +1,4 @@
-# 发布漂移哨兵：公网更新清单（latest.json）与 GitHub Release 必须指向同一份包。
+﻿# 发布漂移哨兵：公网更新清单（latest.json）与 GitHub Release 必须指向同一份包。
 # 跑完没有任何输出 = 两边一致；每个事件一行 JSON，id 稳定，Host 按 id 去重。
 # 自包含脚本（Host 用管道执行，没有 $PSScriptRoot）。
 $ErrorActionPreference = 'Stop'
