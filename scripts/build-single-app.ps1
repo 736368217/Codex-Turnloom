@@ -47,6 +47,12 @@ param(
     [string]$Adb               = '',
     [string]$Keystore          = '',
     [string]$KeyAlias          = 'androiddebugkey',
+    # The release identity. A debug build is signed by AGP with whatever
+    # ~/.android/debug.keystore happens to exist (2026-11-21: the real one was
+    # deleted and AGP silently generated a new key), so BOTH paths verify the
+    # certificate below and fail closed. Override only for a throwaway build.
+    [string]$ExpectedCertSha256 = '2feb63c511cd725795cadc8fa890f9cbc754fe59c0bbfe0787ac33f94f44fa9c',
+    [switch]$SkipCertCheck,
     [string]$OutDir            = '',
     [string]$StagedApkPath     = '',
     [string]$ReleaseNotes      = '',
@@ -453,6 +459,16 @@ try {
     Say '7/8 verify signature -> badging identity -> sha256'
     Invoke-Tool -Tool $ApkSigner -ToolArgs @('verify', '--verbose', '--print-certs', $finalApk) -WorkDir $shellDir -Label 'apksigner-verify'
     Step 'apksigner-verify' 'ok' 'v2/v3'
+    if (-not $SkipCertCheck) {
+        $verifyText = Get-Content -LiteralPath (Join-Path $script:CaptureDir 'apksigner-verify.stdout.log') -Raw
+        $certMatch = [regex]::Match($verifyText, 'certificate SHA-256 digest:\s*([0-9a-fA-F:]+)')
+        if (-not $certMatch.Success) { Fail 'apksigner did not report a certificate digest' }
+        $certHex = ($certMatch.Groups[1].Value -replace ':', '').ToLowerInvariant()
+        if ($certHex -ne $ExpectedCertSha256.ToLowerInvariant()) {
+            Fail "APK certificate $certHex is not the release key $($ExpectedCertSha256.ToLowerInvariant()); that APK cannot overwrite an installed one"
+        }
+        Step 'certificate' 'ok' $certHex.Substring(0, 8)
+    }
     $identity = Assert-Badging -Apk $finalApk
     if ($identity.applicationId -ne $configuredPackage -or $identity.versionName -ne $versionName -or [string]$identity.versionCode -ne [string]$versionCode) {
         Fail "Badging identity disagrees with native build config: $($identity.applicationId)/$($identity.versionName)/$($identity.versionCode)"

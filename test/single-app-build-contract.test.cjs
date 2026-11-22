@@ -80,6 +80,20 @@ test("signing passwords come from environment and are never printed", () => {
   assert.doesNotMatch(source, /Write-Host[^\n]*\$storePass|Write-Host[^\n]*\$keyPass/i);
 });
 
+test("both build paths fail when the APK is not signed with the release key", () => {
+  const source = fs.readFileSync(BUILD, "utf8");
+  // 2026-11-21: ~/.android/debug.keystore was deleted; AGP silently generated a
+  // new key and the debug path copied that APK as the deliverable. The release
+  // path signed explicitly, the debug path trusted AGP.
+  assert.match(source, /\[string\]\$ExpectedCertSha256\s*=\s*'2feb63c5/);
+  assert.match(source, /certificate SHA-256 digest/);
+  assert.match(source, /is not the release key/);
+  assert.match(source, /SkipCertCheck/);
+  const verifyIndex = source.indexOf("apksigner-verify");
+  const certIndex = source.indexOf("is not the release key");
+  assert.ok(verifyIndex > 0 && certIndex > verifyIndex, "the certificate check must run after apksigner verify");
+});
+
 test("release sidecar is adjacent, post-verification, and checked against staged bytes", () => {
   const source = fs.readFileSync(BUILD, "utf8");
   assert.match(source, /apksigner-verify/);
