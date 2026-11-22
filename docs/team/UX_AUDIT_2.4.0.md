@@ -395,9 +395,17 @@ app 测试 51/51、`check-redesign --require` 118/0。
 
 进 2.4.1 的清单（本轮发现，均不挡 2.4.0）：
 
-1. **日期分隔条被空消息吞掉**：`ChatDetailScreen.tsx:472-479` 在
-   `if (!text && !images.length) return null` 之前就写了 `lastDayKey`。某天第一条是空消息时，
-   这一天的分隔条不会出现。修法：先判 `hasApproval || text || images.length`，可渲染再消费日期。
+1. ~~**日期分隔条被空消息吞掉**~~ **2026-11-22 已在 2.4.0 修掉（`e043b69`），移出 2.4.1 清单；
+   本条原写的根因偏浅，见下。** `ChatDetailScreen.tsx:472` 读的是 `message.createdAt ?? message.updatedAt`，
+   而 `/api/threads/:id/messages` 的行**只有 `timestamp`**（`server.js:4821` `messageFromEvent`、
+   `:4846` `messageFromResponseItem`、`:4466` `messageFromInteractionEvent` 全用 ISO `timestamp`），
+   所以分隔条不是「某天第一条是空消息时被吞」，是**一条都没渲染过**；空消息消费当天 key 只是第二层。
+   现由 `chatContract.ts` 的 `messageTimestamp()` 取值（`createdAt → updatedAt → timestamp`，
+   空串与非有限数跳过），`showDay` 追加 `(hasBody || isApproval)`——只有会渲染的行才消费当天 key；
+   `ThreadMessage` 补 `timestamp?: string | number` 声明，`[key: string]: unknown` 不再掩盖字段名。
+   判据：`node --test test/app-chat-contract.test.cjs` → 16/16（含新增用例，旧代码上必红）。
+   （@Atlas 2026-11-22 复核：`npm run app:typecheck` 干净、上列用例 16/16；提交内
+   `index-6HSyn9q4.js` 与「同一提交源码重建」的产物去掉 CRLF 后逐字节相同，`index.html` 已指向它。）
 2. **危险区图标语义**：`SettingsScreen.tsx` 的「忘记这台电脑」用了 `Trash2`（= 删数据），
    实际只解除配对；换 `LogOut` 或 `X`。
 3. **日志：删掉手动的「上传日志」**。自动上传已经存在（`dataStore.ts:419` 在每次确认
