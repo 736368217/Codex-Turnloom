@@ -29,6 +29,13 @@ import { fileURLToPath } from "node:url";
 import { CDP } from "./cdp.mjs";
 
 const REPO = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
+// The seeded install must look like the build under test. It used to be a
+// frozen 2.2.6/95 literal; once 2.4.2 added the boot update check, a 2.2.6 seed
+// against the public 2.4.1 manifest legitimately opened the update sheet and
+// covered the list. Read the same three literals the app ships instead.
+const APP_VERSION = JSON.parse(fs.readFileSync(path.join(REPO, "app/package.json"), "utf8")).version;
+const GRADLE_KTS = fs.readFileSync(path.join(REPO, "native-shell/app/build.gradle.kts"), "utf8");
+const APP_VERSION_CODE = Number((GRADLE_KTS.match(/versionCode\s*=\s*(\d+)/) || [])[1] || 0);
 const argv = process.argv.slice(2);
 const argOf = (flag, fallback) => {
   const i = argv.indexOf(flag);
@@ -216,7 +223,7 @@ const seed = `(() => {
         .catch((e) => done({ status: 0, body: '', error: String((e && e.message) || e) }));
     },
     cancelRequest: () => {},
-    getAppInfo: () => JSON.stringify({ label: 'Turnloom', version: '2.2.6', versionCode: 95, packageName: 'com.codex.turnloom.app', cameraAvailable: true, updatesAvailable: false }),
+    getAppInfo: () => JSON.stringify({ label: 'Turnloom', version: '${APP_VERSION}', versionCode: ${APP_VERSION_CODE}, packageName: 'com.codex.turnloom.app', cameraAvailable: true, updatesAvailable: false }),
   };
   try { localStorage.setItem(PREFIX + 'turnloom.machine.v2', ${JSON.stringify(JSON.stringify(REGISTRY))}); } catch (e) {}
 })();`;
