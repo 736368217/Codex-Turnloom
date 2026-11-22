@@ -2,16 +2,17 @@
 
 > 判据先立、实现后签。每条只有「证据」栏填满才算过；没证据的写「未验」，不写「应该可以」。
 > 条目范围见 Task #20；本文件只记录**怎么算过**，不重复范围说明。
+> 签发基线：`1c5e125`（2.4.1 / versionCode 100）；`npm test` 674 / 672 pass / 0 fail / 2 skipped，`app:typecheck` 退出 0。
 
 | # | 条目 | 判据（缺一条不签） | 证据 | 状态 |
 |---|---|---|---|---|
-| 1 | 诊断里删掉手动「上传日志」 | 删的是入口不是链路：`dataStore.ts:419` 的自动上传仍在、测试仍断言它被调用；诊断 sheet 只剩运行信息 / 清缓存 / 重新同步；`SettingsScreen`、`CupertinoSheetHost` 不留死代码与失效断言 | — | 待 |
-| 2 | `logs/phone` 按天总量上限 | 上限写死在代码里可读回；超限先删最旧的天、**永不删当天**、删了记一行日志；合成文件跑一遍：未超限不删、超限后老文件消失、当天与昨天仍在 | — | 待 |
-| 3 | `Trash2 → LogOut` | 图标换掉只是表面；**确认文案必须说清「只解除配对，不删电脑上的会话」**，否则用户仍以为删数据 | — | 待 |
-| 4 | 等审批时的输入区提示 | `waiting`（= `status.interactionRequired`，与头部「待你处理」同源）**优先于** `running`；只在有输入时出现；`notice` 仍最高优先；文案 12 字、320 不折行；`role="status" aria-live="polite"` 不动；`app-queue-contract` 五条断言全绿 | — | 待 |
-| 5 | `ThreadMessage` 收窄 | 先声明真实字段再删 `[key: string]: unknown`；`as` 只出现在边界归一化；反向用例（`test/fixtures/message-typo.ts` + 独立 `tsc --noEmit`）**退出非 0**；日期分隔 `app-chat-contract` 仍 16/16 | — | 待 |
-| 6 | 漂移哨兵搬 CI | 同一个 `release-drift.ps1`，`workflow_dispatch` + 定时各一次；**能证明它会失败**（指向旧的 `latest.json` 必须红）；除 `GITHUB_TOKEN` 外不需要别的密钥 | — | 待 |
-| 7 | 三页无回归（发版前） | 会话 / 对话 / 设备 390 与 320 各一遍：无横向溢出、44px 命中区、无 JS 异常；设计门禁 `check-redesign --require` 的 `RESULT: PASS`（页检查计数按 `^PASS ` 数，夹具自证 `PASS(应失败)` 单列） | — | 待 |
+| 1 | 诊断里删掉手动「上传日志」 | 删的是入口不是链路：自动上传覆盖**所有**真实发送路径（`sendMessage` / `createThread` / `sendQueuedMessage`）；诊断 sheet 只剩运行信息 / 清缓存 / 重新同步；不留死代码与失效断言 | `bb8157a`；`app-ia.test.cjs:111-117`（无「上传日志」、`readUploadOutcome()`、「最近上传」、「自动 · 每次发送成功后」、upload 调用数 3）；`app-ia` + `app-queue` **29/29** | **已签** |
+| 2 | `logs/phone` 按天总量上限 | 上限写死可读回；超限先删最旧的天、永不删最新那份、删了记一行日志；合成文件跑一遍 | `303da02` + `1c5e125`；`request-log.cjs:338-389`（16 MiB / 50 文件、最旧整份删、`phone log retention: …` 一行、`prune:false` 可关）；`phone-log-retention` **7/7** | **已签** |
+| 3 | `Trash2 → LogOut` | 图标换掉只是表面；**确认文案必须说清「只解除配对，不删电脑上的会话」** | `bb8157a`；`SettingsScreen.tsx:393-395` 用 `LogOut`；`CupertinoSheetHost.tsx:28`「移除配对及这台电脑的本机会话缓存。电脑上的会话不会被删除。」 | **已签** |
+| 4 | 等审批时的输入区提示 | `waiting`（`status.interactionRequired`，与头部「待你处理」同源）**优先于** `running`；只在有输入时出现；`notice` 最高优先；12 字 | `bb8157a`；`queueLogic.ts:288-301`；`app-queue-contract:236-248` 五条断言 + `:250-251` 屏幕接线；**29/29** | **已签**（320 折行随第 7 条） |
+| 5 | `ThreadMessage` 收窄 | 声明真实字段后再删 index signature；`as` 只在边界；反向用例（字段名写错）**必须编译失败**；日期分隔用例仍绿 | `2eebbea`；`turnloomApi.ts:125-154` 24 字段、ThreadMessage 无 index signature；`normalizeThreadMessages` 在 `:475` / `:490-491` 边界调用；`message-type-guard` **1/1**；`app:typecheck` 0 | **已签** |
+| 6 | 漂移哨兵搬 CI | 定时 + `release: published`；**能证明它会失败**；除 `GITHUB_TOKEN` 外不需要别的密钥 | `277232a`；workflow 与测试钉住「token 只去 api.github.com」「BOM 必须在」 | **待**（未在 GitHub 实跑，首次触发后确认） |
+| 7 | 三页无回归（发版前） | 会话 / 对话 / 设备 390 与 320 各一遍：无横向溢出、44px 命中区、无 JS 异常；`check-redesign --require` 的 `RESULT: PASS` | 代码侧已绿：`1c5e125` 上 `npm test` 674/672/0/2、`app:typecheck` 0 | **待**（Rhea 的 2.4.1/100 包 + 三页走查） |
 
 ## 已定口径（避免实现时二次讨论）
 
