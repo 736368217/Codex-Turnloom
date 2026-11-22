@@ -1,9 +1,27 @@
 /**
- * Source identity mark (2.4.0): one 20-24px rounded square per platform.
- * The letters come from `lib/platforms` so the list, chat, device cards and
- * settings can never drift apart. Monochrome by design (UI_SPEC single accent).
+ * Source identity mark (2.4.0; light chip 2.4.2).
+ *
+ * One 20-24px rounded square per platform, shared by the conversation list,
+ * the chat header, the device cards and the non-active machine card so the
+ * four surfaces can never drift apart.
+ *
+ * 2.4.2: the dark systemGray5 block with white `CX`/`PI` letters is gone — it
+ * read as a foreign object on the Cupertino surface. The mark is now a light
+ * chip with a single ink glyph (background luminance 0.841 against ink
+ * #1C1C1E is 14.4:1). Codex gets Lucide `Terminal` (a caret and an underscore,
+ * a boxed terminal at 20px would be a square inside a square) and PI gets
+ * Lucide `Pi`. Unknown platforms keep the two-letter fallback from
+ * `lib/platforms`, so a new harness is never an empty block.
  */
+import type { ReactElement } from 'react';
+import { Pi, Terminal } from 'lucide-react';
 import { KIND_LABEL, kindMark } from '../lib/platforms';
+
+const GLYPHS: Record<string, ReactElement> = {
+  codex: <Terminal size={14} />,
+  pi: <Pi size={14} />,
+  pidesk: <Pi size={14} />,
+};
 
 export default function KindAvatar({
   kind,
@@ -18,8 +36,9 @@ export default function KindAvatar({
   className?: string;
 }) {
   const key = String(kind || '').toLowerCase();
+  const glyph = GLYPHS[key];
   const mark = kindMark(key) || String(label || '').slice(0, 2).toUpperCase();
-  if (!mark) return null;
+  if (!glyph && !mark) return null;
   const name = KIND_LABEL[key] || label || mark;
   return (
     <span
@@ -35,7 +54,7 @@ export default function KindAvatar({
         fontSize: size <= 20 ? 9 : 10,
       }}
     >
-      {mark}
+      {glyph ?? mark}
     </span>
   );
 }

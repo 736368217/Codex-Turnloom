@@ -1,6 +1,5 @@
 import { MessageSquare, Laptop, Settings } from 'lucide-react';
 import type { ReactElement } from 'react';
-import { COLORS } from '../theme/optionATokens';
 import { haptic } from '../lib/nativeBridge';
 import { setActiveTab, TAB_LABELS, TAB_ORDER, type TabKey } from '../state/tabStore';
 
@@ -18,8 +17,14 @@ const ICONS: Record<TabKey, ReactElement> = {
  * overrides) and rendered every tab as `role="link"` inside a `role="tablist"`,
  * which is the wrong semantic for screen readers. Plain buttons give us the
  * contract's 56px band, a real `role="tab"` + `aria-selected`, and a press
- * feedback that tints instead of transforming (a transform here changes the
+ * feedback that dims instead of transforming (a transform here changes the
  * pointer geometry mid-press, the old "tab bar suddenly shrinks" defect).
+ *
+ * 2.4.2: colour lives in CSS, not inline. The inline `color` here beat the
+ * stylesheet, and a forced-colour rule on every tab descendant then pinned
+ * every icon grey — the tab looked selected only in its label. The component
+ * now ships state (`aria-selected` + the modifier class) and the stylesheet
+ * owns ink/grey/press, so there is one source for the pixels.
  */
 export default function GlassTabBar({ activeTab }: { activeTab: TabKey }) {
   return (
@@ -34,7 +39,6 @@ export default function GlassTabBar({ activeTab }: { activeTab: TabKey }) {
             aria-selected={active}
             aria-label={TAB_LABELS[tab]}
             className={`tl-tabbar-item${active ? ' tl-tabbar-item--active' : ''}`}
-            style={{ color: active ? COLORS.blue : COLORS.labelSecondary }}
             onClick={() => { haptic('selection'); setActiveTab(tab); }}
           >
             {ICONS[tab]}

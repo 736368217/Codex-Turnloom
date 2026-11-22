@@ -65,8 +65,14 @@
   --tl-lh-list-title: 21px;
   --tl-fs-settings: 15px;
   --tl-lh-settings: 20px;
-  /* One role: the source mark (CX / PI), never a second brand palette. */
-  --tl-source-avatar: #3A3A3C;
+  /* One role: the source mark. 2.4.2 turns it from a dark block into a light
+     chip; the glyph keeps the single ink colour, so there is still no second
+     brand palette anywhere in the product. */
+  --tl-source-avatar: #ECECF0;
+  /* Tab bar: two states, two colours. Ink is the selected state (not accent
+     blue); the inactive grey is systemGray, one step lighter than
+     --tl-label-secondary so an unselected tab recedes instead of competing. */
+  --tl-tab-inactive: #8E8E93;
   color-scheme: light only;
 }
 
@@ -275,26 +281,36 @@ input, textarea {
   gap: 2px;
   border: 0;
   background: transparent;
-  color: var(--tl-label-secondary);
+  color: var(--tl-tab-inactive);
   padding: 6px 2px;
-  transition: background-color 150ms ease, color 150ms ease;
+  -webkit-tap-highlight-color: transparent;
+  transition: color 120ms ease;
 }
 
-.tl-tabbar-item--active { color: var(--tl-blue); }
+/* 2.4.2: selection is ink + weight, not the accent. Blue text under a glass
+   band read as a sticky highlight; ink is what a glass bar can actually carry. */
+.tl-tabbar-item--active { color: var(--tl-label-primary); }
 
-/* Press feedback is a tint only: transform on a fixed bar button changes the
-   pointer geometry mid-press, which is the "tab bar shrinks" defect. */
-.tl-tabbar-item:active { background-color: rgba(0, 122, 255, .07); }
+/* Press feedback dims the glyph and the label only. Never a background wash
+   (it turned one third of the bar blue on every tap) and never opacity on the
+   button: the bar is frosted glass, dimming the whole box lets the scrolling
+   list read through it. Geometry never moves — a transform on a fixed bar
+   button is the old "tab bar suddenly shrinks" defect. */
+.tl-tabbar-item:active svg,
+.tl-tabbar-item:active .tl-tabbar-label {
+  opacity: .5;
+  transition: opacity 120ms ease;
+}
 
 .tl-tabbar-label {
   font-size: 10px;
   line-height: 13px;
   font-weight: 500;
   letter-spacing: .1px;
-  color: var(--tl-label-secondary);
+  color: inherit;
 }
 
-.tl-tabbar-item--active .tl-tabbar-label { color: var(--tl-action-blue); font-weight: 600; }
+.tl-tabbar-item--active .tl-tabbar-label { color: inherit; font-weight: 600; }
 
 /* Legacy .tl-thumbbar rules were removed: the chat composer owns its layout. */
 
@@ -479,8 +495,9 @@ input, textarea {
 /* Accessibility refinement: decoration keeps system accents; text uses ink. */
 
 /* Konsta's iOS Link applied active:opacity-30; our own tab buttons keep their
-   pointer geometry and only tint, so a press never moves the bar. */
-.tl-tabbar [role="tab"] { transition: background-color 150ms ease; }
+   pointer geometry and dim only the glyph layer, so a press never moves the
+   bar and never paints its glass. */
+.tl-tabbar [role="tab"] { transition: none; }
 
 /* Disabled is a state, not a dimmed copy of the enabled control: a 48%-opacity
    blue still reads as "press me". Primary actions switch to the neutral fill. */
@@ -537,9 +554,11 @@ button:focus-visible, a:focus-visible { outline: 2px solid var(--tl-blue); outli
 
 
 
-/* Accessibility refinement: decoration keeps system accents; text uses ink. */
-.tl-tabbar [role="tab"] * { color: #636366 !important; }
-.tl-tabbar [role="tab"].k-tabbar-link-active * { color: #0062CC !important; }
+/* 2.4.2: the two forced-colour overrides that used to sit here pinned every
+   tab icon to grey — one on every descendant, one on a Konsta-era active class
+   our hand-rolled bar never emits — so the selected state could never reach the
+   icon. The tab bar now colours icon and label from
+   `.tl-tabbar-item--active` alone. */
 .tl-connect-submit { background: var(--tl-blue); }
 /* Obsolete thumbbar grid/order rules removed; .tl-composer owns narrow layout. */
 .tl-sheet-actions { position: sticky; bottom: 0; background: #FFFFFF; padding: 10px 0; z-index: 2; }
@@ -2392,14 +2411,17 @@ button:focus-visible, a:focus-visible { outline: 2px solid var(--tl-blue); outli
    2.4.0 — source marks, chat avatars/dates, search, settings choices
    ============================================================ */
 
-/* One monochrome source mark. Letters come from lib/platforms (CX / PI). */
+/* One monochrome source mark: light chip, single ink glyph.
+   codex → Lucide Terminal, pi/pidesk → Lucide Pi, unknown → two letters.
+   The glyph is 14px inside both 20px and 24px boxes (see KindAvatar.tsx). */
 .tl-kindavatar {
   display: inline-grid; place-items: center;
   box-sizing: border-box; flex: 0 0 auto;
-  background: var(--tl-source-avatar); color: #FFFFFF;
+  background: var(--tl-source-avatar); color: var(--tl-label-primary);
   font-weight: 700; line-height: 1; letter-spacing: .02em;
   user-select: none;
 }
+.tl-kindavatar svg { display: block; }
 
 /* Device card platform group (non-active machines too). */
 .tl-devcard-platforms { display: inline-flex; align-items: center; gap: 4px; vertical-align: middle; }
