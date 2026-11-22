@@ -48,3 +48,15 @@ export function platformsOf(harnesses: Harness[], machineName: string): Platform
   }
   return [...byKey.values()];
 }
+
+/**
+ * 设备页展开哪个平台：用户手点开且仍存在的平台优先（刷新不得抢回），
+ * 否则展开当前 harness 所在平台，最后才退回第一个。
+ * 默认展开「第一个」在今天就是「展开 Codex、把 PI 藏在下面」。
+ */
+export function openPlatformFor(platforms: Platform[], harnessId: string, currentKey = ''): string {
+  if (!platforms.length) return '';
+  if (currentKey && platforms.some((platform) => platform.key === currentKey)) return currentKey;
+  const current = platforms.find((platform) => platform.harnesses.some((harness) => harness.id === harnessId));
+  return (current || platforms[0]).key;
+}

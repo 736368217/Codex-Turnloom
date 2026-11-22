@@ -15,7 +15,7 @@
 import { useEffect, useMemo, useState, type CSSProperties } from 'react';
 import { ChevronDown, ChevronRight, MoreHorizontal, Plus, RefreshCw, WifiOff } from 'lucide-react';
 import type { Harness } from '../lib/machinePairing';
-import { platformsOf, serviceLabel } from '../lib/platforms';
+import { platformsOf, openPlatformFor, serviceLabel } from '../lib/platforms';
 import KindAvatar from '../components/KindAvatar';
 import {
   useSessionState, switchMachine, switchHarness, retryPersistedSession,
@@ -88,11 +88,11 @@ export default function DevicesScreen() {
     return () => cancelAnimationFrame(frame);
   }, [activeId]);
 
-  // 默认展开第一个平台：原型里 Codex 就是「on」的。晚一帧打开，harness 行才有淡入。
+  // 默认展开当前 harness 所在的平台（PI 是第二项时也展开 PI，不再固定第一个）。
+  // 用户手点开别的平台后，只要它还在列表里就不抢回。晚一帧打开，harness 行才有淡入。
   useEffect(() => {
-    if (!platforms.length) { setOpenPlatform(''); return; }
-    setOpenPlatform((current) => (platforms.some((platform) => platform.key === current) ? current : platforms[0].key));
-  }, [platforms]);
+    setOpenPlatform((current) => openPlatformFor(platforms, session.harnessId, current));
+  }, [platforms, session.harnessId]);
 
   const chooseMachine = async (machine: MachineSummary) => {
     // 当前电脑：定稿要求「点了不动」，连展开/收起都不做。
@@ -271,7 +271,7 @@ export default function DevicesScreen() {
                                           <span className="tl-hrow-main">
                                             <span className="tl-hrow-name">{rowName}</span>
                                             <span className="tl-hrow-meta">
-                                              {harness.defaultHarness ? '默认入口' : '本机服务'} · {harness.online === false ? '发现时离线' : '发现时在线'}
+                                              本机服务 · {harness.online === false ? '发现时离线' : '发现时在线'}
                                             </span>
                                           </span>
                                           <span className={`tl-hrow-pill${selected ? ' is-current' : ''}`}>

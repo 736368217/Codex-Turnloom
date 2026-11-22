@@ -56,9 +56,12 @@ test('latest connection wins and discarded discovery cannot overwrite it', async
 });
 test('switch isolates tokens and clears old detail and filters', async () => {
   const h = harness(); await h.session.connectWithPairing(h.pairing);
+  // 2.4.2 PI-first: a fresh pairing of [codex, pi] lands on pi, so this switch
+  // goes pi → codex and still proves the isolation side effects.
+  assert.equal(h.session.sessionStore.getState().harnessId, 'pi');
   const tabs = h.load('state/tabStore.ts'); tabs.openDetail('same-id'); tabs.setThreadsQuery('codex-only');
-  assert.equal(await h.session.switchHarness('pi'), true);
-  assert.equal(h.session.currentRequestContext().target.token, 'pi-token');
+  assert.equal(await h.session.switchHarness('codex'), true);
+  assert.equal(h.session.currentRequestContext().target.token, 'code-token');
   assert.equal(tabs.tabStore.getState().detailThreadId, null);
   assert.equal(tabs.tabStore.getState().threadsQuery, '');
 });
@@ -361,4 +364,86 @@ test('a legacy single-machine value hydrates as a one-entry registry', () => {
   const state = h.session.sessionStore.getState();
   assert.equal(state.machines.length, 1);
   assert.deepEqual(state.machines[0], { id: 'legacy', name: 'Old PC', host: '192.168.50.44:8787', active: true, harnessCount: 1, lastUsedAt: null, platforms: [{ key: 'codex', label: 'Codex Desktop', mark: 'CX' }] });
+});
+
+// -- 2.4.2 harness choice: explicit > PI > desktop default > first ------------
+
+function piFirst() {
+  const rows = [
+    { id: 'codex', name: 'Codex', kind: 'codex', token: 'code-token' },
+    { id: 'pi', name: 'Pi', kind: 'pi', token: 'pi-token', defaultHarness: true },
+  ];
+  return (route) => route === '/api/harnesses'
+    ? { ok: true, protocol: 'codex-turnloom', version: 2, machineId: 'machine', machineName: 'Computer', defaultHarnessId: 'pi', harnesses: rows }
+    : { ok: true };
+}
+
+test('new pairing takes PI while the desktop default is PI, and Codex is an explicit pick', async () => {
+  const h = harness();
+  h.setReply(piFirst());
+  assert.equal(await h.session.connectWithPairing(h.pairing), true);
+  assert.equal(h.session.sessionStore.getState().harnessId, 'pi', 'PI-first beats the desktop default');
+  assert.equal(h.session.sessionStore.getState().harnessExplicit, false, 'a rule pick is not a user pick');
+});
+
+test('an explicit Codex pick survives a revalidation whose desktop default is still PI', async () => {
+  const h = harness();
+  h.setReply(piFirst());
+  assert.equal(await h.session.connectWithPairing(h.pairing), true);
+  assert.equal(await h.session.switchHarness('codex'), true);
+  const saved = h.session.hydrateSession();
+  assert.equal(await h.session.revalidatePersisted(saved), true);
+  const state = h.session.sessionStore.getState();
+  assert.equal(state.harnessId, 'codex', 'the PI rule must not overwrite the user pick');
+  assert.equal(state.harnessExplicit, true);
+  const stored = JSON.parse(h.storage.get('turnloom.machine.v2'));
+  assert.equal(stored.machines[0].defaultHarnessId, 'codex');
+  assert.equal(stored.machines[0].harnessExplicit, true);
+});
+
+test('a pre-2.4.2 registry migrates to PI once and the write-back keeps the flag false', async () => {
+  const h = harness();
+  h.storage.set('turnloom.machine.v2', JSON.stringify({
+    machineId: 'machine', machineName: 'Computer', serverUrl: 'http://192.168.50.42:8787', machineToken: 'machine-token',
+    harnesses: [
+      { id: 'codex', name: 'Codex', kind: 'codex', token: 'code-token', defaultHarness: true },
+      { id: 'pi', name: 'Pi', kind: 'pi', token: 'pi-token' },
+    ],
+    defaultHarnessId: 'codex',
+  }));
+  const saved = h.session.hydrateSession();
+  let state = h.session.sessionStore.getState();
+  assert.equal(state.harnessDefaultId, 'pi', 'a stored Codex default without the marker migrates to PI');
+  assert.equal(state.harnessExplicit, false);
+  assert.equal(await h.session.revalidatePersisted(saved), true);
+  state = h.session.sessionStore.getState();
+  assert.equal(state.harnessId, 'pi');
+  const stored = JSON.parse(h.storage.get('turnloom.machine.v2'));
+  assert.equal(stored.machines[0].defaultHarnessId, 'pi');
+  assert.equal(stored.machines[0].harnessExplicit, false, 'the migration must not become a user pick');
+});
+
+test('401 self-heal probes the persisted pick first and records a fallback honestly', async () => {
+  const h = harness();
+  await h.session.connectWithPairing(h.pairing);
+  assert.equal(h.session.sessionStore.getState().harnessId, 'pi');
+  assert.equal(await h.session.switchHarness('codex'), true, 'user picks Codex explicitly');
+  // Machine token rotated: discovery 401s; only PI's harness token still answers.
+  h.setReply((route, req) => {
+    if (route === '/api/harnesses') return { __nativeResult: { status: 401, body: '{"error":"unauthorized"}' } };
+    if (route === '/api/health') {
+      return req.headers?.['x-access-token'] === 'pi-token'
+        ? { ok: true }
+        : { __nativeResult: { status: 401, body: '{}' } };
+    }
+    return { ok: true };
+  });
+  const saved = h.session.hydrateSession();
+  assert.equal(await h.session.revalidatePersisted(saved), true, 'a dead explicit pick must not block recovery');
+  const state = h.session.sessionStore.getState();
+  assert.equal(state.harnessId, 'pi');
+  assert.equal(state.harnessExplicit, false, 'the fallback must not wear the user pick label');
+  const stored = JSON.parse(h.storage.get('turnloom.machine.v2'));
+  assert.equal(stored.machines[0].defaultHarnessId, 'pi');
+  assert.equal(stored.machines[0].harnessExplicit, false);
 });

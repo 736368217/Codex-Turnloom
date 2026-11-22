@@ -18,7 +18,7 @@ import {
 } from '../lib/machinePairing';
 import {
   parseRegistry, serializeRegistry, upsertMachine, removeMachine, machineKey,
-  activeMachine, machineSummaries,
+  activeMachine, machineSummaries, applyHarnessChoice, harnessProbeOrder, explicitAfterFallback,
   type PersistedMachine, type MachineRegistry, type MachineSummary,
 } from '../lib/machineRegistry';
 import {
@@ -48,6 +48,10 @@ export interface SessionState {
   harnessId: string;
   harnessName: string;
   harnessToken: string;
+  /** 持久化里要尝试的入口；校验通过前 `harnessId` 为空，这个字段仍保留选择。 */
+  harnessDefaultId: string;
+  /** 当前入口是用户在设备页亲手选的（true），还是规则挑的（false）。 */
+  harnessExplicit: boolean;
   scope: string;
   generation: number;
   online: boolean;
@@ -67,7 +71,7 @@ export interface SessionState {
 export const sessionStore = createStore<SessionState>({
   status: 'unpaired',
   machineId: '', machineName: '', serverUrl: '', machineToken: '',
-  harnesses: [], machines: [], harnessId: '', harnessName: '', harnessToken: '',
+  harnesses: [], machines: [], harnessId: '', harnessName: '', harnessToken: '', harnessDefaultId: '', harnessExplicit: false,
   scope: '', generation: 0, online: false, error: '', switchError: '',
   appVersion: APP_IDENTITY.versionName, appVersionCode: APP_IDENTITY.versionCode,
   packageName: APP_IDENTITY.applicationId,
@@ -175,6 +179,7 @@ export function hydrateSession(): PersistedMachine | null {
     setActiveRequestScope('unpaired');
     sessionStore.setState({
       status: 'unpaired', offlineCacheEnabled: cacheEnabled, machines: machineSummaries(registry),
+      harnessDefaultId: '', harnessExplicit: false,
       ...harnessPatch(null, 'unpaired', getActiveGeneration()),
     });
     return null;
@@ -185,6 +190,8 @@ export function hydrateSession(): PersistedMachine | null {
     machineId: machine.machineId, machineName: machine.machineName,
     serverUrl: machine.serverUrl, machineToken: machine.machineToken,
     harnesses: machine.harnesses, machines: machineSummaries(registry),
+    harnessDefaultId: machine.defaultHarnessId,
+    harnessExplicit: machine.harnessExplicit === true,
     ...harnessPatch(null, 'revalidate', getActiveGeneration()),
     online: false, error: '', switchError: '', offlineCacheEnabled: cacheEnabled,
   });
@@ -249,6 +256,8 @@ function restoreSession(previous: SessionState, target: ConnectionTarget): void 
     serverUrl: previous.serverUrl, machineToken: previous.machineToken,
     harnesses: previous.harnesses, machines: previous.machines,
     harnessId: previous.harnessId, harnessName: previous.harnessName, harnessToken: previous.harnessToken,
+    harnessDefaultId: previous.harnessDefaultId,
+    harnessExplicit: previous.harnessExplicit,
     scope: previous.scope || 'unpaired',
     generation: getActiveGeneration(),
     online: previous.online,
@@ -280,15 +289,20 @@ async function revalidateMachine(
   const normalized = normalizeDiscovery(discovered.data, manualPairingFor(machine));
   if (!normalized.ok) { reportFailure(normalized.error); return false; }
   // Discovery tokens are authoritative; never reuse an obsolete persisted token.
-  const updated: PersistedMachine = {
-    ...normalized.machine,
+  // 候选顺序：显式选择 > PI > 电脑端默认 > 第一个。从**持久化的 machine** 展开，
+  // 只把 harness 列表换成这次发现的结果——电脑端的 `defaultHarnessId` 只是候选，
+  // 不能覆盖用户在设备页亲手点过的入口；显式入口若已消失，就退回规则并记为非显式。
+  const updated = applyHarnessChoice({
+    ...machine,
+    machineId: normalized.machine.machineId,
+    machineName: normalized.machine.machineName || machine.machineName,
     serverUrl: machine.serverUrl,
     machineToken: machine.machineToken,
-  };
-  const selected = updated.harnesses.find((item) => item.id === machine.defaultHarnessId) ||
-    updated.harnesses.find((item) => item.id === updated.defaultHarnessId) || updated.harnesses[0];
-  updated.defaultHarnessId = selected.id;
-  return activateMachine(updated, selected.id, true, attempt, reportFailure);
+    harnesses: normalized.machine.harnesses,
+  }, normalized.machine.harnesses);
+  return activateMachine(
+    updated, updated.defaultHarnessId, true, attempt, reportFailure, updated.harnessExplicit === true,
+  );
 }
 
 /**
@@ -306,12 +320,21 @@ export async function recoverWithSavedHarnesses(
   const saved = machine.harnesses.filter((item) => item && item.token);
   if (!saved.length) return false;
   setActiveRequestScope('revalidate');
-  for (const harness of saved) {
+  const explicit = machine.harnessExplicit === true;
+  const preferredId = machine.defaultHarnessId;
+  // 探活顺序同样是「显式/规则首选优先」，但保留全部兜底项：首选死了也必须能恢复。
+  for (const harness of harnessProbeOrder(saved, { explicit, preferredId })) {
     const scope = scopeFor(machine.machineId, harness.id);
     const health = await verifyHarness({ origin: machine.serverUrl, token: harness.token }, scope);
     if (attempt !== transitionSeq) return false;
     if (!health.ok) continue;
-    return activateMachine({ ...machine, defaultHarnessId: harness.id }, harness.id, true, attempt);
+    // 只有探通的正是原来的显式选择时才保留「显式」；退到兜底项就写回 false，
+    // 不能让一次救急把兜底伪装成用户选择、从此粘死。
+    const stillExplicit = explicitAfterFallback({ explicit, preferredId }, harness.id);
+    return activateMachine(
+      { ...machine, defaultHarnessId: harness.id, harnessExplicit: stillExplicit },
+      harness.id, true, attempt, reportConnectionFailure, stillExplicit,
+    );
   }
   return false;
 }
@@ -333,12 +356,13 @@ export async function connectWithPairing(pairing: MachinePairing): Promise<boole
   }
   const normalized = normalizeDiscovery(discovered.data, pairing);
   if (!normalized.ok) { setConnectionError(normalized.error); return false; }
-  const machine: PersistedMachine = {
+  // 新配对走同一条规则：用户还没选过 → PI > 电脑端默认 > 第一个。
+  const machine = applyHarnessChoice({
     ...normalized.machine,
     serverUrl: pairing.serverUrl,
     machineToken: pairing.machineToken,
-  };
-  return activateMachine(machine, machine.defaultHarnessId, false, attempt);
+  }, normalized.machine.harnesses);
+  return activateMachine(machine, machine.defaultHarnessId, false, attempt, reportConnectionFailure, false);
 }
 
 async function activateMachine(
@@ -347,6 +371,7 @@ async function activateMachine(
   revalidated: boolean,
   attempt: number,
   reportFailure: FailureReporter = reportConnectionFailure,
+  explicit = false,
 ): Promise<boolean> {
   const harness = machine.harnesses.find((item) => item.id === harnessId) || machine.harnesses[0];
   if (!harness) {
@@ -367,7 +392,7 @@ async function activateMachine(
     closeSheet();
     tabStore.setState({ threadsQuery: '', threadsFilter: 'all' });
   }
-  const registry = upsertMachine(readRegistry(), { ...machine, defaultHarnessId: harness.id });
+  const registry = upsertMachine(readRegistry(), { ...machine, defaultHarnessId: harness.id, harnessExplicit: explicit });
   persistRegistry(registry);
   machinePinned(machine);
   sessionStore.setState({
@@ -375,6 +400,8 @@ async function activateMachine(
     machineId: machine.machineId, machineName: machine.machineName,
     serverUrl: machine.serverUrl, machineToken: machine.machineToken,
     harnesses: machine.harnesses, machines: machineSummaries(registry),
+    harnessDefaultId: harness.id,
+    harnessExplicit: explicit,
     ...harnessPatch(harness, expectedScope, expectedGeneration),
     online: true, error: '', switchError: '',
     ...(revalidated ? { revalidatedAt: Date.now() } : {}),
@@ -394,9 +421,10 @@ export async function switchHarness(harnessId: string): Promise<boolean> {
   const machine: PersistedMachine = {
     machineId: state.machineId, machineName: state.machineName,
     serverUrl: state.serverUrl, machineToken: state.machineToken,
-    harnesses: state.harnesses, defaultHarnessId: harness.id,
+    harnesses: state.harnesses, defaultHarnessId: harness.id, harnessExplicit: true,
   };
-  const ok = await activateMachine(machine, harness.id, false, attempt);
+  // 设备页点选 = 用户显式选择：从此优先级高于「PI 优先」规则。
+  const ok = await activateMachine(machine, harness.id, false, attempt, reportConnectionFailure, true);
   if (!ok && attempt === transitionSeq && sessionStore.getState().status !== 'error') {
     setConnectionError('切换服务未完成，请重试或重新配对');
   }
@@ -418,7 +446,7 @@ export function stopConnecting(message = '已停止连接。'): void {
     online: false,
     error: message,
     switchError: '',
-    ...(paired ? {} : { harnesses: [], machines: [], serverUrl: '', machineToken: '' }),
+    ...(paired ? {} : { harnesses: [], machines: [], serverUrl: '', machineToken: '', harnessDefaultId: '', harnessExplicit: false }),
   });
 }
 
@@ -452,7 +480,7 @@ export function forgetMachine(id?: string): void {
     setActiveRequestScope('unpaired');
     sessionStore.setState({
       status: 'unpaired', machineId: '', machineName: '', serverUrl: '', machineToken: '',
-      harnesses: [], machines: [], ...harnessPatch(null, 'unpaired', getActiveGeneration()),
+      harnesses: [], machines: [], harnessDefaultId: '', harnessExplicit: false, ...harnessPatch(null, 'unpaired', getActiveGeneration()),
       online: false, error: '', switchError: '', lastSyncAt: null, revalidatedAt: null,
     });
     return;
@@ -471,6 +499,8 @@ export function forgetMachine(id?: string): void {
     machineId: next.machineId, machineName: next.machineName,
     serverUrl: next.serverUrl, machineToken: next.machineToken,
     harnesses: next.harnesses, machines: machineSummaries(remaining),
+    harnessDefaultId: next.defaultHarnessId,
+    harnessExplicit: next.harnessExplicit === true,
     ...harnessPatch(null, 'revalidate', getActiveGeneration()),
     online: false, error: '', switchError: '', lastSyncAt: null,
   });

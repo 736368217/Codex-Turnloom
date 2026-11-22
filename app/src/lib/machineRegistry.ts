@@ -23,8 +23,29 @@ export interface PersistedMachine {
   machineToken: string;
   harnesses: Harness[];
   defaultHarnessId: string;
+  /**
+   * True only when the user picked this harness themselves (device page).
+   * PI-first is a rule, not a choice: keeping this false lets the rule decide
+   * again when the desktop gains or loses a PI harness. Absent in every
+   * registry written before 2.4.2 — that is what the one-time migration keys on.
+   */
+  harnessExplicit?: boolean;
   /** Epoch ms of the last successful activation; used only for ordering/UI. */
   lastUsedAt?: number;
+}
+
+/** What the persisted machine knows about the phone-side harness choice. */
+export interface HarnessChoice {
+  /** The user picked this harness on the device page; it outranks every rule. */
+  explicit?: boolean;
+  /** Persisted choice: honored when explicit, ignored when the rule decides. */
+  preferredId?: string;
+}
+
+export interface HarnessSelection {
+  harnessId: string;
+  /** Whether the selection is (still) the user's own pick, or a rule fallback. */
+  explicit: boolean;
 }
 
 export interface MachineRegistry {
@@ -72,6 +93,74 @@ function cleanHarness(item: unknown): Harness | null {
   };
 }
 
+/** Desktop kinds that mean PI-Desktop; `pidesk` is PI-Desktop's historical id. */
+export function isPiKind(kind: string): boolean {
+  const key = String(kind || '').trim().toLowerCase();
+  return key === 'pi' || key === 'pidesk';
+}
+
+/**
+ * The one harness-preference rule for every path (pairing, cold start,
+ * foreground retry, 401 self-heal):
+ *
+ *   explicit user choice > PI > the desktop's own default > first discovered
+ *
+ * `preferredId` only matters when the choice is explicit. A rule-selected
+ * default is recomputed on every read so a newly added PI harness wins without
+ * the user re-pairing, while an explicit Codex pick stays put.
+ */
+export function preferredHarnessId(harnesses: Harness[], choice: HarnessChoice = {}): string {
+  if (!harnesses.length) return '';
+  const requested = String(choice.preferredId || '').trim();
+  const preferred = requested ? harnesses.find((item) => item.id === requested) : undefined;
+  if (choice.explicit === true && preferred) return preferred.id;
+  const pi = harnesses.find((item) => isPiKind(item.kind));
+  if (pi) return pi.id;
+  const desktopDefault = harnesses.find((item) => item.defaultHarness);
+  return (desktopDefault || harnesses[0]).id;
+}
+
+/**
+ * Whether `harnessId` is still the user's own pick. An explicit harness that
+ * disappeared from discovery, or a 401 self-heal that had to fall back, must be
+ * recorded as a rule choice (false) — a fallback wearing the user's name would
+ * freeze it forever.
+ */
+export function explicitAfterFallback(choice: HarnessChoice, harnessId: string): boolean {
+  const requested = String(choice.preferredId || '').trim();
+  return choice.explicit === true && Boolean(requested) && harnessId === requested;
+}
+
+/** Resolve the rule and say whether the result is still the user's own pick. */
+export function selectHarness(harnesses: Harness[], choice: HarnessChoice = {}): HarnessSelection {
+  const harnessId = preferredHarnessId(harnesses, choice);
+  return { harnessId, explicit: explicitAfterFallback(choice, harnessId) };
+}
+
+/**
+ * 401 self-heal probe order: the rule's first pick, then every other saved
+ * harness in discovery order. A dead first pick must not stop recovery.
+ */
+export function harnessProbeOrder(harnesses: Harness[], choice: HarnessChoice = {}): Harness[] {
+  const head = harnesses.find((item) => item.id === preferredHarnessId(harnesses, choice));
+  if (!head) return harnesses.slice();
+  return [head, ...harnesses.filter((item) => item !== head)];
+}
+
+/**
+ * The cold-start / foreground revalidation transform: a fresh discovery
+ * replaces the harness list and must not silently replace the phone-side
+ * choice — re-resolve it with the same rule and carry the honest flag.
+ * Pure on purpose: 「显式 codex → 重校验后仍是 codex」是单测，不是手工。
+ */
+export function applyHarnessChoice(machine: PersistedMachine, harnesses: Harness[]): PersistedMachine {
+  const choice = selectHarness(harnesses, {
+    explicit: machine.harnessExplicit === true,
+    preferredId: machine.defaultHarnessId,
+  });
+  return { ...machine, harnesses, defaultHarnessId: choice.harnessId, harnessExplicit: choice.explicit };
+}
+
 /** Validate one persisted machine; anything unusable is dropped rather than trusted. */
 export function normalizeMachine(value: unknown): PersistedMachine | null {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
@@ -83,9 +172,26 @@ export function normalizeMachine(value: unknown): PersistedMachine | null {
   const harnesses = rawHarnesses.map(cleanHarness).filter((item): item is Harness => item !== null);
   if (harnesses.length === 0) return null;
   const requestedDefault = typeof row.defaultHarnessId === 'string' ? row.defaultHarnessId.trim() : '';
-  const defaultHarnessId = harnesses.some((item) => item.id === requestedDefault)
-    ? requestedDefault
-    : (harnesses.find((item) => item.defaultHarness) || harnesses[0]).id;
+  // A registry written before 2.4.2 has no `harnessExplicit`. Migrate it once:
+  // a PI harness takes over (PI-first is the new rule), otherwise keep whatever
+  // default was working — never swap a live Codex for nothing. The field is
+  // always serialized afterwards, so the migration cannot run twice.
+  const migrated = Object.prototype.hasOwnProperty.call(row, 'harnessExplicit');
+  const explicit = row.harnessExplicit === true;
+  let defaultHarnessId: string;
+  let harnessExplicit = false;
+  if (!migrated) {
+    const pi = harnesses.find((item) => isPiKind(item.kind));
+    const kept = harnesses.find((item) => item.id === requestedDefault);
+    const desktopDefault = harnesses.find((item) => item.defaultHarness);
+    defaultHarnessId = (pi || kept || desktopDefault || harnesses[0]).id;
+  } else {
+    // An explicit id that disappeared is no longer an explicit choice: the rule
+    // picks the replacement and the flag drops back to false with it.
+    const choice = selectHarness(harnesses, { explicit, preferredId: requestedDefault });
+    defaultHarnessId = choice.harnessId;
+    harnessExplicit = choice.explicit;
+  }
   const lastUsedAt = typeof row.lastUsedAt === 'number' && Number.isFinite(row.lastUsedAt) && row.lastUsedAt > 0
     ? row.lastUsedAt
     : undefined;
@@ -96,6 +202,7 @@ export function normalizeMachine(value: unknown): PersistedMachine | null {
     machineToken,
     harnesses,
     defaultHarnessId,
+    harnessExplicit,
     ...(lastUsedAt ? { lastUsedAt } : {}),
   };
 }
@@ -147,6 +254,7 @@ export function serializeRegistry(registry: MachineRegistry): string {
       machineToken: machine.machineToken,
       harnesses: machine.harnesses,
       defaultHarnessId: machine.defaultHarnessId,
+      harnessExplicit: machine.harnessExplicit === true,
       ...(machine.lastUsedAt ? { lastUsedAt: machine.lastUsedAt } : {}),
     })),
   });
