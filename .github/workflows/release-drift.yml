@@ -33,8 +33,12 @@ jobs:
           GITHUB_TOKEN: ${{ github.token }}
         run: |
           $events = @()
+          # A .ps1 invocation does not set the native exit-code variable; the
+          # script itself runs with $ErrorActionPreference='Stop', so a failure
+          # throws here. Comparing that variable against 0 turned every healthy
+          # run into "exited " — the first two CI runs died that way.
           $raw = & ./scripts/team/release-drift.ps1
-          if ($LASTEXITCODE -ne 0) { throw "release-drift.ps1 exited $LASTEXITCODE" }
+          if (-not $?) { throw "release-drift.ps1 failed" }
           foreach ($line in $raw) {
             $text = [string]$line
             if (-not $text.Trim()) { continue }

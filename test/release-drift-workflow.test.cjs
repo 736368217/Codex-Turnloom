@@ -25,6 +25,9 @@ test("release drift runs in CI on a schedule and after a release", () => {
   assert.match(yaml, /scripts\/team\/release-drift\.ps1/);
   assert.match(yaml, /::error title=Release drift/);
   assert.match(yaml, /GITHUB_TOKEN: \$\{\{ github\.token \}\}/);
+  // A .ps1 call never sets $LASTEXITCODE; asserting on it failed every run.
+  assert.doesNotMatch(yaml, /\$LASTEXITCODE/);
+  assert.match(yaml, /if \(-not \$\?\)/);
 });
 
 test("the drift script keeps its UTF-8 BOM (Windows PowerShell 5.1 reads BOM-less files as ANSI)", () => {
