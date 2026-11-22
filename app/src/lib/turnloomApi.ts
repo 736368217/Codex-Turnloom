@@ -128,10 +128,29 @@ export interface ThreadMessage {
   text?: string;
   content?: string;
   createdAt?: string | number;
+  updatedAt?: string | number;
   /** Server rows carry the rollout's ISO time here; `createdAt` only exists on local optimistic rows. */
   timestamp?: string | number;
   kind?: string;
-  [key: string]: unknown;
+  /** Turn phase reported by the host (`thinking`, `tool`, ...) when present. */
+  phase?: string;
+  images?: unknown[];
+  localImages?: unknown[];
+  title?: string;
+  toolName?: string;
+  name?: string;
+  isError?: boolean;
+  requestId?: string;
+  approvalKind?: string;
+  detailsHash?: string;
+  availableDecisions?: unknown[];
+  canApprove?: boolean;
+  requiresDesktopAction?: boolean;
+  source?: string;
+  lineNumber?: number;
+  threadId?: string;
+  turnId?: string;
+  unavailable?: boolean;
 }
 
 export interface ChangeEntry {
@@ -447,7 +466,33 @@ export function verifyHarness(target: ConnectionTarget, scope: string): Promise<
 export const getHealth = (context: RequestContext): Promise<ApiResult<HealthEnvelope>> => get(context, API_ENDPOINTS.health);
 export const postAuthSession = (context: RequestContext, body: { code?: string; token?: string; [key: string]: unknown }): Promise<ApiResult<{ ok?: boolean; token?: string }>> => post(context, API_ENDPOINTS.authSession, body);
 export const getThreads = (context: RequestContext, params?: { limit?: number; cursor?: string; selectedId?: string }): Promise<ApiResult<{ threads?: ThreadSummary[]; total?: number; nextCursor?: string | null; active?: unknown; [key: string]: unknown }>> => get(context, API_ENDPOINTS.threads, params);
-export const getThreadMessages = (context: RequestContext, threadId: string, params?: { limit?: number; before?: string }): Promise<ApiResult<MessagesEnvelope>> => get(context, endpointWithId(API_ENDPOINTS.threadMessages, threadId), params);
+/**
+ * One row shape for every caller. `/api/threads/:id/messages` rows carry the
+ * rollout's ISO `timestamp`; local optimistic rows may only have `createdAt`.
+ * Backfilling here keeps the chat renderer from guessing (the 2.4.0 date
+ * separator bug was a field-name mismatch, not a missing value).
+ */
+export function normalizeThreadMessages(rows?: ThreadMessage[]): ThreadMessage[] | undefined {
+  if (!Array.isArray(rows)) return rows;
+  return rows.map((row) => {
+    const timestamp = row.timestamp ?? row.createdAt ?? row.updatedAt;
+    return typeof timestamp === 'string' || typeof timestamp === 'number' ? { ...row, timestamp } : row;
+  });
+}
+
+export const getThreadMessages = (context: RequestContext, threadId: string, params?: { limit?: number; before?: string }): Promise<ApiResult<MessagesEnvelope>> =>
+  get<MessagesEnvelope>(context, endpointWithId(API_ENDPOINTS.threadMessages, threadId), params).then((result) =>
+    result.ok
+      ? {
+          ...result,
+          data: {
+            ...result.data,
+            messages: normalizeThreadMessages(result.data.messages),
+            items: normalizeThreadMessages(result.data.items)
+          }
+        }
+      : result
+  );
 export const getThreadChanges = (context: RequestContext, threadId: string): Promise<ApiResult<{ changes?: ChangeEntry[]; files?: ChangeEntry[]; cursor?: string; changed?: boolean; [key: string]: unknown }>> => get(context, endpointWithId(API_ENDPOINTS.threadChanges, threadId), { timeout: 250 }, 12_000);
 
 /** 2.4.0 full-text search: title, project and message content in one call. */
