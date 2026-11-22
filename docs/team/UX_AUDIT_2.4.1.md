@@ -6,7 +6,7 @@
 
 | # | 条目 | 判据（缺一条不签） | 证据 | 状态 |
 |---|---|---|---|---|
-| 1 | 诊断里删掉手动「上传日志」 | 删的是入口不是链路：自动上传覆盖**所有**真实发送路径（`sendMessage` / `createThread` / `sendQueuedMessage`）；诊断 sheet 只剩运行信息 / 清缓存 / 重新同步；不留死代码与失效断言 | `bb8157a`；`app-ia.test.cjs:111-117`（无「上传日志」、`readUploadOutcome()`、「最近上传」、「自动 · 每次发送成功后」、upload 调用数 3）；`app-ia` + `app-queue` **29/29** | **已签** |
+| 1 | 诊断里删掉手动「上传日志」 | 删的是入口不是链路：自动上传覆盖**所有**真实发送路径（`sendMessage` / `createThread` / `sendQueuedMessage`）；诊断 sheet 只剩运行信息 / 清缓存 / 重新同步；不留死代码与失效断言 | `bb8157a`；`app-ia.test.cjs:111-117`；**Vera 在最终 APK 字节上实测 `check-auto-upload` 9/0**（排队发送 200 → `logs/phone/736-WIN-20261122.jsonl` 新增 1 行 → sheet 写「最近上传 …」；canary 全文不出现）。**口径**：`uploadDiagnostics()` 无待传记录时直接 return 0、不发请求，所以只能说「发送成功后把**待上传的记录**送出」，不能说「每次发送都会上传」 | **已签** |
 | 2 | `logs/phone` 按天总量上限 | 上限写死可读回；超限先删最旧的天、永不删最新那份、删了记一行日志；合成文件跑一遍 | `303da02` + `1c5e125`；`request-log.cjs:338-389`（16 MiB / 50 文件、最旧整份删、`phone log retention: …` 一行、`prune:false` 可关）；`phone-log-retention` **7/7** | **已签** |
 | 3 | `Trash2 → LogOut` | 图标换掉只是表面；**确认文案必须说清「只解除配对，不删电脑上的会话」** | `bb8157a`；`SettingsScreen.tsx:393-395` 用 `LogOut`；`CupertinoSheetHost.tsx:28`「移除配对及这台电脑的本机会话缓存。电脑上的会话不会被删除。」 | **已签** |
 | 4 | 等审批时的输入区提示 | `waiting`（`status.interactionRequired`，与头部「待你处理」同源）**优先于** `running`；只在有输入时出现；`notice` 最高优先；12 字 | `bb8157a`；`queueLogic.ts:288-301`；`app-queue-contract:236-248` 五条断言 + `:250-251` 屏幕接线；**29/29** | **已签**（320 折行随第 7 条） |
