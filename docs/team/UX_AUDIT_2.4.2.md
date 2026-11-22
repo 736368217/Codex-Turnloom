@@ -1,0 +1,29 @@
+# 2.4.2 设计门禁（NB3）
+
+> 判据先立、实现后签。每条只有「证据」栏填满才算过；没证据的写「未验」，不写「应该可以」。
+> 条目范围见 Task #21；本文件只记录**怎么算过**，不重复范围说明。
+> 签发基线：代码冻结 `e54b67f`，资产 `9748c09`，发布 tag `v2.4.2` = `bfb0513`（docs-only）；APK **1,833,961 B** / `ef041790…cb4402`，包内 `assets/public/assets/index-D3nf4Zsz.js` **859,560 B** / `9a534f58…d891d5ae`（= 仓库里那份资产，逐字节相同）；`npm test` 694 / **692 pass / 0 fail / 2 skipped**（APK 存在后的最终一轮；我 21:01 那轮是 691 pass / 3 skipped，差的 1 条正是 `publish-guard` 的 release 预检），`app:typecheck` 退出 0。
+
+| # | 条目 | 判据（缺一条不签） | 证据 | 状态 |
+|---|---|---|---|---|
+| 1 | 底部导航：按下不闪蓝、选中看得出来 | `.tl-tabbar` 内无 `rgba(0,122,255`、无 `!important` 着色、无 Konsta 死类；**验到 svg 自己的 computed color**；按下不得有任何背景色块；320/390 不截断、命中 ≥44 | `6ace796`；我自跑 390/320：选中 `svg`/`label` = `rgb(28,28,30)` + `600`，未选中 = `rgb(142,142,147)` + `500`，按钮背景 `rgba(0,0,0,0)`；`:active` 仅 `svg, .tl-tabbar-label { opacity:.5 }`。Iris 按住实测：带内 ΔE76 `0.69`/`0.63`（判据 <3），`max(B−R)` `4`/`4`（判据 ≤8）；tab 高 56；每屏 `aria-selected=true` 恰好 1 个 | **已签** |
+| 2 | 更新一键化：启动自检 + 单弹层两级动作 | 冷启动零点击弹层且下载 0 次；「立即更新」= 原生下载 1 次；`ready` 后安装器恰好 1 次；「稍后」本进程同版本不再弹；无来源应答时不得写「已是最新」；不得叠 sheet；未配对不弹 | `0bc3c49`；冻结树上我自跑 `check-242-update.mjs --build` → **exit 0 / 36 PASS / RESULT: PASS**（资产 `index-D3nf4Zsz.js` 859,560 B），`--width 320 --height 568` → **exit 0 / 36 PASS**。2.4.1 的四行（手动检查 / 下载 / 暂停 / 打开安装界面）0 命中；真机安装与落盘归 Rhea 装置验收 | **已签**（真机链路见残项） |
+| 3 | 来源头像：浅色块 + 墨色字形 | 深底白字绝迹；背景亮度 ≥0.8、字形对比 ≥4.5:1；会话头 20 / 平台卡 24 / 对话行 24 / 非当前电脑组 20 四处同一套；codex 与 pi 各至少渲染一次；未知平台保留字母兜底 | `6ace796`；`#ECECF0` 底 / `#1C1C1E` 字：L=**0.841**、对比 **14.4:1**（390/320 一致）；四处 `data-kind` 计数 ≥1 且 codex+pi 都出现；`claude` 渲染两字母 `CL`、无空块；`app/src` 内 `#3A3A3C` **0 命中**；Iris 在**包内字节**上复核样式（`/tmp` 脚本只读），`git diff 6ace796 e54b67f -- <A/C 三文件>` 为空 | **已签** |
+| 4 | 默认 PI | 无标记 → PI；显式 Codex 经成功重校验仍是 Codex；401 兜底写回 `explicit=false` 且序列化后仍 false；旧注册表只迁一次；设备页展开当前平台；`默认入口` → `本机服务` | `a4ab456`；`app-harness-default` **12/12**、`app-state-recovery` **24/24**；种子机双 harness 冷启动落在 `pi`（真实路径，不只单测） | **已签** |
+| 5 | 发布闸：`debuggable=false` + 三方字节一致 | release 包 `aapt2` 无 `debuggable`；证书 `2feb63c5…fa9c`；APK / Release 附件 / 公网 `latest.json` 三处字节一致；包内 bundle sha256 = 该提交 blob | 我独立复核（只读、未重建）：badging `versionCode=101 versionName=2.4.2`、xmltree **debuggable 0 行**、`apksigner` 证书 `2feb63c511cd725795cadc8fa890f9cbc754fe59c0bbfe0787ac33f94f44fa9c`；本地 APK `ef041790…cb4402`（= 本地 `.sha256`）；公网 `latest.json` = 2.4.2 / 101 / **1,833,961 B** / `ef041790…`；**从 R2 下载回读**同值；GitHub Release 资产 digest `sha256:ef041790…`、size 1,833,961；server zip 2,108,106 B / `704a6fc1…c160a0`，包内 `Codex-Turnloom.apk` 同 `ef041790…`；包内 bundle `9a534f58…d891d5ae` = 仓库资产；`publish-guard` **5/5**。**已知偏差（owner 裁定接受，记录在案）**：zip 的 `VERSION.json.gitCommit` = `b40e052`，tag `v2.4.2` = `bfb0513`，两者差一个**只动 docs** 的提交；字面规则「tag = 包内 gitCommit」不成立。2.4.3 起改为先 tag 后打包，或让 `VERSION.json` 记录 tag 本身 | **已签（附已知偏差）** |
+
+## 已定口径（供 2.4.3 沿用）
+
+- 选中态用**墨色 + 字重**，不用强调蓝：玻璃底栏上的蓝字会被读成「粘住的选中块」（Human 20:33 原话：「按了之后会变蓝色，太丑了，没有质感」）。
+- 按下只降**字形层**透明度（`svg` + `.tl-tabbar-label`），不降到按钮整块：整块 opacity 会让滚动的列表从毛玻璃里透出来。
+- 来源标用 Lucide 单一家族：`Terminal` 本身无外框（`SquareTerminal` 才有），`Pi` 直接是 π；未知平台保留两字母兜底——**不允许空块**。
+- 更新只有一个对话框：`立即更新` / `稍后`；「稍后」= 本进程同版本不再自动弹；更高 `versionCode` 是新答案，可以再弹。
+- PI 优先是**规则**，不是用户选择：`harnessExplicit` 只有设备页手点才为 true，否则每次发现都重新按规则算。
+
+## 观察与残项
+
+- `globals.css` 的 `.tl-tabbar [role="tab"] { transition: none }` 会盖掉 `.tl-tabbar-item` 的 120ms 颜色过渡，选中切换是瞬时的。视觉可接受、未阻断；2.4.3 想更柔和可删这一条（按下态自带 `opacity` 过渡）。
+- 320 三页*内容*仍未在真机上单独走查；本版两页有新控件（导航、更新弹层），门禁覆盖几何与 DOM，但「设备上看一眼」挂账到 Rhea 的 100→101 装置走查，覆盖则回填，否则继续挂账。
+- 门禁稳定性记录：旧版 `check-242-update.mjs` 在 320 曾出现 5 条 FAIL（`settings-open` 起，伴随 `Page.captureScreenshot: timeout`）；`e54b67f` 加了截图重试后，冻结树上 320 跑 **36 PASS / exit 0**。判定为脚本时序问题，不是 320 布局缺陷。
+- 版本号漂移的根因已补：`APP_IDENTITY` 之前停在 `2.4.0 / 99`，`test/app-identity.test.cjs` 现在要求三处逐字一致（2/2 通过），下次漏改直接红。
+- `check-226-device` 在冻结后曾两条红（`listSummary.stripDoesNotEatTrack` / `tapBand`，`bandHeight 0`）：原因是 2.2.6 夹具把 `getAppInfo` 写死成 `2.2.6 / 95`，新的启动自检按公网清单自动弹了更新层，盖住列表 tab。`b40e052` 改为读当前构建版本后，390/320 两档 exit 0。**结论：夹具撞车，不是布局回归**；记录在此，避免下次把它当布局问题重查。
