@@ -1,0 +1,47 @@
+name: Release drift
+
+# The update channel (R2 latest.json) and the latest GitHub Release must point at
+# the same bytes. The check used to run as a Host subscription; that executor has
+# been failing with spawn-failed since 2026-11-21, so it runs here instead and
+# does not depend on any one machine being awake.
+
+on:
+  schedule:
+    # every six hours, off the top of the hour to avoid GitHub's cron spike
+    - cron: '17 */6 * * *'
+  release:
+    types: [published]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-drift
+  cancel-in-progress: true
+
+jobs:
+  drift:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Compare the public channel with the latest Release
+        shell: pwsh
+        env:
+          # api.github.com is rate limited per IP; runners share egress addresses.
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          $events = @()
+          $raw = & ./scripts/team/release-drift.ps1
+          if ($LASTEXITCODE -ne 0) { throw "release-drift.ps1 exited $LASTEXITCODE" }
+          foreach ($line in $raw) {
+            $text = [string]$line
+            if (-not $text.Trim()) { continue }
+            $events += $text
+            Write-Host "::error title=Release drift::$text"
+          }
+          if ($events.Count -gt 0) {
+            throw "$($events.Count) release drift event(s): channel and Release do not agree"
+          }
+          Write-Host "channel and Release agree"

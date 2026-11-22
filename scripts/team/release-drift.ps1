@@ -8,6 +8,11 @@ $channel = if ($env:TURNLOOM_CHANNEL_URL) { $env:TURNLOOM_CHANNEL_URL } else { '
 $repo = if ($env:TURNLOOM_REPO) { $env:TURNLOOM_REPO } else { '736368217/Codex-Turnloom' }
 $releasePage = "https://github.com/$repo/releases"
 $headers = @{ 'user-agent' = 'turnloom-release-drift'; 'accept' = 'application/json' }
+# api.github.com is rate limited per IP and CI runners share egress addresses, so
+# send a token when one is available. It must never go to the channel host.
+$apiHeaders = @{}
+foreach ($key in $headers.Keys) { $apiHeaders[$key] = $headers[$key] }
+if ($env:GITHUB_TOKEN) { $apiHeaders['authorization'] = "Bearer $env:GITHUB_TOKEN" }
 
 function Emit([string]$id, [string]$title, [string]$url, [string]$detail) {
     $payload = [ordered]@{ id = $id; title = $title; url = $url; detail = $detail }
@@ -22,7 +27,7 @@ try {
 }
 
 try {
-    $release = Invoke-RestMethod -Uri "https://api.github.com/repos/$repo/releases/latest" -TimeoutSec 20 -Headers $headers
+    $release = Invoke-RestMethod -Uri "https://api.github.com/repos/$repo/releases/latest" -TimeoutSec 20 -Headers $apiHeaders
 } catch {
     Emit 'release-unreachable' 'GitHub Release 读不到' $releasePage ("latest release 接口失败：" + $_.Exception.Message + "。可能是仓库改名、API 限流，或 release 被删。")
     exit 0
