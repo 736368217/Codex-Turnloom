@@ -118,7 +118,9 @@ if (has) {
     '--title', `Codex-Turnloom ${version} (${versionCode})`, '--notes-file', bodyFile);
 }
 
-const info = JSON.parse(gh('release', 'view', tag, '--json', 'assets,isLatest,tagName'));
+// `isLatest` is not a valid --json field in every gh version (2.6x rejects it
+// with "Unknown JSON field"), and nothing here reads it: assets are what matter.
+const info = JSON.parse(gh('release', 'view', tag, '--json', 'assets,tagName'));
 const byName = new Map(info.assets.map((asset) => [asset.name, asset]));
 for (const [name, expected] of [[apkName, apkSha], [zipName, zipSha]]) {
   const asset = byName.get(name);
