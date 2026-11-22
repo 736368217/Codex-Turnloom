@@ -15,7 +15,7 @@
  */
 import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { existsSync, readFileSync, mkdtempSync, copyFileSync, writeFileSync } from 'node:fs';
+import { existsSync, readFileSync, readdirSync, mkdtempSync, copyFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 
@@ -74,6 +74,43 @@ const candidates = [
 ];
 const apkPath = candidates.find((candidate) => existsSync(join(REPO, candidate)));
 if (!apkPath) fail(`no APK for ${version} in dist-app/ — build it first (scripts/build-single-app.ps1)`);
+
+// 2.4.1 shipped `-app-debug.apk` because this script accepted any candidate
+// name. A debug build must never become a release: refuse the name, then prove
+// it on the manifest (aapt2), so a renamed debug build is caught too.
+if (/-debug\.apk$/i.test(apkPath)) {
+  fail(`refusing a debug APK: ${apkPath} — build with -BuildType release`);
+}
+const aapt2 = (() => {
+  const roots = [
+    process.env.ANDROID_HOME, process.env.ANDROID_SDK_ROOT,
+    join(process.env.LOCALAPPDATA || '', 'Android', 'Sdk'),
+    join(process.env.USERPROFILE || '', 'tools', 'android-sdk'),
+  ].filter(Boolean);
+  for (const root of roots) {
+    const tools = join(root, 'build-tools');
+    if (!existsSync(tools)) continue;
+    const versions = readdirSync(tools)
+      .filter((name) => /^\d+(\.\d+)+$/.test(name))
+      .sort((a, b) => a.localeCompare(b, undefined, { numeric: true }))
+      .reverse();
+    for (const version of versions) {
+      for (const name of ['aapt2.exe', 'aapt2.bat', 'aapt2']) {
+        const candidate = join(tools, version, name);
+        if (existsSync(candidate)) return candidate;
+      }
+    }
+  }
+  return '';
+})();
+if (!aapt2) fail('aapt2 not found; refusing to publish an APK whose debuggable flag cannot be proved');
+const manifestDump = execFileSync(aapt2, ['dump', 'xmltree', join(REPO, apkPath), '--file', 'AndroidManifest.xml'], {
+  encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'],
+});
+if (/debuggable\(0x0101000f\)=true/.test(manifestDump) || /android:debuggable="true"/.test(manifestDump)) {
+  fail(`${apkPath} is debuggable=true — a release build must not carry it`);
+}
+console.log(`  ✓ ${apkPath} is not debuggable (aapt2)`);
 const serverZip = `dist-app/turnloom-${version}-server.zip`;
 if (!existsSync(join(REPO, serverZip))) fail(`no server package ${serverZip} — run scripts/package-server-upgrade.ps1`);
 

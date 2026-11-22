@@ -1,4 +1,4 @@
-#requires -Version 5.1
+﻿#requires -Version 5.1
 <#
 .SYNOPSIS
   Build the server upgrade package for an existing Codex-Turnloom install.
@@ -187,6 +187,16 @@ if ($Apk) {
         }
         Say 'signature matches the project key (2feb63c5...)'
     }
+    # 2.4.1 shipped a debuggable APK; this zip is what paired computers serve,
+    # so a debug build must never be staged even when the signature is right.
+    $aapt2 = Find-BuildTool 'aapt2.exe'
+    if (-not $aapt2) { $aapt2 = Find-BuildTool 'aapt2' }
+    if (-not $aapt2) { Fail 'aapt2 not found (set -AndroidHome); refusing to package an APK whose debuggable flag cannot be proved' }
+    $tree = (& $aapt2 dump xmltree $stagedApk --file AndroidManifest.xml 2>&1 | Out-String)
+    if ($tree -match 'debuggable\(0x0101000f\)=true') {
+        Fail 'staged APK has android:debuggable=true; refusing to package a debug build'
+    }
+    Say 'APK is not debuggable'
     $apkStaged = 'public/downloads/Codex-Turnloom.apk'
     Say ("staged APK {0} bytes (sha256 {1})" -f (Get-Item -LiteralPath $stagedApk).Length, $stagedHash)
 }

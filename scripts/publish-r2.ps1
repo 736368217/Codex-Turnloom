@@ -116,7 +116,13 @@ if (-not $SkipSignatureCheck) {
         if ($badging -match "package: name='([^']+)'") {
             if ($Matches[1] -ne 'com.codex.turnloom.app') { Fail "APK package is $($Matches[1]), expected com.codex.turnloom.app" }
         }
-        Ok "identity matches $Version ($VersionCode)"
+        # 2.4.1 shipped a debuggable APK: badging/version checks alone did not
+        # notice. Read the merged manifest and refuse a debug build outright.
+        $tree = (& $aapt2 dump xmltree $apkItem.FullName --file AndroidManifest.xml 2>&1 | Out-String)
+        if ($tree -match 'debuggable\(0x0101000f\)=true') {
+            Fail 'APK has android:debuggable=true; refusing to publish a debug build'
+        }
+        Ok "identity matches $Version ($VersionCode); not debuggable"
     } else {
         Write-Host "warning : aapt2 not found, version identity not checked" -ForegroundColor Yellow
     }

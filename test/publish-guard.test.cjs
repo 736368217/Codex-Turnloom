@@ -21,6 +21,10 @@ const ROOT = path.resolve(__dirname, '..');
 const SCRIPT = path.join(ROOT, 'scripts', 'publish-r2.ps1');
 const MACHINE_KEY_APK = path.join(ROOT, 'dist-app', 'Codex-Turnloom-2.2.2-app-debug.apk');
 const PROJECT_KEY_APK = path.join(ROOT, 'dist-app', 'Codex-Turnloom-2.2.3-app-debug.apk');
+// 2.4.2 added a debuggable guard; the old "project key" fixture is a debug
+// build, so it now belongs to the rejection test. The passing case needs a
+// release build (dist-app is gitignored: clean checkouts skip that half).
+const RELEASE_APK = path.join(ROOT, 'dist-app', 'Codex-Turnloom-2.4.2-app.apk');
 
 function runPublish(args) {
   return spawnSync(
@@ -47,13 +51,31 @@ test(
 );
 
 test(
-  '项目 key 的 APK 预检通过',
-  { skip: process.platform === 'win32' && fs.existsSync(PROJECT_KEY_APK) ? false : '需要 Windows + dist-app 里的项目 key 包' },
+  '项目 key 的 debug APK 必须被 debuggable 闸拒（2.4.1 漏发的根因）',
+  { skip: process.platform === 'win32' && fs.existsSync(PROJECT_KEY_APK) ? false : '需要 Windows + dist-app 里的项目 key debug 包' },
   () => {
     const result = runPublish(['-Version', '2.2.3', '-VersionCode', '92', '-Apk', PROJECT_KEY_APK, '-DryRun']);
     const output = `${result.stdout || ''}${result.stderr || ''}`;
-    assert.equal(result.status, 0, output);
-    assert.match(output, /signature matches the project key/);
-    assert.match(output, /identity matches 2\.2\.3 \(92\)/);
+    assert.notEqual(result.status, 0, `期望拒绝，实际通过：\n${output}`);
+    assert.match(output, /debuggable=true/);
+    assert.match(output, /refusing to publish a debug build/);
   },
 );
+
+test(
+  '项目 key 的 release APK 预检通过',
+  { skip: process.platform === 'win32' && fs.existsSync(RELEASE_APK) ? false : '需要 Windows + 先构建 dist-app 里的 release 包' },
+  () => {
+    const result = runPublish(['-Version', '2.4.2', '-VersionCode', '101', '-Apk', RELEASE_APK, '-DryRun']);
+    const output = `${result.stdout || ''}${result.stderr || ''}`;
+    assert.equal(result.status, 0, output);
+    assert.match(output, /signature matches the project key/);
+    assert.match(output, /identity matches 2\.4\.2 \(101\); not debuggable/);
+  },
+);
+
+test('publish-r2.ps1 的 debuggable 闸没被删掉（干净检出也能守）', () => {
+  const script = fs.readFileSync(SCRIPT, 'utf8');
+  assert.match(script, /debuggable\\\(0x0101000f\\\)=true/);
+  assert.match(script, /refusing to publish a debug build/);
+});
