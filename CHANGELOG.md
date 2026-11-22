@@ -1,5 +1,15 @@
 # Changelog
 
+## 2.4.2 — 导航、更新、来源标、默认 PI（2026-11-22）
+
+对应 Task #21。App `2.4.2`（versionCode `101`），**release 构建**。完整说明见 `docs/RELEASE_2_4_2_2026-11-22.md`。
+
+- **底部导航**：删掉两条 Konsta 时代的 `!important` 死规则与 `:active` 蓝色蒙版；选中图标+文字墨色 `#1C1C1E`、600，未选中 `#8E8E93`、500，按下只降字形透明度（120ms），不改几何。
+- **更新**：启动与回前台自检（未配对只静默查）；有更新自动弹一张 sheet，「立即更新 / 稍后」；点一次下载→校验→系统安装器。设置只留版本行三态；失败绝不写成「已是最新」。
+- **来源头像**：深底白字 `#3A3A3C` 换成浅底 `#ECECF0` + 墨色 Lucide `Terminal` / `Pi`；20/24 两档，未知平台保留两位字母兜底。
+- **默认 PI**：候选顺序收成「显式选择 > PI > 电脑端默认 > 第一个」；旧注册表迁一次；401 回退写回非显式；设备页展开当前 harness 所在平台。
+- **发布卫生**：2.4.1 的 `debuggable=true` APK 改为 `-BuildType release` 出包；`release-github` / `publish-r2` / `package-server-upgrade` 三道闸拒绝 debug 包；`APP_IDENTITY` 与 `app/package.json` / `build.gradle.kts` 三处一致测试。
+
 ## 2.4.1 — 日志只留自动上传，收掉 2.4.0 的尾巴（2026-11-22）
 
 对应 Task #20。App `2.4.1`（versionCode `100`）。完整说明见 `docs/RELEASE_2_4_1_2026-11-22.md`。
