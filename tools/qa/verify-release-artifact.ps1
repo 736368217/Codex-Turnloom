@@ -27,6 +27,10 @@ param(
   [string]$ExpectedBundleSha256 = '18d557eeef3b49326a5212496aebac17fba5cb24ce2c99b43a1ac0cf3140f476',
   [string]$ExpectedBundleName = 'index-6HSyn9q4.js',
   [string]$StaleBundleName = 'index-CNwWW75a.js',
+  # Optional: prove the bundle inside the APK is the blob that commit tracks.
+  # The packaged bytes must be the committed bytes, not whatever the worktree held
+  # when the APK was built.
+  [string]$BundleCommitRef = '',
   # Optional: the commit the server zip must record in VERSION.json (the tag target).
   [string]$ExpectedCommit = ''
 )
@@ -79,6 +83,16 @@ try {
       $bundleSha = (Get-FileHash -LiteralPath $outFile -Algorithm SHA256).Hash.ToLowerInvariant()
       $bundleSize = (Get-Item -LiteralPath $outFile).Length
       Check 'bundle sha256' ($bundleSha -eq $ExpectedBundleSha256) "$bundleSha ($bundleSize B)"
+      if ($BundleCommitRef) {
+        # The shipped bytes must be the committed bytes: an APK built from an
+        # uncommitted asset swap looks perfect and leaves the tag without them.
+        $repo = if ($PSScriptRoot) { (Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path } else { (Get-Location).Path }
+        $rel = "native-shell/app/src/main/assets/public/assets/$ExpectedBundleName"
+        $commitBlob = (& git -C $repo rev-parse "$($BundleCommitRef):$rel" 2>$null)
+        $diskBlob = (& git -C $repo hash-object --no-filters $outFile 2>$null)
+        $sameBlob = [bool]$commitBlob -and [bool]$diskBlob -and ($commitBlob.Trim() -eq $diskBlob.Trim())
+        Check 'bundle is the committed blob' $sameBlob "$($diskBlob.Trim()) vs $($commitBlob.Trim()) ($BundleCommitRef)"
+      }
     } else {
       Check 'bundle sha256' $false 'bundle not found in APK'
     }
