@@ -21,6 +21,10 @@ import { join, resolve } from 'node:path';
 
 const REPO = resolve(import.meta.dirname, '..');
 const PROXY = process.env.GIT_PROXY || '';
+// A token makes this script independent of the machine's credential helper:
+// Git Credential Manager can pop a GUI prompt (or hang headless) and `gh` may
+// hold a stale token. Pass GITHUB_TOKEN/GH_TOKEN and both git and gh use it.
+const TOKEN = String(process.env.GITHUB_TOKEN || process.env.GH_TOKEN || '').trim();
 const args = process.argv.slice(2);
 
 function arg(name, fallback = '') {
@@ -37,9 +41,16 @@ if (!version || !/^\d+\.\d+\.\d+$/.test(version)) {
   process.exit(2);
 }
 
-const sh = (cmd, argv) => execFileSync(cmd, argv, { cwd: REPO, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }).trim();
-const git = (...argv) => sh('git', PROXY ? ['-c', `http.proxy=${PROXY}`, '-c', `https.proxy=${PROXY}`, ...argv] : argv);
-const gh = (...argv) => sh('gh', argv);
+const sh = (cmd, argv, env = process.env) => execFileSync(cmd, argv, { cwd: REPO, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'], env }).trim();
+const AUTH_HEADER = TOKEN ? `Authorization: Basic ${Buffer.from(`x-access-token:${TOKEN}`).toString('base64')}` : '';
+const git = (...argv) => {
+  const config = [];
+  if (PROXY) config.push('-c', `http.proxy=${PROXY}`, '-c', `https.proxy=${PROXY}`);
+  if (AUTH_HEADER) config.push('-c', `http.https://github.com/.extraheader=${AUTH_HEADER}`);
+  return sh('git', [...config, ...argv]);
+};
+const ghEnv = () => (TOKEN ? { ...process.env, GH_TOKEN: TOKEN, GH_NO_UPDATE_NOTIFIER: '1' } : { ...process.env, GH_NO_UPDATE_NOTIFIER: '1' });
+const gh = (...argv) => sh('gh', argv, ghEnv());
 const fail = (message) => { console.error(`release: ${message}`); process.exit(1); };
 
 // 1. Identity must agree in all three places that carry it.
