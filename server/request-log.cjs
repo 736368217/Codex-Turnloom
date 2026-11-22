@@ -29,6 +29,11 @@ const DIAGNOSTICS_MAX_RECORDS = 200;
 const DIAGNOSTICS_MAX_FIELD = 300;
 const DIAGNOSTICS_MAX_RECORD_BYTES = 2 * 1024;
 const DIAGNOSTICS_MAX_FILE_LINES = 1000;
+// Directory-wide retention for logs/phone/. Every day file is trimmed to
+// DIAGNOSTICS_MAX_FILE_LINES, so a file-count bound is also a line bound:
+// maxFiles * lines-per-file >= total lines. Bytes are the real disk bound.
+const PHONE_LOG_DIR_MAX_BYTES = 16 * 1024 * 1024;
+const PHONE_LOG_DIR_MAX_LINES = 50 * 1000;
 const REQUEST_LOG_MAX_FIELD = 240;
 const STACK_MAX_CHARS = 4000;
 
@@ -318,10 +323,83 @@ function countFileLines(file) {
 const fileLineCounts = new Map();
 
 /**
- * Append already-sanitized records to the per-machine phone log.
- * Returns `{ stored, dropped, file }`; never throws.
+ * Directory-wide retention for `<logDir>/phone`.
+ *
+ * The per-file cap (DIAGNOSTICS_MAX_FILE_LINES) bounds one machine-day; nothing
+ * bounded the directory, so a phone that keeps reporting adds a new file every
+ * day forever. This prunes whole day files, oldest first, until both the byte
+ * budget and the file budget hold.
+ *
+ * Only files matching `<machine>-<YYYYMMDD>.jsonl` inside that one directory are
+ * ever touched: no recursion, no other extension, no delete of the newest file.
+ * Removals are reported through `logger` so the operator sees housekeeping
+ * instead of discovering a shrinking archive.
  */
-function writePhoneDiagnostics(logDir, sanitized, { date = new Date(), maxLines = DIAGNOSTICS_MAX_FILE_LINES } = {}) {
+function prunePhoneLogDir(logDir, {
+  maxBytes = PHONE_LOG_DIR_MAX_BYTES,
+  maxLines = PHONE_LOG_DIR_MAX_LINES,
+  maxLinesPerFile = DIAGNOSTICS_MAX_FILE_LINES,
+  logger = null,
+} = {}) {
+  const empty = { files: 0, bytes: 0, removed: [], maxFiles: 0 };
+  const dir = path.join(String(logDir || ""), "phone");
+  let entries;
+  try {
+    entries = fs.readdirSync(dir, { withFileTypes: true });
+  } catch {
+    return empty;
+  }
+  const known = [];
+  for (const entry of entries) {
+    if (!entry.isFile()) continue;
+    const match = /^(.+)-(\d{8})\.jsonl$/.exec(entry.name);
+    if (!match) continue;
+    let bytes = 0;
+    try {
+      bytes = fs.statSync(path.join(dir, entry.name)).size;
+    } catch {
+      continue;
+    }
+    // Day first, then name, so two machines on the same day prune together.
+    known.push({ name: entry.name, day: match[2], bytes });
+  }
+  known.sort((a, b) => (a.day === b.day ? a.name.localeCompare(b.name) : a.day.localeCompare(b.day)));
+  let bytes = known.reduce((sum, file) => sum + file.bytes, 0);
+  const perFile = Math.max(1, Math.round(Number(maxLinesPerFile) || DIAGNOSTICS_MAX_FILE_LINES));
+  const lineBudget = Math.max(perFile, Math.round(Number(maxLines) || PHONE_LOG_DIR_MAX_LINES));
+  const maxFiles = Math.max(1, Math.floor(lineBudget / perFile));
+  const byteBudget = Math.max(0, Math.round(Number(maxBytes) || 0));
+  const removed = [];
+  while (known.length > 1 && (bytes > byteBudget || known.length > maxFiles)) {
+    const oldest = known[0];
+    try {
+      fs.unlinkSync(path.join(dir, oldest.name));
+    } catch {
+      break;
+    }
+    known.shift();
+    bytes -= oldest.bytes;
+    removed.push(oldest);
+  }
+  if (removed.length && typeof logger === "function") {
+    const detail = removed.map((file) => `${file.name} (${file.bytes} B)`).join(", ");
+    logger(`phone log retention: removed ${removed.length} oldest day file(s): ${detail}; kept ${known.length} file(s) / ${bytes} B`);
+  }
+  return { files: known.length, bytes, removed, maxFiles };
+}
+
+/**
+ * Append already-sanitized records to the per-machine phone log.
+ * Returns `{ stored, dropped, file, retention }`; never throws.
+ */
+function writePhoneDiagnostics(logDir, sanitized, {
+  date = new Date(),
+  maxLines = DIAGNOSTICS_MAX_FILE_LINES,
+  prune = true,
+  logger = null,
+  dirMaxBytes = PHONE_LOG_DIR_MAX_BYTES,
+  dirMaxLines = PHONE_LOG_DIR_MAX_LINES,
+} = {}) {
   const records = Array.isArray(sanitized?.records) ? sanitized.records : [];
   const machine = safeMachineName(sanitized?.machine);
   const file = phoneDiagnosticsPath(logDir, machine, date);
@@ -341,7 +419,8 @@ function writePhoneDiagnostics(logDir, sanitized, { date = new Date(), maxLines 
     count = Math.min(count, maxLines);
   }
   fileLineCounts.set(file, count);
-  return { stored: records.length, dropped: Number(sanitized?.dropped) || 0, file: path.basename(file) };
+  const retention = prune ? prunePhoneLogDir(logDir, { maxBytes: dirMaxBytes, maxLines: dirMaxLines, maxLinesPerFile: maxLines, logger }) : null;
+  return { stored: records.length, dropped: Number(sanitized?.dropped) || 0, file: path.basename(file), retention };
 }
 
 module.exports = {
@@ -350,6 +429,8 @@ module.exports = {
   DIAGNOSTICS_MAX_BYTES,
   DIAGNOSTICS_MAX_RECORDS,
   DIAGNOSTICS_MAX_FILE_LINES,
+  PHONE_LOG_DIR_MAX_BYTES,
+  PHONE_LOG_DIR_MAX_LINES,
   REQUEST_LOG_MAX_FIELD,
   localAppDataDir,
   resolveLogDir,
@@ -366,5 +447,6 @@ module.exports = {
   sanitizeDiagnosticsRequest,
   phoneDiagnosticsPath,
   trimJsonlFile,
+  prunePhoneLogDir,
   writePhoneDiagnostics,
 };

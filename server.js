@@ -9526,7 +9526,7 @@ const server = http.createServer(async (req, res) => {
       if (!requireAuthorized(req, res, url)) return;
       const body = await readJsonBody(req, requestLog.DIAGNOSTICS_MAX_BYTES);
       const sanitized = requestLog.sanitizeDiagnosticsRequest(body, { fallbackMachine: MACHINE_NAME });
-      const written = requestLog.writePhoneDiagnostics(serverLogDir(), sanitized);
+      const written = requestLog.writePhoneDiagnostics(serverLogDir(), sanitized, { logger: logInfo });
       sendJson(res, 200, {
         ok: true,
         stored: written.stored,
