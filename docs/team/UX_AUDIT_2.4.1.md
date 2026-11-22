@@ -12,7 +12,7 @@
 | 4 | 等审批时的输入区提示 | `waiting`（`status.interactionRequired`，与头部「待你处理」同源）**优先于** `running`；只在有输入时出现；`notice` 最高优先；12 字 | `bb8157a`；`queueLogic.ts:288-301`；`app-queue-contract:236-248` 五条断言 + `:250-251` 屏幕接线；**29/29** | **已签**（320 折行随第 7 条） |
 | 5 | `ThreadMessage` 收窄 | 声明真实字段后再删 index signature；`as` 只在边界；反向用例（字段名写错）**必须编译失败**；日期分隔用例仍绿 | `2eebbea`；`turnloomApi.ts:125-154` 24 字段、ThreadMessage 无 index signature；`normalizeThreadMessages` 在 `:475` / `:490-491` 边界调用；`message-type-guard` **1/1**；`app:typecheck` 0 | **已签** |
 | 6 | 漂移哨兵搬 CI | 定时 + `release: published`；**能证明它会失败**；除 `GITHUB_TOKEN` 外不需要别的密钥 | `277232a`（workflow）+ `963038e`（`$LASTEXITCODE` → `$?`，首次手动 dispatch 绿）。**失败路径由我用真实旧清单验证**：`TURNLOOM_CHANNEL_URL=…/turnloom/history/2.4.0.json` → 输出 `version:v2.4.1:2.4.0` 与 `digest:v2.4.1:2.4.0` 两条事件；正常清单 → 无输出、exit 0 | **已签** |
-| 7 | 三页无回归（发版前） | 会话 / 对话 / 设备 390 与 320 各一遍：无横向溢出、44px 命中区、无 JS 异常；`check-redesign --require` 的 `RESULT: PASS` | 代码侧已绿：`1c5e125` 上 `npm test` 674/672/0/2、`app:typecheck` 0 | **待**（Rhea 的 2.4.1/100 包 + 三页走查） |
+| 7 | 三页无回归（发版前） | 会话 / 对话 / 设备 390 与 320 各一遍：无横向溢出、44px 命中区、无 JS 异常；`check-redesign --require` 的 `RESULT: PASS` | **390 内容**：Rhea 在发布字节 `54de7699` 上 **25 PASS / 0 FAIL**（53 行会话、27 行对话含 2 个日期分隔、设备 2 卡、设置五组 + 诊断 sheet，logcat 无 JS 异常）。**320 几何**：我在发布树上跑 `check-redesign --build --require` → **115 PASS / 0 FAIL / 0 SKIP，RESULT: PASS**（其中 33 条含 320 档）。**残项**：320 的三页*内容*未单独在设备上走查，本版不据此声称已验，2.4.2 常规回归补 | **已签（附残项）** |
 
 ## 已定口径（避免实现时二次讨论）
 
