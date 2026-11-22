@@ -379,6 +379,9 @@ function prunePhoneLogDir(logDir, {
     }
     known.shift();
     bytes -= oldest.bytes;
+    // The line-count cache must only describe files that still exist, otherwise
+    // it grows for every day file the archive has ever seen.
+    fileLineCounts.delete(path.join(dir, oldest.name));
     removed.push(oldest);
   }
   if (removed.length && typeof logger === "function") {
