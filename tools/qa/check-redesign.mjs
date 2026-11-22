@@ -457,6 +457,11 @@ const ICON_AUDIT = `(() => {
     if (!r.width || !r.height) continue;
     counted += 1;
     sizes.add(Math.round(Math.min(r.width, r.height)));
+    // A source mark (CX/PI chip) is a logo inside a 20px tile, not an icon
+    // paired with a one-line label: its tile sits on the row's first line and
+    // the two-line text block's centre is lower by design. Size/stroke still
+    // count; the alignment rule only applies to real icons.
+    if (s.closest('.tl-kindavatar')) continue;
     const row = s.closest('button, a, [role="button"], .tl-current-device, .tl-runstrip-head, .tl-hrow, .tl-platcard');
     if (!row) continue;
     const rr = row.getBoundingClientRect();
