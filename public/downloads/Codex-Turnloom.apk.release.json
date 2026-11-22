@@ -1,21 +1,21 @@
 {
-    "generatedAt":  "2026-11-22T13:11:31.7414996+08:00",
-    "startedAt":  "2026-11-22T13:10:53.7551196+08:00",
+    "generatedAt":  "2026-11-22T13:41:56.2718121+08:00",
+    "startedAt":  "2026-11-22T13:41:05.9266888+08:00",
     "result":  "ok",
     "route":  "dom-shell",
     "buildType":  "debug",
     "channel":  "debug",
     "packageName":  "com.codex.turnloom.app",
-    "versionName":  "2.4.0",
-    "versionCode":  99,
-    "apkName":  "Codex-Turnloom-2.4.0-app-debug.apk",
-    "sha256":  "fe8cfca118f15a6a658ad541549c05254bfaa0c84db5426ab120972525218e1f",
-    "sizeBytes":  2275258,
+    "versionName":  "2.4.1",
+    "versionCode":  100,
+    "apkName":  "Codex-Turnloom-2.4.1-app-debug.apk",
+    "sha256":  "54de76994a94da898226e2ecf2926cfce4697eb640df83495654ac3c2c41e857",
+    "sizeBytes":  2275690,
     "notes":  "",
     "identity":  {
                      "applicationId":  "com.codex.turnloom.app",
-                     "versionName":  "2.4.0",
-                     "versionCode":  "99"
+                     "versionName":  "2.4.1",
+                     "versionCode":  "100"
                  },
     "buildSteps":  [
                        {
@@ -76,7 +76,7 @@
                        {
                            "name":  "aapt2-badging",
                            "status":  "ok",
-                           "detail":  "com.codex.turnloom.app/2.4.0/99"
+                           "detail":  "com.codex.turnloom.app/2.4.1/100"
                        }
                    ],
     "toolchain":  {
@@ -88,15 +88,19 @@
                       "npm":  "C:\\Program Files\\nodejs\\npm.cmd"
                   },
     "apk":  {
-                "name":  "Codex-Turnloom-2.4.0-app-debug.apk",
-                "path":  "D:\\Turn-DSH\\Codex-Turnloom\\dist-app\\Codex-Turnloom-2.4.0-app-debug.apk",
-                "bytes":  2275258,
-                "sha256":  "fe8cfca118f15a6a658ad541549c05254bfaa0c84db5426ab120972525218e1f"
+                "name":  "Codex-Turnloom-2.4.1-app-debug.apk",
+                "path":  "D:\\Turn-DSH\\Codex-Turnloom\\dist-app\\Codex-Turnloom-2.4.1-app-debug.apk",
+                "bytes":  2275690,
+                "sha256":  "54de76994a94da898226e2ecf2926cfce4697eb640df83495654ac3c2c41e857"
             },
     "entryUrl":  "file:///android_asset/public/index.html",
     "gradleArgs":  [
                        "assembleDebug",
                        "--no-daemon",
-                       "--console=plain"
+                       "--console=plain",
+                       "-Dhttp.proxyHost=127.0.0.1",
+                       "-Dhttp.proxyPort=7897",
+                       "-Dhttps.proxyHost=127.0.0.1",
+                       "-Dhttps.proxyPort=7897"
                    ]
 }
