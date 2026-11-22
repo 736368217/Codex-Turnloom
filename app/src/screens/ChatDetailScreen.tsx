@@ -163,6 +163,9 @@ export default function ChatDetailScreen({ threadId, title, newThread = false }:
   // live in the same object, so a queue mutation repaints the bar immediately.
   const status = useThreadStatus(scope, newThread ? '' : threadId);
   const running = isRunning(status);
+  // A turn parked on an approval keeps `thinking: true`, so it also reads as
+  // running; the hint line needs the narrower fact.
+  const waiting = Boolean(status?.interactionRequired);
   const fields = useComposerFields(scope, composerThreadId, threadModel);
   const [submitting, setSubmitting] = useState(false);
   const [queueOpen, setQueueOpen] = useState(false);
@@ -291,7 +294,7 @@ export default function ChatDetailScreen({ threadId, title, newThread = false }:
   }, [threadId]);
 
   const composerHasContent = Boolean(fields.composer.text.trim() || fields.composer.attachments.length);
-  const composerHint = queueHintText({ running, hasInput: composerHasContent, queueLength, notice: queueNotice });
+  const composerHint = queueHintText({ running, waiting, hasInput: composerHasContent, queueLength, notice: queueNotice });
 
   const resumeQueue = async (): Promise<void> => {
     if (submitting || !context || !threadId) return;

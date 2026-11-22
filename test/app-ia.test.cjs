@@ -106,8 +106,15 @@ test('IA5: machine + diagnostics live in Settings, version appears once', () => 
   assert.match(settings, /<div className="tl-settings-label">当前电脑<\/div>/);
   // 2.4.0: the diagnostics action moved into the one diagnostics sheet; the
   // capability still lives in the settings area, which is what this test owns.
-  assert.match(sheet, /uploadDiagnostics\(context\)/);
-  assert.match(sheet, /上传日志/);
+  // 2.4.1: the manual upload button is gone — the sheet only reports the
+  // automatic upload, and every confirmed send path hands records over.
+  assert.doesNotMatch(sheet, /上传日志/, 'the duplicate manual upload entry must be gone');
+  assert.match(sheet, /readUploadOutcome\(\)/);
+  assert.match(sheet, /最近上传/);
+  assert.match(sheet, /自动 · 每次发送成功后/);
+  const store = read('state/dataStore.ts');
+  assert.equal((store.match(/void uploadDiagnostics\(context\)/g) || []).length, 3,
+    'sendMessage, createThread and sendQueuedMessage each confirm a send and must upload');
   assert.match(settings, /openSheet\('diagnostics'\)/);
   // Version appears once, in the About card; there is no second subtitle copy.
   assert.doesNotMatch(settings, /APP_IDENTITY/);

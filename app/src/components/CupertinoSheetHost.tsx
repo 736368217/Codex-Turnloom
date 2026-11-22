@@ -6,7 +6,7 @@
  * cache clear and re-sync in one sheet (never a nested sheet).
  */
 import { useState } from 'react';
-import { RefreshCw, CircleCheck, FileUp, Trash2 } from 'lucide-react';
+import { RefreshCw, CircleCheck, Trash2 } from 'lucide-react';
 import VaulSheet from './VaulSheet';
 import { ActionButton } from './ui';
 import { COLORS } from '../theme/optionATokens';
@@ -16,7 +16,7 @@ import { useDataState, clearOfflineCache, refreshAll } from '../state/dataStore'
 import { usePrefs, TEXT_SIZE_LABEL, DEFAULT_VIEW_LABEL } from '../state/prefsStore';
 import { haptic, openExternalUrl } from '../lib/nativeBridge';
 import { copyText } from '../lib/clipboard';
-import { uploadDiagnostics } from '../lib/diagnostics';
+import { readUploadOutcome } from '../lib/diagnostics';
 import { UpdatePanel } from '../screens/SettingsScreen';
 
 const TITLES: Record<Exclude<SheetKey, null>, string> = {
@@ -36,20 +36,8 @@ export default function CupertinoSheetHost() {
   const data = useDataState();
   const prefs = usePrefs();
   const context = currentRequestContext();
-  const [busy, setBusy] = useState('');
   const [diagNotice, setDiagNotice] = useState('');
   const open = sheet !== null;
-
-  const upload = async (): Promise<void> => {
-    if (busy || !context) return;
-    setBusy('upload');
-    setDiagNotice('');
-    haptic('selection');
-    const stored = await uploadDiagnostics(context);
-    setBusy('');
-    setDiagNotice(stored > 0 ? `已上传 ${stored} 条日志` : '暂无可上传记录');
-    haptic(stored > 0 ? 'success' : 'warning');
-  };
 
   const copyAddress = async (): Promise<void> => {
     const ok = await copyText(session.serverUrl);
@@ -68,6 +56,12 @@ export default function CupertinoSheetHost() {
       case 'disconnect': return <div style={{ display: 'grid', gap: 10 }}><ActionButton variant="red" onClick={() => { clearOfflineCache(context); unpair(); closeSheet(); }}>确认忘记这台电脑</ActionButton><ActionButton variant="neutral" onClick={closeSheet}>保留连接</ActionButton></div>;
       case 'update': return <UpdatePanel />;
       case 'diagnostics': {
+        // 2.4.1: the only uploader is the send-success hook; this sheet reports
+        // what it did instead of offering a second, redundant button.
+        const upload = readUploadOutcome();
+        const uploadLine = upload
+          ? `${new Date(upload.at).toLocaleString('zh-CN')} · ${upload.ok ? `已上传 ${upload.stored} 条` : `失败（${upload.error || '未知原因'}）`}`
+          : '尚未上传';
         const rows: [string, string][] = [
           ['应用版本', `${session.appVersion} (${session.appVersionCode})`],
           ['电脑', session.machineName],
@@ -76,6 +70,8 @@ export default function CupertinoSheetHost() {
           ['连接状态', session.online ? '在线' : '离线'],
           ['会话数量', String(data.threads.length)],
           ['最近同步', data.lastSyncAt ? new Date(data.lastSyncAt).toLocaleString('zh-CN') : '尚未同步'],
+          ['日志上传', '自动 · 每次发送成功后'],
+          ['最近上传', uploadLine],
           ['字号', TEXT_SIZE_LABEL[prefs.textSize]],
           ['默认视图', DEFAULT_VIEW_LABEL[prefs.defaultView]],
           ['触感反馈', prefs.haptics ? '开' : '关'],
@@ -97,10 +93,7 @@ export default function CupertinoSheetHost() {
                 </div>
               ))}
             </div>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
-              <ActionButton variant="neutral" icon={<RefreshCw size={16} />} onClick={() => { if (context) { haptic('selection'); void refreshAll(context); setDiagNotice('已重新同步会话'); } }}>重新同步</ActionButton>
-              <ActionButton variant="neutral" icon={<FileUp size={16} />} disabled={busy === 'upload'} onClick={() => { void upload(); }}>{busy === 'upload' ? '上传中…' : '上传日志'}</ActionButton>
-            </div>
+            <ActionButton variant="neutral" icon={<RefreshCw size={16} />} onClick={() => { if (context) { haptic('selection'); void refreshAll(context); setDiagNotice('已重新同步会话'); } }}>重新同步</ActionButton>
             <ActionButton
               variant="neutral"
               icon={<Trash2 size={16} color={COLORS.actionRed} />}

@@ -233,10 +233,22 @@ test('Q8: retrieving a draft rebuilds the exact tray and text', () => {
 });
 
 test('Q9: the composer hint is one line and never invents a queue', () => {
-  assert.equal(queue.queueHintText({ running: true, hasInput: true, queueLength: 0, notice: '' }), '本轮运行中，发送会排队，结束后自动发出');
-  assert.equal(queue.queueHintText({ running: true, hasInput: true, queueLength: 2, notice: '' }), '');
-  assert.equal(queue.queueHintText({ running: false, hasInput: true, queueLength: 0, notice: '' }), '');
-  assert.equal(queue.queueHintText({ running: false, hasInput: true, queueLength: 0, notice: '已排队 · 第 2 条' }), '已排队 · 第 2 条');
+  assert.equal(queue.queueHintText({ running: true, waiting: false, hasInput: true, queueLength: 0, notice: '' }), '本轮运行中，发送会排队，结束后自动发出');
+  assert.equal(queue.queueHintText({ running: true, waiting: false, hasInput: true, queueLength: 2, notice: '' }), '');
+  assert.equal(queue.queueHintText({ running: false, waiting: false, hasInput: true, queueLength: 0, notice: '' }), '');
+  assert.equal(queue.queueHintText({ running: false, waiting: false, hasInput: true, queueLength: 0, notice: '已排队 · 第 2 条' }), '已排队 · 第 2 条');
+});
+
+test('Q9b: a turn parked on an approval says so, and that line wins over the running one', () => {
+  // waiting implies thinking:true (the same fact that made 2.4.0's waiting group
+  // empty when the order was wrong), so the waiting branch must come first.
+  assert.equal(queue.queueHintText({ running: true, waiting: true, hasInput: true, queueLength: 0, notice: '' }), '先处理审批，或排队下一条');
+  assert.equal(queue.queueHintText({ running: true, waiting: true, hasInput: true, queueLength: 2, notice: '' }), '先处理审批，或排队下一条');
+  assert.equal(queue.queueHintText({ running: true, waiting: true, hasInput: false, queueLength: 0, notice: '' }), '');
+  assert.equal(queue.queueHintText({ running: true, waiting: true, hasInput: true, queueLength: 0, notice: '队列已暂停。恢复后按顺序继续。' }), '队列已暂停。恢复后按顺序继续。');
+  const screen = read('screens/ChatDetailScreen.tsx');
+  assert.match(screen, /const waiting = Boolean\(status\?\.interactionRequired\)/);
+  assert.match(screen, /queueHintText\(\{ running, waiting, hasInput: composerHasContent, queueLength, notice: queueNotice \}\)/);
 });
 
 test('Q10: an image MIME is taken from bytes, then the server field, then the name — never guessed', () => {
@@ -274,7 +286,7 @@ test('Q12: the screen wires the bar, the sheet, a queue submit and a paused stop
   assert.match(screen, /sendQueuedMessage/);
   assert.match(screen, /resumeThreadQueue/);
   assert.match(screen, /enterKeyHint="send"/);
-  assert.match(screen, /queueHintText\(\{ running, hasInput: composerHasContent, queueLength, notice: queueNotice \}\)/);
+  assert.match(screen, /queueHintText\(\{ running, waiting, hasInput: composerHasContent, queueLength, notice: queueNotice \}\)/);
   assert.match(screen, /hintVisible=\{Boolean\(composerHint\)\}/, 'no empty 21px line for the whole run');
   assert.match(screen, /onQueueFilesBlocked=/);
   assert.match(screen, /onRetrieved=\{applyQueueDraft\}/);

@@ -10,7 +10,7 @@ import { useEffect, useRef, type ReactNode } from 'react';
 import { Toggle } from 'konsta/react';
 import {
   Database, Laptop, Type, List, Vibrate, FileText, BookOpen, MessageCircle,
-  Trash2, ChevronRight, RefreshCw, Download, X, ShieldCheck, Activity,
+  ChevronRight, RefreshCw, Download, X, ShieldCheck, Activity, LogOut,
 } from 'lucide-react';
 import { InsetGroup } from '../components/Segmented';
 import { StatusPill } from '../components/ui';
@@ -391,7 +391,7 @@ export default function SettingsScreen() {
           <div className="tl-settings-label">危险操作</div>
           <div className="tl-settings-card">
             <button type="button" className="tl-press tl-settings-row tl-settings-row--danger" onClick={() => { haptic('warning'); openSheet('disconnect'); }}>
-              <span className="tl-settings-icon"><Trash2 size={16} /></span>
+              <span className="tl-settings-icon"><LogOut size={16} /></span>
               <span>忘记这台电脑</span>
             </button>
           </div>

@@ -278,14 +278,22 @@ export function queueAttachmentDetail(item: QueueMessage): { images: string; fil
   };
 }
 
-/** The one hint line above the composer; a notice temporarily replaces it. */
+/**
+ * The one hint line above the composer; a notice temporarily replaces it.
+ *
+ * `waiting` (a turn parked on an approval) must be checked before `running`:
+ * such a turn has `thinking: true`, so the running branch would swallow the
+ * line and the user would never learn why sending looks inert.
+ */
 export function queueHintText(input: {
   running: boolean;
+  waiting: boolean;
   hasInput: boolean;
   queueLength: number;
   notice: string;
 }): string {
   if (input.notice) return input.notice;
+  if (input.waiting && input.hasInput) return '先处理审批，或排队下一条';
   if (input.running && input.hasInput && input.queueLength <= 0) {
     return '本轮运行中，发送会排队，结束后自动发出';
   }

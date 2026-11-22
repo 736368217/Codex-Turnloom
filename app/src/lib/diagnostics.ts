@@ -19,6 +19,43 @@ export const DIAGNOSTICS_KEY = 'turnloom.diagnostics.v1';
 export const MAX_DIAGNOSTIC_RECORDS = 200;
 export const MAX_DIAGNOSTIC_MESSAGE = 300;
 
+/**
+ * Outcome of the last automatic upload. 2.4.1 removed the manual "upload" button:
+ * the only uploader is the send-success hook, so the sheet has to report what
+ * that hook did instead of offering a second way to trigger it.
+ */
+export const DIAGNOSTICS_UPLOAD_KEY = 'turnloom.diagnostics.upload.v1';
+
+export interface DiagnosticsUploadOutcome {
+  at: string;
+  ok: boolean;
+  /** Records the attempt carried (accepted when ok, rejected when not). */
+  stored: number;
+  error?: string;
+}
+
+export function readUploadOutcome(): DiagnosticsUploadOutcome | null {
+  try {
+    const raw = secureGet(DIAGNOSTICS_UPLOAD_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as Partial<DiagnosticsUploadOutcome> | null;
+    if (!parsed || typeof parsed !== 'object') return null;
+    if (!/^\d{4}-\d{2}-\d{2}T/.test(String(parsed.at || ''))) return null;
+    return {
+      at: String(parsed.at),
+      ok: parsed.ok === true,
+      stored: Number.isFinite(Number(parsed.stored)) ? Math.max(0, Number(parsed.stored)) : 0,
+      ...(parsed.error ? { error: clamp(parsed.error, 80) } : {}),
+    };
+  } catch {
+    return null;
+  }
+}
+
+function writeUploadOutcome(outcome: DiagnosticsUploadOutcome): void {
+  try { secureSet(DIAGNOSTICS_UPLOAD_KEY, JSON.stringify(outcome)); } catch { /* best effort */ }
+}
+
 export type DiagnosticKind = 'send' | 'timeout' | 'auth' | 'compress' | 'other';
 
 export interface DiagnosticRecord {
@@ -144,12 +181,19 @@ export async function uploadDiagnostics(context: RequestContext | null): Promise
   const result: ApiResult<{ ok?: boolean; stored?: number }> = await postDiagnostics(context, payload);
   if (result.ok) {
     clearDiagnostics();
+    writeUploadOutcome({ at: new Date().toISOString(), ok: true, stored: payload.records.length });
     return payload.records.length;
   }
+  writeUploadOutcome({
+    at: new Date().toISOString(),
+    ok: false,
+    stored: payload.records.length,
+    error: clamp(result.error || `HTTP ${result.status}`, 80),
+  });
   return 0;
 }
 
 export const diagnostics = {
-  recordDiagnostic, readDiagnostics, clearDiagnostics, uploadDiagnostics,
+  recordDiagnostic, readDiagnostics, clearDiagnostics, uploadDiagnostics, readUploadOutcome,
   sanitizeDiagnostic, trimDiagnostics, buildDiagnosticsPayload,
 };

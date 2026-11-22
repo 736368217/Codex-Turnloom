@@ -381,6 +381,9 @@ export async function createThread(context: RequestContext, options: SendOptions
   const prev = dataStore.getState();
   applyThreads(context, [optimistic, ...prev.threads.filter((row) => row.id !== id)]);
   void refreshThreads(context);
+  // 2.4.1: the manual upload button is gone, so every confirmed send path has to
+  // hand over pending records — a new thread's first message included.
+  void uploadDiagnostics(context);
   return id;
 }
 
@@ -457,6 +460,9 @@ export async function sendQueuedMessage(
   const snapshot = applyQueueSnapshot(context.scope, threadId, result.data);
   // The status poll is authoritative for positions and delivery states.
   void refreshThreadStatus(context, threadId);
+  // A queued send is a confirmed send too; without this, users who only talk to
+  // a running thread would never upload diagnostics once the button is gone.
+  void uploadDiagnostics(context);
   return { ok: true, queueLength: snapshot.queueLength, queuePaused: snapshot.queuePaused, error: '' };
 }
 
