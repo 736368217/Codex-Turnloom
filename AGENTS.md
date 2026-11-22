@@ -62,6 +62,19 @@ For a debug APK without release keys:
 powershell -NoProfile -ExecutionPolicy Bypass -File scripts/build-single-app.ps1 -BuildType debug
 ```
 
+**Vite builds need a temp directory this process can delete.** On this machine
+`npm run app:build` (and `check-redesign --build`, which runs Vite in `app/`)
+dies in `[vite:esbuild-transpile]` with `remove
+C:\Users\<you>\AppData\Local\Temp\esbuild-…: Access is denied` unless `TEMP`/`TMP`
+point inside the repository. That error is an environment problem, not a code
+problem — a red gate that reports `vite build exited 1` on an otherwise clean
+tree is usually this:
+
+```powershell
+$env:TEMP = 'D:\Turn-DSH\Codex-Turnloom\.scratch\tmp'; $env:TMP = $env:TEMP
+npm run app:build
+```
+
 ## Releasing (a version is not "done" until it is public)
 
 Every shipped version must leave the machine it was built on:
