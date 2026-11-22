@@ -464,6 +464,30 @@ test('screen wiring: header back only, two picker buttons, one primary, no fake 
   assert.match(detail, /buildSendPayload\(\{[\s\S]*attachments/);
 });
 
+// 2.4.0 的日期分隔条一条都没出现过：`/api/threads/:id/messages` 的行只有 `timestamp`
+// （rollout 的 ISO 时间），屏幕当时只读 `createdAt ?? updatedAt`，`chatDay` 永远拿不到 key。
+// 这条盯字段名与空行顺序，不盯像素——它红了说明功能根本没渲染，不是排版问题。
+test('date separators read the server timestamp field and never burn a day on an empty row', () => {
+  const c = harness().contract;
+  const iso = '2026-11-21T05:22:00.000Z';
+  assert.equal(c.messageTimestamp({ role: 'assistant', content: '在', timestamp: iso }), iso,
+    '服务端行只有 timestamp，读不到就一条分隔条都不会出现');
+  const local = Date.now();
+  assert.equal(c.messageTimestamp({ role: 'user', content: '在吗', createdAt: local }), local,
+    '本地乐观行有 createdAt，仍用它的值');
+  assert.equal(c.messageTimestamp({ createdAt: '', timestamp: iso }), iso, '空字符串不能冒充时间');
+  assert.equal(c.messageTimestamp({}), undefined);
+  assert.equal(c.messageTimestamp(null), undefined);
+
+  const screen = read('app/src/screens/ChatDetailScreen.tsx');
+  assert.match(screen, /chatDay\(messageTimestamp\(message\)\)/,
+    '分隔条必须走 messageTimestamp，否则又退回只读 createdAt');
+  assert.match(screen, /const showDay = Boolean\(day\.key\) && day\.key !== lastDayKey && \(hasBody \|\| isApproval\)/,
+    '空消息不能消费当天 key，否则那天第一条之后的日期分隔条被吞掉');
+  assert.match(read('app/src/lib/turnloomApi.ts'), /timestamp\?: string \| number/,
+    'ThreadMessage 必须声明服务端真实的时间字段');
+});
+
 function stripComments(text) {
   return text.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
 }

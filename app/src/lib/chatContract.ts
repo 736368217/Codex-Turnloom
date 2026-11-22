@@ -531,6 +531,22 @@ export function messageText(message: unknown): string {
   return compactMessageText(value);
 }
 
+/**
+ * The message's own time, in the order its two writers use it: an optimistic local
+ * row carries `createdAt`, while a server row from `/api/threads/:id/messages`
+ * carries only `timestamp` (the rollout's ISO time). Reading createdAt alone is
+ * what made every date separator in 2.4.0 disappear.
+ */
+export function messageTimestamp(message: unknown): string | number | undefined {
+  const row = object(message);
+  if (!row) return undefined;
+  for (const value of [row.createdAt, row.updatedAt, row.timestamp]) {
+    if (typeof value === 'number' && Number.isFinite(value)) return value;
+    if (typeof value === 'string' && value.trim()) return value;
+  }
+  return undefined;
+}
+
 /** A data URL is a local picker representation, not a request body field. */
 export function plainBase64(value: unknown): string {
   if (typeof value !== 'string') return '';

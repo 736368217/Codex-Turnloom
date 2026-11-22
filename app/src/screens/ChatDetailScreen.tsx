@@ -7,7 +7,7 @@ import MarkdownMessage from '../components/MarkdownMessage';
 import VaulSheet from '../components/VaulSheet';
 import KindAvatar from '../components/KindAvatar';
 import { COLORS } from '../theme/optionATokens';
-import { messageText, isRunning, supportsImages,
+import { messageText, messageTimestamp, isRunning, supportsImages,
   buildSendPayload, sendRequestIdentity,
 } from '../lib/chatContract';
 import { composerSubmitDecision } from '../lib/composerSubmit';
@@ -469,8 +469,12 @@ export default function ChatDetailScreen({ threadId, title, newThread = false }:
               const text = messageText(message);
               const images = Array.isArray(message.images) ? message.images : [];
               const rowKey = String(message.id || index);
-              const day = chatDay(message.createdAt ?? message.updatedAt);
-              const showDay = Boolean(day.key) && day.key !== lastDayKey;
+              const day = chatDay(messageTimestamp(message));
+              // Only a row that actually renders may claim the day: an empty row that
+              // consumed the key made the next real message lose its separator.
+              const hasBody = Boolean(text) || images.length > 0;
+              const isApproval = message.role === 'interaction' && Boolean(message.approvalKind);
+              const showDay = Boolean(day.key) && day.key !== lastDayKey && (hasBody || isApproval);
               if (showDay) lastDayKey = day.key;
               const dayRow = showDay ? <div className="tl-chat-date" role="separator">{day.label}</div> : null;
               if (message.role === 'interaction' && message.approvalKind) {

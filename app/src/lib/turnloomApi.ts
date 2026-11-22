@@ -128,6 +128,8 @@ export interface ThreadMessage {
   text?: string;
   content?: string;
   createdAt?: string | number;
+  /** Server rows carry the rollout's ISO time here; `createdAt` only exists on local optimistic rows. */
+  timestamp?: string | number;
   kind?: string;
   [key: string]: unknown;
 }
