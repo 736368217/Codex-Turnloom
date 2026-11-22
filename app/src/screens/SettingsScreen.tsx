@@ -10,25 +10,23 @@ import { useEffect, useRef, type ReactNode } from 'react';
 import { Toggle } from 'konsta/react';
 import {
   Database, Laptop, Type, List, Vibrate, FileText, BookOpen, MessageCircle,
-  ChevronRight, RefreshCw, Download, X, ShieldCheck, Activity, LogOut,
+  ChevronRight, Download, Activity, LogOut,
 } from 'lucide-react';
-import { InsetGroup } from '../components/Segmented';
-import { StatusPill } from '../components/ui';
+import { ActionButton, StatusPill } from '../components/ui';
 import { COLORS } from '../theme/optionATokens';
-import { useSessionState, setOfflineCacheEnabled, currentRequestContext, selectedHarness } from '../state/sessionStore';
+import { useSessionState, setOfflineCacheEnabled, selectedHarness } from '../state/sessionStore';
 import { useDataState } from '../state/dataStore';
-import { openSheet, openLinkSheet } from '../state/sheetStore';
-import { haptic, hasNativeUpdater, startUpdateDownload, cancelUpdate, installUpdate, isPublicUpdateUrl } from '../lib/nativeBridge';
-import type { RequestContext } from '../lib/turnloomApi';
-import { absoluteApkUrl } from '../lib/appUpdate';
-import { runUpdateCheck } from '../lib/updateChannel';
+import { openSheet, openLinkSheet, closeSheet } from '../state/sheetStore';
+import { haptic } from '../lib/nativeBridge';
 import { platformLabel } from '../lib/platforms';
 import { setActiveTab, setThreadsView } from '../state/tabStore';
 import {
   usePrefs, setTextSize, setDefaultView, setHaptics,
   TEXT_SIZE_LABEL, DEFAULT_VIEW_LABEL, type TextSize, type DefaultView,
 } from '../state/prefsStore';
-import { useUpdate, updateStore, setState, setMessage, setRelease, setRequestId, setChannel } from '../state/updateStore';
+import {
+  useUpdate, updateStore, checkForUpdates, startUpdate, cancelDownload, continueInstall, dismissUpdatePrompt,
+} from '../state/updateStore';
 
 const PUBLIC_HOST_FALLBACK = 'dl.736.de5.net';
 const GITHUB_URL = 'https://github.com/736368217/Codex-Turnloom';
@@ -38,165 +36,95 @@ const ISSUES_URL = `${GITHUB_URL}/issues`;
 
 export function UpdatePanel() {
   const session = useSessionState();
-  const { state, message, release, progress, source, host, publicError, lastCheckedAt } = useUpdate();
-  const lastCheckRef = useRef(0);
+  const { state, message, release, progress, source, host, lastCheckedAt, needsInstallConfirm } = useUpdate();
+  const mounted = useRef(false);
 
-  const check = async (force = false): Promise<void> => {
-    if (['checking', 'downloading', 'ready'].includes(updateStore.getState().state)) return;
-    if (!force && updateStore.getState().state === 'cancelled') return;
-    const now = Date.now();
-    if (!force && now - lastCheckRef.current < 60_000) return;
-    lastCheckRef.current = now;
-    const prev = updateStore.getState();
-    const startedAt = Date.now();
-    setState('checking');
-    setMessage('正在检查新版本…');
-    setRelease(null);
-    const outcome = await runUpdateCheck({
-      installed: { versionCode: session.appVersionCode, packageName: session.packageName },
-      serverContext: currentRequestContext(),
-    });
-    // A manual tap that returns the same answer must still be visible as a check:
-    // hold 检查中 for at least half a second and stamp the time it finished.
-    if (force) {
-      const elapsed = Date.now() - startedAt;
-      if (elapsed < 500) await new Promise((resolve) => setTimeout(resolve, 500 - elapsed));
-    }
-    updateStore.setState({ lastCheckedAt: Date.now() });
-    setChannel({ source: outcome.source, host: outcome.host, publicError: outcome.publicError });
-    if (outcome.state === 'error') {
-      // A background check that fails must stay quiet: no red line, no "检查失败"
-      // for a request nobody asked for. Only a manual check reports the failure.
-      if (!force) {
-        const keep = ['available', 'ready', 'downloading', 'cancelled'].includes(prev.state);
-        updateStore.setState({ state: keep ? prev.state : 'idle', message: keep ? prev.message : '', release: keep ? prev.release : null });
-        return;
-      }
-      setState('error');
-      setMessage(outcome.message);
-      return;
-    }
-    setState(outcome.state === 'checking' ? 'error' : outcome.state);
-    setMessage(outcome.message);
-    setRelease(outcome.release);
-  };
-
-  // Cold foreground check: no modal, no automatic download.
+  // Opening the sheet without a prior answer (connect screen, or the very first
+  // settings tap) must not show an empty panel. Guarded to `idle`: this is not
+  // the boot check any more — AppRoot owns that one.
   useEffect(() => {
-    void check(false);
-    const onVisible = () => { if (document.visibilityState === 'visible') void check(false); };
-    document.addEventListener('visibilitychange', onVisible);
-    return () => document.removeEventListener('visibilitychange', onVisible);
-  }, [session.scope, session.appVersionCode]);
-
-  // App-level updateStore handles callbacks even while this tab is unmounted.
-
-  const download = () => {
-    if (!release || !hasNativeUpdater()) {
-      setState('error');
-      setMessage('此设备暂不支持在应用内下载安装包');
-      return;
-    }
-    const context: RequestContext | null = currentRequestContext();
-    const isPublic = isPublicUpdateUrl(release.apkUrl);
-    // A public CDN download needs no paired machine; a computer-hosted one does.
-    // Returning early on a missing context used to kill the button silently.
-    if (!isPublic && !context) {
-      setState('error');
-      setMessage('这份安装包由电脑端提供，请先连接电脑再下载');
-      return;
-    }
-    const url = absoluteApkUrl(context ? context.target.origin : '', release.apkUrl);
-    if (!url) { setState('error'); setMessage('安装包地址无效，请重新检查更新'); return; }
-    const id = startUpdateDownload({
-      // The machine token never travels to R2: a public download carries none.
-      url, token: isPublic ? '' : (context ? context.target.token : ''), sha256: release.sha256,
-      versionCode: release.versionCode, packageName: release.packageName,
-    });
-    if (!id) { setState('error'); setMessage('无法开始下载，请稍后重试'); return; }
-    setRequestId(id);
-    setState('downloading');
-    setMessage('正在下载安装包…');
-  };
+    if (mounted.current) return;
+    mounted.current = true;
+    if (updateStore.getState().state === 'idle') void checkForUpdates({ manual: false });
+  }, []);
 
   const percent = progress.total > 0 ? Math.min(100, Math.round(progress.received / progress.total * 100)) : 0;
+  const versionName = release?.versionName || '';
+  const checkedAt = lastCheckedAt ? new Date(lastCheckedAt).toTimeString().slice(0, 5) : '';
+
+  const headline = state === 'available' ? `发现新版本 ${versionName}`
+    : state === 'downloading' ? `正在下载 ${versionName}`
+      : state === 'ready' ? `新版本 ${versionName}`
+        : state === 'current' ? `已是最新版本 ${session.appVersion}`
+          : state === 'checking' ? '正在检查新版本…'
+            : state === 'error' ? '更新检查失败'
+              : state === 'cancelled' ? '下载已取消'
+                : state === 'unavailable' ? '暂无可用安装包'
+                  : `当前版本 ${session.appVersion}`;
 
   // The source line is the acceptance surface for the fallback chain: it prints who
-  // actually answered, so "无需更新" can never be read as a public-channel answer.
+  // actually answered, so "已是最新" can never be read as a public-channel answer.
   // The port is dropped — it says nothing at a glance and pushes the line past 320px.
   const shortHost = (value?: string | null) => (value ? value.replace(/:\d+$/, '') : '电脑');
-  const sourceLine = (() => {
-    if (source === 'public') return `来源 · 公网 ${host ? shortHost(host) : PUBLIC_HOST_FALLBACK}`;
-    if (source === 'server') {
-      // 2.2.3 only answers "who answered". 无清单/清单异常/传输失败的细分留给 publicReason（2.2.4）。
-      return publicError ? `来源 · 公网不可达 → 电脑端 ${shortHost(host)}` : `来源 · 电脑端 ${shortHost(host)}`;
-    }
-    return '来源 · —';
-  })();
-  // No valid manifest this round => never claim 无需更新 (the bug this panel exists for).
-  const pillState = state === 'current' && !source ? 'idle' : state;
+  const sourceLine = source === 'public'
+    ? `来源 · 公网 ${host ? shortHost(host) : PUBLIC_HOST_FALLBACK}`
+    : source === 'server' ? `来源 · 电脑端 ${shortHost(host)}` : '';
+
+  const closeLater = () => { haptic('selection'); dismissUpdatePrompt(); closeSheet(); };
+  const actions = () => {
+    if (state === 'available') return <>
+      <ActionButton data-qa="update-primary" onClick={() => { haptic('success'); startUpdate(); }}>立即更新</ActionButton>
+      <ActionButton variant="neutral" data-qa="update-later" onClick={closeLater}>稍后</ActionButton>
+    </>;
+    if (state === 'downloading') return (
+      <ActionButton variant="neutral" data-qa="update-cancel" onClick={() => { haptic('warning'); cancelDownload(); }}>取消下载</ActionButton>
+    );
+    if (state === 'ready' && needsInstallConfirm) return <>
+      <ActionButton data-qa="update-primary" onClick={() => { haptic('success'); continueInstall(); }}>继续安装</ActionButton>
+      <ActionButton variant="neutral" onClick={closeLater}>稍后</ActionButton>
+    </>;
+    if (state === 'ready') return <ActionButton variant="neutral" onClick={closeSheet}>关闭</ActionButton>;
+    if (state === 'cancelled') return <>
+      <ActionButton data-qa="update-primary" onClick={() => { haptic('success'); startUpdate(); }}>重新下载</ActionButton>
+      <ActionButton variant="neutral" onClick={closeLater}>稍后</ActionButton>
+    </>;
+    if (state === 'error') return <>
+      <ActionButton data-qa="update-primary" onClick={() => { haptic('selection'); if (release) startUpdate(); else void checkForUpdates({ manual: true }); }}>{release ? '重新下载' : '重新检查'}</ActionButton>
+      <ActionButton variant="neutral" onClick={closeLater}>稍后</ActionButton>
+    </>;
+    if (state === 'checking') return null;
+    return <ActionButton variant="neutral" onClick={closeSheet}>关闭</ActionButton>;
+  };
 
   return (
-    <InsetGroup title="应用更新">
-      <div className="tl-update-body" style={{ padding: '10px 16px 6px' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          <span style={{ flex: 1, fontSize: 14, fontWeight: 600 }}>当前版本 {session.appVersion}</span>
-          <StatusPill tone={pillState === 'error' ? 'red' : pillState === 'available' || pillState === 'ready' ? 'blue' : 'neutral'}>
-            {pillState === 'checking' ? '检查中' : pillState === 'available' || pillState === 'downloading' || pillState === 'ready' ? '有更新' : pillState === 'error' ? '检查失败' : pillState === 'current' ? '无需更新' : pillState === 'cancelled' ? '已暂停' : pillState === 'unavailable' ? '暂无安装包' : '尚未检查'}
-          </StatusPill>
+    <div data-qa="update-sheet" style={{ display: 'grid', gap: 14 }}>
+      <div style={{ display: 'grid', gap: 6 }}>
+        <div data-qa="update-state" style={{ fontSize: 17, fontWeight: 600, lineHeight: '23px', color: COLORS.labelPrimary }}>
+          {headline}
         </div>
-        <div
-          data-qa="update-source"
-          style={{ fontSize: 12, lineHeight: '17px', color: COLORS.labelSecondary, marginTop: 4, overflowWrap: 'anywhere' }}
-        >
-          {sourceLine}{lastCheckedAt && state !== 'checking' ? ` · ${new Date(lastCheckedAt).toTimeString().slice(0, 5)} 检查` : ''}
+        {state === 'available'
+          ? (release?.notes ? <div style={{ fontSize: 13, lineHeight: '19px', color: COLORS.labelSecondary }}>{release.notes}</div> : null)
+          : message ? <div style={{ fontSize: 13, lineHeight: '19px', color: state === 'error' ? COLORS.red : COLORS.labelSecondary }}>{message}</div> : null}
+        <div style={{ fontSize: 12, lineHeight: '17px', color: COLORS.labelSecondary }}>
+          当前版本 {session.appVersion} ({session.appVersionCode})
         </div>
-        {message && <div style={{ fontSize: 13, lineHeight: '19px', color: state === 'error' ? COLORS.red : COLORS.labelSecondary, marginTop: 6 }}>{message}</div>}
-        {state === 'downloading' && (
-          <div style={{ marginTop: 8 }}>
-            <div style={{ height: 7, borderRadius: 999, background: COLORS.fillSecondary, overflow: 'hidden' }}>
-              <div style={{ height: '100%', width: `${percent || 8}%`, background: COLORS.blue, transition: 'width .2s ease' }} />
-            </div>
-            <div style={{ fontSize: 11, color: COLORS.labelSecondary, marginTop: 6 }}>{progress.total > 0 ? `${percent}% · ${Math.round(progress.received / 1024)} / ${Math.round(progress.total / 1024)} KB` : '正在连接下载源…'}</div>
-          </div>
-        )}
       </div>
-      <div className="tl-settings-separator" />
-      <button type="button" className="tl-press tl-settings-row" onClick={() => { haptic('selection'); void check(true); }} disabled={state === 'checking'}>
-        <span className="tl-settings-icon"><RefreshCw size={16} /></span>
-        <span>手动检查更新</span>
-        <span className="tl-settings-value">{state === 'checking' ? '检查中…' : <ChevronRight size={14} />}</span>
-      </button>
-      {(state === 'available' || state === 'cancelled') && (
-        <>
-          <div className="tl-settings-separator" />
-          <button type="button" className="tl-press tl-settings-row" onClick={() => { haptic('success'); download(); }}>
-            <span className="tl-settings-icon"><Download size={16} /></span>
-            <span>下载新版本</span>
-            <span className="tl-settings-value"><ChevronRight size={14} /></span>
-          </button>
-        </>
-      )}
+
       {state === 'downloading' && (
-        <>
-          <div className="tl-settings-separator" />
-          <button type="button" className="tl-press tl-settings-row" onClick={() => { haptic('warning'); cancelUpdate(); }}>
-            <span className="tl-settings-icon"><X size={16} /></span>
-            <span>暂停下载</span>
-          </button>
-        </>
+        <div data-qa="update-progress">
+          <div style={{ height: 7, borderRadius: 999, background: COLORS.fillSecondary, overflow: 'hidden' }}>
+            <div style={{ height: '100%', width: `${percent || 8}%`, background: COLORS.blue, transition: 'width .2s ease' }} />
+          </div>
+          <div style={{ fontSize: 11, color: COLORS.labelSecondary, marginTop: 6 }}>{progress.total > 0 ? `${percent}% · ${Math.round(progress.received / 1024)} / ${Math.round(progress.total / 1024)} KB` : '正在连接下载源…'}</div>
+        </div>
       )}
-      {state === 'ready' && (
-        <>
-          <div className="tl-settings-separator" />
-          <button type="button" className="tl-press tl-settings-row" onClick={() => { haptic('success'); if (!installUpdate()) setMessage('无法打开系统安装界面，请稍后重试'); }}>
-            <span className="tl-settings-icon"><ShieldCheck size={16} /></span>
-            <span>打开系统安装界面</span>
-            <span className="tl-settings-value"><ChevronRight size={14} /></span>
-          </button>
-        </>
-      )}
-    </InsetGroup>
+
+      <div style={{ display: 'grid', gap: 10 }}>{actions()}</div>
+
+      <div data-qa="update-source" style={{ fontSize: 11, lineHeight: '16px', color: COLORS.labelSecondary, overflowWrap: 'anywhere' }}>
+        {sourceLine}{sourceLine && checkedAt ? ` · ${checkedAt} 检查` : ''}
+      </div>
+    </div>
   );
 }
 
@@ -262,15 +190,24 @@ function ChoiceRow<T extends string>({
   );
 }
 
-function updateValue(state: string, versionName?: string): string {
+/**
+ * The single version row. Three answers accepted by the 2.4.2 card:
+ * `已是最新 · HH:mm` / `有更新 X` / `检查失败`.
+ * A `current` without an answered manifest is NOT 已是最新 — that was the 2.4.0 bug.
+ */
+function updateValue(state: string, versionName: string | undefined, lastCheckedAt: number, source: string | null): string {
   if (state === 'checking') return '检查中';
-  if (state === 'available') return versionName ? `有更新 ${versionName}` : '有更新';
-  if (state === 'downloading' || state === 'ready') return '可安装';
-  if (state === 'current') return '已是最新';
+  if (state === 'available' || state === 'downloading' || state === 'ready' || state === 'cancelled') {
+    return versionName ? `有更新 ${versionName}` : '有更新';
+  }
+  if (state === 'current') {
+    if (!source) return '检查失败';
+    const time = lastCheckedAt ? new Date(lastCheckedAt).toTimeString().slice(0, 5) : '';
+    return time ? `已是最新 · ${time}` : '已是最新';
+  }
   if (state === 'error') return '检查失败';
-  if (state === 'cancelled') return '已暂停';
   if (state === 'unavailable') return '暂无安装包';
-  return '检查更新';
+  return '尚未检查';
 }
 
 export default function SettingsScreen() {
@@ -365,8 +302,15 @@ export default function SettingsScreen() {
             <SettingRow
               icon={<Download size={16} />}
               title={`版本 ${session.appVersion} (${session.appVersionCode})`}
-              onClick={() => { haptic('selection'); openSheet('update'); }}
-              value={<span className="tl-settings-hint">{updateValue(update.state, update.release?.versionName)}</span>}
+              onClick={() => {
+                haptic('selection');
+                openSheet('update');
+                const phase = updateStore.getState().state;
+                if (phase === 'idle' || phase === 'error' || phase === 'current' || phase === 'unavailable') {
+                  void checkForUpdates({ manual: true });
+                }
+              }}
+              value={<span className="tl-settings-hint">{updateValue(update.state, update.release?.versionName, update.lastCheckedAt, update.source)}</span>}
             />
             <SettingRow
               icon={<FileText size={16} />}

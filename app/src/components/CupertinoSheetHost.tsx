@@ -18,6 +18,7 @@ import { haptic, openExternalUrl } from '../lib/nativeBridge';
 import { copyText } from '../lib/clipboard';
 import { readUploadOutcome } from '../lib/diagnostics';
 import { UpdatePanel } from '../screens/SettingsScreen';
+import { dismissUpdatePrompt, flushPendingUpdatePrompt } from '../state/updateStore';
 
 const TITLES: Record<Exclude<SheetKey, null>, string> = {
   diagnostics: '诊断', disconnect: '忘记这台电脑',
@@ -26,7 +27,10 @@ const TITLES: Record<Exclude<SheetKey, null>, string> = {
 const SUBTITLES: Record<Exclude<SheetKey, null>, string> = {
   diagnostics: '当前连接、版本与本地缓存',
   disconnect: '移除配对及这台电脑的本机会话缓存。电脑上的会话不会被删除。',
-  link: '即将离开 App，请核对完整地址', update: '检查并安装新版本',
+  link: '即将离开 App，请核对完整地址',
+  // 2.4.2: the update panel already says 「发现新版本 X / 当前版本 …」. A second
+  // explanatory line was pure hierarchy noise, so this sheet has no subtitle.
+  update: '',
 };
 
 /** Global singleton bottom drawer. No fake approval or permanent interrupt action. */
@@ -114,7 +118,21 @@ export default function CupertinoSheetHost() {
   };
 
   return (
-    <VaulSheet open={open} onOpenChange={(next) => { if (!next) { closeSheet(); setDiagNotice(''); } }} title={sheet ? TITLES[sheet] : undefined} subtitle={sheet ? SUBTITLES[sheet] : undefined}>
+    <VaulSheet
+      open={open}
+      onOpenChange={(next) => {
+        if (next) return;
+        const closed = sheet;
+        closeSheet();
+        setDiagNotice('');
+        // Closing the update sheet by swipe is the same answer as 「稍后」.
+        // Closing anything else releases a postponed update prompt.
+        if (closed === 'update') dismissUpdatePrompt();
+        else flushPendingUpdatePrompt();
+      }}
+      title={sheet ? TITLES[sheet] : undefined}
+      subtitle={sheet ? SUBTITLES[sheet] : undefined}
+    >
       {content()}
     </VaulSheet>
   );
