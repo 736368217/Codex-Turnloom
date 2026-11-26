@@ -23,7 +23,18 @@
 ## 观察与残项
 
 - `globals.css` 的 `.tl-tabbar [role="tab"] { transition: none }` 会盖掉 `.tl-tabbar-item` 的 120ms 颜色过渡，选中切换是瞬时的。视觉可接受、未阻断；2.4.3 想更柔和可删这一条（按下态自带 `opacity` 过渡）。
-  **实测（NB3 2026-11-26 08:54–08:57，`emulator-5554` 发布版 2.4.2 (101)，真实 `input swipe` 触摸）**：按下 `opacity` 1.0→0.5 用了 **~102 ms**（`0.918@479 ms → 0.5@581 ms`，120 ms ease 的尾段到位）；**松手当帧弹回 1.0**，选中色也在同一帧翻（item computed `transition = none`）。所以这条不是「过渡失效」，而是「过渡只活在 `:active` 里」——真要柔和，2.4.3 删 `transition: none` 并给松手态补一条回落过渡。
+  **实测（NB3 2026-11-26 08:54–08:57，`emulator-5554` 发布版 2.4.2 (101)，真实 `input swipe` 触摸）**：按下 `opacity` 1.0→0.5 用了 **~102 ms**（`0.918@479 ms → 0.5@581 ms`，120 ms ease 的尾段到位）；**松手当帧弹回 1.0**，选中色也在同一帧翻（item computed `transition = none`）。所以这条不是「过渡失效」，而是「过渡只活在 `:active` 里」。
+  **2.4.3 定案（NB3 2026-11-26 09:00，owner 只做记录）：删 `transition: none`，并把过渡全部挪到基态。** 写法（已核 `globals.css:287/299-303/500`，`GlassTabBar` 的按钮本身就是 `[role="tab"]`）：
+
+  ```css
+  .tl-tabbar-item { transition: color 120ms ease; }              /* :287 已有，删掉 :500 的 transition:none 才生效 */
+  .tl-tabbar-item svg,
+  .tl-tabbar-item .tl-tabbar-label { transition: opacity 120ms ease; }  /* 基态声明，值变才有过渡 */
+  .tl-tabbar-item:active svg,
+  .tl-tabbar-item:active .tl-tabbar-label { opacity: .5; }       /* 删掉 :302 那条只在 :active 里的 transition */
+  ```
+
+  注意：`opacity` 变的是 `svg` / `.tl-tabbar-label`，过渡必须写在**这两个元素**的基态上；写在 `.tl-tabbar-item` 上无效（那个元素没有 opacity 变化）。验收判据（NB3 复核按这四条签）：① 按下 ~102 ms（±20）到 0.5；② 松手 **120 ms 内**回到 1.0，不是当帧；③ 选中色 120 ms 内完成，不再同帧翻；④ 门禁 1 不变——底栏内仍无 `rgba(0,122,255` 背景块、`.tl-tabbar` 内无 `!important`。2.4.2 出货字节不动，只进 2.4.3。
 - 320 三页*内容*：**模拟器已走查（NB3，2026-11-26 08:54–08:57，`emulator-5554` 发布版 2.4.2 (101) + 真实配对/会话，`wm density 390` → 320×645 css / dpr 2.438）**：三页 `scrollWidth−clientWidth = 0`、越界元素 0，底栏 56.4 高 / 三项各 106.7×56，触达 44+（`.tl-choice-option` 33×44 无 slop，但 390 宽同样 33，非 320 特有），**PASS**；报告 `D:\Turn-DSH\.scratch\nb3-320-20261126\run-2026-11-26T00-54-41\`。**真机仍挂账**：本版两页有新控件（导航、更新弹层），门禁覆盖几何与 DOM，「真机上看一眼」仍挂到 Rhea 的 100→101 装置走查，覆盖则回填。
 - 320 下的省略号截断 3 处（全是 nowrap+ellipsis，无裸裁切；状态词未丢——卡内 `127.0.0.1:8787 · 在线 · 刚同步` 完整）：`.tl-plat-meta` 186/212（丢的只是平台名，卡标题已有）、`.tl-settings-title` 138/200（`Turnloom-QA · Cod…`）、会话页 72 处（19 行 × title+preview）。2.4.3 候选（NB3 提，均不阻塞 2.4.2）：设置页当前电脑标题去平台名或给两行；设备页把「当前 <platform>」移出 nowrap 行、「发现时在线」→「配对时在线」；会话标题允许两行、日期另起。
 - 门禁稳定性记录：旧版 `check-242-update.mjs` 在 320 曾出现 5 条 FAIL（`settings-open` 起，伴随 `Page.captureScreenshot: timeout`）；`e54b67f` 加了截图重试后，冻结树上 320 跑 **36 PASS / exit 0**。判定为脚本时序问题，不是 320 布局缺陷。
