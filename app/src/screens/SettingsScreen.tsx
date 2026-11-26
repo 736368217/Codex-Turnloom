@@ -14,11 +14,10 @@ import {
 } from 'lucide-react';
 import { ActionButton, StatusPill } from '../components/ui';
 import { COLORS } from '../theme/optionATokens';
-import { useSessionState, setOfflineCacheEnabled, selectedHarness } from '../state/sessionStore';
+import { useSessionState, setOfflineCacheEnabled } from '../state/sessionStore';
 import { useDataState } from '../state/dataStore';
 import { openSheet, openLinkSheet, closeSheet } from '../state/sheetStore';
 import { haptic } from '../lib/nativeBridge';
-import { platformLabel } from '../lib/platforms';
 import { setActiveTab, setThreadsView } from '../state/tabStore';
 import {
   usePrefs, setTextSize, setDefaultView, setHaptics,
@@ -215,7 +214,6 @@ export default function SettingsScreen() {
   const data = useDataState();
   const prefs = usePrefs();
   const update = useUpdate();
-  const harness = selectedHarness(session) || undefined;
   const online = session.status === 'ready' && session.online && !data.offline;
 
   return (
@@ -237,7 +235,7 @@ export default function SettingsScreen() {
               <span className="tl-settings-main">
                 <span className="tl-settings-title">{session.machineName}</span>
                 <span className="tl-settings-sub tl-settings-address">
-                  {[harness ? platformLabel(harness, session.machineName) : '', session.serverUrl].filter(Boolean).join(' · ') || '尚未连接'}
+                  {session.serverUrl || '尚未连接'}
                 </span>
               </span>
               <span className="tl-settings-value">
