@@ -15,6 +15,7 @@ const path = require("node:path");
 
 const ROOT = path.resolve(__dirname, "..");
 const appVersion = JSON.parse(fs.readFileSync(path.join(ROOT, "app/package.json"), "utf8")).version;
+const rootVersion = JSON.parse(fs.readFileSync(path.join(ROOT, "package.json"), "utf8")).version;
 const gradle = fs.readFileSync(path.join(ROOT, "native-shell/app/build.gradle.kts"), "utf8");
 const tokens = fs.readFileSync(path.join(ROOT, "app/src/theme/optionATokens.ts"), "utf8");
 
@@ -25,6 +26,10 @@ const fallbackCode = Number((tokens.match(/versionCode:\s*(\d+)/) || [])[1] || 0
 
 test("app/package.json, build.gradle.kts and APP_IDENTITY carry one version", () => {
   assert.match(appVersion, /^\d+\.\d+\.\d+$/);
+  // The root package.json names the desktop console installer (electron-builder uses
+  // `build.win.artifactName` with ${version}); a stale root version ships a console
+  // package labelled with the previous release while the APK says otherwise.
+  assert.equal(rootVersion, appVersion, "root package.json version drifted from app/package.json");
   assert.equal(gradleName, appVersion, "gradle versionName drifted from app/package.json");
   assert.equal(fallbackName, appVersion, "APP_IDENTITY.versionName drifted from the app version");
   assert.ok(gradleCode > 0, "gradle versionCode is missing");
