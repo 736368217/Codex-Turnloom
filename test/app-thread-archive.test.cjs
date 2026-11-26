@@ -22,6 +22,7 @@ const { stripTypeScriptTypes } = require('node:module');
 
 const root = path.resolve(__dirname, '../app/src');
 const KEY = 'turnloom.archivedThreads.v1';
+const MIGRATED = 'turnloom.archivedThreads.migrated';
 
 /**
  * 一个「入口」：native 槽在同一个设备里共享（归档表必须跨 origin），
@@ -31,6 +32,8 @@ function device() {
   const secure = new Map();
   const modules = new Map();
   const originStores = new Map();
+  /** 让 `secureSet` 抛错，模拟私有存储不可用 / 配额满。 */
+  const flags = { failWrites: false };
 
   function load(file) {
     file = path.resolve(root, file);
@@ -66,7 +69,11 @@ function device() {
     global.window = {
       TurnloomNative: {
         secureGet: key => secure.get(key) ?? null,
-        secureSet: (key, value) => { secure.set(key, String(value)); return true; },
+        secureSet: (key, value) => {
+          if (flags.failWrites) throw new Error('secure storage unavailable');
+          secure.set(key, String(value));
+          return true;
+        },
         secureRemove: key => secure.delete(key),
         getAppInfo: () => JSON.stringify({ version: '2.4.3', versionCode: 102, packageName: 'com.codex.turnloom.app' }),
         cancelRequest() {},
@@ -76,7 +83,7 @@ function device() {
     return load('lib/threadArchive.ts');
   }
 
-  return { secure, originStores, boot };
+  return { secure, originStores, boot, flags };
 }
 
 test('归档写入 native 槽，不写 localStorage', () => {
@@ -137,6 +144,26 @@ test('native 槽已存在时不再读旧表', () => {
   assert.deepEqual(archive.archivedThreadIds(), ['native-1']);
 });
 
+test('迁移之后 native 槽读不到时，不会把旧表当成归档态复活', () => {
+  const d = device();
+  const origin = 'http://192.168.50.42:8787';
+  const legacyOnly = d.boot(origin);
+  void legacyOnly;
+  d.originStores.get(origin).set(KEY, JSON.stringify(['old-1']));
+
+  const upgraded = d.boot(origin);
+  assert.deepEqual(upgraded.archivedThreadIds(), ['old-1']);
+  assert.equal(d.secure.get(MIGRATED), '1', '迁移过就留下标记');
+
+  // 用户取消归档，随后 native 槽读不到（清空或读取失败都走 secureGet -> null）。
+  upgraded.setThreadArchived('old-1', false);
+  d.secure.delete(KEY);
+
+  const after = d.boot(origin);
+  assert.deepEqual(after.archivedThreadIds(), [], '旧表不得重新变成归档态');
+  assert.equal(after.isLocallyArchived('old-1'), false);
+});
+
 test('上限 2000、重复 set 不通知、订阅者可退订', () => {
   const d = device();
   const archive = d.boot('http://192.168.50.42:8787');
@@ -158,4 +185,41 @@ test('上限 2000、重复 set 不通知、订阅者可退订', () => {
 
   archive.clearThreadArchive();
   assert.deepEqual(archive.archivedThreadIds(), []);
+});
+
+test('迁移写不进 native 槽时不打标记，旧表仍是权威', () => {
+  const d = device();
+  const origin = 'http://192.168.50.42:8787';
+  d.boot(origin);
+  d.originStores.get(origin).set(KEY, JSON.stringify(['old-1']));
+
+  // 升级那一次私有存储正好写不进去。
+  d.flags.failWrites = true;
+  const failing = d.boot(origin);
+  assert.deepEqual(failing.archivedThreadIds(), ['old-1'], '写失败也要读得出旧表');
+  assert.equal(d.secure.has(MIGRATED), false, '没写进去就不能打迁移标记');
+
+  d.flags.failWrites = false;
+  const retry = d.boot(origin);
+  assert.deepEqual(retry.archivedThreadIds(), ['old-1']);
+  assert.deepEqual(JSON.parse(d.secure.get(KEY)), ['old-1']);
+  assert.equal(d.secure.get(MIGRATED), '1', '写成功之后才认 native 槽为权威');
+});
+
+test('迁移成功后 native 槽读不到，也不会把旧表复活', () => {
+  const d = device();
+  const origin = 'http://192.168.50.42:8787';
+  d.boot(origin);
+  d.originStores.get(origin).set(KEY, JSON.stringify(['old-1', 'old-2']));
+
+  const migrated = d.boot(origin);
+  assert.deepEqual(migrated.archivedThreadIds(), ['old-1', 'old-2']);
+  // 用户在 2.4.3 里把两条都取消归档，native 槽写成空表。
+  migrated.setThreadArchived('old-1', false);
+  migrated.setThreadArchived('old-2', false);
+
+  // 之后私有存储里那张表没了（清空/读失败），而旧 localStorage 键还在原地说两条都归档。
+  d.secure.delete(KEY);
+  const after = d.boot(origin);
+  assert.deepEqual(after.archivedThreadIds(), [], '不得把已取消归档的会话重新藏起来');
 });

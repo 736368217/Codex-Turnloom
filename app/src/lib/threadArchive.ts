@@ -21,6 +21,8 @@
 import { secureGet, secureSet } from './nativeBridge';
 
 const STORAGE_KEY = 'turnloom.archivedThreads.v1';
+/** 迁移只做一次：标记写过之后，旧 localStorage 表永远不再参与读取。 */
+const MIGRATION_KEY = 'turnloom.archivedThreads.migrated';
 const MAX_ENTRIES = 2000;
 const listeners = new Set<() => void>();
 let snapshot: string[] | null = null;
@@ -51,6 +53,22 @@ function legacyIds(): string[] {
   }
 }
 
+function alreadyMigrated(): boolean {
+  try {
+    return secureGet(MIGRATION_KEY) === '1';
+  } catch {
+    return false;
+  }
+}
+
+function markMigrated(): void {
+  try {
+    secureSet(MIGRATION_KEY, '1');
+  } catch {
+    /* 写不进标记就下次再试，退化成「可能多迁移一次」 */
+  }
+}
+
 function read(): string[] {
   if (snapshot) return snapshot;
   const stored = parse(secureGet(STORAGE_KEY));
@@ -58,15 +76,28 @@ function read(): string[] {
     snapshot = stored;
     return snapshot;
   }
+  // 迁移过之后 native 槽才是唯一权威：这里读不到只说明槽空了或读失败，
+  // 绝不能再回头把 localStorage 里的历史表当成归档态搬回来——那会把用户
+  // 已经取消归档的会话重新藏起来。
+  if (alreadyMigrated()) {
+    snapshot = [];
+    return snapshot;
+  }
   // 首次升级：把 2.4.2 及更早写在 localStorage 里的表搬过来。
   const legacy = legacyIds();
   snapshot = legacy;
-  if (legacy.length) {
-    try {
-      secureSet(STORAGE_KEY, JSON.stringify(legacy));
-    } catch {
-      /* 内存态仍然生效，下次写入再试 */
-    }
+  if (!legacy.length) {
+    markMigrated();
+    return snapshot;
+  }
+  try {
+    secureSet(STORAGE_KEY, JSON.stringify(legacy));
+    // 只有确实写进去了，才把 native 槽定为唯一权威。写失败（配额、桥不可用）
+    // 就不能打这个标记：否则下次启动读不到表、又已经「迁移过」，用户被隐藏的
+    // 会话会静默全部冒出来，比多迁移一次糟得多。
+    markMigrated();
+  } catch {
+    /* 内存态仍然生效，下次写入再试 */
   }
   return snapshot;
 }

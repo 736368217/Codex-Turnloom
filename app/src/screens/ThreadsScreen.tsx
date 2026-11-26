@@ -342,7 +342,7 @@ export default function ThreadsScreen() {
                   className="tl-archive-toggle tl-press"
                   aria-pressed={showArchived}
                   onClick={() => { haptic('selection'); setShowArchived((value) => !value); }}
-                  style={{ display: archivedCount > 0 ? undefined : 'none' }}
+                  style={{ display: showArchived || archivedCount > 0 ? undefined : 'none' }}
                 >
                   <Archive size={14} />
                   {showArchived ? `隐藏归档会话（${archivedCount}）` : `显示归档会话（${archivedCount}）`}
@@ -363,7 +363,7 @@ export default function ThreadsScreen() {
                   className="tl-archive-toggle tl-press"
                   aria-pressed={showArchived}
                   onClick={() => { haptic('selection'); setShowArchived((value) => !value); }}
-                  style={{ display: archivedCount > 0 ? undefined : 'none' }}
+                  style={{ display: showArchived || archivedCount > 0 ? undefined : 'none' }}
                 >
                   <Archive size={14} />
                   {showArchived ? `隐藏归档会话（${archivedCount}）` : `显示归档会话（${archivedCount}）`}
