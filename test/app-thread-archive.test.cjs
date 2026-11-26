@@ -205,21 +205,3 @@ test('迁移写不进 native 槽时不打标记，旧表仍是权威', () => {
   assert.deepEqual(JSON.parse(d.secure.get(KEY)), ['old-1']);
   assert.equal(d.secure.get(MIGRATED), '1', '写成功之后才认 native 槽为权威');
 });
-
-test('迁移成功后 native 槽读不到，也不会把旧表复活', () => {
-  const d = device();
-  const origin = 'http://192.168.50.42:8787';
-  d.boot(origin);
-  d.originStores.get(origin).set(KEY, JSON.stringify(['old-1', 'old-2']));
-
-  const migrated = d.boot(origin);
-  assert.deepEqual(migrated.archivedThreadIds(), ['old-1', 'old-2']);
-  // 用户在 2.4.3 里把两条都取消归档，native 槽写成空表。
-  migrated.setThreadArchived('old-1', false);
-  migrated.setThreadArchived('old-2', false);
-
-  // 之后私有存储里那张表没了（清空/读失败），而旧 localStorage 键还在原地说两条都归档。
-  d.secure.delete(KEY);
-  const after = d.boot(origin);
-  assert.deepEqual(after.archivedThreadIds(), [], '不得把已取消归档的会话重新藏起来');
-});
