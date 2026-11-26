@@ -13,6 +13,7 @@ import { haptic, registerBackHandler } from '../lib/nativeBridge';
 import { backFromSheet } from '../state/sheetStore';
 import { useSessionState, currentRequestContext, retryPersistedSession } from '../state/sessionStore';
 import { revalidateForForeground, refreshThreads } from '../state/dataStore';
+import { startBridgeWatch } from '../state/bridgeWatch';
 
 /** App chrome. This subtree is mounted only after verified machine pairing. */
 export default function AppShell() {
@@ -26,6 +27,10 @@ export default function AppShell() {
     // Same-scope foreground revalidation keeps live messages and the attachment tray.
     if (context) revalidateForForeground(context);
   }, [session.scope, session.generation]);
+
+  // 「这台电脑还在吗」的 3 秒心跳。设备页自己不请求任何东西，所以没有它，
+  // 卡片上的「在线」只在用户碰巧触发一次失败请求时才翻（QA 1 号缺陷）。
+  useEffect(() => startBridgeWatch(), [session.scope, session.generation]);
 
   useEffect(() => { haptic('selection'); }, [activeTab]);
 

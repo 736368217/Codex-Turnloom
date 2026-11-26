@@ -159,6 +159,16 @@ export function markSynced(): void { sessionStore.setState({ lastSyncAt: Date.no
 export function setConnectionError(message: string, status: ConnectionStatus = 'error'): void {
   sessionStore.setState({ status, online: false, error: message, switchError: '' });
 }
+/**
+ * Drop a failure sentence that no longer applies, without touching the
+ * connection state: entering 「添加一台电脑」 is a clean slate, and the old
+ * machine's error has nothing to say about the new pairing.
+ */
+export function clearConnectionError(): void {
+  const state = sessionStore.getState();
+  if (!state.error && !state.switchError) return;
+  sessionStore.setState({ error: '', switchError: '' });
+}
 
 /**
  * How a failed verification attempt is recorded. Cold start / foreground retry

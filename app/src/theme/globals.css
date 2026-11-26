@@ -1880,10 +1880,22 @@ button:focus-visible, a:focus-visible { outline: 2px solid var(--tl-blue); outli
   flex: 0 0 auto; padding: 1px 7px; border-radius: 999px;
   background: #EEF4FF; color: #0A4FA8; font-size: 11px; line-height: 16px; font-weight: 700;
 }
+/* 状态 chip 是行首独立元素，主机名自己省略。320dp 下这条行只有 ~190px,
+   原来 `${host} · 在线 · 2 分钟前同步` 的尾部正好先被切掉，而尾部才是要看的
+   那半句（QA 2026-11-26）。同步时长改成下面单独一行。 */
 .tl-devcard-sub {
-  display: block; margin-top: 1px; font-size: 11px; line-height: 16px;
-  color: var(--tl-label-secondary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  display: flex; align-items: center; gap: 6px; margin-top: 1px; min-width: 0;
+  font-size: 11px; line-height: 16px; color: var(--tl-label-secondary);
 }
+.tl-devcard-state {
+  flex: 0 0 auto; padding: 0 6px; border-radius: 999px;
+  font-size: 10px; line-height: 15px; font-weight: 700;
+  background: rgba(52, 199, 89, .14); color: #12703A;
+}
+.tl-devcard-state[data-online="false"] { background: rgba(255, 59, 48, .13); color: #B3261E; }
+.tl-devcard-host { flex: 1 1 auto; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.tl-devcard-sub > .tl-devcard-platforms { flex: 0 1 auto; min-width: 0; }
+.tl-devcard-sync { display: block; margin-top: 1px; font-size: 11px; line-height: 15px; color: var(--tl-label-secondary); }
 /* Inactive machines are a switch target, not a disclosure; the whole card is
    the control, so there is no separate「切换」label to read as a second action. */
 
@@ -1946,7 +1958,9 @@ button:focus-visible, a:focus-visible { outline: 2px solid var(--tl-blue); outli
 }
 .tl-platcard.is-open .tl-platmark { background: rgba(0, 122, 255, .12); color: #0A4FA8; }
 .tl-plat-main { flex: 1; min-width: 0; }
-.tl-plat-kind { display: block; font-size: 14px; line-height: 19px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.tl-plat-kind { display: flex; align-items: center; gap: 6px; min-width: 0; font-size: 14px; line-height: 19px; font-weight: 600; }
+.tl-plat-label { min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.tl-plat-state { flex: 0 0 auto; padding: 0 6px; border-radius: 999px; font-size: 10px; line-height: 15px; font-weight: 700; background: rgba(255, 59, 48, .13); color: #B3261E; }
 .tl-plat-meta { display: block; margin-top: 1px; font-size: 11px; line-height: 16px; color: var(--tl-label-secondary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .tl-plat-caret { flex: 0 0 auto; transition: transform 260ms cubic-bezier(.32, .72, 0, 1); }
 .tl-plat-caret.is-open { transform: rotate(180deg); }

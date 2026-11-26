@@ -18,6 +18,8 @@ import { serverMessage } from './serverErrors';
 export const API_ENDPOINTS = {
   harnesses: '/api/harnesses',
   health: '/api/health',
+  /** 最便宜的「这台电脑还在吗」：不碰 Desktop、不进请求日志（见 state/bridgeWatch.ts）。 */
+  ping: '/api/ping',
   authSession: '/api/auth/session',
   threads: '/api/threads',
   threadMessages: '/api/threads/:id/messages',

@@ -38,9 +38,46 @@ export function serverMessage(payload: unknown, status: number, transportError?:
   return `HTTP-${status}`;
 }
 
+/**
+ * Host text that is really "the desktop app is not there".
+ *
+ * QA 2026-11-26 (#3): the phone showed `电脑端服务出错：spawn codex ENOENT` — a
+ * Node child-process error, forwarded verbatim, that tells the user nothing
+ * about what to do. Everything below means one thing on the phone: Codex
+ * Desktop is not running on the computer. Keep the mapping here so the next
+ * sentence the host grows never reaches a screen untranslated.
+ */
+function desktopMissingMessage(text: string): string {
+  if (/\benoent\b/.test(text)) return 'DESKTOP-NOT-RUNNING';
+  if (/spawn\s+[^\s]*codex/.test(text)) return 'DESKTOP-NOT-RUNNING';
+  if (/ipc (?:unavailable|not available|closed|disconnected)/.test(text)) return 'DESKTOP-NOT-RUNNING';
+  if (/bridge (?:unavailable|not available)|desktop (?:app )?not running/.test(text)) return 'DESKTOP-NOT-RUNNING';
+  return '';
+}
+
+/**
+ * A stack frame, an errno, a source location: the host's own log line, not a
+ * sentence written for a person. Never rendered — see `actionableMessage`.
+ */
+function looksLikeLogResidue(text: string): boolean {
+  return new RegExp(
+    [
+      '\\bat\\s+[\\w$.<>]+\\s*\\(', // stack frame
+      '\\berrno\\b',
+      '\\bcode:\\s*[\'"]',
+      '^\\w*Error\\b', // "Error: EBUSY ..." / "TypeError: ..."
+      '\\bE[A-Z]{3,}\\b', // ENOENT, ECONNREFUSED, EBUSY, EACCES
+      '[\\w.-]+\\.(?:js|cjs|mjs|ts|tsx):\\d+', // source location
+      '[A-Za-z]:\\\\', // absolute Windows path
+      '/[\\w.-]+/[\\w.-]+/', // absolute POSIX path
+    ].join('|'),
+  ).test(text);
+}
+
 /** Stable English host messages we can translate once, in one place. */
 function localizedHostMessage(message: string): string {
   const text = message.toLowerCase();
+  if (desktopMissingMessage(text)) return '电脑上没找到 Codex 桌面端，启动后再重试。';
   if (/invalid image: dimensions/.test(text)) {
     return '图片尺寸超出电脑端限制（单边 ≤4096px、且 ≤12MP）。App 已自动压缩；若仍失败请先裁剪后再发。';
   }
@@ -74,16 +111,19 @@ export function actionableMessage(result: ApiFailure): string {
   const localized = localizedHostMessage(host);
   if (localized) return localized;
   if (result.status === 400) {
-    if (host && !/^HTTP-400$/.test(host)) return host;
+    if (host && !/^HTTP-400$/.test(host) && !looksLikeLogResidue(host)) return host;
     return '电脑端没有接受这次请求（HTTP-400），请检查图片或内容后重试。';
   }
   if (result.status === 409) {
-    return host && !/^HTTP-409$/.test(host) ? host : '请求状态已变化，请刷新后重新核对。';
+    return host && !/^HTTP-409$/.test(host) && !looksLikeLogResidue(host) ? host : '请求状态已变化，请刷新后重新核对。';
   }
   if (result.status >= 500) {
-    return host && !/^HTTP-5/.test(host) ? `电脑端服务出错：${host}` : '电脑端服务出错，请检查桌面端状态后重试。';
+    // A 5xx body can be a real sentence ("磁盘已满，请清理后重试。") or the host's
+    // own stack trace. Show the first, never the second.
+    if (host && !/^HTTP-5/.test(host) && !looksLikeLogResidue(host)) return `电脑端服务出错：${host}`;
+    return '电脑端服务出错，请检查桌面端状态后重试。';
   }
-  return host && !/^HTTP-\d+$/.test(host) ? host : '请求未成功，请重试。';
+  return host && !/^HTTP-\d+$/.test(host) && !looksLikeLogResidue(host) ? host : '请求未成功，请重试。';
 }
 
 /** A host sentence that is worth showing verbatim (never a bare status). */

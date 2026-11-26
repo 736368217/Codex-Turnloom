@@ -190,6 +190,25 @@ function logWarning(message = "") {
   else console.warn(`[${timestamp()}] ${message}`);
 }
 
+/**
+ * Detail that only matters while debugging the host itself.
+ *
+ * Silence by default: a 3-second reader polling a thread used to print one
+ * `[goal:read] IPC unavailable` line per beat — ~1200 lines an hour whenever
+ * Codex Desktop was closed (QA 2026-11-26, defect 5). Callers still decide
+ * *when* something is worth a line (one warn when a state starts, debug after
+ * that); this only decides whether debug detail reaches the console.
+ */
+function verboseLoggingEnabled() {
+  const flag = String(process.env.TURNLOOM_VERBOSE_LOG || "").trim().toLowerCase();
+  return flag === "1" || flag === "true" || flag === "yes";
+}
+
+function logDebug(message = "") {
+  if (!message || !verboseLoggingEnabled()) return;
+  console.log(`[${timestamp()}] ${message}`);
+}
+
 function logFatalError(label, error) {
   const message = error?.stack || error?.message || String(error);
   logError(`[fatal] ${label}`);
@@ -370,6 +389,15 @@ function shouldLogHttpEvent({ method, pathname, statusCode, level }) {
   }
   state.suppressed += 1;
   return false;
+}
+
+/**
+ * Paths the phone hits on a timer. The 3 s liveness beat must not write one JSON
+ * line per call into the host request log (1200 lines an hour at idle), so it is
+ * excluded there; real failures still surface through the console event log.
+ */
+function isSilentProbePath(pathname) {
+  return pathname === "/api/ping";
 }
 
 function slowRequestThresholdMs(method, pathname) {
@@ -5449,13 +5477,40 @@ async function waitForThreadChange(id, cursor, timeoutMs = 25_000) {
   return { cursor: current, changed: current !== cursor };
 }
 
+/**
+ * `goal:read` rides the phone's 3-second poll. Codex Desktop closed used to mean
+ * one console line per beat — ~1200 lines an hour of "IPC unavailable" (QA
+ * 2026-11-26, defect 5). One warn when a thread's read starts failing, debug
+ * detail while it keeps failing, one info line when it recovers. No backoff is
+ * involved: the poll *is* the recovery probe.
+ */
+const goalReadLogState = new Map();
+
+function noteGoalRead(key, ok, detail) {
+  const failures = goalReadLogState.get(key) || 0;
+  if (ok) {
+    if (failures > 0) {
+      goalReadLogState.delete(key);
+      logInfo(`[goal:read] ${key} recovered after ${failures} failed read(s).`);
+    }
+    return;
+  }
+  const next = failures + 1;
+  // Bounded: a long-lived host would otherwise keep one entry per thread ever opened.
+  if (goalReadLogState.size > 500) goalReadLogState.clear();
+  goalReadLogState.set(key, next);
+  if (next === 1) logWarning(`[goal:read] ${key} failed: ${detail}. Falling back to the Desktop goal store.`);
+  else logDebug(`[goal:read] ${key} still failing (${next} reads): ${detail}.`);
+}
+
 async function getThreadGoalSafe(threadId) {
   const id = String(threadId || "").trim();
   try {
     const ipcGoal = sanitizeThreadGoal(await getCodexIpcClient().getThreadGoal(id));
+    noteGoalRead(`ipc:${id}`, true);
     if (ipcGoal) return ipcGoal;
   } catch (error) {
-    logInfo(`[goal:read] IPC unavailable for ${id}; reading Desktop goal store.`);
+    noteGoalRead(`ipc:${id}`, false, error?.message || String(error));
   }
   try {
     const { goalsDb } = codexPaths((await refreshCodexHomeContext()).home);
@@ -5467,9 +5522,10 @@ async function getThreadGoalSafe(threadId) {
       WHERE thread_id = '${sqlString(id)}'
       LIMIT 1;
     `);
+    noteGoalRead(`goalsdb:${id}`, true);
     return sanitizeThreadGoal(rows[0] || null);
   } catch (error) {
-    logError(`[goal:read] ${id}: ${error?.message || error}`);
+    noteGoalRead(`goalsdb:${id}`, false, error?.message || String(error));
     return null;
   }
 }
@@ -9081,6 +9137,11 @@ async function handleHttpBackendApi(req, res, url, profile = null) {
   const compactMatch = pathname.match(/^\/api\/threads\/([^/]+)\/compact$/);
   const branchMatch = pathname.match(/^\/api\/threads\/([^/]+)\/branch$/);
   try {
+    if (req.method === "GET" && pathname === "/api/ping") {
+      // 这条入口不代问上游：用户问的是「这台电脑还在吗」，不是「上游还活着吗」。
+      sendJson(res, 200, { ok: true, protocol: machinePairing.PROTOCOL, now: Date.now() });
+      return true;
+    }
     if (req.method === "GET" && pathname === "/api/health") {
       // de 这一跳的模型目录必须来自宿主：之前返回 FALLBACK_CODEX_MODELS，
       // 手机面板于是一直显示 Codex 全量目录，PI 里没加入的模型也在。
@@ -9464,7 +9525,7 @@ const server = http.createServer(async (req, res) => {
     const durationMs = Math.round(performance.now() - requestStartedAt);
     const statusCode = aborted && !res.headersSent ? 0 : res.statusCode;
     const logContext = req.turnloomLog || {};
-    if (requestPathname.startsWith("/api/")) {
+    if (requestPathname.startsWith("/api/") && !isSilentProbePath(requestPathname)) {
       try {
         logApiRequest({
           method: requestMethod,
@@ -9620,6 +9681,15 @@ const server = http.createServer(async (req, res) => {
     if (req.method === "GET" && url.pathname === "/api/app/update") {
       if (!requireAuthorized(req, res, url)) return;
       sendJson(res, 200, appRelease.publicUpdatePayload(await currentAppRelease()));
+      return;
+    }
+    // 最便宜的「这台电脑还在吗」：只证明服务和这一层鉴权是通的，不碰 Desktop、
+    // 不读 Codex home、不进请求日志。手机在设备页/设置页什么都不做时也能靠它
+    // 在 3 秒内发现掉线并翻回在线（QA 2026-11-26 缺陷 1）。Desktop 是否运行是
+    // 另一层状态，health 和会话页各自说，绝不在这里混成一个。
+    if (req.method === "GET" && url.pathname === "/api/ping") {
+      if (!requireAuthorized(req, res, url)) return;
+      sendJson(res, 200, { ok: true, protocol: machinePairing.PROTOCOL, now: Date.now() });
       return;
     }
     if (req.method === "GET" && url.pathname === "/api/health") {

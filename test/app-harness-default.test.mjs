@@ -155,7 +155,11 @@ t("D10: the device page opens the current harness's platform and keeps a manual 
 t("D11: device rows call the desktop default what it is, and the screen uses the shared rule", () => {
   const devices = fs.readFileSync(path.join(SRC, "screens/DevicesScreen.tsx"), "utf8");
   assert.doesNotMatch(devices, /默认入口/);
-  assert.match(devices, /本机服务 · \{harness\.online === false \? '发现时离线' : '发现时在线'\}/);
+  // 2.4.3 (QA 2026-11-26, 320dp): only a real "offline" is worth the characters.
+  // The positive case used to print 发现时在线 and lost the tail of the row on a
+  // 320-wide phone; the row now stays silent unless discovery failed.
+  assert.match(devices, /本机服务\{harness\.online === false \? ' · 发现时离线' : ''\}/);
+  assert.doesNotMatch(devices, /发现时在线/);
   assert.match(devices, /openPlatformFor\(platforms, session\.harnessId, current\)/);
 });
 

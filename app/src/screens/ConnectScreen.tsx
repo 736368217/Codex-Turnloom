@@ -5,11 +5,14 @@ import { COLORS } from '../theme/optionATokens';
 import { ActionButton } from '../components/ui';
 import { haptic, pushNativeBackLayer, requestQrScan } from '../lib/nativeBridge';
 import { parseMachinePairingPayload, manualPairing, type MachinePairing } from '../lib/machinePairing';
-import { connectWithPairing, useSessionState, setConnectionError, switchHarness, unpair, stopConnecting } from '../state/sessionStore';
+import { connectWithPairing, clearConnectionError, useSessionState, setConnectionError, switchHarness, unpair, stopConnecting } from '../state/sessionStore';
 import { openSheet } from '../state/sheetStore';
 import CupertinoSheetHost from '../components/CupertinoSheetHost';
 import { runUpdateCheck } from '../lib/updateChannel';
 import connectHero from '../assets/art/connect-hero.png';
+
+/** 访问码被拒、码框清空之后的唯一一句话。 */
+const CODE_RETRY = '访问码不正确，请重新输入。';
 
 export default function ConnectScreen({ onRevalidate, onBack, onPaired, mode = 'connect' }: {
   onRevalidate?: () => void;
@@ -70,8 +73,16 @@ export default function ConnectScreen({ onRevalidate, onBack, onPaired, mode = '
   useEffect(() => {
     if (session.status === 'error' && session.error.includes('访问码')) {
       setShowManual(true); setAccessCode(''); lastPairing.current = null;
+      // 码框已经被清空、按钮已经置灰，文案也必须走到「请重新输入」这一步：
+      // 空码框下面还挂着上一条「访问码不正确」，用户不知道下一步做什么。
+      if (session.error !== CODE_RETRY) setConnectionError(CODE_RETRY);
     }
   }, [session.status, session.error]);
+  // 添加电脑是一块干净的画布：进来时错误区必须为空，上一条失败讲的是别的电脑。
+  useEffect(() => {
+    if (adding) clearConnectionError();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [adding]);
 
   // 添加电脑是全屏路由，没有 AppShell 的返回栈：自己挂一层给系统返回键。
   // 连接过程中不退出，用户要停就点屏上的「停止连接」。
@@ -137,7 +148,8 @@ export default function ConnectScreen({ onRevalidate, onBack, onPaired, mode = '
     if (working) return;
     if (showManual && serverUrl.trim() && accessCode.trim()) submit();
     else if (lastPairing.current) void connect(lastPairing.current);
-    else if (saved) onRevalidate?.();
+    // 添加电脑时 `saved` 指向旧那台：重试它等于替另一台机器做校验，不是用户的意图。
+    else if (saved && !adding) onRevalidate?.();
     else setShowManual(true);
   }
   function revealManual() {

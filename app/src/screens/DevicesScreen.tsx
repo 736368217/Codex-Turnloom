@@ -188,9 +188,16 @@ export default function DevicesScreen() {
                         {active && <span className="tl-devcard-badge">当前</span>}
                       </span>
                       <span className="tl-devcard-sub">
-                        {active
-                          ? `${machine.host} · ${session.online ? '在线' : '离线'} · ${syncLabel(data.lastSyncAt)}`
-                          : <span className="tl-devcard-platforms">
+                        {active ? (
+                          <>
+                            {/* 状态是行首独立元素：320dp 下这条行会被截断，而「在线/离线」
+                                恰好是截断最先吃掉的那半句（QA 2026-11-26）。 */}
+                            <span className="tl-devcard-state" data-online={session.online ? 'true' : 'false'}>
+                              {session.online ? '在线' : '离线'}
+                            </span>
+                            <span className="tl-devcard-host">{machine.host}</span>
+                          </>
+                        ) : <span className="tl-devcard-platforms">
                               {machine.platforms.slice(0, 3).map((platform) => (
                                 <KindAvatar key={platform.key} kind={platform.key} label={platform.label} size={20} />
                               ))}
@@ -199,6 +206,8 @@ export default function DevicesScreen() {
                               <span className="tl-devcard-lastused">· {lastUsedLabel(machine.lastUsedAt)}</span>
                             </span>}
                       </span>
+                      {/* 同步时长自己一行：塞回上面那条就只有被截掉的份。 */}
+                      {active && <span className="tl-devcard-sync">{syncLabel(data.lastSyncAt)}</span>}
                     </span>
                     {busy === machine.id
                       ? <RefreshCw size={16} className="tl-spin" color={COLORS.labelSecondary} />
@@ -243,9 +252,13 @@ export default function DevicesScreen() {
                                 >
                                   <KindAvatar kind={platform.key} label={platform.label} size={24} className="tl-platavatar" />
                                   <span className="tl-plat-main">
-                                    <span className="tl-plat-kind">{platform.label}</span>
+                                    <span className="tl-plat-kind">
+                                      <span className="tl-plat-label">{platform.label}</span>
+                                      {/* 在线是常态，不值得占字；只有离线才值得说一句。 */}
+                                      {!online && <span className="tl-plat-state" data-online="false">离线</span>}
+                                    </span>
                                     <span className="tl-plat-meta">
-                                      {platform.harnesses.length} 个入口 · {online ? '发现时在线' : '发现时离线'}
+                                      {platform.harnesses.length} 个入口
                                       {current ? ` · 当前 ${serviceLabel(current.name, current.kind, session.machineName)}` : ''}
                                     </span>
                                   </span>
@@ -271,7 +284,7 @@ export default function DevicesScreen() {
                                           <span className="tl-hrow-main">
                                             <span className="tl-hrow-name">{rowName}</span>
                                             <span className="tl-hrow-meta">
-                                              本机服务 · {harness.online === false ? '发现时离线' : '发现时在线'}
+                                              本机服务{harness.online === false ? ' · 发现时离线' : ''}
                                             </span>
                                           </span>
                                           <span className={`tl-hrow-pill${selected ? ' is-current' : ''}`}>
