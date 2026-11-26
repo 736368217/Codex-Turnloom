@@ -22,7 +22,7 @@ import path from 'node:path';
 
 function usage(message) {
   if (message) console.error(`compare-apk-assets: ${message}`);
-  console.error('usage: node tools/qa/compare-apk-assets.mjs <apkA> <apkB> [--prefix assets/public] [--show <substring>]');
+  console.error('usage: node tools/qa/compare-apk-assets.mjs <apkA> <apkB> [--prefix assets/public] [--show <substring>] [--rewrite <from> <to>]...');
   process.exit(2);
 }
 
@@ -30,11 +30,38 @@ const argv = process.argv.slice(2);
 const positional = [];
 let prefix = 'assets/public';
 let show = '';
+let rewrite = [];
 for (let i = 0; i < argv.length; i += 1) {
   const arg = argv[i];
   if (arg === '--prefix') prefix = argv[++i] ?? usage('--prefix needs a value');
   else if (arg === '--show') show = argv[++i] ?? usage('--show needs a value');
-  else if (arg.startsWith('--')) usage(`unknown option ${arg}`);
+  else if (arg === '--version') {
+    // Sugar for the one rewrite every release needs, written so it survives a shell that
+    // eats double quotes (PowerShell 5.1 strips them out of native arguments, which turns
+    // versionName:"2.4.3",versionCode:102 into versionName:2.4.3,versionCode:102 and
+    // silently rewrites nothing). Both values are <value>:<code>, B's first.
+    const parse = (spec) => {
+      const m = /^(\d+\.\d+\.\d+):(\d+)$/.exec(spec ?? '');
+      if (!m) usage(`--version wants <value>:<code> pairs, got "${spec}"`);
+      return { ver: m[1], code: m[2] };
+    };
+    const from = parse(argv[++i]);
+    const to = parse(argv[++i]);
+    rewrite.push({
+      from: `versionName:"${from.ver}",versionCode:${from.code}`,
+      to: `versionName:"${to.ver}",versionCode:${to.code}`,
+    });
+  } else if (arg === '--rewrite') {
+    // Two argv values, not one "from=to": a self-delimiting span such as
+    // versionName:"2.4.3",versionCode:102 contains commas and colons itself.
+    const from = argv[++i] ?? usage('--rewrite needs two values: <from> <to>');
+    const to = argv[++i] ?? usage('--rewrite needs two values: <from> <to>');
+    // A bare literal like 102 or 2.4.3 is not unique inside a bundle: `102` also
+    // appears inside colour tokens (`0 102 214`) and `101i4y` icon keys. A blanket
+    // replace there can manufacture agreement, so demand a self-delimiting span.
+    if (from.length < 8) usage(`--rewrite source "${from}" is too short to be unambiguous; pass a self-delimiting span such as versionName:"2.4.3",versionCode:102`);
+    rewrite.push({ from, to });
+  } else if (arg.startsWith('--')) usage(`unknown option ${arg}`);
   else positional.push(arg);
 }
 if (positional.length !== 2) usage('need exactly two APK paths');
@@ -93,11 +120,75 @@ const report = (label, apk) => console.log(`${label}: ${apk}`);
 report('A', positional[0]);
 report('B', positional[1]);
 console.log(`prefix: ${prefix}`);
+if (rewrite.length) console.log(`rewrite: ${rewrite.map((r) => `${r.from}->${r.to}`).join(', ')} (applied to B)`);
 console.log(`identical: ${identical}`);
 if (onlyA.length) console.log(`only in A (${onlyA.length}): ${onlyA.join(', ')}`);
 if (onlyB.length) console.log(`only in B (${onlyB.length}): ${onlyB.join(', ')}`);
 for (const diff of differing) {
   console.log(`differ: ${diff.rel}  A ${diff.sizeA}B ${diff.ha.slice(0, 12)}  B ${diff.sizeB}B ${diff.hb.slice(0, 12)}`);
+}
+
+// Condition "the product only moved its version": rewrite B's new literals back to the
+// old ones and see whether the pair becomes byte-identical. Equal-length replacements
+// keep the file size, which is why the size check in the caller's gate is meaningful.
+const rewriteText = (bytesB) => {
+  let text = bytesB.toString('utf8');
+  const counts = [];
+  for (const { from, to } of rewrite) {
+    const hits = text.split(from).length - 1;
+    counts.push(`${from.length > 40 ? `${from.slice(0, 40)}…` : from}×${hits}`);
+    text = text.split(from).join(to);
+  }
+  return { bytes: Buffer.from(text, 'utf8'), counts };
+};
+
+const comparePair = (label, fullA, fullB) => {
+  const bytesA = fs.readFileSync(fullA);
+  const bytesB0 = fs.readFileSync(fullB);
+  if (bytesA.equals(bytesB0)) {
+    console.log(`${label}: byte identical (${bytesA.length}B)`);
+    return 'identical';
+  }
+  if (!rewrite.length) {
+    let at = 0;
+    while (at < bytesA.length && at < bytesB0.length && bytesA[at] === bytesB0[at]) at += 1;
+    console.log(`${label}: differs at byte ${at}, sizes ${bytesA.length}/${bytesB0.length}`);
+    return 'differs';
+  }
+  const { bytes: bytesB, counts } = rewriteText(bytesB0);
+  console.log(`${label}: rewrite ${counts.join(' ')}`);
+  if (bytesA.equals(bytesB)) {
+    console.log(`${label}: resolved by rewrite (${bytesA.length}B, sizes ${bytesA.length}/${bytesB0.length})`);
+    return 'resolved';
+  }
+  let at = 0;
+  while (at < bytesA.length && at < bytesB.length && bytesA[at] === bytesB[at]) at += 1;
+  const window = (buf) => JSON.stringify(buf.subarray(Math.max(0, at - 40), at + 40).toString('utf8'));
+  console.log(`${label}: rewrite leaves a difference at byte ${at} of ${bytesA.length}/${bytesB.length}`);
+  console.log(`  A …${window(bytesA)}…`);
+  console.log(`  B …${window(bytesB)}…`);
+  return 'differs';
+};
+
+let resolvedByRewrite = 0;
+for (const diff of differing) {
+  const outcome = comparePair(`differ ${diff.rel}`, diff.fullA, diff.fullB);
+  if (outcome === 'resolved') resolvedByRewrite += 1;
+}
+
+// A bump renames the hashed bundle, so the two bundles land in `only in A/B` and never
+// reach the loop above. Pair them when exactly one file is left on each side in the same
+// directory with the same extension — that is the rename case and its content still has
+// to be certified, otherwise "the only difference is the version" would go unproven.
+let renamed = null;
+if (onlyA.length === 1 && onlyB.length === 1) {
+  const a = onlyA[0];
+  const b = onlyB[0];
+  if (path.posix.dirname(a) === path.posix.dirname(b) && path.posix.extname(a) === path.posix.extname(b)) {
+    renamed = { a, b };
+    const outcome = comparePair(`renamed ${a} -> ${b}`, filesA.get(a), filesB.get(b));
+    if (outcome === 'differs') renamed.bad = true;
+  }
 }
 
 if (show) {
@@ -113,6 +204,15 @@ if (show) {
   console.log(`show dir: ${out}`);
 }
 
+const renameOk = !renamed || !renamed.bad;
 const clean = differing.length === 0 && onlyA.length === 0 && onlyB.length === 0;
-console.log(clean ? 'RESULT: identical asset trees' : 'RESULT: differences found');
-process.exit(clean ? 0 : 1);
+const resolved = rewrite.length > 0
+  && renameOk
+  && resolvedByRewrite === differing.length
+  && (differing.length + (renamed ? 1 : 0)) > 0;
+if (clean) console.log('RESULT: identical asset trees');
+else if (resolved) {
+  console.log(`RESULT: differences are exactly the rewritten literals${renamed ? ` (paired ${renamed.a} -> ${renamed.b})` : ''}`);
+} else if (!renameOk) console.log('RESULT: the renamed file still differs beyond the rewrites');
+else console.log('RESULT: differences found');
+process.exit(clean || resolved ? 0 : 1);
