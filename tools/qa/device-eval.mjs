@@ -20,6 +20,7 @@
  *
  * Exit code 1 on any protocol error, so a shell can gate on it.
  */
+import fs from "node:fs";
 import process from "node:process";
 
 function parseArgs(argv) {
@@ -112,7 +113,7 @@ class Socket {
 async function main() {
   const args = parseArgs(process.argv.slice(2));
   if (args.help) {
-    console.log("usage: node tools/qa/device-eval.mjs --expr <js> [--port 9222] [--json]");
+    console.log("usage: node tools/qa/device-eval.mjs --expr <js> [--file <path>] [--port 9222] [--json]");
     process.exit(0);
   }
   const targets = await fetchJson(`http://127.0.0.1:${args.port}/json/list`, args.timeoutMs);
@@ -123,9 +124,13 @@ async function main() {
   const socket = new Socket(target.webSocketDebuggerUrl);
   await socket.open();
   try {
-    if (args.expr) {
+    // `--file` exists because a shell mangles quotes inside `--expr`: a probe
+    // that needs `"` or `'` inside a string is unquotable from PowerShell 5.1,
+    // and a silently truncated probe measures nothing.
+    const expression = args.file ? fs.readFileSync(args.file, "utf8").trim() : args.expr;
+    if (expression) {
       const result = await socket.send("Runtime.evaluate", {
-        expression: args.expr,
+        expression,
         returnByValue: true,
         awaitPromise: true,
         userGesture: true,
