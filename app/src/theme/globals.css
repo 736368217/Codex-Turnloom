@@ -469,6 +469,10 @@ input, textarea {
   overscroll-behavior-y: contain;
   padding-bottom: calc(24px + env(safe-area-inset-bottom, 0px));
 }
+/* Soft keyboard up: the form needs slack below the submit button to scroll clear
+   of the keyboard. `.is-editing` follows the layout viewport, so the slack goes
+   away by itself when the keyboard closes — no second tap, focus stays put. */
+.tl-connect-scroll.is-editing { padding-bottom: calc(120px + env(safe-area-inset-bottom, 0px)); }
 
 /* Compact empty states on short/narrow screens. */
 .tl-empty-card {

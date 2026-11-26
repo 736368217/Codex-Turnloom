@@ -1,10 +1,11 @@
-import { useEffect, useRef, useState, type FormEvent } from 'react';
+import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react';
 import { App } from 'konsta/react';
 import { QrCode, Link2, ScanLine, RefreshCw, ChevronDown, ChevronLeft, Eye, EyeOff, Square, Download } from 'lucide-react';
 import { COLORS } from '../theme/optionATokens';
 import { ActionButton } from '../components/ui';
 import { haptic, pushNativeBackLayer, requestQrScan } from '../lib/nativeBridge';
 import { parseMachinePairingPayload, manualPairing, type MachinePairing } from '../lib/machinePairing';
+import { revealOffset, visibleBottomOf } from '../lib/keyboardReveal';
 import { connectWithPairing, clearConnectionError, useSessionState, setConnectionError, switchHarness, unpair, stopConnecting } from '../state/sessionStore';
 import { openSheet } from '../state/sheetStore';
 import CupertinoSheetHost from '../components/CupertinoSheetHost';
@@ -33,10 +34,63 @@ export default function ConnectScreen({ onRevalidate, onBack, onPaired, mode = '
   const [notice, setNotice] = useState('');
   const lastPairing = useRef<MachinePairing | null>(null);
   const form = useRef<HTMLFormElement>(null);
+  const scrollBox = useRef<HTMLDivElement>(null);
+  const submitButton = useRef<HTMLButtonElement>(null);
+  /** 键盘态：`.tl-connect-scroll` 底部补留白，让提交按钮能滚到键盘上沿之上。 */
+  const [keyboardUp, setKeyboardUp] = useState(false);
   const working = busy || ['checking', 'connecting', 'reconnecting'].includes(session.status);
   const saved = session.harnesses.length > 0;
   const [updateCheck, setUpdateCheck] = useState<'idle' | 'checking' | 'available' | 'current' | 'error'>('idle');
   const [updateVersion, setUpdateVersion] = useState('');
+
+  /**
+   * 把提交按钮滚回可视区——只在它真的被挡在键盘后面时才滚，用户自己的滚动位置不动。
+   * 2.4.2 之前只有「展开手动表单」那一下 scrollIntoView，而那时键盘还没顶起来，
+   * 结果按钮正好落在键盘后面（390dp 只露 10px，320dp 整颗在外）。
+   */
+  const revealSubmit = useCallback((behavior: ScrollBehavior = 'smooth') => {
+    const box = scrollBox.current;
+    const button = submitButton.current;
+    if (!box || !button) return;
+    const offset = revealOffset(button.getBoundingClientRect(), visibleBottomOf(window));
+    if (offset > 0) box.scrollBy({ top: offset, behavior });
+  }, []);
+
+  /**
+   * 键盘态跟随布局视口：Android WebView 弹键盘会把视口缩到键盘上沿，
+   * 收起后自己长回来，所以这里的留白也随之撤掉（不需要用户再点一下），
+   * 焦点始终留在输入框里。
+   */
+  useEffect(() => {
+    const tallest = { current: 0 };
+    const measure = () => {
+      const height = visibleBottomOf(window);
+      if (height > tallest.current) tallest.current = height;
+      const shrunk = tallest.current - height > 96;
+      const focused = !!form.current?.contains(document.activeElement);
+      setKeyboardUp(shrunk && focused);
+      // 键盘动画要分几帧才缩到位，缩完再滚一次；候选条把它再顶高时这里也会重跑。
+      if (shrunk && focused) window.setTimeout(() => revealSubmit('auto'), 60);
+    };
+    measure();
+    window.addEventListener('resize', measure);
+    window.addEventListener('orientationchange', measure);
+    window.visualViewport?.addEventListener('resize', measure);
+    document.addEventListener('focusin', measure);
+    document.addEventListener('focusout', measure);
+    return () => {
+      window.removeEventListener('resize', measure);
+      window.removeEventListener('orientationchange', measure);
+      window.visualViewport?.removeEventListener('resize', measure);
+      document.removeEventListener('focusin', measure);
+      document.removeEventListener('focusout', measure);
+    };
+  }, [revealSubmit]);
+
+  /** 点进输入框就先把按钮安排好：没有 resize 的浏览器/外接键盘也走得通。 */
+  function focusField() {
+    window.setTimeout(() => revealSubmit('smooth'), 300);
+  }
 
   /**
    * 连接页的更新检查：只走公网 R2 那一段（配对后的两段链在设置页）。
@@ -158,7 +212,7 @@ export default function ConnectScreen({ onRevalidate, onBack, onPaired, mode = '
   }
   return <App theme="ios" dark={false} safeAreas>
     <main className="tl-app tl-connect" style={{ background: COLORS.canvas }}>
-      <div className="tl-connect-scroll">
+      <div className={`tl-connect-scroll${keyboardUp ? ' is-editing' : ''}`} ref={scrollBox}>
         <header className="tl-connect-header">
           {/* 2.2.6: 设备页「添加一台电脑」复用这个屏；未配对时没有返回键。 */}
           {onBack && (
@@ -187,13 +241,13 @@ export default function ConnectScreen({ onRevalidate, onBack, onPaired, mode = '
           </button>
           {showManual && <form id="manual-connection" ref={form} onSubmit={submit} className="tl-connect-form">
             <label htmlFor="connection-url">电脑服务地址</label>
-            <input id="connection-url" value={serverUrl} onChange={e => setServerUrl(e.target.value)} placeholder="http://192.168.1.10:8787" inputMode="url" autoCapitalize="off" autoCorrect="off" spellCheck={false} disabled={working} />
+            <input id="connection-url" value={serverUrl} onChange={e => setServerUrl(e.target.value)} onFocus={focusField} placeholder="http://192.168.1.10:8787" inputMode="url" autoCapitalize="off" autoCorrect="off" spellCheck={false} disabled={working} />
             <label htmlFor="connection-code">机器访问码</label>
             <div className="tl-code-field">
-              <input id="connection-code" type={showCode ? 'text' : 'password'} value={accessCode} onChange={e => setAccessCode(e.target.value)} placeholder="电脑配对页上显示的访问码" autoCapitalize="off" autoCorrect="off" spellCheck={false} disabled={working} />
+              <input id="connection-code" type={showCode ? 'text' : 'password'} value={accessCode} onChange={e => setAccessCode(e.target.value)} onFocus={focusField} placeholder="电脑配对页上显示的访问码" autoCapitalize="off" autoCorrect="off" spellCheck={false} disabled={working} />
               <button type="button" aria-label={showCode ? '隐藏访问码' : '显示访问码'} aria-pressed={showCode} onClick={() => setShowCode(v => !v)}>{showCode ? <EyeOff size={20} /> : <Eye size={20} />}</button>
             </div>
-            <button type="submit" className="tl-connect-submit tl-press" disabled={working || !serverUrl.trim() || !accessCode.trim()}>{working ? '正在验证…' : '验证并连接'}</button>
+            <button type="submit" ref={submitButton} className="tl-connect-submit tl-press" disabled={working || !serverUrl.trim() || !accessCode.trim()}>{working ? '正在验证…' : '验证并连接'}</button>
           </form>}
           {session.error && <div role="alert" className="tl-connect-error">{session.error}</div>}
           {notice && <p role="status" className="tl-connect-hint">{notice}</p>}
