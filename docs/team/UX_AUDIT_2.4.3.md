@@ -78,7 +78,8 @@ hero png sha 相同 → **PASS**。
    全量日志 205 行里 **无 FATAL / AndroidRuntime 异常 / NoClassDefFound / ClassNotFound /
    UnsatisfiedLink**。
 3. 设置页版本行：**`版本 2.4.3 (102)`**，副行 `已是最新 · 04:43`；同一页 `当前电脑 Turnloom-QA` /
-   `http://127.0.0.1:8787` / `已连接`。截图 `20-243-release-settings.png`（780×1688）。
+   `http://127.0.0.1:8787` / `已连接`。截图 `docs/reports/2.4.3/shot-settings-243.png`（128,373 B，
+   sha256 `6123bb88…bfa7e2b`，780×1688）。
 
 结论：发行件在模拟器上首启干净、版本行与 `badging` 一致。**这三步只证明包装与自报版本，不替代任何
 320 档读数**——那些仍按上表标注「模拟器证据 / 真机未测」。
