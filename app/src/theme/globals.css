@@ -296,10 +296,18 @@ input, textarea {
    button: the bar is frosted glass, dimming the whole box lets the scrolling
    list read through it. Geometry never moves — a transform on a fixed bar
    button is the old "tab bar suddenly shrinks" defect. */
+/* 2.4.3: the opacity transition declares on the two layers that actually
+   change, in their resting state. Declared inside `:active` it vanished with
+   the state, so a released press snapped back in one frame — the "press never
+   fades back" defect. `:active` now only carries the value. */
+.tl-tabbar-item svg,
+.tl-tabbar-item .tl-tabbar-label {
+  transition: opacity 120ms ease;
+}
+
 .tl-tabbar-item:active svg,
 .tl-tabbar-item:active .tl-tabbar-label {
   opacity: .5;
-  transition: opacity 120ms ease;
 }
 
 .tl-tabbar-label {
@@ -500,8 +508,11 @@ input, textarea {
 
 /* Konsta's iOS Link applied active:opacity-30; our own tab buttons keep their
    pointer geometry and dim only the glyph layer, so a press never moves the
-   bar and never paints its glass. */
-.tl-tabbar [role="tab"] { transition: none; }
+   bar and never paints its glass.
+   2.4.3: the blanket `transition: none` that lived here also killed the
+   declared colour fade on `.tl-tabbar-item` (:287) — selection flipped in one
+   frame. Removed: the bar has no transition of its own to suppress, and the
+   glyph/label fades are declared where they change. */
 
 /* Disabled is a state, not a dimmed copy of the enabled control: a 48%-opacity
    blue still reads as "press me". Primary actions switch to the neutral fill. */
