@@ -23,7 +23,9 @@
 ## 观察与残项
 
 - `globals.css` 的 `.tl-tabbar [role="tab"] { transition: none }` 会盖掉 `.tl-tabbar-item` 的 120ms 颜色过渡，选中切换是瞬时的。视觉可接受、未阻断；2.4.3 想更柔和可删这一条（按下态自带 `opacity` 过渡）。
-- 320 三页*内容*仍未在真机上单独走查；本版两页有新控件（导航、更新弹层），门禁覆盖几何与 DOM，但「设备上看一眼」挂账到 Rhea 的 100→101 装置走查，覆盖则回填，否则继续挂账。
+  **实测（NB3 2026-11-26 08:54–08:57，`emulator-5554` 发布版 2.4.2 (101)，真实 `input swipe` 触摸）**：按下 `opacity` 1.0→0.5 用了 **~102 ms**（`0.918@479 ms → 0.5@581 ms`，120 ms ease 的尾段到位）；**松手当帧弹回 1.0**，选中色也在同一帧翻（item computed `transition = none`）。所以这条不是「过渡失效」，而是「过渡只活在 `:active` 里」——真要柔和，2.4.3 删 `transition: none` 并给松手态补一条回落过渡。
+- 320 三页*内容*：**模拟器已走查（NB3，2026-11-26 08:54–08:57，`emulator-5554` 发布版 2.4.2 (101) + 真实配对/会话，`wm density 390` → 320×645 css / dpr 2.438）**：三页 `scrollWidth−clientWidth = 0`、越界元素 0，底栏 56.4 高 / 三项各 106.7×56，触达 44+（`.tl-choice-option` 33×44 无 slop，但 390 宽同样 33，非 320 特有），**PASS**；报告 `D:\Turn-DSH\.scratch\nb3-320-20261126\run-2026-11-26T00-54-41\`。**真机仍挂账**：本版两页有新控件（导航、更新弹层），门禁覆盖几何与 DOM，「真机上看一眼」仍挂到 Rhea 的 100→101 装置走查，覆盖则回填。
+- 320 下的省略号截断 3 处（全是 nowrap+ellipsis，无裸裁切；状态词未丢——卡内 `127.0.0.1:8787 · 在线 · 刚同步` 完整）：`.tl-plat-meta` 186/212（丢的只是平台名，卡标题已有）、`.tl-settings-title` 138/200（`Turnloom-QA · Cod…`）、会话页 72 处（19 行 × title+preview）。2.4.3 候选（NB3 提，均不阻塞 2.4.2）：设置页当前电脑标题去平台名或给两行；设备页把「当前 <platform>」移出 nowrap 行、「发现时在线」→「配对时在线」；会话标题允许两行、日期另起。
 - 门禁稳定性记录：旧版 `check-242-update.mjs` 在 320 曾出现 5 条 FAIL（`settings-open` 起，伴随 `Page.captureScreenshot: timeout`）；`e54b67f` 加了截图重试后，冻结树上 320 跑 **36 PASS / exit 0**。判定为脚本时序问题，不是 320 布局缺陷。
 - 版本号漂移的根因已补：`APP_IDENTITY` 之前停在 `2.4.0 / 99`，`test/app-identity.test.cjs` 现在要求三处逐字一致（2/2 通过），下次漏改直接红。
 - `check-226-device` 在冻结后曾两条红（`listSummary.stripDoesNotEatTrack` / `tapBand`，`bandHeight 0`）：原因是 2.2.6 夹具把 `getAppInfo` 写死成 `2.2.6 / 95`，新的启动自检按公网清单自动弹了更新层，盖住列表 tab。`b40e052` 改为读当前构建版本后，390/320 两档 exit 0。**结论：夹具撞车，不是布局回归**；记录在此，避免下次把它当布局问题重查。
