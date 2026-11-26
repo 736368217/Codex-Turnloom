@@ -235,11 +235,9 @@ export default function SettingsScreen() {
             >
               <span className="tl-settings-icon"><Laptop size={16} /></span>
               <span className="tl-settings-main">
-                <span className="tl-settings-title">
-                  {session.machineName}{harness ? ` · ${platformLabel(harness, session.machineName)}` : ''}
-                </span>
+                <span className="tl-settings-title">{session.machineName}</span>
                 <span className="tl-settings-sub tl-settings-address">
-                  {session.serverUrl || '尚未连接'}
+                  {[harness ? platformLabel(harness, session.machineName) : '', session.serverUrl].filter(Boolean).join(' · ') || '尚未连接'}
                 </span>
               </span>
               <span className="tl-settings-value">
