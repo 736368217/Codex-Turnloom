@@ -1485,7 +1485,10 @@ button:focus-visible, a:focus-visible { outline: 2px solid var(--tl-blue); outli
   display: flex;
   align-items: center;
   gap: 6px;
-  min-height: 40px;
+  /* 44px, not 40: this row has no ::before slop and sits directly above the
+     first thread row, so a 2px miss below the label opened the conversation
+     instead of the archive section (measured 320x645, 2026-11-26). */
+  min-height: 44px;
   margin: 10px 20px 0;
   padding: 0 4px;
   border: 0;

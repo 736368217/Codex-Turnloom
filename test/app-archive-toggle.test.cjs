@@ -49,3 +49,15 @@ test('T2: 未展开且计数为 0 时仍然什么都不渲染', () => {
 test('T3: 文案与计数不变', () => {
   assert.match(source, /showArchived \? `隐藏归档会话（\$\{archivedCount\}）` : `显示归档会话（\$\{archivedCount\}）`/);
 });
+
+test('T4: 按钮自身高度达到 44px 的触控门槛', () => {
+  // 2026-11-26 实测（320x645）：min-height 40px 时，标签上方 2px 是空白、
+  // 下方 2px 落进第一条会话行——手指偏一点就打开会话而不是展开归档。
+  // 这一行没有 ::before 之类的隐形扩张，所以门槛必须落在盒子上。
+  const css = fs.readFileSync(path.resolve(__dirname, '../app/src/theme/globals.css'), 'utf8');
+  const block = css.match(/\.tl-archive-toggle\s*\{([^}]*)\}/);
+  assert.ok(block, '必须存在 .tl-archive-toggle 规则');
+  const height = block[1].match(/min-height:\s*(\d+)px/);
+  assert.ok(height, '必须显式声明 min-height');
+  assert.ok(Number(height[1]) >= 44, `触控目标必须 ≥44px，当前 ${height[1]}px`);
+});
